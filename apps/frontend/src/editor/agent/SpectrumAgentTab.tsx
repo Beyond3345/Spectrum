@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, agentRunEventsUrl, continueAgentRun, findAgentRun, getChat, getResearch, listChats, startAgentTurn, steerAgentRun, stopAgentRun } from '../../api/client';
-import type { AgentEvent, AgentRunResult, ChatSummary, ChatThread, ResearchSession } from '../../api/client';
+import { ApiError, agentRunEventsUrl, approveAgentInstructions, continueAgentRun, findAgentRun, getAgentInstructions, getChat, getResearch, listChats, startAgentTurn, steerAgentRun, stopAgentRun } from '../../api/client';
+import type { AgentEvent, AgentInstructions, AgentRunResult, AgentUserRequest, ChatSummary, ChatThread, ResearchSession } from '../../api/client';
 import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
+import { confirmDialog } from '../../app/Dialogs';
 import { loadSettings, searchConfigFor } from '../../app/settings';
 import { useEditor } from '../EditorContext';
 import type { PendingChange } from '../EditorContext';
@@ -11,18 +12,35 @@ import type { TodosState } from '../TodosList';
 import { chatMessage, useChatThread } from '../chatThread';
 import { resolveInstructions } from '../personas';
 import { untrusted } from '../../../../backend/src/utils/outsideText.js';
+import { docLanguage } from '../../../../backend/src/utils/docLanguage.js';
 import { CHATS_CHANGED, errorText, isDeletion, patchesToChanges, relativeTime } from '../shared';
-import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
-import type { ContextKind, Draft, TaskRequest, TrayChange, TrayPart } from './parts';
+import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
+import type { ContextKind, Draft, Memory, PlanActions, TaskRequest, TrayChange, TrayPart } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
-import { RESUME_HINT, RUNNING, addRunEvent, closeChanges, metaOf, openChanges, resumeNote, runView, storedChanges, threadItems } from './transcript';
+import { RESUME_HINT, RUNNING, addRunEvent, askAnswer, closeChanges, metaOf, openChanges, planOf, planPrompt, resumeNote, runView, storedChanges, threadItems } from './transcript';
 import type { Checkpoint, ThreadMeta as Meta } from './transcript';
+import { INSTRUCTIONS_FILE, hasInstruction, starterInstructions, withInstruction } from './instructions';
 import AgentHeader, { useTurnChoice } from './AgentHeader';
 import type { TurnChoice } from './usage';
 
-type SendOptions = { skill?: string; research?: string; context: Record<ContextKind, boolean> };
-/** A message typed while the agent works: the next turn's, unless Steer now hands it over between steps */
-type Queued = { id: number; text: string; opts: SendOptions; steering?: boolean };
+/** plan: the composer's Plan was on, so the turn only reads and ends with a plan or a question */
+type SendOptions = { skill?: string; research?: string; context: Record<ContextKind, boolean>; plan?: boolean };
+/** A message typed while the agent works on its thread: the next turn's, unless Steer now hands it over between steps */
+type Queued = { id: number; thread: string; text: string; opts: SendOptions; steering?: boolean };
+/** What a card's button sends besides the words the thread shows: the request as the model reads it, and the message's own record */
+type Sent = { prompt?: string; meta?: Meta };
+// what goes with an answer or an approval: the open file's name, and nothing the user did not choose again
+const ANSWER: SendOptions = { context: { file: true, selection: false, log: false, todos: false } };
+
+/** The waiting messages, kept through a reload of the page (this window's session storage, which may be blocked). */
+const storedQueue = (key: string): Queued[] => {
+  try {
+    const list = JSON.parse(sessionStorage.getItem(key) || '[]');
+    return Array.isArray(list) ? list.filter((q) => q && typeof q.id === 'number' && typeof q.thread === 'string' && typeof q.text === 'string' && q.opts?.context) : [];
+  } catch {
+    return [];
+  }
+};
 
 
 /** A research session as the agent reads it: its question, runs and results, abstracts cut short. */
@@ -86,9 +104,26 @@ export default function SpectrumAgentTab({
   const [attached, setAttached] = useState<{ runId: string; base: ChatThread } | null>(null);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [stopping, setStopping] = useState(false);
-  const [queue, setQueue] = useState<Queued[]>([]);
+  const queueKey = `spectrum-agent-queue:${api.projectId}`;
+  const [queue, setQueue] = useState<Queued[]>(() => storedQueue(queueKey));
   const queueRef = useRef(queue);
   queueRef.current = queue;
+  useEffect(() => {
+    try {
+      if (queue.length) sessionStorage.setItem(queueKey, JSON.stringify(queue));
+      else sessionStorage.removeItem(queueKey);
+    } catch {
+      // blocked storage: the queue lives in the page alone, as before
+    }
+  }, [queue]);
+  // Plan: the next request only reads and ends with a plan to approve
+  const [planOn, setPlanOn] = useState(false);
+  const planRef = useRef(planOn);
+  planRef.current = planOn;
+  // the project's AGENTS.md: whether the agent is given it, and its text for the suggested lines
+  const [rules, setRules] = useState<(AgentInstructions & { text: string | null }) | null>(null);
+  const [rulesRead, setRulesRead] = useState('');
+  const tabRef = useRef<HTMLDivElement>(null);
   const [applying, setApplying] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -124,7 +159,10 @@ export default function SpectrumAgentTab({
     // a turn of this thread that is still going, or ended while no page was there to save it: heard from the backend
     if (runningRef.current) return;
     const { run } = await findAgentRun(latest.current.projectId, chat.id).catch(() => ({ run: null }));
-    if (run && threadRef.current?.id === chat.id && (RUNNING.includes(run.status) || !chat.messages.some((m) => metaOf(m).run === `${run.id}:${run.turn}`))) attach(run.id, chat);
+    if (run && threadRef.current?.id === chat.id && (RUNNING.includes(run.status) || !chat.messages.some((m) => metaOf(m).run === `${run.id}:${run.turn}`))) return attach(run.id, chat);
+    // messages kept through a reload whose turn has ended since: one handed over and read is in the thread, the rest wait again
+    const read = chat.messages.flatMap((m) => (metaOf(m).says || []).filter((s) => s.user).map((s) => s.text));
+    setQueue((old) => old.filter((q) => q.thread !== chat.id || !q.steering || !read.includes(q.text)).map((q) => (q.thread === chat.id && q.steering ? { ...q, steering: false } : q)));
   };
 
   const attach = (runId: string, base: ChatThread) => {
@@ -149,10 +187,21 @@ export default function SpectrumAgentTab({
 
   const scroll = useFollow([thread, running, reviewing, hidden, events, queue.length]);
 
+  const refreshRules = async () => {
+    const a = latest.current;
+    const status = await getAgentInstructions(a.projectId).catch(() => null);
+    if (status) setRules({ ...status, text: status.exists ? await a.ensureFileContent(INSTRUCTIONS_FILE).catch(() => null) : null });
+  };
+  // read again when the workspace is shown, a turn ends or a change is applied: each may have changed the file
+  useEffect(() => {
+    if (active) void refreshRules();
+  }, [api.projectId, active, !!running, tray.length]);
+
   /** What every turn's request carries: the model, the search connection, the instructions and the open proposals. */
   const turnSettings = (base: ChatThread) => {
     const a = latest.current;
     const { typstVersion, markdownEngine } = loadSettings().compileDefaults;
+    const plan = planOf(base.messages);
     return {
       llmConfig: a.llm.main,
       searchConfig: searchConfigFor(a.settings, a.llm.search),
@@ -161,7 +210,9 @@ export default function SpectrumAgentTab({
       instructions: resolveInstructions(a.settings, base.persona) || undefined,
       compile: { typstVersion, markdownEngine },
       // it goes on from the proposals still open, so a file it changes again keeps the earlier change
-      drafts: threadRef.current?.id === base.id ? draftsOf(trayRef.current) : []
+      drafts: threadRef.current?.id === base.id ? draftsOf(trayRef.current) : [],
+      // the approved plan while steps of it are open, for the agent to tick, and whether it stops before each new file
+      ...(plan.open && { plan: plan.entries, ...(plan.eachFile && { eachFile: true }) })
     };
   };
 
@@ -170,19 +221,20 @@ export default function SpectrumAgentTab({
     setRunning(null);
   };
 
-  const send = async (text: string, { skill, research, context }: SendOptions) => {
+  const send = async (text: string, { skill, research, context, plan }: SendOptions, sent: Sent = {}) => {
     const a = latest.current;
     // while the agent works on this thread, a message waits its turn
     if (runningRef.current) {
-      if (runningRef.current.id === threadRef.current?.id) setQueue((old) => [...old, { id: Date.now() + old.length, text: text || `/${skill}`, opts: { skill, research, context } }]);
+      const thread = threadRef.current?.id;
+      if (thread && runningRef.current.id === thread) setQueue((old) => [...old, { id: Date.now() + old.length, thread, text: text || `/${skill}`, opts: { skill, research, context, plan } }]);
       return;
     }
-    const base = append(threadRef.current, chatMessage('user', text || `/${skill}`));
+    const base = append(threadRef.current, chatMessage('user', text || `/${skill}`, sent.meta));
     setEvents([]);
     setRunning(base);
     runningRef.current = base;
     try {
-      let prompt = text || 'Follow the skill’s instructions for this project.';
+      let prompt = sent.prompt || text || 'Follow the skill’s instructions for this project.';
       // after a run that ended before its answer and is no longer kept, this one is told where that one got to
       const before = base.messages[base.messages.length - 2];
       const note = before ? resumeNote(metaOf(before)) : '';
@@ -207,6 +259,7 @@ export default function SpectrumAgentTab({
         compileLog: context.log ? a.compileLog : '',
         history,
         ...(skill && { skill }),
+        ...(plan && { planFirst: true }),
         ...turnSettings(base)
       });
       attach(run.id, base);
@@ -230,6 +283,10 @@ export default function SpectrumAgentTab({
       ...(res.steps?.length && { steps: res.steps }),
       ...(res.says?.length && { says: res.says }),
       ...(res.usage && { usage: res.usage }),
+      // a question, a plan or the next file: the thread's last word until the user answers it
+      ...(res.ask && { ask: res.ask }),
+      ...(res.plan?.length && { plan: res.plan }),
+      ...(res.instructions?.length && { instructions: res.instructions }),
       // the backend words AI failures as a reply; shown as errors, kept out of the history
       ...(!res.ok && { error: true }),
       ...((res.incomplete || !res.ok) && { resume: res.incomplete || 'failed' })
@@ -283,8 +340,9 @@ export default function SpectrumAgentTab({
         // steered too late to be read: they wait again
         if (res.unsent?.length) setQueue((old) => old.map((q) => (res.unsent!.includes(q.text) ? { ...q, steering: false } : q)));
         // the next message that waited is the next turn, after a turn that ended as it should
-        const next = queueRef.current.find((q) => !read.has(q.id));
-        if (next && res.ok && !res.incomplete && threadRef.current?.id === base.id) {
+        // (a question or a plan waits for the user's own answer, which no message typed before it can be)
+        const next = queueRef.current.find((q) => q.thread === base.id && !read.has(q.id));
+        if (next && res.ok && !res.incomplete && !res.ask && threadRef.current?.id === base.id) {
           setQueue((old) => old.filter((q) => q.id !== next.id));
           void send(next.text === `/${next.opts.skill}` ? '' : next.text, next.opts);
         }
@@ -398,8 +456,80 @@ export default function SpectrumAgentTab({
     }
   };
 
+  /** The answer to the agent's question, or to “Go on to …?”, as the next message; Cancel closes it unanswered. */
+  const answer = async (request: AgentUserRequest, value: unknown) => {
+    const owner = threadRef.current;
+    const ask = owner?.messages.length ? metaOf(owner.messages[owner.messages.length - 1]).ask : undefined;
+    if (!owner || !ask) return;
+    const text = askAnswer(ask, value);
+    if (text !== null) return send(ask.kind === 'next' ? 'Go on' : text, ANSWER, ask.kind === 'next' ? { prompt: text } : {});
+    update(owner, (chat) => ({ ...chat, messages: chat.messages.map((m, i) => (i === chat.messages.length - 1 && metaOf(m).ask ? { ...m, meta: { ...metaOf(m), ask: { ...metaOf(m).ask!, dismissed: true } } } : m)) }));
+  };
+
+  const planActions: PlanActions = {
+    // the approved steps are the thread's plan from here on: the strip shows them and the agent ticks them
+    approve: (steps, left, eachFile, changed) => {
+      setPlanOn(false);
+      void send(eachFile ? 'Approve, ask before each file' : 'Approve and run', ANSWER, { prompt: planPrompt(left, changed), meta: { plan: steps.map((content) => ({ content, status: 'pending' })), ...(eachFile && { eachFile: true }) } });
+    },
+    // what the user types next, with Plan on, is what the plan should change
+    keep: () => {
+      setPlanOn(true);
+      tabRef.current?.querySelector<HTMLElement>('.composer-input')?.focus();
+    }
+  };
+
+  /** A line the agent suggested, added to AGENTS.md on the user's click (made with the line when there is no file yet). */
+  const addRule = async (line: string) => {
+    const a = latest.current;
+    try {
+      const status = await getAgentInstructions(a.projectId);
+      if (status.exists && !status.approved) throw new Error(`Read ${INSTRUCTIONS_FILE} and choose Use it first.`);
+      const text = status.exists ? await a.ensureFileContent(INSTRUCTIONS_FILE) : '# Instructions for agents\n';
+      if (!hasInstruction(text, line)) await a.writeProjectFile(INSTRUCTIONS_FILE, withInstruction(text, line));
+      a.notify(`Added to ${INSTRUCTIONS_FILE}`, 'success');
+    } catch (err) {
+      a.notify(`Couldn’t add the line: ${errorText(err)}`, 'error');
+    }
+    await refreshRules();
+  };
+  const memory: Memory = { text: rules?.text ?? null, add: addRule, ...(rules?.exists && !rules.approved && { blocked: `${INSTRUCTIONS_FILE} is not in use yet: read it and choose Use it first.` }) };
+
+  /** The AGENTS.md chip: opens the file, or offers to make one to start from. */
+  const openRules = async () => {
+    const a = latest.current;
+    try {
+      // as it is now: a file that has appeared since the chip was drawn is opened, never written over
+      const { exists } = await getAgentInstructions(a.projectId);
+      if (!exists && !a.projectFiles.includes(INSTRUCTIONS_FILE)) {
+        const ok = await confirmDialog({
+          title: `Create ${INSTRUCTIONS_FILE}?`,
+          message: 'A short file at the top of the project for your standing instructions to agents: spelling, style, what never to touch. The Spectrum agent is given it with every request, and most local agents read it themselves. It is yours to edit.',
+          confirmLabel: 'Create'
+        });
+        if (!ok) return;
+        await a.writeProjectFile(INSTRUCTIONS_FILE, starterInstructions({ mainFile: a.mainFile, language: docLanguage(a.activePath, a.mainFile).name }));
+      }
+      setRulesRead((await getAgentInstructions(a.projectId)).hash || '');
+      await a.openFile(INSTRUCTIONS_FILE);
+    } catch (err) {
+      a.notify(`Couldn’t open ${INSTRUCTIONS_FILE}: ${errorText(err)}`, 'error');
+    }
+    await refreshRules();
+  };
+  const useRules = () =>
+    approveAgentInstructions(latest.current.projectId, rules?.hash || '')
+      .catch((err) => latest.current.notify(`Couldn’t approve ${INSTRUCTIONS_FILE}: ${errorText(err)}`, 'error'))
+      .then(refreshRules);
+
   const here = !!running && running.id === thread?.id;
   const live = useMemo(() => runView(events), [events]);
+  // the plan the user approved: as the thread has it, and as the turn that is happening has ticked it
+  const threadPlan = useMemo(() => planOf(thread?.messages || []), [thread]);
+  const lastAsk = !running && thread?.messages.length ? metaOf(thread.messages[thread.messages.length - 1]).ask : undefined;
+  const waitingAsk = lastAsk && !lastAsk.dismissed ? lastAsk : undefined;
+  const shownPlan = (here && live.plan) || (threadPlan.open || (thread?.messages.length && metaOf(thread.messages[thread.messages.length - 1]).plan) ? threadPlan.entries : []);
+  const shownQueue = queue.filter((q) => q.thread === thread?.id);
   // the thread as saved, then the turn that is happening
   const items = useMemo(() => [...threadItems(thread?.messages || []), ...(here ? live.items : [])], [thread, here, live]);
 
@@ -433,13 +563,14 @@ export default function SpectrumAgentTab({
     const owner = threadRef.current;
     const label = again ? 'Try again' : 'Continue';
     const { run } = owner ? await findAgentRun(latest.current.projectId, owner.id).catch(() => ({ run: null })) : { run: null };
-    const anew = () => void send(label, { context: { file: true, selection: false, log: false, todos: false } });
+    // a Plan turn goes on as one, while Plan is still on
+    const anew = () => void send(label, { ...ANSWER, plan: planRef.current });
     if (!owner || !run || runningRef.current) return anew();
     setEvents([]);
     setRunning(owner);
     runningRef.current = owner;
     try {
-      await continueAgentRun(run.id, turnSettings(owner));
+      await continueAgentRun(run.id, { ...turnSettings(owner), ...(planRef.current && { planFirst: true }) });
     } catch (err) {
       setRunning(null);
       runningRef.current = null;
@@ -451,7 +582,15 @@ export default function SpectrumAgentTab({
     attach(run.id, append(owner, chatMessage('user', label)));
   };
   return (
-    <div className="agent-tab" hidden={hidden}>
+    <div
+      className="agent-tab"
+      hidden={hidden}
+      ref={tabRef}
+      // coming back from the editor, where AGENTS.md may just have been written
+      onFocus={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) void refreshRules();
+      }}
+    >
       <div className="agent-bar">
         <MenuButton
           icon="clock"
@@ -497,6 +636,7 @@ export default function SpectrumAgentTab({
         <ReviewView changes={trayChanges} busy={applying} onApply={(list) => resolve('apply', list)} onReject={(list) => resolve('reject', list)} onPart={settlePart} onClose={() => setReviewing(false)} />
       ) : (
         <div className="agent-scroll" ref={scroll.ref} onScroll={scroll.onScroll} role="log">
+          <PlanStrip entries={shownPlan} todos={todos} />
           {!items.length && (
             <Welcome
               onTask={(task) => {
@@ -505,7 +645,7 @@ export default function SpectrumAgentTab({
               }}
             />
           )}
-          <Transcript items={items} todos={todos} />
+          <Transcript items={items} todos={todos} onAnswer={answer} plan={planActions} memory={memory} />
           {resume && (
             <div className="composer-hint row">
               <span className="grow">{again ? 'Nothing was changed.' : RESUME_HINT[resume]}</span>
@@ -524,9 +664,20 @@ export default function SpectrumAgentTab({
 
       <div className="agent-foot">
         {!reviewing && <ChangesTray changes={trayChanges} onOpen={() => setReviewing(true)} />}
-        {queue.length > 0 && (
+        {rules?.exists && !rules.approved && !reviewing && (
+          <div className="composer-hint row">
+            <span className="grow">This project’s {INSTRUCTIONS_FILE} is not given to the agent yet: it came with the project, or changed outside Spectrum. Read it, then choose.</span>
+            <button className="btn small" onClick={() => void openRules()}>
+              Read it
+            </button>
+            <button className="btn small" disabled={!rulesRead || rulesRead !== rules.hash} title={rulesRead === rules.hash ? 'The agent is given this file with every request, as your standing instructions for the project' : 'Read it first'} onClick={() => void useRules()}>
+              Use it
+            </button>
+          </div>
+        )}
+        {shownQueue.length > 0 && (
           <div className="agent-queue">
-            {queue.map((q) => (
+            {shownQueue.map((q) => (
               <div className="agent-queued" key={q.id}>
                 <span className="agent-queued-label">{q.steering ? 'Steering' : 'Queued'}</span>
                 <span className="agent-queued-text" title={q.text}>
@@ -562,8 +713,36 @@ export default function SpectrumAgentTab({
           skills={skills}
           todoCount={openTodos(todos).length}
           draft={draft}
-          placeholder={here ? 'Message the agent. Enter queues it while the agent works.' : 'Ask the Spectrum agent to work on the project, or type / for skills'}
-          onSend={(text, opts) => void send(text, opts)}
+          placeholder={
+            here
+              ? 'Message the agent. Enter queues it while the agent works.'
+              : waitingAsk?.kind === 'question'
+                ? 'Answer the agent’s question here, or on its card'
+                : waitingAsk?.kind === 'plan' && planOn
+                  ? 'Say what the plan should change'
+                  : 'Ask the Spectrum agent to work on the project, or type / for skills'
+          }
+          extras={
+            <>
+              <button className={`chip ${planOn ? 'active' : ''}`} aria-pressed={planOn} title={planOn ? 'Plan first: the agent only reads, then shows you a plan to approve before it changes anything' : 'Plan first is off: the agent plans by itself only before a larger task'} onClick={() => setPlanOn((on) => !on)}>
+                <Icon name="list.number" /> Plan
+              </button>
+              <button
+                className={`chip ${rules?.approved ? 'active' : ''}`}
+                title={
+                  !rules?.exists
+                    ? `Create ${INSTRUCTIONS_FILE}: your standing instructions for agents in this project`
+                    : rules.approved
+                      ? `Given to the agent with every request, as your standing instructions for this project${rules.truncated ? ' (its first 20,000 characters: the file is longer)' : ''}. Click to open it.`
+                      : `Not given to the agent until you have read it and chosen Use it. Click to open it.`
+                }
+                onClick={() => void openRules()}
+              >
+                <Icon name="list.clipboard" /> {!rules?.exists ? `Add ${INSTRUCTIONS_FILE}` : rules.approved ? `Using ${INSTRUCTIONS_FILE}` : `${INSTRUCTIONS_FILE} not used`}
+              </button>
+            </>
+          }
+          onSend={(text, opts) => void send(text, { ...opts, plan: planRef.current })}
         />
       </div>
     </div>

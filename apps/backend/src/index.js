@@ -22,7 +22,7 @@ import { registerAgentRoutes } from './routes/agent.js';
 import { registerAgentSessionRoutes } from './routes/agentSessions.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { shutdownAgents } from './services/agentSessionService.js';
-import { shutdownRuns } from './services/agentRunService.js';
+import { clearStaleRuns, shutdownRuns } from './services/agentRunService.js';
 import { registerTransferRoutes } from './routes/transfer.js';
 import { registerConvertRoutes } from './routes/convert.js';
 import { registerSearchRoutes } from './routes/search.js';
@@ -225,6 +225,9 @@ if (process.env.SPECTRUM_EXIT_WITH_STDIN === '1') {
   process.stdin.on('error', quit);
   process.stdin.resume();
 }
+
+// the Spectrum agent's run folders a crash left in the cache, gone before a new run can make one
+await clearStaleRuns().catch((err) => fastify.log.error(err));
 
 await fastify.listen({ port: PORT, host: HOST });
 // the built-in Tectonic's packages for the templates, in the background (not in the tests' servers)

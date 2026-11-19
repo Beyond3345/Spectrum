@@ -2,6 +2,7 @@ import { callOpenAICompatible } from '../services/llmService.js';
 import { runToolAgent, languageLine, llmErrorMessage, namedMainFile, projectContext, userInstructions } from '../services/agentService.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { getRun, runOfThread, runSnapshot, startTurn, steerRun, stopRun, subscribeRun } from '../services/agentRunService.js';
+import { approveInstructions, instructionsStatus } from '../services/agentInstructions.js';
 import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, untrusted } from '../utils/outsideText.js';
 
@@ -14,10 +15,13 @@ const CUT_OFF = 'The answer was cut off by the model’s output limit before it 
  * before the turn starts).
  */
 async function turnBody(body = {}) {
-  const { projectId, threadId, prompt, shown, selection, activePath, compileLog, llmConfig, model, reasoningEffort, searchConfig, history, instructions, skill, drafts, compile, planFirst } = body;
+  const { projectId, threadId, prompt, shown, selection, activePath, compileLog, llmConfig, model, reasoningEffort, searchConfig, history, instructions, skill, drafts, compile, planFirst, plan, eachFile } = body;
   return {
     projectId, threadId, prompt, shown, selection, activePath, compileLog, llmConfig, model, reasoningEffort, searchConfig, history, drafts, compile,
     planFirst: planFirst === true,
+    // the approved plan's steps as the thread has them, and whether the run pauses before each new file
+    plan: Array.isArray(plan) ? plan : null,
+    eachFile: eachFile === true,
     instructions: await userInstructions({ instructions }),
     skillBlock: skill ? await userInstructions({ skill, projectRoot: await getProjectRoot(projectId) }) : ''
   };
@@ -56,6 +60,15 @@ export function registerAgentRoutes(fastify) {
     const ping = setInterval(() => reply.raw.write(': ping\n\n'), 15000);
     reply.raw.on('close', () => { clearInterval(ping); end(); });
     return reply;
+  });
+
+  // The project's AGENTS.md (agentInstructions.js): whether there is one, and whether the user approved it as it is;
+  // and their approval of the text they were shown, by its hash.
+  fastify.get('/api/projects/:id/agent-instructions', async (req) => ({ ok: true, ...(await instructionsStatus(await getProjectRoot(req.params.id))) }));
+  fastify.post('/api/projects/:id/agent-instructions/approve', async (req) => {
+    const root = await getProjectRoot(req.params.id);
+    await approveInstructions(root, String(req.body?.hash || ''));
+    return { ok: true, ...(await instructionsStatus(root)) };
   });
 
   fastify.post('/api/agent/run', async (req, res) => {

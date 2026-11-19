@@ -2892,6 +2892,50 @@ textarea.table-latex {
   margin-bottom: 10px;
 }
 
+/* the Spectrum agent's plan, waiting for approval: steps to untick, or to edit as text */
+
+.agent-plan-card > .row:first-child strong {
+  margin-bottom: 0;
+}
+
+.agent-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-plan-list label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.agent-plan-list input {
+  flex: none;
+  transform: translateY(1px);
+}
+
+.agent-plan-list li.off span {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
+.agent-plan-card textarea {
+  width: 100%;
+  margin: 8px 0 6px;
+  resize: vertical;
+}
+
+.agent-plan-card > .row:last-child {
+  margin-top: 10px;
+}
+
 /* plan, sticky above the conversation */
 
 .agent-plan {
