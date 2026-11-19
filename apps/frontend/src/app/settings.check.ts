@@ -242,6 +242,11 @@ try {
   eq([loadSettings().composerDark, loadSettings().composerMinimap], [true, false], 'one alone too');
   stored({ composerDark: false, composerMinimap: true }, '{"minimap":false,"dark":true}');
   eq([loadSettings().composerDark, loadSettings().composerMinimap], [false, true], 'Settings’ own win once they’re stored');
+  stored({ modelPrices: { m: { input: 3, output: '15' }, n: 'cheap' } }, null);
+  eq(loadSettings().modelPrices, { m: { input: 3 } }, 'model prices are checked on load');
+  stored({ modelPrices: [1] }, null);
+  eq(loadSettings().modelPrices, {}, 'prices that are not a list of models are none');
+  eq(DEFAULT_SETTINGS.modelPrices, {}, 'no prices until typed');
   for (const junk of [null, 'not json', '"dark"', 'null', '{"dark":"yes","minimap":1}']) {
     stored({ theme: junk ? 'dark' : 'system', editorFontSize: 10 + String(junk).length }, junk);
     eq([loadSettings().composerDark, loadSettings().composerMinimap], [false, false], `old choices that can’t be read (${junk}) are off`);

@@ -96,6 +96,8 @@ import {
   loadSettings,
   useLivePreset,
   useProviders,
+  PRICE_FIELDS,
+  cleanPrices,
   useSettings
 } from './settings';
 import type { AppSettings, ModelRole, PdfPageDark, PdfPageLight, Theme } from './settings';
@@ -761,6 +763,33 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                   How long the model may think before answering. Higher levels are slower and cost more.
                 </div>
               </div>
+              {settings.llmModel && (
+                <div className="field">
+                  <label id="settings-modelPrice">Price of {mainModel?.label || settings.llmModel}</label>
+                  <div className="row">
+                    {PRICE_FIELDS.map((k) => (
+                      <input
+                        key={k}
+                        className="input grow"
+                        type="number"
+                        min={0}
+                        step="any"
+                        aria-label={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}, US dollars per million tokens`}
+                        placeholder={{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}
+                        value={settings.modelPrices[settings.llmModel]?.[k] ?? ''}
+                        onChange={(e) => {
+                          const n = e.target.value.trim() === '' ? undefined : Number(e.target.value);
+                          const price = { ...settings.modelPrices[settings.llmModel], [k]: n };
+                          update({ modelPrices: cleanPrices({ ...settings.modelPrices, [settings.llmModel]: price }) });
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div className="field-hint">
+                    Optional: input, cached input and output, in US dollars per million tokens, from your provider’s price list. The Spectrum agent’s tab then shows an estimate of what a thread cost. Without a price it shows tokens alone.
+                  </div>
+                </div>
+              )}
 
               {roleModel('quick', 'Quick model', 'Used for autocomplete and for splitting pasted references.', 'Listed models think as little as they allow, so it stays quick; other servers use their own default.')}
               {roleModel('vision', 'Vision model', 'Used for image → LaTeX and the layout check in template transfer.', 'Uses the model’s recommended effort.')}

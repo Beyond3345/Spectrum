@@ -17,6 +17,8 @@ import type { ContextKind, Draft, TaskRequest, TrayChange, TrayPart } from './pa
 import type { AgentStatus } from './LocalAgentTab';
 import { RESUME_HINT, RUNNING, addRunEvent, closeChanges, metaOf, openChanges, resumeNote, runView, storedChanges, threadItems } from './transcript';
 import type { Checkpoint, ThreadMeta as Meta } from './transcript';
+import AgentHeader, { useTurnChoice } from './AgentHeader';
+import type { TurnChoice } from './usage';
 
 type SendOptions = { skill?: string; research?: string; context: Record<ContextKind, boolean> };
 /** A message typed while the agent works: the next turn's, unless Steer now hands it over between steps */
@@ -62,14 +64,17 @@ export default function SpectrumAgentTab({
   const latest = useRef(api);
   latest.current = api;
   const [newPersona, setNewPersona] = useState<string | undefined>();
+  // the model and effort for a thread not started yet; a thread keeps its own
+  const [newChoice, setNewChoice] = useState<TurnChoice>({});
   // the thread open in each project, reopened with the workspace (a per-viewer convenience)
   const remember = (id: string | null) => writeStored(`spectrum-agent-thread:${latest.current.projectId}`, id ?? undefined);
   const { thread, threadRef, show, append, update } = useChatThread({
     projectId: api.projectId,
     notify: api.notify,
-    fresh: () => ({ agent: true, ...(newPersona && { persona: newPersona }) }),
+    fresh: () => ({ agent: true, ...(newPersona && { persona: newPersona }), ...newChoice }),
     onCreate: remember
   });
+  const turn = useTurnChoice(thread ?? newChoice);
   const [threads, setThreads] = useState<ChatSummary[]>([]);
   const [tray, setTray] = useState<PendingChange[]>([]);
   const trayRef = useRef(tray);
@@ -151,7 +156,8 @@ export default function SpectrumAgentTab({
     return {
       llmConfig: a.llm.main,
       searchConfig: searchConfigFor(a.settings, a.llm.search),
-      reasoningEffort: a.settings.reasoningEffort,
+      model: turn.current.model,
+      reasoningEffort: turn.current.effort,
       instructions: resolveInstructions(a.settings, base.persona) || undefined,
       compile: { typstVersion, markdownEngine },
       // it goes on from the proposals still open, so a file it changes again keeps the earlier change
@@ -473,6 +479,13 @@ export default function SpectrumAgentTab({
           onManage={() => onOpenSettings('personas')}
         />
         <span className="grow" />
+        <AgentHeader
+          messages={thread?.messages || []}
+          live={here ? live.usage : null}
+          choice={turn.current}
+          onChoose={(c) => (thread ? update(thread, (chat) => ({ ...chat, ...c })) : setNewChoice((old) => ({ ...old, ...c })))}
+          onManage={() => onOpenSettings('models')}
+        />
         {running && (
           <button className="btn small" disabled={stopping || !attached} onClick={stop}>
             <Icon name="stop.fill" /> Stop

@@ -2587,6 +2587,49 @@ textarea.table-latex {
   max-width: 200px;
 }
 
+/* the agent header's model and effort, and its meter of tokens, cost and context (AgentHeader.tsx) */
+.agent-model-pick {
+  max-width: 220px;
+}
+
+.agent-meter {
+  display: inline-flex;
+  margin-left: auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.agent-meter-bar {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+}
+
+.agent-meter-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.agent-meter.full {
+  color: var(--orange-text);
+}
+
+.agent-meter.full .agent-meter-bar > span {
+  background: var(--orange);
+}
+
 .persona-dot {
   display: inline-block;
   flex: none;
