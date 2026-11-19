@@ -258,8 +258,9 @@ export async function compileSandbox({ build, tmp, searchPath = process.env.PATH
   }
   const own = [];
   for (const file of runs) if (file && path.isAbsolute(file)) own.push(...(await programFilter(await real(file), searchPath)));
-  const biber = await thinBiber(searchPath);
-  const python = await realPython(searchPath);
+  // not for Tectonic, which runs Spectrum's own Biber (first on its PATH, one program already) and no script of TeX's
+  const biber = tectonic ? null : await thinBiber(searchPath);
+  const python = tectonic ? null : await realPython(searchPath);
   // Biber starts the copy of itself it unpacked into the cache
   const may = [...new Set([...filters, ...own]), `(subpath ${q(await real(caches[0]))})`, ...(biber ? [`(literal ${q(path.join(await real(biber), 'biber'))})`] : [])];
   const made = root ? [String.raw`^${quoted(await real(root))}/(.*/)?[^/]+-eps-converted-to\.pdf$`] : [];
