@@ -391,7 +391,7 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
     if (provider?.local && res.status === 401) return { ok: false, error: 'Ollama needs you to sign in to use its cloud models. Sign in from the Ollama app, or run ollama signin.' };
     // a provider or proxy that repeats the key in its message: the message is shown, and saved with the chat
     // (a real key is long; a short stand-in would be found inside ordinary words)
-    const said = longWait !== null ? `The provider is limiting requests and asks for a wait of about ${about(longWait)}. Try again then.` : `${providerError(res.status, text)}${retries ? ` Spectrum tried ${retries + 1} times.` : ''}`;
+    const said = longWait !== null ? `The provider is busy and asks for a wait of about ${about(longWait)} before another request. Try again then.` : `${providerError(res.status, text)}${retries ? ` Spectrum tried ${retries + 1} times.` : ''}`;
     return { ok: false, error: resolved.apiKey?.length >= 8 ? said.split(resolved.apiKey).join('[API key]') : said, status: res.status, ...(retries && { retries }) };
   }
   let data = null;

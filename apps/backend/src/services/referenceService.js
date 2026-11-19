@@ -1,4 +1,5 @@
 // References chat: DOI / arXiv / link / title → BibTeX appended to the project's .bib.
+import { DATA_RULE, untrusted } from '../utils/outsideText.js';
 import { promises as fs } from 'fs';
 import { lookup as dnsLookup } from 'dns/promises';
 import net from 'net';
@@ -106,9 +107,10 @@ async function splitWithLLM(text, llmConfig) {
     messages: [
       {
         role: 'system',
-        content: 'Split the text into separate bibliographic references. For each reference give its DOI if one appears, else its arXiv id, else a URL, else a short search query (the title, plus the first author surname if known). Return JSON only: {"items":[{"doi":"","arxiv":"","url":"","query":""}]}'
+        content: 'Split the text into separate bibliographic references. For each reference give its DOI if one appears, else its arXiv id, else a URL, else a short search query (the title, plus the first author surname if known). Return JSON only: {"items":[{"doi":"","arxiv":"","url":"","query":""}]} ' + DATA_RULE
       },
-      { role: 'user', content: text.slice(0, 20_000) }
+      // a pasted reference list is often copied out of a PDF or a web page
+      { role: 'user', content: untrusted('pasted references', text.slice(0, 20_000)) }
     ]
   });
   const res = await Promise.race([call, new Promise((r) => setTimeout(r, LLM_TIMEOUT_MS, null).unref())]);
