@@ -367,9 +367,15 @@ export function renamePath(id: string, from: string, to: string) {
   return request<{ ok: boolean; unmoved?: number }>(`/api/projects/${id}/rename`, json('POST', { from, to }));
 }
 
-export function deleteFile(id: string, filePath: string) {
-  const qs = new URLSearchParams({ path: filePath }).toString();
-  return request<{ ok: boolean; error?: string }>(`/api/projects/${id}/file?${qs}`, { method: 'DELETE' });
+/** bin: to the system Bin, or { ok: false, noBin } when it can't go there; otherwise gone for good. undo: restoreFile's key. */
+export function deleteFile(id: string, filePath: string, { bin = false } = {}) {
+  const qs = new URLSearchParams({ path: filePath, ...(bin && { bin: '1' }) }).toString();
+  return request<{ ok: boolean; error?: string; bin?: boolean; noBin?: boolean; undo?: string }>(`/api/projects/${id}/file?${qs}`, { method: 'DELETE' });
+}
+
+/** Puts back what deleteFile moved to the Bin, from the key it gave. */
+export function restoreFile(id: string, undo: string) {
+  return request<{ ok: boolean; error?: string; path?: string }>(`/api/projects/${id}/file/restore`, json('POST', { undo }));
 }
 
 export function updateFileOrder(id: string, folder: string, order: string[]) {

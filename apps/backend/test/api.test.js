@@ -143,7 +143,9 @@ async function startServer() {
       SPECTRUM_FRONTEND_DIST: frontendDist,
       SPECTRUM_LLM_API_KEY: '',
       SPECTRUM_MINERU_TOKEN: '',
-      SPECTRUM_ARXIV_BASE: `http://127.0.0.1:${mockPort}/arxiv`
+      SPECTRUM_ARXIV_BASE: `http://127.0.0.1:${mockPort}/arxiv`,
+      // the Bin's stand-in, unless the opt-in test below is to use the real one
+      ...(process.env.SPECTRUM_TEST_BIN !== '1' && { SPECTRUM_TEST_BIN_DIR: path.join(tmp, 'Bin') })
     },
     stdio: 'ignore'
   });
@@ -463,6 +465,39 @@ test('moves a project to the Bin', { skip: binSkip }, async () => {
   assert.ok(res.ok, res.error);
   assert.ok(!existsSync(p.path));
   assert.ok(!(await listIds()).includes(p.id));
+});
+
+test('the file tree moves a file or folder to the Bin, and Undo puts it back', { skip: process.env.SPECTRUM_TEST_BIN === '1' && 'uses the Bin’s stand-in' }, async () => {
+  const p = await newProject('Bin');
+  await writeFile(p.id, 'chapters/one.tex', 'one');
+  await writeFile(p.id, 'notes.md', 'my notes');
+  const del = async (rel, bin = true) => (await api(`/api/projects/${p.id}/file?path=${encodeURIComponent(rel)}${bin ? '&bin=1' : ''}`, { method: 'DELETE' })).json;
+  const restore = async (undo) => (await api(`/api/projects/${p.id}/file/restore`, { method: 'POST', body: { undo } })).json;
+
+  const file = await del('notes.md');
+  assert.ok(file.ok && file.bin && file.undo, JSON.stringify(file));
+  assert.ok(!existsSync(path.join(p.path, 'notes.md')));
+  assert.equal((await fs.readdir(path.join(tmp, 'Bin'))).filter((n) => n.endsWith(' notes.md')).length, 1);
+  assert.ok((await restore(file.undo)).ok);
+  assert.equal(await readFile(p.id, 'notes.md'), 'my notes');
+  assert.equal((await restore(file.undo)).ok, false, 'once only');
+
+  // a folder, and Undo never writes over what took its place
+  const folder = await del('chapters');
+  assert.ok(folder.ok && folder.bin);
+  assert.ok(!existsSync(path.join(p.path, 'chapters')));
+  await writeFile(p.id, 'chapters/new.tex', 'new');
+  assert.equal((await restore(folder.undo)).ok, false);
+  assert.equal(await readFile(p.id, 'chapters/new.tex'), 'new');
+
+  // a link goes, not what it points to; and without bin=1 a file goes for good
+  await fs.symlink('notes.md', path.join(p.path, 'alias.md'));
+  const link = await del('alias.md');
+  assert.ok(link.ok && !link.bin && !link.undo);
+  assert.equal(await readFile(p.id, 'notes.md'), 'my notes');
+  const gone = await del('notes.md', false);
+  assert.ok(gone.ok && !gone.bin);
+  assert.equal((await restore('nonsense')).ok, false);
 });
 
 test('renames, tags, archives, sets the main file and duplicates', async () => {
