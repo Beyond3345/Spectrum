@@ -2,6 +2,52 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.5.1 (19 November 2026)
+
+### Security
+
+- Compiling a document from someone else could run a command on the computer: makeglossaries read names from the document's own `.aux` into a shell line. Spectrum now checks those names before either glossary program runs
+- A project's SVG opened as a page could run script on the app's own address, with the whole local API. The file route now sends it with a sandbox policy, so it draws and runs nothing
+- On a Mac, the index and glossary programs a compile runs can write only the build folder and cannot reach the network
+- A model's reply could send project text out through the address of a Markdown image. An image in a reply is drawn only when the reply carries it, any other shows as a link, and the app's pages load images only from the app itself
+- A page on another port of this computer can no longer use the local API
+- Compilers, pandoc and the plot's Python no longer get Spectrum's keys and tokens in their environment
+- A model provider's error no longer shows the API key it repeats
+
+### Fixed
+
+- The assistant and agents:
+  - The Spectrum agent read only the first 20,000 characters of a file without saying so, and a rewrite then deleted the rest. It now reads a long file on by offset and never rewrites one from a cut-off read
+  - An agent that exits part way through a task is reported with its exit code and last words, not "ACP connection closed"
+  - A provider's 429 for a spent quota says so, not "try again shortly"
+  - A refusal from an OpenAI-compatible model is shown, where the answer was empty
+  - A reasoning model's `<think>` block no longer shows in the answer
+  - The tools server finds a Typst or Markdown project's main document when none is named
+- Typst:
+  - Typst finds the Chinese fonts Spectrum ships, as every LaTeX compile does
+  - After `@` in a chapter, completion lists the labels of the other chapters
+  - Document insights reads Typst equations, references and titles as Typst does, and gives numbers and pages to labels in a chapter's own includes
+  - Review reads the chapters a Typst document includes
+- Markdown:
+  - A compile's TeX errors are traced to their `.md` line and listed once, and missing glyphs, such as Chinese text in Latin Modern, are a warning
+  - pandoc's warnings, such as a citation with no entry, are listed in Logs at the line that cites it. A missing citation printed "(key?)" with no warning anywhere
+  - The editor highlights GitHub tables, task lists and strikethrough, front matter, `$…$` and `$$…$$` maths and `latex` code blocks, in the editor theme's colours
+  - LaTeX command completion runs in maths only, and `/` in prose no longer offers `\section`
+  - Spelling skips raw LaTeX commands, the keys after `\ref` and `\cite`, citations without brackets and attributes such as `{width=50%}`, and checks a figure's caption
+  - Document insights reads an abstract written as a `|` or `>` block and authors given as `- name:`
+  - With pandoc 3.8, choosing Typst as the PDF engine says it needs 3.8.3 and that LaTeX works, not that pandoc is too old for Spectrum
+  - The Compile menu no longer offers a Bibliography tool, which pandoc's citeproc never uses
+- Editor and compiling:
+  - A compile that made a PDF despite TeX errors says "1 error" beside Compile, which opens Logs, rather than only "Compiled"
+  - Pasting an image, such as a screenshot, into the editor opens Insert figure with it, as dropping one does
+  - Logs names the command in an Undefined control sequence error, warns when `\include` cannot find a chapter, and lists a missing package as one error, not three
+  - Typing t, p, v, m or w in the source no longer throws an error on each key
+  - The file tree is one Tab stop, and the arrow keys, Home and End move through it and open or close folders
+  - The source editor has an accessible name for screen readers
+  - Browse… in New project no longer clears the name typed, and closing the template gallery goes back to New project
+  - A file changed by another app is "changed on disk", not "changed on another computer"
+  - When Spectrum's own server does not answer, messages say so instead of "Failed to fetch"
+
 ## 2.5.0 (17 November 2026)
 
 ### Added
