@@ -71,7 +71,7 @@ export default function HunkList({
     setEditing(null);
   };
 
-  keys.current = onChoice
+  const onKey: ReviewKeys['current'] = onChoice
     ? (e) => {
         if (e.metaKey || e.ctrlKey || e.altKey || e.nativeEvent.isComposing || typing(e.target)) return;
         const key = e.key.toLowerCase();
@@ -88,7 +88,13 @@ export default function HunkList({
         e.preventDefault();
       }
     : null;
-  useEffect(() => () => void (keys.current = null), []);
+  // this file's keys while it is the one in view: the file shown before lets go of its own, never of this one's
+  useEffect(() => {
+    keys.current = onKey;
+    return () => {
+      if (keys.current === onKey) keys.current = null;
+    };
+  });
 
   const sectionCount = (i: number) => {
     let n = 1;
