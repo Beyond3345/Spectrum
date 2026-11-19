@@ -786,7 +786,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                     ))}
                   </div>
                   <div className="field-hint">
-                    Optional. US dollars per million tokens, from your provider’s price list. The Spectrum agent’s tab then shows an estimate of what a thread cost. Without a price it shows tokens alone.
+                    Optional: input, cached input and output, in US dollars per million tokens, from your provider’s price list. The Spectrum agent’s tab then shows an estimate of what a thread cost. Without a price it shows tokens alone.
                   </div>
                 </div>
               )}
