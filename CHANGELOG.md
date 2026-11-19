@@ -2,6 +2,64 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.6.0 (21 November 2026)
+
+### Security
+
+- `AGENTS.md` reaches the Spectrum agent only as you approved it on this computer. A file that came with a project, or was changed by a pull, a sync, an agent in the folder or an agent's change you applied, is not used until you have read it and chosen Use it
+- A local agent stops when Spectrum is force-quit or crashes, and leaves nothing running when it exits
+- The Spectrum agent compiles on a copy of the project, confined like every compile and never trusted. Nothing in the project changes until you apply a change
+- Review's PDF before and after is compiled on copies, in the agents' isolation
+- Agent Client Protocol SDK 2.8.0, Codex adapter 2.7.0 and Claude Agent adapter 0.108.1
+
+### Added
+
+- The Spectrum agent shows its work as it happens: each step as a card with its time, and the answer as it is written
+- Stop stops the Spectrum agent at once, the model call and the compile included, and keeps what it had done
+- A message sent while the Spectrum agent works waits above the message box, and Steer now hands it over between two steps. Waiting messages are kept when the page reloads
+- Continue goes on in the same run, with everything the agent had read and done, for an hour after its last answer
+- The Spectrum agent can compile its changes and read the errors at their lines, in LaTeX, Typst and Markdown, and fixes what it broke, three tries at most
+- The Spectrum agent can search the project's text, read the project map and the bibliography, edit by replacing exact text and propose deleting a file
+- The Spectrum agent can show a plan before it changes anything: untick or edit its steps, then Approve and run, Approve and ask before each file or Keep planning. Plan, under the message box, asks for one, and the agent plans by itself before a larger task. The approved steps stay at the top of the thread and are ticked as it works
+- The Spectrum agent asks a question when a request is unclear, with answers to choose from. A plan or a question waits in the thread, through a reload and a restart, with no request to the model open
+- `AGENTS.md` at the top of a project holds your standing instructions for the Spectrum agent. The agent can suggest a line for it, which is added only when you press Add
+- Each agent tab shows what a turn used: tokens and the share served from the cache, and for a local agent how full its context is and the cost it reports
+- The Spectrum agent shows an estimate of a thread's cost when you type your model's prices in Settings › Models. Spectrum keeps no price list of its own
+- Choose the Spectrum agent's model and thinking for each thread in its tab
+- Review an agent's or the assistant's changes one at a time: Apply, Reject or Edit each change, with J, K, A, R and E
+- A change that overlaps your own edit shows both versions: keep yours, use the agent's, take both or edit the result
+- Review has a PDF before and after view, for the Spectrum agent and the assistant too
+- A long review is grouped under the document's headings, with counts, and an agent's change of line endings is offered as a change of its own
+- Local agents stay running between turns of an Isolated session, so a follow-up starts at once
+- Local agents get a `search_text` tool from Spectrum
+- The AI review reads a long document in parts, with a progress line and Stop, and ties each point to its own file and line
+- Review checks a Markdown document's citations, bibliography, images and links
+- Document insights counts the words of a Markdown document
+- Insert figure and Insert table set placement, both columns, notes and line breaks in Typst
+- Return or Space on a part in the circuit composer places it
+
+### Changed
+
+- Fix with AI compiles its fix before you review it and says “Builds.” or where it still fails
+- A later message in a Spectrum agent thread keeps what the agent read earlier, so it does not read the same files again
+- Requests to Claude and OpenAI models ask for prompt caching, and the Spectrum agent's instructions are about 2 KB shorter
+- A busy provider's wait is shown while the Spectrum agent waits
+- AI autocomplete gives up its request when you type, move the cursor or press Esc, and asks again after a pause
+- A custom endpoint ending in `/messages` or `/responses` is used in that format
+- The Spectrum agent's `arxiv_search`, `arxiv_bibtex` and `get_compile_log` are gone: `literature_search`, `fetch_bibtex` and `get_log` do their work. Through Spectrum's tools server `list_todos` answers `{ todos }` and `literature_search` `{ papers }`
+- The compile tool reports the errors and undefined citations of the last pass only
+- A proposed deletion applied in part keeps the file, and the Review changes sheet marks a deletion
+- The AI review's button reads Stop while it runs, and keeps the parts already reviewed
+
+### Fixed
+
+- A very long agent output keeps its start and end, and no longer pushes earlier turns out of the session
+- A local agent's session no longer holds a connection open while its tab is out of sight and the agent idle, so a compile's live log is not held back
+- Reloading the page shows a Spectrum agent run that is still going
+- Logs no longer offers Fix with AI or the generated text when pandoc is missing or too old
+- A long unbroken line in an agent's answer wraps
+- Run folders a crash left in the cache are removed at the start
+
 ## 2.5.2 (20 November 2026)
 
 ### Security
