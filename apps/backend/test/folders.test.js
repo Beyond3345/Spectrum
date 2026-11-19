@@ -14,6 +14,7 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject, readMeta } = await import('../src/services/projectService.js');
+const { listVersions, readVersionFile } = await import('../src/services/versionService.js');
 const { registerCompileRoutes } = await import('../src/routes/compile.js');
 const { default: Fastify } = await import('fastify');
 
@@ -35,6 +36,15 @@ const newProject = (files) =>
       }
     }
   });
+// a project from before 2.1: its project.json records no layout
+const oldProject = async (files) => {
+  const p = await newProject(files);
+  const file = path.join(p.path, '.spectrum', 'project.json');
+  const { layout, ...meta } = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(layout, 2);
+  await fs.writeFile(file, JSON.stringify(meta));
+  return p;
+};
 const compile = async (id, mainFile = 'main.tex') => (await app.inject({ method: 'POST', url: '/api/compile', payload: { projectId: id, mainFile, engine: 'pdflatex' } })).json();
 const read = (p, rel) => fs.readFile(path.join(p.path, rel), 'utf8');
 
@@ -53,7 +63,7 @@ const MAIN = [
 ].join('\n');
 
 test('the first compile moves the diagrams to diagrams/ and images/ to figures/, and follows them in the documents', async () => {
-  const p = await newProject({
+  const p = await oldProject({
     'main.tex': MAIN,
     'chapter/intro.tex': '\\input{../figures/amp}\n\\includegraphics{../images/cat.png}\n',
     'figures/amp.tex': `\\documentclass{standalone}\\begin{document}x\\end{document}\n${MARK}`,
@@ -88,11 +98,34 @@ test('the first compile moves the diagrams to diagrams/ and images/ to figures/,
   );
   assert.equal(await read(p, 'chapter/intro.tex'), '\\input{../diagrams/amp}\n\\includegraphics{../figures/cat.png}\n', 'a path from a subfolder follows too');
   assert.equal((await readMeta(p.path)).layout, 2);
+  // a checkpoint from before the move, which restoring puts back
+  const before = (await listVersions(p.path)).find((v) => v.id === res.folders.checkpoint);
+  assert.equal(before?.label, 'Before moving diagrams and images');
+  assert.equal(await readVersionFile(p.path, before.id, 'main.tex').then((f) => f.content ?? f), MAIN);
   assert.equal((await compile(p.id)).folders, undefined, 'only once');
 });
 
+test('a project made or imported now keeps its images/ folder and its documents', async () => {
+  const p = await newProject({ 'main.tex': '\\includegraphics{images/cat.png} \\verb|images/raw|\n', 'images/cat.png': 'PNG', 'figures/amp.tex': `x\n${MARK}` });
+  assert.equal((await compile(p.id)).folders, undefined);
+  assert.equal(await read(p, 'main.tex'), '\\includegraphics{images/cat.png} \\verb|images/raw|\n');
+  assert.ok(existsSync(path.join(p.path, 'images/cat.png')) && existsSync(path.join(p.path, 'figures/amp.tex')));
+  assert.deepEqual(await listVersions(p.path), []);
+});
+
+test('a figures folder that is a link out of the project is left where it is', { skip: process.platform === 'win32' }, async () => {
+  const outside = path.join(tmp, 'outside-figures');
+  await fs.mkdir(outside, { recursive: true });
+  await fs.writeFile(path.join(outside, 'amp.tex'), `x\n${MARK}`);
+  const p = await oldProject({ 'main.tex': '\\input{figures/amp}\n' });
+  await fs.symlink(outside, path.join(p.path, 'figures'));
+  assert.equal((await compile(p.id)).folders, undefined);
+  assert.ok(existsSync(path.join(outside, 'amp.tex')));
+  assert.equal(await read(p, 'main.tex'), '\\input{figures/amp}\n');
+});
+
 test('a name already taken keeps its folder, and a composer preview moves nothing', async () => {
-  const p = await newProject({
+  const p = await oldProject({
     'main.tex': '\\includegraphics{images/cat.png}\n',
     'figures/amp.tex': `x\n${MARK}`,
     'diagrams/amp.tex': 'already here',

@@ -1,7 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { listFilesRecursive } from '../utils/fsUtils.js';
+import { listFilesRecursive, writeFileAtomic } from '../utils/fsUtils.js';
+import { safeJoin } from '../utils/pathUtils.js';
 import { mutateProjectRoot, readMeta, touchProject, updateMeta } from './projectService.js';
+import { createVersion } from './versionService.js';
 
 // The composer's drawing on a line of its own (% for TikZ, // for Typst and %% for Mermaid): base64 JSON, then the
 // hash of the text the drawing writes. It goes last, but the composer finds it anywhere (diagram/fileFormat.ts), as
@@ -21,10 +23,22 @@ const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * with its drawing, and the .pdf or .png made from each) move to diagrams/, then images/ moves into figures/, and the
  * paths in the project's documents follow. Anything else in figures/, such as images put there by hand, stays. A
  * diagram whose name diagrams/ already has stays, and images/ stays whole when any of its files' names is taken in
- * figures/. Answers what moved and which documents changed, or null when nothing did.
+ * figures/. Only a project made before 2.1 has no layout recorded: one made, imported or opened since is in the layout
+ * its author chose, and is left as it is (projectService.js). A checkpoint is saved first, so the move can be undone
+ * (before the files' lock, which a restore takes inside the history's). Answers what moved, which documents changed
+ * and that checkpoint's id (null when it couldn't be saved), or null when nothing moved.
  */
+export const BEFORE_MOVE = 'Before moving diagrams and images';
 export async function moveToNewFolders(root) {
   if ((await readMeta(root)).layout === LAYOUT) return null;
+  // a figures, images or diagrams folder that is a link stays where it is, with what it holds
+  for (const dir of ['figures', 'images', 'diagrams']) {
+    if (!(await fs.lstat(path.join(root, dir)).catch(() => null))?.isSymbolicLink()) continue;
+    await updateMeta(root, (meta) => ({ ...meta, layout: LAYOUT }));
+    return null;
+  }
+  const movable = (await listFilesRecursive(root)).some((i) => i.type === 'file' && /^(?:images\/|figures\/[^/]+\.(?:tex|typ|mmd)$)/i.test(i.path));
+  const checkpoint = movable ? await createVersion(root, { label: BEFORE_MOVE }).then(({ version }) => version.id, () => null) : null;
   return mutateProjectRoot(root, async () => {
     const items = await listFilesRecursive(root);
     const files = new Set(items.filter((i) => i.type === 'file').map((i) => i.path));
@@ -35,7 +49,7 @@ export async function moveToNewFolders(root) {
     for (const file of files) {
       const m = /^figures\/([^/]+)\.(tex|typ|mmd)$/i.exec(file);
       if (!m) continue;
-      const text = await fs.readFile(path.join(root, file), 'utf8').catch(() => '');
+      const text = await fs.readFile(inProject(root, file), 'utf8').catch(() => '');
       if (m[2].toLowerCase() !== 'mmd' && !DIAGRAM_MARK.test(text)) continue;
       const group = [file, `figures/${m[1]}.pdf`, `figures/${m[1]}.png`].filter((f) => files.has(f));
       const to = (f) => `diagrams/${f.slice('figures/'.length)}`;
@@ -69,23 +83,25 @@ export async function moveToNewFolders(root) {
     ];
     const rewrote = [];
     for (const doc of [...files].filter((f) => DOCUMENT.test(f) && !moves.some(([from]) => from === f))) {
-      const abs = path.join(root, doc);
-      const text = await fs.readFile(abs, 'utf8').catch(() => null);
+      const text = await fs.readFile(inProject(root, doc), 'utf8').catch(() => null);
       if (text === null) continue;
       const next = rules.reduce((t, [re, to]) => t.replace(re, to), text);
       if (next === text) continue;
-      await fs.writeFile(abs, next);
+      await writeFileAtomic(inProject(root, doc), next);
       rewrote.push(doc);
     }
     await updateMeta(root, (meta) => ({ ...meta, layout: LAYOUT }));
     await touchProject(root).catch(() => {});
-    return { moved: moves.map(([from, to]) => ({ from, to })), rewrote };
+    return { moved: moves.map(([from, to]) => ({ from, to })), rewrote, checkpoint };
   });
 }
 
+// never through a link out of the project (a folder inside figures/ or images/ that is one), which safeJoin refuses
+const inProject = (root, rel) => safeJoin(root, rel);
+
 async function moveFile(root, from, to) {
-  await fs.mkdir(path.dirname(path.join(root, to)), { recursive: true });
-  await fs.rename(path.join(root, from), path.join(root, to));
+  await fs.mkdir(path.dirname(inProject(root, to)), { recursive: true });
+  await fs.rename(inProject(root, from), inProject(root, to));
 }
 
 /** Removes dir and the empty folders in it when no file is left there. */

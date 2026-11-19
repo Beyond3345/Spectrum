@@ -396,7 +396,8 @@ export async function createProject({ name, parentDir, populate, signal, meta: e
     if (populate) await populate(root);
     const now = new Date().toISOString();
     const mainFile = extra.mainFile || await detectMainFile(root);
-    const meta = normaliseMeta({ ...extra, mainFile, id: crypto.randomUUID(), name: displayName, createdAt: now, updatedAt: now });
+    // layout: made now, so in the folders its author chose, and never moved to 2.1's on its first compile (foldersService.js)
+    const meta = normaliseMeta({ ...extra, layout: 2, mainFile, id: crypto.randomUUID(), name: displayName, createdAt: now, updatedAt: now });
     await writeJsonAtomic(metaPath(root), meta);
     signal?.throwIfAborted();
     await register(meta.id, root, meta);
@@ -445,7 +446,8 @@ export async function openFolder(input) {
   }
   id ||= projects.find((p) => p.path === root)?.id || crypto.randomUUID();
   // a copy of a template draft's folder is a project like any other
-  const next = normaliseMeta({ ...(meta || {}), templateDraft: undefined, id, name: (meta?.id === id && meta.name) || path.basename(root) });
+  // a folder that was never a project is in its author's layout, as a new project is (createProject)
+  const next = normaliseMeta({ ...(meta || { layout: 2 }), templateDraft: undefined, id, name: (meta?.id === id && meta.name) || path.basename(root) });
   next.mainFile ||= await detectMainFile(root);
   await writeMetaIfChanged(root, meta, next);
   await register(id, root, next);

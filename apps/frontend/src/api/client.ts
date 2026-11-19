@@ -656,7 +656,7 @@ export interface CompileDiagnostic {
 export interface CompileResult {
   ok: boolean;
   /** a project from before 2.1, on its first compile: what moved to diagrams/ and figures/, and the documents whose paths changed */
-  folders?: { moved: { from: string; to: string }[]; rewrote: string[] };
+  folders?: { moved: { from: string; to: string }[]; rewrote: string[]; /** the checkpoint saved before the move, null when it couldn't be */ checkpoint?: number | null };
   pdf?: string;
   /** relative path of the PDF written next to the document, e.g. "main.pdf" */
   pdfPath?: string;

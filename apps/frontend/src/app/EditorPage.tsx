@@ -1717,12 +1717,14 @@ function Editor({ projectId }: { projectId: string }) {
       built = res.doc || doc;
       // a project from before 2.1 had its diagrams and images moved to the new folders on this compile
       if (res.folders) {
-        const { moved, rewrote } = res.folders;
+        const { moved, rewrote, checkpoint } = res.folders;
         refreshTree().catch(() => undefined);
         recheck(rewrote).catch(() => undefined);
+        if (checkpoint) window.dispatchEvent(new Event(VERSIONS_CHANGED));
         const listed = rewrote.length < 2 ? rewrote.join('') : `${rewrote.slice(0, -1).join(', ')} and ${rewrote[rewrote.length - 1]}`;
+        // the way back is the checkpoint saved just before the move
         notify(
-          `Spectrum now keeps the composer’s diagrams in diagrams/ and inserted images in figures/, so ${moved.length} ${moved.length === 1 ? 'file was' : 'files were'} moved there${rewrote.length ? `, and the paths in ${listed} were updated` : ''}.`,
+          `Spectrum now keeps the composer’s diagrams in diagrams/ and inserted images in figures/, so ${moved.length} ${moved.length === 1 ? 'file was' : 'files were'} moved there${rewrote.length ? `, and the paths in ${listed} were updated` : ''}.${checkpoint ? ' To undo this, restore the checkpoint “Before moving diagrams and images”.' : ''}`,
           'success'
         );
       }
