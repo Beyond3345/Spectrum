@@ -1460,6 +1460,14 @@ button.chip.active:hover {
   text-align: center;
 }
 
+/* the desktop app's server refuses this window (client.ts): over everything, since nothing behind it works */
+#session-lost {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: var(--bg-app-solid);
+}
+
 .empty-state.compact {
   min-height: 0;
   padding: 28px 16px;

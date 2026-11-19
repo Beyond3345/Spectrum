@@ -115,6 +115,25 @@ export class ApiError extends Error {
 /** What a request says when Spectrum's own server can't be reached (it restarts, or the computer is busy). */
 export const UNREACHABLE = 'Spectrum’s server didn’t answer, so nothing was sent. Your text is kept here: try again in a moment.';
 
+/** What a window of the desktop app says when the server no longer takes it for one of its own (the backend's /session). */
+export const SESSION_LOST = 'This window has lost its connection to Spectrum. Quit Spectrum and open it again.';
+
+/** Over the whole window, once: every request would be refused the same way, so the app behind it is of no use. */
+function showSessionLost() {
+  if (document.getElementById('session-lost')) return;
+  const notice = document.createElement('div');
+  notice.id = 'session-lost';
+  notice.className = 'empty-state';
+  notice.setAttribute('role', 'alert');
+  for (const [className, text] of [['empty-title', 'Spectrum needs to be opened again'], ['empty-text', SESSION_LOST]]) {
+    const line = document.createElement('div');
+    line.className = className;
+    line.textContent = text;
+    notice.append(line);
+  }
+  document.body.append(notice);
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...((options?.headers as Record<string, string>) || {}) };
   if (options?.body && typeof options.body === 'string') {
@@ -133,6 +152,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
       message = (data as { error?: string }).error || message;
     } catch {
       // plain text error
+    }
+    if (res.status === 403 && (data as { code?: string }).code === 'session') {
+      showSessionLost();
+      message = SESSION_LOST;
     }
     throw new ApiError(message || `Request failed (${res.status})`, res.status, data);
   }
