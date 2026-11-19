@@ -102,3 +102,36 @@ test('an agent runs git through the developer folder, but reads no other app in 
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+// A-19: a backend killed outright (a crash, Force Quit) takes its agents with it, and an agent that exits leaves nothing
+test('an isolated process and its descendants die with the backend, and with the process itself', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.', timeout: 30000 }, async () => {
+  const { spawn } = await import('node:child_process');
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-orphan-')));
+  const workspace = path.join(root, 'work');
+  const home = path.join(root, 'home');
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const gone = async (pid) => { for (const end = Date.now() + 5000; alive(pid); await new Promise((r) => setTimeout(r, 50))) if (Date.now() > end) return false; return true; };
+  // an agent that starts a helper of its own, writes both pids and never ends, even when its input closes
+  const agent = `const {spawn}=require('node:child_process');const h=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});require('node:fs').writeFileSync('pids',process.pid+' '+h.pid);process.stdin.on('end',()=>{});setInterval(()=>{},1000);`;
+  try {
+    await fs.mkdir(workspace); await fs.mkdir(home); await fs.mkdir(path.join(home, 'tmp'));
+    const sandbox = new URL('../src/services/agentSandbox.js', import.meta.url).href;
+    const backend = spawn(process.execPath, ['--input-type=module', '-e', `const { spawnAgentProcess } = await import(${JSON.stringify(sandbox)}); await spawnAgentProcess({ command: process.execPath, args: ['-e', ${JSON.stringify(agent)}], workspace: ${JSON.stringify(workspace)}, home: ${JSON.stringify(home)} }); setInterval(() => {}, 1000);`], { stdio: 'ignore' });
+    const pidsFile = path.join(workspace, 'pids');
+    for (const end = Date.now() + 10000; !(await fs.stat(pidsFile).catch(() => null)); await new Promise((r) => setTimeout(r, 50))) if (Date.now() > end) throw new Error('The agent never started.');
+    const [pid, helper] = (await fs.readFile(pidsFile, 'utf8')).split(' ').map(Number);
+    assert.ok(alive(pid) && alive(helper));
+    backend.kill('SIGKILL');
+    assert.ok(await gone(pid), 'the agent ends with the backend');
+    assert.ok(await gone(helper), 'and so does what it started');
+
+    // an agent that exits by itself while something it started runs on
+    await fs.rm(pidsFile);
+    const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', agent.replace('setInterval(()=>{},1000);', 'setTimeout(()=>process.exit(0),300);')], workspace, home });
+    await new Promise((resolve) => child.once('close', resolve));
+    const [, left] = (await fs.readFile(pidsFile, 'utf8')).split(' ').map(Number);
+    assert.ok(await gone(left), 'its helper goes with it');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
