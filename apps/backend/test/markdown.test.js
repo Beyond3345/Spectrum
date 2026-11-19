@@ -117,13 +117,15 @@ test('a line holding the faulty command, rewrapped by pandoc, is traced, and eac
   assert.deepEqual(traceToMarkdown([error, error], generated, source, 'main.md'), [{ severity: 'error', message: 'Undefined control sequence.', file: 'main.md', line: 5, column: 1 }]);
 });
 
-test('characters the font has no letters for are one warning at their line', () => {
-  const log = 'Missing character: There is no 本 (U+672C) in font [lmroman10-regular]:mapping=tex-text;!\nMissing character: There is no 報 (U+5831) in font x\nMissing character: There is no 本 (U+672C) in font x\n';
-  const [warning, ...rest] = missingGlyphs(log, '# One\n\nIn Chinese: 本報告.\n', 'main.md');
+test('characters a font has no letters for are one warning a font, naming them and the font, at their line', () => {
+  const log = 'Missing character: There is no 本 (U+672C) in font [lmroman10-regular]:mapping=tex-text;!\nMissing character: There is no 報 (U+5831) in font [lmroman10-regular]:mapping=tex-text;!\nMissing character: There is no 本 (U+672C) in font [lmroman10-regular]:mapping=tex-text;!\nMissing character: There is no 한 (U+D55C) in font NotoSerifSC-Regular.otf/OT:script=hani;language=dflt;!\n';
+  const [latin, korean, ...rest] = missingGlyphs(log, '# One\n\nIn Chinese: 本報告.\n\n한국어\n', 'main.md');
   assert.equal(rest.length, 0);
-  assert.equal(warning.severity, 'warning');
-  assert.equal(warning.line, 3);
-  assert.match(warning.message, /本 報.*CJKmainfont/);
+  assert.equal(latin.severity, 'warning');
+  assert.equal(latin.line, 3);
+  assert.match(latin.message, /^The font lmroman10-regular has no 本 報, so the PDF leaves them out\..*CJKmainfont/);
+  assert.equal(korean.line, 5);
+  assert.match(korean.message, /^The font NotoSerifSC-Regular\.otf has no 한, .*no Korean letters.*CJKmainfont: /);
   assert.deepEqual(missingGlyphs('All fine.\n', '', 'main.md'), []);
 });
 
@@ -234,7 +236,8 @@ test('a bibliography the front matter names with a YAML comment still resolves',
   await fs.writeFile(absMain, '---\ntitle: Test\nbibliography: refs.bib # Sources\n---\n\nCite [@one].\n');
   const made = await markdownToLatex({ projectRoot: dir, absMain, mainFile: 'main.md', generatedDir: path.join(dir, 'generated') });
   assert.equal(made.ok, true, made.error || made.log);
-  assert.match(made.text, /The One Book/);
+  // APA 7 puts a book's title in sentence case
+  assert.match(made.text, /The one book/);
   assert.deepEqual(parseFrontMatter('---\nbibliography: # none yet\n---\n').meta.bibliography, []);
 });
 

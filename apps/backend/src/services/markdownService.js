@@ -1,12 +1,16 @@
 import os from 'os';
 import path from 'path';
 import { existsSync, promises as fs } from 'fs';
+import { fileURLToPath } from 'url';
+import { CJK_FONTS_DIR } from '../config/constants.js';
+import { chineseForms } from '../language/detect.js';
+import { BUNDLED_FONTS } from '../latex/jyutping.js';
 import { ensureDir, listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { cachePath } from './projectService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { PANDOC_DOWNLOADABLE, PANDOC_MINIMUM, pandocPath, versionOf } from './engineService.js';
-import { MAX_LOG_BYTES, compileDocument, findExecutable, pageColourLines, runSpawn } from './compileService.js';
+import { MAX_LOG_BYTES, compileDocument, findExecutable, pageColourLines, runSpawn, unwrap } from './compileService.js';
 import { compileTypst, typstFill } from './typstService.js';
 
 // Markdown compiles in two steps: pandoc writes LaTeX or Typst, then that is compiled like any document. An error in
@@ -18,6 +22,13 @@ const SVG_NOTE = '\n[spectrum] SVG images need rsvg-convert (brew install librsv
 // a TeX error naming the generated file and its line, as -file-line-error writes it
 const LOCATED_TEX = /^(?:\.\/)?(.+?\.(?:tex|sty|cls|bbl)):(\d+):\s*(.*)$/;
 const SVG = /(?:!\[[^\]]*\]\([^)]*?\.svg|src=["'][^"']+?\.svg)/i;
+// the APA 7 style from the CSL styles repository (CC BY-SA 3.0, see THIRD_PARTY_NOTICES.md), as the LaTeX and Typst
+// templates cite in APA 7: beside the bundled backend at ../data/csl too
+const APA_CSL = fileURLToPath(new URL('../data/csl/apa.csl', import.meta.url));
+const CJK_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const HANGUL = /\p{Script=Hangul}/u;
+// a front matter field with a value (an empty one is read as [])
+const named = (value) => [value].flat().some(Boolean);
 
 
 /** The YAML front matter (between a first --- and the next --- or ...), scalar and list fields, and the text after it. */
@@ -59,6 +70,44 @@ export async function bibliographyArgs(projectRoot, meta) {
   if ([meta.bibliography].flat().some(Boolean)) return [];
   const files = (await listFilesRecursive(projectRoot)).filter((item) => item.type === 'file' && /\.bib$/i.test(item.path)).map((item) => path.join(projectRoot, item.path));
   return files.flatMap((file) => ['--bibliography', file]);
+}
+
+/** pandoc's --csl: APA 7, unless the front matter names a style of its own, which pandoc then reads. */
+export const cslArgs = (meta) => (named(meta.csl) || named(meta['citation-style']) || !existsSync(APA_CSL) ? [] : ['--csl', APA_CSL]);
+
+/**
+ * The bundled font for the .md's Chinese, Japanese or Korean text, or null when it has none or its front matter names
+ * a font (CJKmainfont, or mainfont for all of it): Noto Serif TC for Traditional Chinese with no Simplified-only
+ * character (or lang: zh-Hant, zh-TW or zh-HK), else Noto Serif SC, which has the Traditional characters and kana too.
+ * Neither has Korean letters, which missingGlyphs then names.
+ */
+export function cjkFont(source, meta) {
+  if (named(meta.CJKmainfont) || named(meta.mainfont) || !CJK_TEXT.test(source)) return null;
+  const { simplified, traditional } = chineseForms(source);
+  const tc = !simplified && (traditional > 0 || /^zh-(?:Hant|TW|HK|MO)\b/i.test(String(meta.lang || '')));
+  const font = BUNDLED_FONTS.find((f) => f.id === (tc ? 'noto-serif-tc' : 'noto-serif-sc'));
+  return font && existsSync(path.join(CJK_FONTS_DIR, font.regular[0])) ? font : null;
+}
+
+/**
+ * pandoc's variables for the bundled CJK font (xeCJK under XeLaTeX, luatexja-fontspec under LuaLaTeX), by file name as
+ * every compile finds them; withPath adds the folder, which the built-in Tectonic needs (a compile, never a new project).
+ */
+function cjkLatexArgs(font, withPath) {
+  const dir = CJK_FONTS_DIR.split(path.sep).join('/');
+  const options = [...(withPath && !/[\\{}%#~^$&]/.test(dir) ? [`Path={${dir.replace(/\/?$/, '/')}}`] : []), ...(font.bold ? [`BoldFont=${font.bold[0]}`] : [])];
+  return ['-V', 'CJKmainfont=' + font.regular[0], ...options.flatMap((option) => ['-V', 'CJKoptions=' + option])];
+}
+
+/**
+ * The same font for pandoc's Typst (whose template has no CJKmainfont), as a first line of Spectrum's: Chinese and kana
+ * runs set in the front matter's CJKmainfont, else the bundled font by its family name (Typst reads the bundled fonts
+ * folder). Korean is left to Typst's fallback, which finds the system's Korean font. '' when none applies.
+ */
+export function typstCjkFont(source, meta) {
+  if (!CJK_TEXT.test(source)) return '';
+  const family = named(meta.CJKmainfont) ? [meta.CJKmainfont].flat()[0] : cjkFont(source, meta)?.name;
+  return family ? `#show regex("[\\p{Han}\\p{Hiragana}\\p{Katakana}]+"): set text(font: ${JSON.stringify(String(family))})\n` : '';
 }
 
 /** pandoc's log, kept to MAX_LOG_BYTES as a compile's is. */
@@ -147,6 +196,51 @@ export function latexDiagnostics(log, generatedName) {
 }
 
 /**
+ * The log's lines, TeX's 79-column wrapping undone, from the last TeX pass: from its banner (Tectonic: its last
+ * "note: Running TeX" or "Rerunning") on, as an earlier pass's warnings are repeats or stale. The editor reads a LaTeX
+ * document's log the same way (compileLog.ts).
+ */
+function lastPass(log) {
+  const lines = unwrap(String(log || '')).split(/\r?\n/);
+  const start = lines.findLastIndex((line) => /^(?:This is (?:pdf|Xe|LuaHB|Lua|e-)?TeX, Version|note: (?:Re)?running TeX)/i.test(line));
+  return start === -1 ? lines : lines.slice(start);
+}
+
+/**
+ * LaTeX's warnings in the last pass, each at its line in the generated file where it gives one (" on input line N",
+ * an over or underfull box's "at lines N--M", Tectonic's "warning: file:N:"), with that part of the message dropped as
+ * the line is the .md's once traced; and the errors TeX writes without a file, at their "l.N" line.
+ */
+export function latexWarnings(log) {
+  const lines = lastPass(log);
+  const out = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    let text = lines[i];
+    let line;
+    const tectonic = /^warning: (?:(?:\.\/)?[^\s:]+:(\d+): )?(.*)$/.exec(text);
+    if (tectonic) [line, text] = [Number(tectonic[1]) || undefined, tectonic[2]];
+    const warning = /^(?:LaTeX|Package (\S+)|Class (\S+))(?: \w+)? Warning: (.*)$/.exec(text);
+    const box = /^((?:Over|Under)full \\[hv]box .*?)(?: (?:in paragraph |in alignment |detected )?at lines? (\d+)(?:--\d+)?)?$/.exec(text);
+    if (warning) {
+      // a package's warning goes on over lines starting "(name)"
+      const pkg = warning[1] || warning[2];
+      let message = warning[3];
+      while (pkg && lines[i + 1]?.startsWith(`(${pkg})`)) message += ' ' + lines[(i += 1)].slice(pkg.length + 2).trim();
+      const at = / on input line (\d+)\.?/.exec(message);
+      out.push({ severity: 'warning', message: message.replace(/ on input line \d+/, '').trim(), line: line ?? (at ? Number(at[1]) : undefined) });
+    } else if (box) {
+      out.push({ severity: 'warning', message: box[1], line: line ?? (box[2] ? Number(box[2]) : undefined) });
+    } else if (tectonic) {
+      out.push({ severity: 'warning', message: text, line });
+    } else if (/^! /.test(text) && !/^! (?:Emergency stop|==> Fatal error)/.test(text)) {
+      const at = lines.slice(i + 1, i + 8).map((next) => /^l\.(\d+)/.exec(next)).find(Boolean);
+      out.push({ severity: 'error', message: text.slice(2).trim(), line: at ? Number(at[1]) : undefined });
+    }
+  }
+  return out;
+}
+
+/**
  * pandoc's [WARNING] lines as warnings, each once: a citation with no entry at the .md line that first cites the key,
  * which the PDF otherwise shows only as (key?).
  */
@@ -160,21 +254,35 @@ export function pandocWarnings(log, source, mainFile) {
   });
 }
 
+/** A font as TeX's "Missing character" line names it: [lmroman10-regular]:+tlig; or NotoSerifSC-Regular.otf/OT:…, or a path. */
+export const fontName = (font) => path.posix.basename(String(font).replace(/^\[([^\]]*)\].*$/, '$1').replace(/\/(?:OT|AAT|GR|ICU)?:.*$/, '').replace(/^name:/, '').replace(/\\/g, '/'));
+
 /**
- * One warning for the characters the font had no glyph for, which TeX leaves out of the PDF without an error (Chinese
- * text in pandoc's Latin Modern, say), at the .md line where the first of them is, or none.
+ * One warning for each font that had no glyph for some characters, which TeX leaves out of the PDF without an error
+ * (Chinese in pandoc's Latin Modern, Korean in the bundled Chinese font), naming the characters and the font, at the .md
+ * line where the first of them is.
  */
 export function missingGlyphs(log, source, mainFile) {
-  const chars = [...new Set([...String(log || '').matchAll(/^Missing character: There is no (.+?) \(U\+[0-9A-F]+\)/gm)].map((m) => m[1]))];
-  if (!chars.length) return [];
-  const at = String(source || '').indexOf(chars[0]);
-  const shown = chars.slice(0, 8).join(' ') + (chars.length > 8 ? ' …' : '');
-  return [{
-    severity: 'warning',
-    message: `The font has no letters for ${shown}, so the PDF leaves them out. For Chinese, Japanese or Korean, name a font that has them in the front matter, such as CJKmainfont: Songti TC.`,
-    file: mainFile,
-    ...(at !== -1 && { line: String(source).slice(0, at).split('\n').length, column: 1 })
-  }];
+  const fonts = new Map();
+  for (const m of unwrap(String(log || '')).matchAll(/^Missing character: There is no (.+?) \(U\+[0-9A-F]+\)(?: in font (.+?)!)?\s*$/gm)) {
+    const font = m[2] ? fontName(m[2]) : '';
+    fonts.set(font, new Set(fonts.get(font)).add(m[1]));
+  }
+  return [...fonts].map(([font, set]) => {
+    const chars = [...set];
+    const at = String(source || '').indexOf(chars[0]);
+    const shown = chars.slice(0, 12).join(' ') + (chars.length > 12 ? ` and ${chars.length - 12} more` : '');
+    const korean = chars.some((ch) => HANGUL.test(ch));
+    const advice = korean
+      ? `Spectrum’s Chinese fonts have no Korean letters: name a Korean font in the front matter, such as CJKmainfont: ${process.platform === 'win32' ? 'Malgun Gothic' : 'Apple SD Gothic Neo'}.`
+      : 'Name a font that has them in the front matter: mainfont, or CJKmainfont for Chinese, Japanese or Korean.';
+    return {
+      severity: 'warning',
+      message: `${font ? `The font ${font}` : 'The font'} has no ${shown}, so the PDF leaves ${chars.length === 1 ? 'it' : 'them'} out. ${advice}`,
+      file: mainFile,
+      ...(at !== -1 && { line: String(source).slice(0, at).split('\n').length, column: 1 })
+    };
+  });
 }
 
 const atLeast = (version, minimum) => {
@@ -237,10 +345,13 @@ export async function markdownToLatex({ projectRoot, absMain, mainFile, generate
   // a compile's images go through vettedMarkdown, so --extract-media copies none from outside the project
   const vetted = !sandboxed && (await vettedMarkdown(projectRoot, absMain, generatedFile + '.json'));
   if (vetted && !vetted.ok) return { ...pandocFailure(vetted, mainFile), ...(vetted.code === 0 && { error: PANDOC_UNREADABLE }) };
+  const font = cjkFont(source, meta);
   const args = [
     ...(sandboxed ? [absMain, '--from=markdown'] : [generatedFile + '.json', '--from=json']),
     '--to=latex', '--standalone', '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
+    ...cslArgs(meta),
+    ...(font ? cjkLatexArgs(font, !sandboxed) : []),
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
     sandboxed ? '--sandbox' : '--extract-media=' + path.join(generatedDir, 'media'),
     '-o', generatedFile
@@ -361,13 +472,14 @@ export async function markdownToTypst({ projectRoot, absMain, mainFile, generate
   const args = [
     absMain, '--from=markdown', '--to=typst', '--standalone', '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
+    ...cslArgs(meta),
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
     '-o', generatedFile
   ];
   const run = await runPandoc(args, path.dirname(absMain));
   let text = await fs.readFile(generatedFile, 'utf8').catch(() => null);
   if (run.code !== 0 || text === null) return { ...pandocFailure(run, mainFile), ...(text === null && !run.error && !run.timedOut && { error: PANDOC_UNREADABLE }) };
-  text = rootRelativeImages(text, projectRoot, path.dirname(absMain));
+  text = typstCjkFont(source, meta) + rootRelativeImages(text, projectRoot, path.dirname(absMain));
   await fs.writeFile(generatedFile, text);
   return { ok: true, text, log: run.log, file: generatedFile };
 }
@@ -411,17 +523,39 @@ export async function compileMarkdown(projectRoot, absMain, mainFile, engine, op
     return { ...result, log: made.log + (result.log || ''), errors: [...traceToMarkdown(result.errors || [], typst, source, mainFile), ...pandocWarnings(made.log, source, mainFile)], generated: 'typst' };
   }
   if (options.pageColour) await fs.writeFile(made.file, pageColourLines(made.text, options.pageColour));
+  // pandoc's LaTeX sets CJK text under XeLaTeX and LuaLaTeX only: pdfLaTeX (or latexmk's) gives way to XeLaTeX
+  const unicode = CJK_TEXT.test(source) ? await unicodeEngine(engine) : null;
   // LaTeX: the generated file compiles like any document, with its PDF beside the .md
-  const result = await compileDocument(engine, projectRoot, made.file, mainFile, { ...options, pageColour: undefined, markdownSource: absMain });
+  const result = await compileDocument(unicode?.engine || engine, projectRoot, made.file, mainFile, { ...options, pageColour: undefined, markdownSource: absMain, ...(unicode?.latexmk && { latexmkEngine: unicode.latexmk }) });
   // pandoc's own warnings (a citation with no entry) first, as they come first
-  let log = made.log + (result.log || '');
+  let log = (unicode?.note ? unicode.note + '\n' : '') + made.log + (result.log || '');
   if (SVG.test(source) && !(await findExecutable('rsvg-convert'))) log += SVG_NOTE;
+  // TeX's errors first, then its warnings, each traced to the .md and listed once
+  const tex = traceToMarkdown([...latexDiagnostics(log, path.basename(made.file)), ...latexWarnings(log)], made.text, source, mainFile);
   return {
     ...result,
     log,
-    errors: [...traceToMarkdown(latexDiagnostics(log, path.basename(made.file)), made.text, source, mainFile), ...pandocWarnings(made.log, source, mainFile), ...missingGlyphs(log, source, mainFile)],
+    errors: [
+      ...tex.filter((d) => d.severity === 'error'),
+      ...tex.filter((d) => d.severity !== 'error'),
+      ...pandocWarnings(made.log, source, mainFile),
+      ...missingGlyphs(log, source, mainFile)
+    ],
     generated: 'latex'
   };
+}
+
+/**
+ * For a .md with CJK text: XeLaTeX in place of pdfLaTeX (LuaLaTeX when XeLaTeX isn't there), or latexmk running XeLaTeX,
+ * with a note for the log; null for an engine that sets it already (XeLaTeX, LuaLaTeX, Tectonic, Auto's choice).
+ */
+async function unicodeEngine(engine) {
+  if (engine === 'latexmk') return { engine, latexmk: 'xelatex' };
+  if (engine !== 'pdflatex') return null;
+  for (const [choice, name] of [['xelatex', 'XeLaTeX'], ['lualatex', 'LuaLaTeX']]) {
+    if (await findExecutable(choice)) return { engine: choice, note: `[spectrum note] This compile used ${name}, as Chinese, Japanese or Korean text needs XeLaTeX or LuaLaTeX.` };
+  }
+  return null;
 }
 
 /** The .md as a Word document, with only the project's images in it (vettedMarkdown). */
@@ -434,7 +568,7 @@ export async function pandocDocx(projectRoot, absMain, output) {
     const vetted = await vettedMarkdown(projectRoot, absMain, json);
     if (!vetted.ok) return { ok: false, log: vetted.log };
     const resources = '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter);
-    const run = await runPandoc([json, '--from=json', '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), resources, '-o', output], path.dirname(absMain));
+    const run = await runPandoc([json, '--from=json', '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), ...cslArgs(meta), resources, '-o', output], path.dirname(absMain));
     return { ok: run.code === 0 && !run.timedOut && !run.error, log: vetted.log + run.log };
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
