@@ -995,7 +995,10 @@ export interface AiFinding {
   anchored: boolean;
 }
 
-/** score out of 10, confidence out of 5; files: those the model read */
+/** A run of lines one part of a long document's review reads */
+export type ReviewRun = { path: string; from: number; to: number };
+
+/** score out of 10, confidence out of 5; files: those the model read; part and plan: which part this was, of the runs each part reads */
 export interface AiReview {
   summary: string;
   strengths: string[];
@@ -1004,11 +1007,16 @@ export interface AiReview {
   findings: AiFinding[];
   limits: string[];
   files: string[];
+  part: number;
+  plan: ReviewRun[][];
 }
 
-/** The AI review of doc, told what Preflight found. Read-only; aborting signal stops the model call. */
+/**
+ * The AI review of doc, or of one part of it (from 0) when plan has more than one, told what Preflight found and the
+ * summary of the parts before. Read-only; aborting signal stops the model call.
+ */
 export function runAiReview(
-  payload: { projectId: string; doc: string; activePath: string; findings: Finding[]; llmConfig?: Partial<LLMConfig>; reasoningEffort?: ReasoningEffort },
+  payload: { projectId: string; doc: string; findings: Finding[]; llmConfig?: Partial<LLMConfig>; reasoningEffort?: ReasoningEffort; part?: number; summary?: string },
   signal?: AbortSignal
 ) {
   return request<({ ok: true } & AiReview) | { ok: false; error: string; stopped?: boolean }>('/api/review', { ...json('POST', payload), signal });

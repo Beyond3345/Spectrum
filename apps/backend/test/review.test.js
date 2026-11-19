@@ -255,21 +255,38 @@ test('a Typst document and its #includes, and a Markdown document, are reviewed 
   assert.match(calls[1].messages[1].content, /^3\| Our method is faster/m);
 });
 
-test('a document over the budget is reviewed a file at a time, and the limits say so', async () => {
-  const long = 'A line of the long chapter that goes on and on.\n'.repeat(Math.ceil(REVIEW_BUDGET / 40));
-  const p = await project('Long review', { 'main.tex': '\\documentclass{article}\n\\begin{document}\n\\input{chapter}\n\\end{document}\n', 'chapter.tex': long });
-  answer = JSON.stringify({ summary: 'ok', findings: [] });
+test('a document over the budget is reviewed in parts, each told the summary so far, and its lines keep their numbers', async () => {
+  const line = 'A line of the long chapter that goes on and on.';
+  const long = `${line}\n`.repeat(Math.ceil((REVIEW_BUDGET * 1.5) / 56));
+  const p = await project('Long review', {
+    'main.tex': '\\documentclass{article}\n\\begin{document}\n\\input{chapter}\n\\input{last}\n\\end{document}\n',
+    'chapter.tex': long,
+    'last.tex': 'The last chapter.\n'
+  });
   calls.length = 0;
-  const open = await review({ projectId: p.id, doc: 'main.tex', activePath: 'main.tex' });
-  assert.equal(open.json.ok, true, open.json.error);
-  assert.deepEqual(open.json.files, ['main.tex']);
-  assert.match(open.json.limits[0], /only main\.tex was reviewed/);
-  assert.doesNotMatch(calls[0].messages[1].content, /=== chapter\.tex/);
+  answer = JSON.stringify({ summary: 'Part one is about chapters.', findings: [] });
+  const first = await review({ projectId: p.id, doc: 'main.tex' });
+  assert.equal(first.json.ok, true, first.json.error);
+  assert.equal(first.json.plan.length, 2);
+  assert.deepEqual(first.json.files, ['main.tex', 'chapter.tex']);
+  const [cut] = first.json.plan[0].filter((r) => r.path === 'chapter.tex');
+  assert.ok(cut.to < long.split('\n').length - 1, 'the long file is cut between lines');
+  assert.deepEqual(first.json.plan[1].map((r) => r.path), ['chapter.tex', 'last.tex']);
+  assert.equal(first.json.plan[1][0].from, cut.to + 1);
+  assert.match(calls[0].messages[1].content, /reviewed in 2 parts in turn\. This is part 1/);
+  assert.ok(calls[0].messages[1].content.length < REVIEW_BUDGET + 10_000);
 
-  const cut = await review({ projectId: p.id, doc: 'main.tex', activePath: 'chapter.tex' });
-  assert.deepEqual(cut.json.files, ['chapter.tex']);
-  assert.match(cut.json.limits[0], /only chapter\.tex up to line \d+ was reviewed/);
-  assert.ok(calls[1].messages[1].content.length < REVIEW_BUDGET + 10_000);
+  answer = JSON.stringify({ summary: 'The whole.', findings: [{ severity: 'minor', category: 'Style', file: `chapter.tex (lines ${cut.to + 1} to 9999)`, line: cut.to + 2, quote: line, issue: 'Repetitive.' }] });
+  const second = await review({ projectId: p.id, doc: 'main.tex', part: 1, summary: 'Part one is about chapters.' });
+  assert.equal(second.json.ok, true, second.json.error);
+  const user = calls[1].messages[1].content;
+  assert.match(user, /This is part 2/);
+  assert.match(user, /What the parts before it hold.*\nPart one is about chapters\./);
+  assert.match(user, new RegExp(`=== chapter\\.tex \\(lines ${cut.to + 1} to \\d+\\) ===\\n${cut.to + 1}\\| A line`));
+  assert.doesNotMatch(user, /^1\| A line/m);
+  assert.deepEqual(second.json.files, ['chapter.tex', 'last.tex']);
+  assert.deepEqual(second.json.findings.map((f) => [f.file, f.line, f.anchored]), [['chapter.tex', cut.to + 2, true]]);
+  assert.equal((await review({ projectId: p.id, doc: 'main.tex', part: 2 })).json.ok, false);
 });
 
 test('a .pgf figure the document \\inputs isn’t sent, so it can’t push the rest over the budget', async () => {
