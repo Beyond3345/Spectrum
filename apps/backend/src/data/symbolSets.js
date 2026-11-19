@@ -22,8 +22,11 @@ const body = String.raw`\draw[line width=0.8pt]`;
 const num = (v) => String(Math.round(v * 1000) / 1000);
 /** A pic's pins: { name: [x, y] }. */
 const pins = (at) => Object.entries(at).map(([name, [x, y]]) => `\\coordinate (-${name}) at (${num(x)},${num(y)});`).join('');
-/** The free surface mark: a triangle standing on the surface at (x, y), two shorter lines under it. */
-const freeSurface = (x, y) => `\\draw (${num(x)},${num(y)}) -- ++(-0.15,0.26) -- ++(0.3,0) -- cycle (${num(x - 0.15)},${num(y - 0.07)}) -- ++(0.3,0) (${num(x - 0.08)},${num(y - 0.14)}) -- ++(0.16,0);`;
+/** The free surface mark: a triangle standing on the surface at (x, y), two shorter lines under it; y may be TeX (\\spxa). */
+const freeSurface = (x, y) => {
+  const below = (d) => (typeof y === 'number' ? num(y - d) : `{${y}-${d}}`);
+  return `\\draw (${num(x)},${typeof y === 'number' ? num(y) : y}) -- ++(-0.15,0.26) -- ++(0.3,0) -- cycle (${num(x - 0.15)},${below(0.07)}) -- ++(0.3,0) (${num(x - 0.08)},${below(0.14)}) -- ++(0.16,0);`;
+};
 /** Hatching strokes from each (x, y), each (dx, dy) long. */
 const hatching = (from, dx, dy) => `\\draw ${from.map(([x, y]) => `(${num(x)},${num(y)}) -- ++(${dx},${dy})`).join(' ')};`;
 const steps = (from, to, step) => Array.from({ length: Math.round((to - from) / step) + 1 }, (_, i) => from + i * step);
@@ -249,6 +252,92 @@ export const SYMBOL_SETS = {
 
 /** The line that defines a set's pic, for a figure's picture or the palette's preamble. */
 export const picDefinition = (key, body) => `\\tikzset{${key}/.pic={${body}}}`;
+
+// ─── the liquids in the manometers (Spectrum 2.6) ───
+// The manometers, the piezometer, the barometer and the column take a liquid (none, water, oil or mercury, in Annotate's
+// tints) and its levels as pic options: spx/fluid/liquid=water, spx/fluid/manometer/left=0.25. A level is a height in
+// the pic's own centimetres, from its reference point, as its walls are drawn. A drawing whose part sets one declares
+// the keys (FLUID_KEYS) and writes the part's keyed body (KEYED_PICS) in place of the plain one, which draws the same
+// with the keys' starting values; a drawing that sets none writes the plain pic as before.
+
+/** The liquids, and the tints Annotate fills them with (circuitikz/annotate.ts MATERIALS). */
+export const FLUID_TINTS = { water: 'blue!12', oil: 'orange!30', mercury: 'gray!45' };
+
+/**
+ * Each keyed part's levels, [key, label, starting value, lowest, highest], and its liquids' labels: the first liquid is
+ * spx/fluid/liquid, the second spx/fluid/liquid 2, the third spx/fluid/liquid 3. The starting values are the plain
+ * pic's level marks, so a believable reading.
+ */
+export const FLUID_LEVELS = {
+  'spx/fluid/manometer': { liquids: ['Liquid'], levels: [['left', 'Level, left limb', -0.25, -0.5, 1], ['right', 'Level, right limb', 0.5, -0.5, 1]] },
+  'spx/fluid/manometer-differential': { liquids: ['Liquid in the bend', 'Liquid above it'], levels: [['left', 'Level, left limb', -0.25, -0.5, 0.875], ['right', 'Level, right limb', 0.5, -0.5, 0.875]] },
+  'spx/fluid/manometer-inverted': { liquids: ['Liquid in the limbs', 'Liquid in the bend'], levels: [['left', 'Level, left limb', 0.25, -1, 0.5], ['right', 'Level, right limb', -0.5, -1, 0.5]] },
+  'spx/fluid/manometer-inclined': { liquids: ['Liquid'], levels: [['well', 'Level, reservoir', 0.125, -0.125, 0.5], ['tube', 'Level, sloping tube', 0.5, -0.125, 0.625]] },
+  'spx/fluid/column': { liquids: ['Top liquid', 'Middle liquid', 'Bottom liquid'], levels: [['surface', 'Free surface', 1, -1.25, 1.25], ['upper', 'Upper interface', 0.25, -1.25, 1.25], ['lower', 'Lower interface', -0.5, -1.25, 1.25]] },
+  'spx/fluid/piezometer': { liquids: ['Liquid'], levels: [['level', 'Level', 1, 0, 1.5]] },
+  'spx/fluid/barometer': { liquids: ['Liquid'], levels: [['dish', 'Level, dish', 0.15, -0.25, 0.25], ['tube', 'Level, tube', 1.25, -0.05, 1.625]] }
+};
+
+const liquidKey = (i) => `spx/fluid/liquid${i ? ` ${i + 1}` : ''}`;
+/** The keys' declarations, once in a picture that sets any: each liquid's tint, the liquid keys and every part's levels. */
+export const FLUID_KEYS = `\\tikzset{${[
+  'spx/fluid/none/.style={}',
+  ...Object.entries(FLUID_TINTS).map(([name, tint]) => `spx/fluid/${name}/.style={fill=${tint}}`),
+  ...[0, 1, 2].map((i) => `${liquidKey(i)}/.initial=none`),
+  ...Object.entries(FLUID_LEVELS).flatMap(([pic, { levels }]) => levels.map(([key, , value]) => `${pic}/${key}/.initial=${value}`))
+].join(', ')}}`;
+
+/**
+ * A keyed body: its liquids read into \spxi, \spxii, \spxiii (each the name of its tint's style, spx/fluid/water)
+ * and its levels into \spxa, \spxb, \spxc, then the liquids (behind) and the walls and marks.
+ */
+const keyed = (pic, draw) => {
+  const names = ['\\spxa', '\\spxb', '\\spxc'];
+  const liquids = FLUID_LEVELS[pic].liquids.map((_, i) => `\\pgfkeysgetvalue{/tikz/${liquidKey(i)}}{${LIQUID_MACROS[i]}}`).join('');
+  const read = FLUID_LEVELS[pic].levels.map(([key], i) => `\\pgfkeysgetvalue{/tikz/${pic}/${key}}{${names[i]}}`).join('');
+  return liquids + read + draw(...names);
+};
+const LIQUID_MACROS = ['\\spxi', '\\spxii', '\\spxiii'];
+const fill = (n, path) => `\\path[spx/fluid/${LIQUID_MACROS[n - 1]}] ${path} -- cycle;`;
+/** \spxa as a TikZ coordinate's number, worked out: {-0.5+2*(\spxa+0.375)} */
+const calc = (expression) => `{${expression}}`;
+
+export const KEYED_PICS = {
+  'spx/fluid/manometer': keyed('spx/fluid/manometer', (l, r) =>
+    fill(1, `(-0.625,${l}) -- (-0.625,-0.5) arc[start angle=180, end angle=360, radius=0.625] -- (0.625,${r}) -- (0.375,${r}) -- (0.375,-0.5) arc[start angle=0, end angle=-180, radius=0.375] -- (-0.375,${l})`)
+    + uTube(l, r) + pins({ left: [-0.5, 1], right: [0.5, 1] })),
+  'spx/fluid/manometer-differential': keyed('spx/fluid/manometer-differential', (l, r) =>
+    fill(1, `(-0.625,${l}) -- (-0.625,-0.5) arc[start angle=180, end angle=360, radius=0.625] -- (0.625,${r}) -- (0.375,${r}) -- (0.375,-0.5) arc[start angle=0, end angle=-180, radius=0.375] -- (-0.375,${l})`)
+    + fill(2, `(-0.625,${l}) -- (-0.625,0.875) -- (-1.25,0.875) -- (-1.25,1.125) -- (-0.375,1.125) -- (-0.375,${l})`)
+    + fill(2, `(0.375,${r}) -- (0.375,1.125) -- (1.25,1.125) -- (1.25,0.875) -- (0.625,0.875) -- (0.625,${r})`)
+    + String.raw`${body} (-1.25,0.875) -- (-0.625,0.875) -- (-0.625,-0.5) arc[start angle=180, end angle=360, radius=0.625] -- (0.625,0.875) -- (1.25,0.875) (-1.25,1.125) -- (-0.375,1.125) -- (-0.375,-0.5) arc[start angle=180, end angle=360, radius=0.375] -- (0.375,1.125) -- (1.25,1.125);\draw (-0.625,${l}) -- (-0.375,${l}) (0.375,${r}) -- (0.625,${r});`
+    + pins({ a: [-1.25, 1], b: [1.25, 1] })),
+  // drawn upside down, as the plain one is; its levels and liquids are measured upright
+  'spx/fluid/manometer-inverted': keyed('spx/fluid/manometer-inverted', (l, r) =>
+    fill(1, `(-0.625,-1) -- (-0.625,${l}) -- (-0.375,${l}) -- (-0.375,-1)`)
+    + fill(1, `(0.375,-1) -- (0.375,${r}) -- (0.625,${r}) -- (0.625,-1)`)
+    + fill(2, `(-0.625,${l}) -- (-0.625,0.5) arc[start angle=180, end angle=0, radius=0.625] -- (0.625,${r}) -- (0.375,${r}) -- (0.375,0.5) arc[start angle=0, end angle=180, radius=0.375] -- (-0.375,${l})`)
+    + String.raw`\begin{scope}[yscale=-1]${uTube(calc(`-(${l})`), calc(`-(${r})`))}\end{scope}` + pins({ left: [-0.5, -1], right: [0.5, -1] })),
+  // the liquid's surface is level in the sloping tube too, across it from the upper wall to the lower
+  'spx/fluid/manometer-inclined': keyed('spx/fluid/manometer-inclined', (h, t) =>
+    fill(1, `(-1.5,${h}) -- (-1.5,-0.5) -- (-0.5,-0.5) -- (-0.5,-0.375) -- (${calc(`-0.5+2*(${t}+0.375)`)},${t}) -- (${calc(`-0.5+2*(${t}+0.125)`)},${t}) -- (-0.5,-0.125) -- (-0.5,${h})`)
+    + String.raw`${body} (-1.5,0.5) -- (-1.5,-0.5) -- (-0.5,-0.5) -- (-0.5,-0.375) -- (1.5,0.625) (-0.5,0.5) -- (-0.5,-0.125) -- (1.5,0.875);\draw (-1.5,${h}) -- (-0.5,${h}) (${calc(`-0.5+2*(${t}+0.125)`)},${t}) -- (${calc(`-0.5+2*(${t}+0.375)`)},${t});`
+    + pins({ p: [-1, 0.5], open: [1.5, 0.75] })),
+  'spx/fluid/column': keyed('spx/fluid/column', (top, upper, lower) =>
+    fill(1, `(-0.5,${upper}) -- (-0.5,${top}) -- (0.5,${top}) -- (0.5,${upper})`)
+    + fill(2, `(-0.5,${lower}) -- (-0.5,${upper}) -- (0.5,${upper}) -- (0.5,${lower})`)
+    + fill(3, `(-0.5,-1.25) -- (-0.5,${lower}) -- (0.5,${lower}) -- (0.5,-1.25)`)
+    + String.raw`${body} (-0.5,1.25) -- (-0.5,-1.25) -- (0.5,-1.25) -- (0.5,1.25);\draw (-0.5,${top}) -- (0.5,${top}) (-0.5,${upper}) -- (0.5,${upper}) (-0.5,${lower}) -- (0.5,${lower});`
+    + freeSurface(0.2, top) + pins({ top: [0, 1], bottom: [0, -1.25], left: [-0.5, 0], right: [0.5, 0] })),
+  'spx/fluid/piezometer': keyed('spx/fluid/piezometer', (level) =>
+    fill(1, `(-0.125,0) -- (-0.125,${level}) -- (0.125,${level}) -- (0.125,0)`)
+    + String.raw`${body} (-0.125,0) -- (-0.125,1.5) (0.125,0) -- (0.125,1.5);\draw (-0.125,${level}) -- (0.125,${level});` + pins({ p: [0, 0], top: [0, 1.5] })),
+  // the dish's sloping sides meet its level at ±(0.6 + 0.3 (level + 0.25)); the liquid in the dish and the tube is one
+  'spx/fluid/barometer': keyed('spx/fluid/barometer', (dish, tube) =>
+    fill(1, `(${calc(`-0.6-0.3*(${dish}+0.25)`)},${dish}) -- (-0.6,-0.25) -- (0.6,-0.25) -- (${calc(`0.6+0.3*(${dish}+0.25)`)},${dish}) -- (0.125,${dish}) -- (0.125,${tube}) -- (-0.125,${tube}) -- (-0.125,${dish})`)
+    + String.raw`${body} (-0.75,0.25) -- (-0.6,-0.25) -- (0.6,-0.25) -- (0.75,0.25) (-0.125,-0.05) -- (-0.125,1.625) arc[start angle=180, end angle=0, radius=0.125] -- (0.125,-0.05);\draw (${calc(`-0.6-0.3*(${dish}+0.25)`)},${dish}) -- (-0.125,${dish}) (0.125,${dish}) -- (${calc(`0.6+0.3*(${dish}+0.25)`)},${dish}) (-0.125,${tube}) -- (0.125,${tube});`
+    + pins({ top: [0, 1.75], base: [0, -0.25] }))
+};
 
 /** The set a pic key belongs to, or undefined. */
 export const setOfPic = (key) => Object.keys(SYMBOL_SETS).find((id) => key in SYMBOL_SETS[id].pics);
