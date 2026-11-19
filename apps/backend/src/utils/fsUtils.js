@@ -271,3 +271,22 @@ export async function unwrapSingleFolder(root) {
   }
   await fs.rm(temp, { recursive: true, force: true });
 }
+
+/**
+ * Keeps only this Mac's slice of a universal executable (Biber's would thin itself with an option today's lipo no longer
+ * has); any other file stays as it is.
+ */
+export async function thinned(file) {
+  const data = await fs.readFile(file);
+  if (process.platform === 'win32' || data.length < 8 || data.readUInt32BE(0) !== 0xcafebabe) return;
+  const wanted = process.arch === 'arm64' ? 0x0100000c : 0x01000007;
+  for (let i = 0, at = 8; i < data.readUInt32BE(4) && at + 20 <= data.length; i += 1, at += 20) {
+    if (data.readUInt32BE(at) !== wanted) continue;
+    const offset = data.readUInt32BE(at + 8);
+    const size = data.readUInt32BE(at + 12);
+    if (offset + size > data.length) break;
+    await fs.writeFile(file, data.subarray(offset, offset + size));
+    return;
+  }
+  throw new Error('no slice for this Mac');
+}

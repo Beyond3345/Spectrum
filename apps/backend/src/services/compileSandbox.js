@@ -3,12 +3,14 @@
 // document is a program, and one from someone else must not be able to write the user's files, run their programs or
 // send anything out. Trust this project (trustService.js) lifts it for a project that is the user's own.
 // Windows has no such wrapper yet: there a compile runs as before, with TeX's restricted shell escape.
+import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { execFile } from 'child_process';
 import { DATA_DIR } from '../config/constants.js';
 import { AGENT_SECRET_EXTENSIONS, secretNamePattern } from '../utils/pathUtils.js';
+import { thinned } from '../utils/fsUtils.js';
 import { resolveExecutable } from './agentSandbox.js';
 
 export const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
@@ -25,6 +27,81 @@ const real = (p) => fs.realpath(p).catch(() => p);
  * (still confined); a cache for each project if that ever matters, at a font database's build for each
  */
 export const confinedCache = (...parts) => path.join(DATA_DIR, 'compile-cache', ...parts);
+
+const thinning = new Map();
+/**
+ * TeX Live's Biber for both kinds of Mac takes this Mac's half of itself out with lipo on its first run. The system's
+ * lipo finds itself through the developer tools (xcodebuild, with a record kept in the temp folder), which a confined
+ * compile can't start and whose record its own temp folder doesn't hold: so that first run failed, and every one
+ * after it. The half is taken out here instead, as it is for Spectrum's own Biber, into a folder a confined compile
+ * runs from and can't write: one folder for each Biber (a project can name its own TeX folder), made again when TeX
+ * Live brings another. The folder to put first on the PATH, or null when the biber found is no such file.
+ */
+async function thinBiber(searchPath) {
+  const file = await resolveExecutable('biber', searchPath).catch(() => null);
+  if (!file) return null;
+  const handle = await fs.open(file, 'r').catch(() => null);
+  if (!handle) return null;
+  const { buffer } = await handle.read(Buffer.alloc(4), 0, 4, 0).finally(() => handle.close());
+  if (buffer.readUInt32BE(0) !== 0xcafebabe) return null;
+  const stat = await fs.stat(file);
+  const from = [file, stat.size, stat.mtimeMs].join('\n');
+  const all = confinedCache('bin');
+  const dir = path.join(all, crypto.createHash('sha256').update(from).digest('hex').slice(0, 16));
+  const target = path.join(dir, 'biber');
+  if (await fs.stat(target).catch(() => null)) return dir;
+  // once for compiles that start together
+  if (!thinning.has(from)) {
+    thinning.set(from, (async () => {
+      await fs.mkdir(dir, { recursive: true });
+      const part = `${target}.${crypto.randomUUID()}.part`;
+      try {
+        await fs.copyFile(file, part);
+        await thinned(part);
+        await fs.chmod(part, 0o755);
+        await fs.rename(part, target);
+      } finally {
+        await fs.rm(part, { force: true });
+      }
+      await fs.writeFile(path.join(dir, 'from'), from);
+      // the halves of Bibers that are gone or were replaced (each is some 40 MB)
+      for (const name of await fs.readdir(all).catch(() => [])) {
+        if (name === path.basename(dir) || name === 'python') continue;
+        const [source, size, changed] = (await fs.readFile(path.join(all, name, 'from'), 'utf8').catch(() => '')).split('\n');
+        const now = source ? await fs.stat(source).catch(() => null) : null;
+        if (!now || String(now.size) !== size || String(now.mtimeMs) !== changed) await fs.rm(path.join(all, name), { recursive: true, force: true }).catch(() => {});
+      }
+      return dir;
+    })().catch(() => null).finally(() => thinning.delete(from)));
+  }
+  return thinning.get(from);
+}
+
+const pythons = new Map();
+/**
+ * Apple's /usr/bin/python3 is a stand-in that asks the developer tools where the real one is, as its lipo does, and a
+ * confined compile can't ask. Where that stand-in is the python3 a compile would find (no other Python before it on
+ * the PATH), the real one is asked for here, outside, and linked first on the PATH, so that TeX's Python scripts
+ * (latexminted) start. The folder, or null: another python3 comes first, or there are no developer tools.
+ */
+function realPython(searchPath) {
+  if (!pythons.has(searchPath)) {
+    pythons.set(searchPath, (async () => {
+      if ((await resolveExecutable('python3', searchPath).catch(() => null)) !== '/usr/bin/python3') return null;
+      const found = (await run('/usr/bin/xcrun', ['--find', 'python3'])).stdout.trim();
+      if (!path.isAbsolute(found) || found === '/usr/bin/python3') return null;
+      const dir = confinedCache('bin', 'python');
+      const link = path.join(dir, 'python3');
+      await fs.mkdir(dir, { recursive: true });
+      if ((await fs.readlink(link).catch(() => '')) !== found) {
+        await fs.rm(link, { force: true });
+        await fs.symlink(found, link);
+      }
+      return dir;
+    })().catch(() => null));
+  }
+  return pythons.get(searchPath);
+}
 
 let able;
 /**
@@ -181,8 +258,10 @@ export async function compileSandbox({ build, tmp, searchPath = process.env.PATH
   }
   const own = [];
   for (const file of runs) if (file && path.isAbsolute(file)) own.push(...(await programFilter(await real(file), searchPath)));
+  const biber = await thinBiber(searchPath);
+  const python = await realPython(searchPath);
   // Biber starts the copy of itself it unpacked into the cache
-  const may = [...new Set([...filters, ...own]), `(subpath ${q(await real(caches[0]))})`];
+  const may = [...new Set([...filters, ...own]), `(subpath ${q(await real(caches[0]))})`, ...(biber ? [`(literal ${q(path.join(await real(biber), 'biber'))})`] : [])];
   const made = root ? [String.raw`^${quoted(await real(root))}/(.*/)?[^/]+-eps-converted-to\.pdf$`] : [];
   const profile = profileOf({
     home,
@@ -206,7 +285,8 @@ export async function compileSandbox({ build, tmp, searchPath = process.env.PATH
         TEXMFCACHE: [caches[1], '$TEXMFSYSVAR', texmfVar].join(path.delimiter),
         VARTEXFONTS: fonts
       }),
-      PAR_GLOBAL_TMPDIR: caches[0]
+      PAR_GLOBAL_TMPDIR: caches[0],
+      ...((biber || python) && { PATH: [biber, python, searchPath].filter(Boolean).join(path.delimiter) })
     }
   };
 }

@@ -6,7 +6,7 @@ import { pipeline } from 'stream/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { DATA_DIR, REPO_ROOT } from '../config/constants.js';
-import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
+import { ensureDir, listFilesRecursive, renameOver, thinned } from '../utils/fsUtils.js';
 import { findExecutable } from './compileService.js';
 import { stopTypstWatch } from './typstService.js';
 import { warmUpState } from './tectonicWarmUp.js';
@@ -164,25 +164,6 @@ async function executableIn(folder, name) {
   const wanted = name + EXE;
   const found = (await listFilesRecursive(folder)).find((item) => item.type === 'file' && path.basename(item.path).toLowerCase() === wanted.toLowerCase());
   return found ? path.join(folder, found.path) : null;
-}
-
-/**
- * Keeps only this Mac's slice of a universal executable (Biber's would thin itself with an option today's lipo no longer
- * has); any other file stays as it is.
- */
-async function thinned(file) {
-  const data = await fs.readFile(file);
-  if (WINDOWS || data.length < 8 || data.readUInt32BE(0) !== 0xcafebabe) return;
-  const wanted = process.arch === 'arm64' ? 0x0100000c : 0x01000007;
-  for (let i = 0, at = 8; i < data.readUInt32BE(4) && at + 20 <= data.length; i += 1, at += 20) {
-    if (data.readUInt32BE(at) !== wanted) continue;
-    const offset = data.readUInt32BE(at + 8);
-    const size = data.readUInt32BE(at + 12);
-    if (offset + size > data.length) break;
-    await fs.writeFile(file, data.subarray(offset, offset + size));
-    return;
-  }
-  throw new Error('no slice for this Mac');
 }
 
 /**

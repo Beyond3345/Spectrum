@@ -3,7 +3,8 @@
 // is a listener of the test's own on this computer. Run: node --test apps/backend/test/compile-sandbox.test.js
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { promises as fs, closeSync, existsSync, mkdtempSync, openSync, readSync, realpathSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -123,6 +124,111 @@ test('a confined program runs TeX’s helpers and nothing else, and reaches no n
     assert.match(output, /REFUSED/);
     assert.doesNotMatch(output, /CONNECTED/);
   }
+});
+
+// a file for both kinds of Mac, as lipo makes one: a header, then each kind's own program
+const universal = (slices) => {
+  const kinds = { arm64: 0x0100000c, x64: 0x01000007 };
+  const head = Buffer.alloc(4096);
+  head.writeUInt32BE(0xcafebabe, 0);
+  head.writeUInt32BE(Object.keys(slices).length, 4);
+  const bodies = [];
+  Object.entries(slices).forEach(([kind, text], i) => {
+    const body = Buffer.alloc(4096);
+    body.write(text);
+    head.writeUInt32BE(kinds[kind], 8 + i * 20);
+    head.writeUInt32BE(4096 * (i + 1), 8 + i * 20 + 8);
+    head.writeUInt32BE(Buffer.byteLength(text), 8 + i * 20 + 12);
+    bodies.push(body);
+  });
+  return Buffer.concat([head, ...bodies]);
+};
+
+test('a Biber for both kinds of Mac is thinned by Spectrum, so a confined compile needs no lipo, and can’t write it', { skip }, async () => {
+  const bin = path.join(tmp, 'texbin');
+  await fs.mkdir(bin, { recursive: true });
+  await fs.writeFile(path.join(bin, 'biber'), universal({ x64: '#!/bin/sh\necho THIN-x64\n', arm64: '#!/bin/sh\necho THIN-arm64\n' }), { mode: 0o755 });
+  const build = path.join(tmp, 'build');
+  await fs.mkdir(path.join(tmp, 'build-tmp'), { recursive: true });
+  await fs.mkdir(build, { recursive: true });
+  const searchPath = [bin, realPath].join(path.delimiter);
+  const box = await compileSandbox({ build, tmp: path.join(tmp, 'build-tmp'), searchPath });
+  const thin = box.env.PATH.split(path.delimiter)[0];
+  assert.equal(path.dirname(thin), path.join(DATA_DIR, 'compile-cache', 'bin'), 'first on the compile’s PATH, in a folder of its own');
+  let output = '';
+  const script = 'biber; echo changed > "$(command -v biber)" 2>/dev/null && echo WROTE-IT';
+  await runSpawn('/bin/sh', ['-c', script], build, (chunk) => (output += chunk), { ...process.env, ...box.env }, 20_000, null, box.profile);
+  assert.match(output, new RegExp(`THIN-${process.arch}`));
+  assert.doesNotMatch(output, /WROTE-IT/);
+  // made once; another Biber (TeX Live's update, a project's own TeX folder) gets its own, and the one replaced goes
+  const made = (await fs.stat(path.join(thin, 'biber'))).mtimeMs;
+  assert.equal((await compileSandbox({ build, tmp: path.join(tmp, 'build-tmp'), searchPath })).env.PATH.split(path.delimiter)[0], thin);
+  assert.equal((await fs.stat(path.join(thin, 'biber'))).mtimeMs, made);
+  await fs.writeFile(path.join(bin, 'biber'), universal({ x64: '#!/bin/sh\necho NEWER-x64\n', arm64: '#!/bin/sh\necho NEWER-arm64\n' }), { mode: 0o755 });
+  const next = await compileSandbox({ build, tmp: path.join(tmp, 'build-tmp'), searchPath });
+  const newer = next.env.PATH.split(path.delimiter)[0];
+  assert.notEqual(newer, thin);
+  output = '';
+  await runSpawn('biber', [], build, (chunk) => (output += chunk), { ...process.env, ...next.env }, 20_000, null, next.profile);
+  assert.match(output, new RegExp(`NEWER-${process.arch}`));
+  assert.equal(existsSync(thin), false, 'the replaced Biber’s half is removed');
+  // a Biber that is one program already is run as it is
+  await fs.writeFile(path.join(bin, 'biber'), '#!/bin/sh\necho PLAIN\n', { mode: 0o755 });
+  assert.equal((await compileSandbox({ build, tmp: path.join(tmp, 'build-tmp'), searchPath })).env.PATH, undefined);
+  await fs.rm(bin, { recursive: true, force: true });
+});
+
+// TeX Live's own Biber where it is installed: the first confined run unpacks it (some seconds), with no developer tools
+const texBiber = (() => {
+  if (!MAC) return null;
+  for (const dir of (realPath || '').split(path.delimiter)) {
+    const file = path.join(dir, 'biber');
+    try {
+      const fd = openSync(file, 'r');
+      const head = Buffer.alloc(4);
+      readSync(fd, head, 0, 4, 0);
+      closeSync(fd);
+      return head.readUInt32BE(0) === 0xcafebabe ? file : null;
+    } catch {
+      // not in this folder
+    }
+  }
+  return null;
+})();
+test('TeX Live’s Biber runs in a compile’s confinement from a cache that has never held it', { skip: skip || (!texBiber && 'needs TeX Live’s Biber for both kinds of Mac'), timeout: 180_000 }, async () => {
+  const build = path.join(tmp, 'build');
+  await fs.mkdir(path.join(tmp, 'build-tmp'), { recursive: true });
+  await fs.mkdir(build, { recursive: true });
+  await fs.rm(path.join(DATA_DIR, 'compile-cache'), { recursive: true, force: true });
+  const box = await compileSandbox({ build, tmp: path.join(tmp, 'build-tmp'), searchPath: realPath });
+  let output = '';
+  const { code } = await runSpawn('biber', ['--version'], build, (chunk) => (output += chunk), { ...process.env, ...box.env }, 150_000, null, box.profile);
+  assert.match(output, /biber version/, output);
+  assert.equal(code, 0);
+  assert.doesNotMatch(output, /lipo|xcodebuild/);
+});
+
+// Apple's /usr/bin/python3 asks the developer tools where the real one is, which a confined compile can't
+const applePython = MAC ? spawnSync('/usr/bin/xcrun', ['--find', 'python3'], { encoding: 'utf8' }).stdout?.trim() : '';
+test('where Apple’s python3 is the one a compile finds, the developer tools’ real one is linked first on its PATH', { skip: skip || (!(applePython && applePython !== '/usr/bin/python3') && 'needs Apple’s developer tools') }, async () => {
+  const build = path.join(tmp, 'build');
+  await fs.mkdir(path.join(tmp, 'build-tmp'), { recursive: true });
+  await fs.mkdir(build, { recursive: true });
+  // a Mac with no Homebrew or conda Python
+  const searchPath = ['/usr/bin', '/bin'].join(path.delimiter);
+  const box = await compileSandbox({ build, tmp: path.join(tmp, 'build-tmp'), searchPath });
+  const first = box.env.PATH.split(path.delimiter)[0];
+  assert.equal(first, path.join(DATA_DIR, 'compile-cache', 'bin', 'python'));
+  assert.equal(await fs.readlink(path.join(first, 'python3')), applePython);
+  let output = '';
+  const { code } = await runSpawn('python3', ['-c', 'print("PYTHON-RAN")'], build, (chunk) => (output += chunk), { ...process.env, PATH: searchPath, ...box.env }, 60_000, null, box.profile);
+  assert.match(output, /PYTHON-RAN/, output);
+  assert.equal(code, 0);
+  // another python3 before it on the PATH is the user's choice, and is left alone
+  const bin = path.join(tmp, 'pybin');
+  await fs.mkdir(bin, { recursive: true });
+  await fs.writeFile(path.join(bin, 'python3'), '#!/bin/sh\necho OWN\n', { mode: 0o755 });
+  assert.equal((await compileSandbox({ build, tmp: path.join(tmp, 'build-tmp'), searchPath: [bin, searchPath].join(path.delimiter) })).env.PATH, undefined);
 });
 
 test('a program that isn’t installed is still reported as missing', { skip }, async () => {
