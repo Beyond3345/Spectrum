@@ -2885,6 +2885,7 @@ function Editor({ projectId }: { projectId: string }) {
     settings: { ...settings, reasoningEffort: effectiveEffort(settings, providers) },
     llm,
     notify,
+    openSettings: (section) => setSettingsOpen(section ?? true),
     insertAtCursor: (text, opts) => {
       const done = insertAtCursor(text, opts);
       return done && viewRef.current ? viewRef.current.state.doc.lineAt(done.from + done.insert.length).number : null;

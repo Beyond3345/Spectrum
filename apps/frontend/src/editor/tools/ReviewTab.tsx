@@ -10,7 +10,7 @@ import { useEditor } from '../EditorContext';
 import { pdfFacts } from '../preflight/pdfFacts';
 import { GROUPS, isScanned, preflightGaps, runPreflight } from '../preflight/run';
 import type { Finding, PdfPage, PreflightGroup } from '../preflight/run';
-import { Markdown, errorText, fixWithAI, isSource, relativeTime } from '../shared';
+import { Markdown, errorText, fixTitle, fixWithAI, isSource, relativeTime } from '../shared';
 
 // Tools › Review: one press compiles when the PDF is older than the source, runs the Preflight checks that are ticked
 // and, when ticked, the AI review (one read-only model call). The latest run is kept per project while Spectrum runs.
@@ -322,7 +322,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
   const actions = (id: string, onFix: (() => void) | null) => (
     <div className="review-row-actions">
       {onFix && (
-        <button className="btn small" disabled={fixing !== null} onClick={onFix}>
+        <button className="btn small" disabled={fixing !== null} title={fixTitle(api)} onClick={onFix}>
           {fixing === id && <span className="spinner" />} Fix with AI
         </button>
       )}
@@ -415,7 +415,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
                       </button>
                     )}
                     {fixable.length > 1 && (
-                      <button className="btn small" disabled={fixing !== null} onClick={() => fixGroup(group, fixable)}>
+                      <button className="btn small" disabled={fixing !== null} title={fixTitle(api)} onClick={() => fixGroup(group, fixable)}>
                         {fixing === group ? <span className="spinner" /> : <Icon name="sparkles" />} Fix all with AI
                       </button>
                     )}
@@ -459,7 +459,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
                   return !n ? [] : severity === 'note' ? [plural(n, 'note')] : [`${n} ${severity}`];
                 }),
                 aiRows.length > 1 && (
-                  <button className="btn small" disabled={fixing !== null} onClick={() => fixAllAi(aiRows)}>
+                  <button className="btn small" disabled={fixing !== null} title={fixTitle(api)} onClick={() => fixAllAi(aiRows)}>
                     {fixing === 'ai' ? <span className="spinner" /> : <Icon name="sparkles" />} Fix all with AI
                   </button>
                 )

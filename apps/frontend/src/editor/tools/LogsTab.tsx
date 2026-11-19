@@ -4,7 +4,7 @@ import { getGenerated, installBiber, installPandoc, installTypst } from '../../a
 import { loadSettings, updateSettings } from '../../app/settings';
 import { useEditor } from '../EditorContext';
 import type { CompileError } from '../EditorContext';
-import { ENGINES_CHANGED, Markdown, docKind, errorText, fixWithAI } from '../shared';
+import { ENGINES_CHANGED, Markdown, docKind, errorText, fixTitle, fixWithAI } from '../shared';
 
 export default function LogsTab() {
   const api = useEditor();
@@ -102,7 +102,7 @@ export default function LogsTab() {
           </span>
         )}
         {compileErrors.length > 0 && (
-          <button className="btn small" disabled={busy !== null} onClick={() => fix('all')}>
+          <button className="btn small" disabled={busy !== null} title={fixTitle(api)} onClick={() => fix('all')}>
             {busy === 'all' ? <span className="spinner" /> : <Icon name="sparkles" />} Fix all with AI
           </button>
         )}
@@ -179,7 +179,7 @@ export default function LogsTab() {
                     <span className="log-location">line {error.line}</span>
                   ))}
               </div>
-              <button className="btn small" disabled={busy !== null} onClick={() => fix(idx, error)}>
+              <button className="btn small" disabled={busy !== null} title={fixTitle(api)} onClick={() => fix(idx, error)}>
                 {busy === idx && <span className="spinner" />} Fix with AI
               </button>
             </div>

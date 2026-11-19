@@ -1,6 +1,7 @@
 // Self-check for the shared helpers that pick a project's files. Run:
 // npx esbuild apps/frontend/src/editor/shared.check.ts --bundle --platform=node --log-level=warning | node
-import { bibIncludeLine, inlineImage, keptMainFile } from './shared';
+import { bibIncludeLine, fixWithAI, inlineImage, keptMainFile, modelSetUp } from './shared';
+import type { EditorApi } from './EditorContext';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -29,5 +30,15 @@ eq(inlineImage('https://evil.example/leak.gif?d=text-from-the-document'), false,
 eq(inlineImage('/api/projects/import-arxiv-sse?arxivIdOrUrl=2401.00001'), false, 'the app’s own API');
 eq(inlineImage('data:text/html,<script>1</script>'), false, 'a data: page');
 eq(inlineImage(undefined), false, 'no address');
+
+// ─── Fix with AI before a model is set up: Settings › Models, and no request ───
+
+eq(modelSetUp({ endpoint: 'https://api.openai.com/v1/chat/completions' }), false, 'no key, a hosted model');
+eq(modelSetUp({ endpoint: 'https://api.openai.com/v1/chat/completions', apiKey: 'k' }), true, 'a key');
+eq(modelSetUp({ endpoint: 'http://127.0.0.1:11434/v1/chat/completions' }), true, 'a local server takes no key');
+const opened: unknown[] = [];
+const noModel = { llm: { main: { endpoint: 'https://api.openai.com/v1' } }, openSettings: (s?: string) => opened.push(s), notify: () => opened.push('toast') } as unknown as EditorApi;
+eq(await fixWithAI(noModel, { task: 'debug_compile', prompt: 'x', label: 'Fix with AI' }), '', 'nothing is asked');
+eq(opened, ['models'], 'Settings opens at Models');
 
 console.log('shared.check: ok');
