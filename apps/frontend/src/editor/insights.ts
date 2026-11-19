@@ -503,6 +503,43 @@ function scanMarkdown(files: { path: string; text: string }[], doc: string): Ins
   return out;
 }
 
+// a Chinese or Japanese character on its own, or a run of letters and digits that may hold an apostrophe or hyphen
+const CJK = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}';
+const WORD = new RegExp(`[${CJK}]|(?:(?![${CJK}])[\\p{L}\\p{N}])+(?:['’-](?:(?![${CJK}])[\\p{L}\\p{N}])+)*`, 'gu');
+const wordsIn = (text: string) => text.match(WORD)?.length ?? 0;
+
+/**
+ * A Markdown document's words: the prose alone, without the front matter, code blocks and inline code, maths, comments,
+ * HTML tags, image paths, link targets and citations. Words in headings are counted apart, as texcount does, and each
+ * Chinese or Japanese character is a word, as texcount counts them.
+ * ponytail: indented code blocks count as prose; fenced ones, which pandoc's authors mostly use, do not
+ */
+export function markdownWords(source: string) {
+  let text = source.replace(/\r\n?/g, '\n');
+  const front = /^---\n[\s\S]*?\n(?:---|\.\.\.)[ \t]*(?:\n|$)/.exec(text);
+  if (front) text = text.slice(front[0].length);
+  text = text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n\1[`~]*[ \t]*(?=\n|$)|(?![\s\S]))/gm, ' ').replace(/<!--[\s\S]*?-->/g, ' ');
+  let mathDisplay = 0;
+  let mathInline = 0;
+  text = text
+    .replace(/\$\$[\s\S]*?\$\$/g, () => (mathDisplay++, ' '))
+    .replace(/(?<![\\$])\$(?=\S)(?:\\.|[^$\\\n])+?(?<=\S)\$(?!\d)/g, () => (mathInline++, ' '))
+    .replace(/(`+)[\s\S]*?\1/g, ' ')
+    .replace(/<\/?[A-Za-z][^>]*>/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\]\([^)]*\)/g, ']')
+    .replace(/\[[^\]]*@[^\]]*\]|(?<![\w.])@[A-Za-z0-9_][\w:.-]*/g, ' ')
+    .replace(/\{[#.][^}]*\}/g, ' ');
+  let headers = 0;
+  let words = 0;
+  for (const line of text.split('\n')) {
+    const heading = /^ {0,3}#{1,6}\s+(.*)$/.exec(line);
+    if (heading) headers += wordsIn(heading[1]);
+    else words += wordsIn(line.replace(/^ {0,3}(?:[-*+]|\d+[.)]|>)\s+/, '').replace(/^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/, ''));
+  }
+  return { words: words + headers, wordsInText: words, wordsInHeaders: headers, mathInline, mathDisplay };
+}
+
 /**
  * What TexLab says of the labels and citations in files: labels never referred to or defined twice (by file:line, and
  * the names defined twice), the cited keys no .bib has, and how many references name no label.

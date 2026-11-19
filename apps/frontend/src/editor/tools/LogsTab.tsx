@@ -19,6 +19,8 @@ export default function LogsTab() {
   const [generatedOpen, setGeneratedOpen] = useState(false);
   const [generatedError, setGeneratedError] = useState('');
   const markdown = docKind(api.compiledDoc || api.mainFile) === 'markdown';
+  // an engine that is missing or too old: nothing ran, so no fix the model writes and no generated text can help
+  const noEngine = ['PANDOC_MISSING', 'PANDOC_OLD', 'TYPST_VERSION_MISSING'].includes(api.compileNotice?.code ?? '');
 
   // replies belong to the log they were asked about
   useEffect(() => setNotes({}), [compileLog]);
@@ -102,7 +104,7 @@ export default function LogsTab() {
             {errorCount} {errorCount === 1 ? 'error' : 'errors'} · {warningCount} {warningCount === 1 ? 'warning' : 'warnings'}
           </span>
         )}
-        {compileErrors.length > 0 && (
+        {compileErrors.length > 0 && !noEngine && (
           <button className="btn small" disabled={busy !== null} title={fixTitle(api)} onClick={() => fix('all')}>
             {busy === 'all' ? <span className="spinner" /> : <Icon name="sparkles" />} Fix all with AI
           </button>
@@ -147,7 +149,7 @@ export default function LogsTab() {
           </div>
         </div>
       )}
-      {markdown && (
+      {markdown && !noEngine && (
         <>
           <button className="disclosure-head" aria-expanded={generatedOpen} onClick={showGenerated}>
             <h2>Show generated {api.compileGenerated === 'typst' ? 'Typst' : 'LaTeX'}</h2>
@@ -180,9 +182,11 @@ export default function LogsTab() {
                     <span className="log-location">line {error.line}</span>
                   ))}
               </div>
-              <button className="btn small" disabled={busy !== null} title={fixTitle(api)} onClick={() => fix(idx, error)}>
-                {busy === idx && <span className="spinner" />} Fix with AI
-              </button>
+              {!noEngine && (
+                <button className="btn small" disabled={busy !== null} title={fixTitle(api)} onClick={() => fix(idx, error)}>
+                  {busy === idx && <span className="spinner" />} Fix with AI
+                </button>
+              )}
             </div>
             {notes[idx] && <Markdown>{notes[idx]}</Markdown>}
           </div>
