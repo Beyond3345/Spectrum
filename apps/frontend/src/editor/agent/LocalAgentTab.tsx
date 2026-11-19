@@ -287,6 +287,8 @@ export default function LocalAgentTab({
       fail(err);
       const snapshot = await getLocalAgentSession(session.id).catch(() => null);
       if (snapshot) setSession(snapshot.session);
+      // a file edited since the review opened: its change shows against the file as it is, an overlap with its choices
+      getLocalAgentChanges(session.id).then((r) => setChanges(r.changes), () => undefined);
     } finally {
       setWorking(false);
     }
