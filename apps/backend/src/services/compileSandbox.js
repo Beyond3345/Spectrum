@@ -8,6 +8,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { execFile } from 'child_process';
 import { DATA_DIR } from '../config/constants.js';
+import { AGENT_SECRET_EXTENSIONS, secretNamePattern } from '../utils/pathUtils.js';
 import { resolveExecutable } from './agentSandbox.js';
 
 export const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
@@ -107,12 +108,13 @@ async function installation(searchPath) {
 
 // What a compile never reads, though it reads the rest of the disk as TeX always has (fonts, packages and the
 // user's own files can be anywhere): Spectrum's data folder but for its caches and engines, the usual stores of keys
-// and sign-ins, and key files by name anywhere in the home folder (as the GitHub backup leaves them out).
+// and sign-ins, and key files by name anywhere in the home folder (pathUtils' list, as an agent is kept from them),
+// each letter in either case.
 // ponytail: a list, so a secret kept somewhere else in the home folder is still read; with no network and no writes
 // it could only reach the PDF. Reads limited to the project and TeX would close that, and break documents that read
 // a bibliography or figures kept elsewhere
 const HOME_STORES = ['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.config/gh', '.config/gcloud', '.claude', '.codex', '.agents', '.netrc', '.npmrc', '.pypirc', '.git-credentials', '.claude.json', 'Library/Keychains', 'Library/Cookies'];
-const KEY_FILES = String.raw`/(\.env(\.[^/]*)?|id_(rsa|dsa|ecdsa|ed25519)[^/]*|[^/]+\.(pem|key|p12|pfx|keystore|jks|ppk|kdbx))$`;
+const KEY_FILES = `/(${secretNamePattern([...AGENT_SECRET_EXTENSIONS, 'kdbx'])})$`.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`);
 
 const subpaths = (list) => list.map((p) => `(subpath ${q(p)})`).join(' ');
 /** The profile's text: what is read (all but data and the stores, and `readable` inside data), written, run and reached. */
