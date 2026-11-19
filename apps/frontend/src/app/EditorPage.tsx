@@ -3097,7 +3097,8 @@ function Editor({ projectId }: { projectId: string }) {
     ...(compileKind === 'markdown' ? compileChoice('markdownEngine', 'PDF engine (this project)', [['latex', 'LaTeX'], ['typst', 'Typst']]) : []),
     ...(usesTeX ? compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES) : typstVersionChoices),
     ...compileChoice('autoCompile', 'Auto compile', [[0, 'Off'], [autoPause, 'On']], (n) => (n ? 'On' : 'Off')),
-    ...(usesTeX ? compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS) : []),
+    // Markdown's citations are pandoc's citeproc, never BibTeX or Biber
+    ...(compileKind === 'latex' ? compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS) : []),
     ...(usesTeX
       ? compileChoice('draft', 'Fast draft mode', [
           [false, 'Off'],

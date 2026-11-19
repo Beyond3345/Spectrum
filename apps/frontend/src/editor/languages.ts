@@ -1,8 +1,10 @@
 import { Compartment } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
-import { foldService, syntaxHighlighting } from '@codemirror/language';
-import { markdown } from '@codemirror/lang-markdown';
+import { HighlightStyle, foldService, syntaxHighlighting } from '@codemirror/language';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { Tag, tags } from '@lezer/highlight';
+import type { MarkdownConfig } from '@lezer/markdown';
 import { latex } from '../latex/lang';
 import { compileLint } from './compileMarks';
 import { latexFoldService, latexHighlight, mathsWrap } from './latexEditor';
@@ -80,11 +82,93 @@ export function referenceCompletions({ path, keys, labels, version }: { path: ()
 
 const latexLanguage = (): Extension => [latex(), syntaxHighlighting(latexHighlight), foldService.of(latexFoldService), mathsWrap];
 
+const mathsTag = Tag.define();
+const isSpace = (code: number) => code === 32 || code === 9 || code === 10 || code === -1;
+
+/**
+ * pandoc's YAML front matter, a --- block on the first line, which CommonMark would read as a rule and a setext
+ * heading. ponytail: an unclosed one runs to the end, as there's no looking past the next line
+ */
+const frontMatter: MarkdownConfig = {
+  defineNodes: [{ name: 'FrontMatter', block: true, style: tags.meta }],
+  parseBlock: [
+    {
+      name: 'FrontMatter',
+      before: 'HorizontalRule',
+      parse(cx, line) {
+        if (cx.lineStart !== 0 || !/^---[ \t]*$/.test(line.text)) return false;
+        let end = line.text.length;
+        while (cx.nextLine()) {
+          end = cx.lineStart + line.text.length;
+          if (/^(?:---|\.\.\.)[ \t]*$/.test(line.text)) {
+            cx.nextLine();
+            break;
+          }
+        }
+        cx.addElement(cx.elt('FrontMatter', 0, end));
+        return true;
+      }
+    }
+  ]
+};
+
+/** pandoc's $…$ (no space inside either $, no digit after the closing one, no other $ between) and $$…$$, as one span of maths. */
+const maths: MarkdownConfig = {
+  defineNodes: [{ name: 'Maths', style: mathsTag }],
+  parseInline: [
+    {
+      name: 'Maths',
+      before: 'Emphasis',
+      parse(cx, next, pos) {
+        if (next !== 36) return -1;
+        const display = cx.char(pos + 1) === 36;
+        const open = display ? 2 : 1;
+        if (!display && isSpace(cx.char(pos + 1))) return -1;
+        for (let i = pos + open; i < cx.end; i += 1) {
+          const c = cx.char(i);
+          if (c === 92) i += 1;
+          else if (display && c === 36 && cx.char(i + 1) === 36) return cx.addElement(cx.elt('Maths', pos, i + 2));
+          else if (!display && c === 36) {
+            // pandoc gives up at the first $ that can't close: $5 and $6 is no maths
+            if (isSpace(cx.char(i - 1)) || (cx.char(i + 1) >= 48 && cx.char(i + 1) <= 57)) return -1;
+            return cx.addElement(cx.elt('Maths', pos, i + 1));
+          }
+        }
+        return -1;
+      }
+    }
+  ]
+};
+
+const latexCode = latex();
+
+// Markdown in the editor theme's colours: headings as environments, marks as brackets, maths as LaTeX's maths
+const markdownHighlight = HighlightStyle.define([
+  { tag: tags.heading, fontWeight: 'bold', color: 'var(--syntax-env)' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.strong, fontWeight: 'bold' },
+  { tag: tags.strikethrough, textDecoration: 'line-through' },
+  { tag: [tags.link, tags.url, tags.monospace, tags.labelName], color: 'var(--syntax-arg)' },
+  { tag: [tags.processingInstruction, tags.contentSeparator, tags.atom], color: 'var(--syntax-bracket)' },
+  { tag: [tags.meta, tags.comment, tags.quote], color: 'var(--syntax-comment)' },
+  { tag: mathsTag, color: 'var(--syntax-math)' }
+]);
+
+/**
+ * pandoc's Markdown: GitHub's tables, task lists and strikethrough, front matter, maths and ```latex blocks as LaTeX,
+ * coloured by the editor theme (with latexHighlight for the LaTeX inside).
+ */
+const markdownSupport = (): Extension => [
+  markdown({ base: markdownLanguage, extensions: [frontMatter, maths], codeLanguages: (info) => (/^(?:la)?tex$/i.test(info) ? latexCode : null) }),
+  syntaxHighlighting(markdownHighlight),
+  syntaxHighlighting(latexHighlight)
+];
+
 /** A file's editor language: LaTeX as it was, Typst once loaded, Markdown, and plain text for anything else. */
 export function languageFor(path: string): Extension {
   const kind = docKind(path);
   if (kind === 'latex') return latexLanguage();
   if (kind === 'typst') return typst ?? compileLint;
-  if (kind === 'markdown') return markdown();
+  if (kind === 'markdown') return markdownSupport();
   return [];
 }

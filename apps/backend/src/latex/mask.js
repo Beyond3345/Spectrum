@@ -626,12 +626,23 @@ export function maskMarkdown(source) {
       i = stop;
       continue;
     }
+    // an image's description is its caption, which is prose as LaTeX's \caption is
     if (s.startsWith('![', i)) {
       const altEnd = s.indexOf(']', i + 2);
       if (altEnd > 0 && s[altEnd + 1] === '(') {
         const stop = parenStop(s, altEnd + 1, n);
-        blank(i, stop);
+        blank(i, i + 2);
+        blank(altEnd, stop);
         i = stop;
+        continue;
+      }
+    }
+    // a citation without brackets, @key, as pandoc reads one
+    if (ch === '@' && !/[\p{L}\p{N}_]/u.test(s[i - 1] || '')) {
+      const key = /^@\w(?:[\w:.#$%&+?<>~/-]*\w)?/.exec(s.slice(i, i + 200));
+      if (key) {
+        blank(i, i + key[0].length);
+        i += key[0].length;
         continue;
       }
     }
@@ -662,7 +673,7 @@ export function maskMarkdown(source) {
       i += 1;
       continue;
     }
-    if (ch === '{' && /^\{#[^}]*\}/.test(s.slice(i))) {
+    if (ch === '{' && /^\{(?:[#.]|[A-Za-z][\w-]*=)[^}]*\}/.test(s.slice(i))) {
       const stop = s.indexOf('}', i) + 1;
       blank(i, stop);
       i = stop;
@@ -676,6 +687,15 @@ export function maskMarkdown(source) {
       continue;
     }
     if (ch === '\\') {
+      // raw LaTeX: the command's name, and the keys after \ref, \cite and the like (LaTeX's own list)
+      const command = /^\\([A-Za-z]+)\*?/.exec(s.slice(i, i + 64));
+      if (command) {
+        let stop = i + command[0].length;
+        for (let end; SPECS[command[1]] === 'K' && (s[stop] === '{' || s[stop] === '[') && (end = groupEnd(s, stop)) > 0; ) stop = end;
+        blank(i, stop);
+        i = stop;
+        continue;
+      }
       blank(i, i + 1);
       i += s[i + 1] === '\n' ? 1 : 2;
       continue;

@@ -19,7 +19,7 @@ Object.assign(process.env, {
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { runCompile, findExecutable } = await import('../src/services/compileService.js');
 const { pandocPath, versionOf } = await import('../src/services/engineService.js');
-const { latexDiagnostics, markdownToLatex, pandocDocx, pandocErrors, parseFrontMatter, rootRelativeImages, svgsAsPdf, traceToMarkdown } = await import('../src/services/markdownService.js');
+const { latexDiagnostics, markdownToLatex, missingGlyphs, pandocDocx, pandocWarnings, pandocErrors, parseFrontMatter, rootRelativeImages, svgsAsPdf, traceToMarkdown } = await import('../src/services/markdownService.js');
 
 after(() => {
   process.env.PATH = realPath;
@@ -110,6 +110,32 @@ test('generated lines are traced back to their .md lines', () => {
   assert.deepEqual(traced, [{ severity: 'error', message: 'Undefined control sequence.', file: 'main.md', line: 5, column: 1 }]);
 });
 
+test('a line holding the faulty command, rewrapped by pandoc, is traced, and each pass’s repeat listed once', () => {
+  const source = '# One\n\nSome text here for the first paragraph.\n\nThe value is \\badcommand{x} in this\nsentence of the document.\n';
+  const generated = '\\section{One}\\label{one}\n\nSome text here for the first paragraph.\n\nThe value is \\badcommand{x} in this sentence of the document.\n';
+  const error = { severity: 'error', message: 'Undefined control sequence.', file: 'main.md.tex', line: 5 };
+  assert.deepEqual(traceToMarkdown([error, error], generated, source, 'main.md'), [{ severity: 'error', message: 'Undefined control sequence.', file: 'main.md', line: 5, column: 1 }]);
+});
+
+test('characters the font has no letters for are one warning at their line', () => {
+  const log = 'Missing character: There is no 本 (U+672C) in font [lmroman10-regular]:mapping=tex-text;!\nMissing character: There is no 報 (U+5831) in font x\nMissing character: There is no 本 (U+672C) in font x\n';
+  const [warning, ...rest] = missingGlyphs(log, '# One\n\nIn Chinese: 本報告.\n', 'main.md');
+  assert.equal(rest.length, 0);
+  assert.equal(warning.severity, 'warning');
+  assert.equal(warning.line, 3);
+  assert.match(warning.message, /本 報.*CJKmainfont/);
+  assert.deepEqual(missingGlyphs('All fine.\n', '', 'main.md'), []);
+});
+
+test('pandoc’s warnings are listed once, a citation with no entry at the line that cites it', () => {
+  const log = '[WARNING] Citeproc: citation fig:example not found\n[WARNING] Citeproc: citation fig:example not found\n[WARNING] Something else\n';
+  const source = '# One\n\nSee @fig:examples and\n@fig:example.\n';
+  assert.deepEqual(pandocWarnings(log, source, 'main.md'), [
+    { severity: 'warning', message: 'No entry in the bibliography for the citation @fig:example.', file: 'main.md', line: 4, column: 1 },
+    { severity: 'warning', message: 'Something else', file: 'main.md' }
+  ]);
+});
+
 test('pandoc writes LaTeX, TeX compiles it, and the PDF lands beside the .md', { skip }, async () => {
   await bin('good', '3.12.1');
   const p = await projectWith(MARKDOWN, { 'refs.bib': '@book{knuth, author = {Knuth, Donald}, title = {The TeXbook}, year = {1984}}\n' });
@@ -170,6 +196,14 @@ test('an old pandoc is refused with the version to download', { skip }, async ()
   assert.equal(result.code, 'PANDOC_OLD');
   assert.match(result.error, /This pandoc \(3\.0\.1\) is too old/);
   assert.match(result.error, /pandoc 3\.12\.1/);
+});
+
+test('a pandoc new enough for LaTeX but not Typst says so, and offers LaTeX', { skip }, async () => {
+  await bin('good', '3.8');
+  const p = await projectWith(MARKDOWN);
+  const result = await runCompile({ projectId: p.id, mainFile: 'main.md', engine: 'auto', markdownEngine: 'typst' });
+  assert.equal(result.code, 'PANDOC_OLD');
+  assert.match(result.error, /Typst as the PDF engine needs pandoc 3\.8\.3 or later, and this pandoc is 3\.8\..*choose LaTeX/);
 });
 
 test('real pandoc and real TeX compile an article with a citation', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {

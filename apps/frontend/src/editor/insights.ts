@@ -424,17 +424,30 @@ function markdownMetadata(text: string): Metadata {
   if (end < 0) return meta;
   const fields: Record<string, string | string[]> = {};
   let key = '';
+  // a | or > block scalar's key, whose indented lines are its text (an abstract, usually)
+  let block = '';
   for (const line of lines.slice(1, end)) {
+    if (block && (/^\s/.test(line) || !line.trim())) {
+      fields[block] = [fields[block] as string, line.trim()].filter(Boolean).join(' ');
+      continue;
+    }
+    block = '';
     const item = /^\s*-\s+(.*)$/.exec(line);
     if (item && key) {
       if (!Array.isArray(fields[key])) fields[key] = fields[key] ? [fields[key] as string] : [];
-      (fields[key] as string[]).push(yamlValue(item[1]));
+      // pandoc's author list as - name: …
+      (fields[key] as string[]).push(yamlValue(item[1].replace(/^name\s*:\s*/, '')));
       continue;
     }
     const pair = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/.exec(line);
     if (!pair) continue;
     key = pair[1];
     const value = pair[2].trim();
+    if (/^[|>][+-]?$/.test(value)) {
+      block = key;
+      fields[key] = '';
+      continue;
+    }
     fields[key] = !value ? [] : value.startsWith('[') && value.endsWith(']') ? value.slice(1, -1).split(',').map(yamlValue) : yamlValue(value);
   }
   const one = (name: string) => (Array.isArray(fields[name]) ? (fields[name] as string[])[0] ?? '' : (fields[name] as string) ?? '');

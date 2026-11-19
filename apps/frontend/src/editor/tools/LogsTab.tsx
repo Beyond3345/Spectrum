@@ -126,7 +126,7 @@ export default function LogsTab() {
       )}
       {(api.compileNotice?.code === 'PANDOC_MISSING' || api.compileNotice?.code === 'PANDOC_OLD') && (
         <div className="log-card warning">
-          <div className="log-message">{api.compileNotice.code === 'PANDOC_OLD' ? 'This pandoc is too old for Spectrum.' : 'Markdown needs pandoc.'}</div>
+          <div className="log-message">{api.compileNotice.code === 'PANDOC_OLD' ? 'This pandoc is too old for this PDF engine.' : 'Markdown needs pandoc.'}</div>
           <div className="row">
             <button className="btn small" disabled={Boolean(installing)} onClick={() => installEngine('pandoc')}>
               {installing === 'pandoc' ? <span className="spinner" /> : <Icon name="arrow.down.circle" />} Download pandoc

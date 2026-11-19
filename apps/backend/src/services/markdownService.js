@@ -19,8 +19,6 @@ const SVG_NOTE = '\n[spectrum] SVG images need rsvg-convert (brew install librsv
 const LOCATED_TEX = /^(?:\.\/)?(.+?\.(?:tex|sty|cls|bbl)):(\d+):\s*(.*)$/;
 const SVG = /(?:!\[[^\]]*\]\([^)]*?\.svg|src=["'][^"']+?\.svg)/i;
 
-const lineOf = (text, index) => text.slice(0, index).split('\n').length;
-const escapeRegExp = (text) => text.replace(/[.*+?^`{}$()|[\]\\]/g, '\\$&');
 
 /** The YAML front matter (between a first --- and the next --- or ...), scalar and list fields, and the text after it. */
 export function parseFrontMatter(source) {
@@ -103,24 +101,37 @@ function wordsOf(line) {
 }
 
 /**
- * Each diagnostic's line in the generated text, its first six (then four) words looked for in the .md, as
- * findInSource does: the found line, or no line when the words aren't there.
+ * Each diagnostic's line in the generated text, traced to the .md by its words: any run of six (then four) of the
+ * generated line's words, read past commands and markup on both sides (so a line holding the faulty \command still
+ * matches) and across the .md's line breaks, which pandoc rewraps. The .md line the run starts on, or no line when
+ * no run is there. A diagnostic repeated by a later pass is listed once.
  */
 export function traceToMarkdown(diagnostics, generated, source, mainFile) {
   const generatedLines = String(generated || '').split(/\r?\n/);
-  return diagnostics.map((diagnostic) => {
+  const sourceWords = String(source || '').split(/\r?\n/).flatMap((text, index) => wordsOf(text).map((word) => ({ word, line: index + 1 })));
+  const findRun = (run) => {
+    for (let at = 0; at + run.length <= sourceWords.length; at += 1) {
+      if (run.every((word, k) => sourceWords[at + k].word === word)) return sourceWords[at].line;
+    }
+    return null;
+  };
+  const traced = diagnostics.map((diagnostic) => {
     const withoutLine = { severity: diagnostic.severity, message: diagnostic.message, file: mainFile };
     const line = generatedLines[diagnostic.line - 1];
     if (!line) return withoutLine;
     const words = wordsOf(line);
     for (const count of [6, 4]) {
-      const run = words.slice(0, count);
-      if (run.length < count) continue;
-      const pattern = new RegExp(run.map(escapeRegExp).join('\\s+'));
-      const index = String(source || '').search(pattern);
-      if (index !== -1) return { ...withoutLine, line: lineOf(source, index), column: 1 };
+      for (let start = 0; start + count <= words.length; start += 1) {
+        const found = findRun(words.slice(start, start + count));
+        if (found) return { ...withoutLine, line: found, column: 1 };
+      }
     }
     return withoutLine;
+  });
+  const seen = new Set();
+  return traced.filter((d) => {
+    const key = [d.severity, d.message, d.line].join('\n');
+    return !seen.has(key) && seen.add(key);
   });
 }
 
@@ -133,6 +144,37 @@ export function latexDiagnostics(log, generatedName) {
     diagnostics.push({ severity: 'error', message: match[3].trim(), file: match[1], line: Number(match[2]) });
   }
   return diagnostics;
+}
+
+/**
+ * pandoc's [WARNING] lines as warnings, each once: a citation with no entry at the .md line that first cites the key,
+ * which the PDF otherwise shows only as (key?).
+ */
+export function pandocWarnings(log, source, mainFile) {
+  const messages = [...new Set([...String(log || '').matchAll(/^\[WARNING\] (.+)$/gm)].map((m) => m[1].trim()))];
+  return messages.map((message) => {
+    const key = /^Citeproc: citation (\S+) not found/.exec(message)?.[1];
+    const at = key ? String(source || '').search(new RegExp('@' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w:.+-]*[\\w])')) : -1;
+    const text = key ? `No entry in the bibliography for the citation @${key}.` : message;
+    return { severity: 'warning', message: text, file: mainFile, ...(at !== -1 && { line: String(source).slice(0, at).split('\n').length, column: 1 }) };
+  });
+}
+
+/**
+ * One warning for the characters the font had no glyph for, which TeX leaves out of the PDF without an error (Chinese
+ * text in pandoc's Latin Modern, say), at the .md line where the first of them is, or none.
+ */
+export function missingGlyphs(log, source, mainFile) {
+  const chars = [...new Set([...String(log || '').matchAll(/^Missing character: There is no (.+?) \(U\+[0-9A-F]+\)/gm)].map((m) => m[1]))];
+  if (!chars.length) return [];
+  const at = String(source || '').indexOf(chars[0]);
+  const shown = chars.slice(0, 8).join(' ') + (chars.length > 8 ? ' …' : '');
+  return [{
+    severity: 'warning',
+    message: `The font has no letters for ${shown}, so the PDF leaves them out. For Chinese, Japanese or Korean, name a font that has them in the front matter, such as CJKmainfont: Songti TC.`,
+    file: mainFile,
+    ...(at !== -1 && { line: String(source).slice(0, at).split('\n').length, column: 1 })
+  }];
 }
 
 const atLeast = (version, minimum) => {
@@ -150,6 +192,10 @@ async function pandocProblem(kind) {
   const version = executable && (await versionOf(executable));
   if (!executable || !version) return { code: 'PANDOC_MISSING', error: PANDOC_MISSING };
   const minimum = kind === 'typst' ? PANDOC_MINIMUM.typst : PANDOC_MINIMUM.latex;
+  // pandoc that can write LaTeX but not Typst 0.15's: say so, as LaTeX works with it
+  if (kind === 'typst' && !atLeast(version, minimum) && atLeast(version, PANDOC_MINIMUM.latex)) {
+    return { code: 'PANDOC_OLD', error: 'Typst as the PDF engine needs pandoc ' + minimum + ' or later, and this pandoc is ' + version + '. Download pandoc ' + PANDOC_DOWNLOADABLE + ' from Settings › Engines › Markdown, or choose LaTeX as the PDF engine in the Compile menu.' };
+  }
   if (!atLeast(version, minimum)) {
     return { code: 'PANDOC_OLD', error: 'This pandoc (' + version + ') is too old for Spectrum. Download pandoc ' + PANDOC_DOWNLOADABLE + ' from Settings › Engines › Markdown.' };
   }
@@ -362,17 +408,18 @@ export async function compileMarkdown(projectRoot, absMain, mainFile, engine, op
   if (kind === 'typst') {
     const typst = options.pageColour ? typstFill(options.pageColour) + made.text : made.text;
     const result = await compileTypst(projectRoot, absMain, mainFile, { ...options, source: typst });
-    return { ...result, errors: traceToMarkdown(result.errors || [], typst, source, mainFile), generated: 'typst' };
+    return { ...result, log: made.log + (result.log || ''), errors: [...traceToMarkdown(result.errors || [], typst, source, mainFile), ...pandocWarnings(made.log, source, mainFile)], generated: 'typst' };
   }
   if (options.pageColour) await fs.writeFile(made.file, pageColourLines(made.text, options.pageColour));
   // LaTeX: the generated file compiles like any document, with its PDF beside the .md
   const result = await compileDocument(engine, projectRoot, made.file, mainFile, { ...options, pageColour: undefined, markdownSource: absMain });
-  let log = result.log || '';
+  // pandoc's own warnings (a citation with no entry) first, as they come first
+  let log = made.log + (result.log || '');
   if (SVG.test(source) && !(await findExecutable('rsvg-convert'))) log += SVG_NOTE;
   return {
     ...result,
     log,
-    errors: traceToMarkdown(latexDiagnostics(log, path.basename(made.file)), made.text, source, mainFile),
+    errors: [...traceToMarkdown(latexDiagnostics(log, path.basename(made.file)), made.text, source, mainFile), ...pandocWarnings(made.log, source, mainFile), ...missingGlyphs(log, source, mainFile)],
     generated: 'latex'
   };
 }

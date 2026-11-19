@@ -101,6 +101,10 @@ function shown(text: string, p?: Project, open?: string) {
   return result.options.filter((o) => o.label.startsWith(typed)).sort((a, b) => score(b) - score(a) || a.label.localeCompare(b.label)).map((o) => o.label);
 }
 
+// Markdown: LaTeX commands in maths only, read from the paragraph (a $ in an earlier one doesn't count)
+eq([shown('Flow $\\fr', NO_PROJECT, 'main.md').includes('\\frac{}{}'), shown('$$\nQ = \\fr', NO_PROJECT, 'main.md').includes('\\frac{}{}')], [true, true], 'Markdown maths gets LaTeX commands');
+eq([complete('see /sec', NO_PROJECT, 'main.md'), complete('Cost $5.\n\nThe \\sec', NO_PROJECT, 'main.md')], [null, null], 'Markdown prose gets none');
+eq(shown('$\\fr', NO_PROJECT, 'main.md').includes('\\framebox{}'), false, 'and maths gets no text command');
 eq([shown('$\\ve').includes('\\vec{}'), shown('$\\ve').some((l) => l.startsWith('\\begin'))], [true, false], '$\\ve offers \\vec, not \\begin{verse}');
 eq(complete('$\\ve')!.options.some((o) => o.label.startsWith('\\begin')), false, 'no environment at all, even a fuzzy one');
 const unnumbered = shown('\\begin{align*}\n  r_x &= 1+2\\la');

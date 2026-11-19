@@ -57,8 +57,15 @@ test('Markdown keeps prose and link text, and drops front matter, code, maths, U
   const masked = maskMarkdown(source);
   sameShape(source, masked);
   const kept = words(masked);
-  for (const word of ['Heading', 'prose', 'link', 'list', 'item', 'escape', 'plain', 'word']) assert.ok(kept.includes(word), word + ' survives');
-  for (const word of ['Secret', 'code_word', 'alt', 'image', 'hidden', 'comment', 'indented', 'citation', 'fenced', 'heading', 'example']) assert.ok(!kept.includes(word), word + ' is masked');
+  for (const word of ['Heading', 'prose', 'link', 'list', 'item', 'escape', 'plain', 'word', 'alt']) assert.ok(kept.includes(word), word + ' survives');
+  for (const word of ['Secret', 'code_word', 'image', 'hidden', 'comment', 'indented', 'citation', 'fenced', 'heading', 'example']) assert.ok(!kept.includes(word), word + ' is masked');
+});
+
+test('Markdown: raw LaTeX commands and their keys, bare @keys and attributes are masked, an image’s caption is kept', () => {
+  const source = 'See Table \\ref{tbl:use} and \\eqref{eq:flow}, as @smith2020 found, mail a@b.org.\n![Meter locatoins](figures/m.png){width=50%} \\emph{Kept} text {.unnumbered}\n';
+  const masked = maskMarkdown(source);
+  assert.equal(masked.length, source.length);
+  assert.deepEqual(words(masked), ['See', 'Table', 'and', 'as', 'found', 'mail', 'a', 'b', 'org', 'Meter', 'locatoins', 'Kept', 'text']);
 });
 
 test('LaTeX: a {…} on the line after \\vspace is text, not its argument', () => {
