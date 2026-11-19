@@ -21,7 +21,7 @@ after(() => {
 });
 
 /** A server with its own folders; `secret` reaches it in the environment, or on stdin as the shell sends it. */
-async function start(name, secret, { stdin = false, wait = true } = {}) {
+async function start(name, secret, { stdin = false, wait = true, env: extra = {} } = {}) {
   const dir = path.join(tmp, name);
   for (const sub of ['home', 'data', 'projects', 'templates', 'dist']) mkdirSync(path.join(dir, sub), { recursive: true });
   writeFileSync(path.join(dir, 'dist', 'index.html'), '<!doctype html><title>Spectrum</title>');
@@ -39,7 +39,8 @@ async function start(name, secret, { stdin = false, wait = true } = {}) {
       SPECTRUM_TEMPLATE_DIR: path.join(dir, 'templates'),
       SPECTRUM_TEMPLATE_SEED_DIR: '',
       SPECTRUM_FRONTEND_DIST: path.join(dir, 'dist'),
-      ...(stdin ? { SPECTRUM_SESSION_STDIN: '1' } : secret ? { SPECTRUM_SESSION_SECRET: secret } : {})
+      ...(stdin ? { SPECTRUM_SESSION_STDIN: '1' } : secret ? { SPECTRUM_SESSION_SECRET: secret } : {}),
+      ...extra
     },
     stdio: ['pipe', 'pipe', 'pipe']
   });
@@ -136,6 +137,15 @@ test('the shell’s secret comes on stdin, and a shell that sends none stops the
   await assert.rejects(get(silent, '/'));
   silent.child.stdin.end('too-short\n');
   assert.equal(await exited, 1);
+});
+
+test('after the secret, the server still follows its shell away when stdin closes', async () => {
+  const secret = crypto.randomBytes(32).toString('hex');
+  const server = await start('follows', secret, { stdin: true, env: { SPECTRUM_EXIT_WITH_STDIN: '1' } });
+  assert.equal((await get(server, '/api/health', { cookie: `${name(server)}=${secret}` })).status, 200);
+  const exited = new Promise((resolve) => server.child.once('exit', resolve));
+  server.child.stdin.end();
+  assert.equal(await Promise.race([exited, new Promise((r) => setTimeout(() => r('still running'), 15000))]), 0);
 });
 
 test('the secret leaves the environment as it is read, so no child process inherits it', async () => {
