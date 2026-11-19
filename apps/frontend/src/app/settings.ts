@@ -96,6 +96,8 @@ export type AppSettings = {
   llmApiKey: string;
   llmModel: string;
   reasoningEffort: ReasoningEffort;
+  /** Settings › Models: what the user pays for a model, by its id, for the agent meter's estimate (this computer's, as the models are) */
+  modelPrices: Prices;
   searchEndpoint: string;
   searchApiKey: string;
   searchModel: string;
@@ -241,6 +243,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   llmApiKey: '',
   llmModel: 'gpt-6-sol',
   reasoningEffort: 'default',
+  modelPrices: {},
   searchEndpoint: '',
   searchApiKey: '',
   searchModel: '',
@@ -391,6 +394,23 @@ export const REASONING_EFFORTS: [ReasoningEffort, string][] = [
   ['max', 'Max']
 ];
 
+/** What the user pays per million tokens of a model, in US dollars: input, input the cache served, output (a price needs input and output) */
+export type Price = { input?: number; cached?: number; output?: number };
+export type Prices = Record<string, Price>;
+export const PRICE_FIELDS = ['input', 'cached', 'output'] as const;
+
+/** Prices as typed: each a number of zero or more, or left out; a model with none is left out */
+export function cleanPrices(value: unknown): Prices {
+  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 10_000;
+  return Object.fromEntries(
+    Object.entries(typeof value === 'object' && value ? value : {}).flatMap(([id, p]) => {
+      const v = (typeof p === 'object' && p ? p : {}) as Record<string, unknown>;
+      const price = Object.fromEntries(PRICE_FIELDS.flatMap((k) => (ok(v[k]) ? [[k, v[k]]] : [])));
+      return id && Object.keys(price).length ? [[id, price]] : [];
+    })
+  );
+}
+
 const effortLabel = (level: ReasoningEffort) => REASONING_EFFORTS.find(([value]) => value === level)?.[1] || level;
 
 /** Effort choices for a model: the levels it accepts, or all of them for a model Spectrum doesn't know. */
@@ -426,6 +446,7 @@ function parse(raw: string | null): AppSettings {
     merged.zoteroCompletion = merged.zoteroCompletion !== false;
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system';
     if (!REASONING_EFFORTS.some(([value]) => value === merged.reasoningEffort)) merged.reasoningEffort = 'default';
+    merged.modelPrices = cleanPrices(merged.modelPrices);
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
     if (typeof merged.shortcuts !== 'object' || !merged.shortcuts) merged.shortcuts = {};
     if (typeof merged.providerSaved !== 'object' || !merged.providerSaved) merged.providerSaved = {};

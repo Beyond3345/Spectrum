@@ -1149,6 +1149,9 @@ export interface ChatThread {
   agent?: true;
   /** the persona chosen for this chat (Settings › Personas) */
   persona?: string;
+  /** a Spectrum agent thread's model and effort, chosen in its tab (the main provider's; Settings › Models' otherwise) */
+  model?: string;
+  effort?: ReasoningEffort;
 }
 
 export interface ChatSummary {

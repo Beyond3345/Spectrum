@@ -20,7 +20,8 @@
 //   plan    { entries }                  the approved plan's steps ([{ content, status }]) after one was ticked
 //   notice  { message }
 //   result  { turn, ok, reply, patches, changes, todos, steps, says?, incomplete?, usage?, unsent?, ask?, plan?,
-//           instructions? }   the turn's whole outcome, as /api/agent/run answers; then the last `state`
+//           instructions? }   the turn's whole outcome, as /api/agent/run answers (usage with the turn's model); then
+//           the last `state`
 //
 // A question or a plan (ask_user, propose_plan) ends its turn: `ask` in the result is what the thread shows, and the
 // user's answer is the next turn. So a turn that waits for the user holds nothing here: no model call, no timer but
@@ -110,7 +111,8 @@ export async function startTurn(body, { resume = false, runId } = {}) {
     } catch (err) {
       result = { ok: false, reply: err.message || 'The run failed.', patches: [], changes: [], todos: [], steps: [], incomplete: 'failed' };
     }
-    emit(run, 'result', { turn, ...result });
+    // the turn's tokens with the model that read them, which the page keeps with the reply (the meter's estimate)
+    emit(run, 'result', { turn, ...result, ...(result.usage && model && { usage: { ...result.usage, model } }) });
     run.status = result.incomplete || (result.ok ? 'done' : 'failed');
     emit(run, 'state', { status: run.status, turn, ...(result.incomplete && { incomplete: result.incomplete }) });
     run.timer = setTimeout(() => forget(run), KEEP_MS);
