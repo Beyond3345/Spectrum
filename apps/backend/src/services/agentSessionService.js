@@ -609,12 +609,13 @@ const bundledTools = fileURLToPath(new URL('./mcp.mjs', import.meta.url));
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 const toolsState = (r) => path.join(r.home, 'spectrum-tools', r.id);
 /** The tools server's file, its environment, and what isolation must also read to run it. */
-export async function toolsLaunch() {
-  const packaged = await fs.stat(bundledTools).then((s) => s.isFile(), () => false);
-  const entry = packaged ? bundledTools : path.join(repository, 'apps/backend/src/mcp/server.js');
-  // Node, the server (in development the backend's source, its packages and the version in the root package.json) and
-  // the user's own fonts, for a compile
-  const reads = [nodeRead(), path.dirname(entry), ...(packaged ? [] : [path.join(repository, 'apps/backend'), path.join(repository, 'node_modules'), path.join(repository, 'package.json')]), path.join(os.homedir(), 'Library', 'Fonts')];
+export async function toolsLaunch(bundle = bundledTools) {
+  const packaged = await fs.stat(bundle).then((s) => s.isFile(), () => false);
+  const entry = packaged ? bundle : path.join(repository, 'apps/backend/src/mcp/server.js');
+  // Node, the server (in development the backend's source, its packages and the version in the root package.json; in
+  // the app the bundle and, beside its folder, the data it reads as it starts and gives pandoc: OpenCC's tables, the
+  // APA style) and the user's own fonts, for a compile
+  const reads = [nodeRead(), path.dirname(entry), ...(packaged ? [path.join(path.dirname(entry), '..', 'data')] : [path.join(repository, 'apps/backend'), path.join(repository, 'node_modules'), path.join(repository, 'package.json')]), path.join(os.homedir(), 'Library', 'Fonts')];
   // the engines Spectrum downloaded (pandoc, older Typst versions), and the built-in programs' own folders
   reads.push(path.join(DATA_DIR, 'engines'));
   for (const file of [builtInTectonic(), builtInTypst()]) {

@@ -60,3 +60,50 @@ test('a local agent on macOS gets Spectrum’s tools, which run inside its isola
     assert.deepEqual(await pendingChanges(run), [], 'the tools wrote nothing into the working copy');
   } finally { await shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); }
 });
+
+// The app's layout: the tools server is one bundled file in Resources/backend, with the data it reads in
+// Resources/data. In isolation it may read only what toolsLaunch names, so a file it opens as it starts must be named.
+test('the bundled tools server starts inside isolation from the app’s layout, reading its data beside it', { skip: (!native || process.platform !== 'darwin') && 'Requires native macOS sandbox execution.', timeout: 120000 }, async () => {
+  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-bundled-tools-')));
+  const source = fileURLToPath(new URL('../src/', import.meta.url));
+  const resources = path.join(dir, 'Spectrum.app', 'Contents', 'Resources');
+  const { build } = await import('esbuild');
+  // as scripts/desktop.mjs bundles it
+  await build({
+    entryPoints: { mcp: path.join(source, 'mcp/server.js') },
+    outdir: path.join(resources, 'backend'),
+    outExtension: { '.js': '.mjs' },
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node24',
+    logLevel: 'silent',
+    external: ['@aws-sdk/client-s3'],
+    banner: { js: "import { createRequire as __spectrumCreateRequire } from 'node:module';\nconst require = __spectrumCreateRequire(import.meta.url);" }
+  });
+  for (const data of ['opencc', 'csl']) await fs.cp(path.join(source, 'data', data), path.join(resources, 'data', data), { recursive: true });
+  const { toolsLaunch } = await import('../src/services/agentSessionService.js');
+  const { spawnAgentProcess, killAgentProcess } = await import('../src/services/agentSandbox.js');
+  const { entry, env, reads } = await toolsLaunch(path.join(resources, 'backend', 'mcp.mjs'));
+  assert.equal(entry, path.join(resources, 'backend', 'mcp.mjs'));
+  assert.ok(reads.includes(path.join(resources, 'data')), 'the data folder beside the bundle is named');
+  assert.ok(!reads.some((read) => read === resources || read === path.dirname(resources)), 'and nothing wider');
+  const [workspace, out, home] = ['work', 'out', 'home'].map((name) => path.join(dir, name));
+  for (const made of [workspace, out, path.join(home, 'tmp')]) await fs.mkdir(made, { recursive: true });
+  await fs.writeFile(path.join(workspace, 'main.md'), '# 你好\n\nText.\n');
+  await fs.writeFile(path.join(out, 'context.json'), '{}');
+  const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', workspace, '--state', out, '--main', 'main.md', '--engine', 'auto'], workspace: out, home, cwd: out, runtimePaths: [...reads, workspace], forbiddenRoots: [], env });
+  let output = '', error = '';
+  child.stdout.on('data', (chunk) => { output += chunk; });
+  child.stderr.on('data', (chunk) => { error += chunk; });
+  child.stdin.end();
+  try {
+    await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
+  } finally {
+    killAgentProcess(child);
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+  assert.doesNotMatch(error, /EPERM|Operation not permitted/, error.slice(-600));
+  // it started and answered: whether pandoc is installed here decides the compile, not this test
+  assert.equal(typeof JSON.parse(output).ok, 'boolean', error.slice(-600) || output.slice(0, 300));
+});
