@@ -324,7 +324,7 @@ export default function Home({
               <div className="card-thumb folder-art">
                 <FolderShape {...f} />
                 <span className="card-menu">
-                  <MenuButton icon="ellipsis" title="More" className="icon-btn small" align="end" items={menuOf(item)} />
+                  <MenuButton icon="ellipsis" title={`More for “${f.name}”`} className="icon-btn small" align="end" items={menuOf(item)} />
                 </span>
               </div>
               <div className="card-name" title={f.name}>{f.name}</div>
@@ -384,7 +384,7 @@ export default function Home({
               <span className="col-count">{counts.get(f.id) || 0}</span>
               <span className="col-date" title={changed && formatFull(changed)}>{changed ? timeAgo(changed) : '—'}</span>
               <span className="col-actions">
-                <MenuButton icon="ellipsis" title="More" align="end" items={menuOf(item)} />
+                <MenuButton icon="ellipsis" title={`More for “${f.name}”`} align="end" items={menuOf(item)} />
               </span>
             </div>
           );

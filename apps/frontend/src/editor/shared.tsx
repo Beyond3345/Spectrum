@@ -12,6 +12,28 @@ import type { EditorApi, PendingChange } from './EditorContext';
 
 export const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+export const NO_ANSWER = 'Spectrum’s server didn’t answer';
+
+/**
+ * run(), tried again after a pause when it fails or gives no answer within `timeout` ms, `tries` times in all; the last
+ * failure is thrown. stop(): true once the result is no longer wanted (the page left), which ends the tries quietly.
+ */
+export async function withRetries<T>(run: () => Promise<T>, { tries = 3, timeout = 15000, pause = 1000, stop = (): boolean => false } = {}): Promise<T | undefined> {
+  for (let attempt = 1; ; attempt++) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([run(), new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(NO_ANSWER)), timeout)))]);
+    } catch (err) {
+      if (stop()) return undefined;
+      if (attempt >= tries) throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+    await new Promise((resolve) => setTimeout(resolve, pause * attempt));
+    if (stop()) return undefined;
+  }
+}
+
 export function citationCommand(source: string) {
   const text = withoutComments(source);
   if (/\\addbibresource\b|\\(?:usepackage|RequirePackage)(?:\s*\[[^\]]*\])?\s*\{biblatex\}/.test(text)) return '\\parencite';
@@ -224,11 +246,24 @@ export async function patchesToChanges(api: Pick<EditorApi, 'ensureFileContent'>
 }
 
 /**
+ * Whether a model can answer: a key, or a local server on plain http that takes none (llmService.js missingKey).
+ * ponytail: a key only in the backend's .env (SPECTRUM_LLM_API_KEY, a developer's setup) is not seen here.
+ */
+export const modelSetUp = (llm: { apiKey?: string; endpoint?: string }) => Boolean(llm.apiKey) || /^http:\/\//i.test(llm.endpoint || '');
+
+/** Fix with AI's tooltip: with no model set up it opens Settings › Models instead */
+export const fixTitle = (api: Pick<EditorApi, 'llm'>) => (modelSetUp(api.llm.main) ? undefined : 'No AI model is set up yet: opens Settings › Models');
+
+/**
  * Fix with AI, as the Logs and Review tabs offer it: one tools run asked for a patch, which opens as reviewable changes
  * named `label`. file: where the problem is (the open file otherwise); withLog: the compile log goes along. Says how it
  * went itself and returns the AI's reply ('' when the request failed).
  */
 export async function fixWithAI(api: EditorApi, { task, prompt, selection = '', file, label, withLog = true }: { task: string; prompt: string; selection?: string; file?: string; label: string; withLog?: boolean }) {
+  if (!modelSetUp(api.llm.main)) {
+    api.openSettings('models');
+    return '';
+  }
   try {
     const res = await runAgent({
       task,

@@ -1,7 +1,7 @@
 // Self-check for shortcut matching: `node apps/frontend/src/app/shortcuts.check.ts` (Node ≥ 23 strips the types).
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { EDITOR_SHORTCUTS, FIND_NEXT, FIND_PREVIOUS, IS_MAC, SHORTCUTS, canonical, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts.ts';
+import { EDITOR_SHORTCUTS, FIND_NEXT, FIXED_SHORTCUTS, FIND_PREVIOUS, IS_MAC, SHORTCUTS, canonical, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -91,3 +91,8 @@ console.log('shortcuts.check: ok');
 // among them, as typing t in the source once threw "appCommands[s.id] is not a function"
 eq(EDITOR_SHORTCUTS.filter((s) => s.group === 'Diagram' || (!s.run && /^[a-z]$/.test(s.key))).map((s) => s.id), [], 'no plain-letter keys in the editor');
 eq(SHORTCUTS.filter((s) => s.group === 'Diagram').length > 0, true, 'the composer keeps its keys');
+
+// the way out of the source, listed with the fixed keys: two keys pressed in turn, and Escape stays free to bind
+eq(FIXED_SHORTCUTS.find(([label]) => label === 'Move focus out of the editor')?.[1], 'Escape Tab', 'leaving the editor is listed');
+eq(formatShortcut('Escape Tab'), IS_MAC ? '⎋, then ⇥' : 'Escape, then Tab', 'keys in turn');
+eq(shortcutProblem('Escape', 'compile').includes('kept for move focus'), false, 'Escape alone is not taken by it');

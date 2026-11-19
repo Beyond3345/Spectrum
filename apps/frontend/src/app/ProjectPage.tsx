@@ -817,7 +817,7 @@ export default function ProjectPage() {
         )}
         <span className="col-date" title={formatFull(p[field])}>{timeAgo(p[field])}</span>
         <span className="col-actions">
-          <MenuButton icon="ellipsis" title="More" align="end" items={menuFor(p)} />
+          <MenuButton icon="ellipsis" title={`More for “${p.name}”`} align="end" items={menuFor(p)} />
         </span>
       </div>
     );
@@ -832,7 +832,7 @@ export default function ProjectPage() {
           <Thumb project={p} />
           {badge(p, true)}
           <span className="card-menu">
-            <MenuButton icon="ellipsis" title="More" className="icon-btn small" align="end" items={menuFor(p)} />
+            <MenuButton icon="ellipsis" title={`More for “${p.name}”`} className="icon-btn small" align="end" items={menuFor(p)} />
           </span>
         </div>
         <div className="card-name" title={p.name}>{p.name}</div>

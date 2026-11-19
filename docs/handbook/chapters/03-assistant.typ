@@ -323,7 +323,7 @@ Review checks the document that #ui[Compile] builds before it goes anywhere. It 
   caption: [The groups of checks in Review. A Typst or Markdown document runs Compile and layout and Privacy and blind review, and Accessibility and Submission readiness run for LaTeX only.],
 ) <tab-assistant-review>
 
-The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes). A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
+The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes). Until a model is set up, it opens #menu[Settings][Models] instead. A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
 
 #shot("figures/03-assistant/review-results.png", [Review of the lab report. The never-cited `Knuth1984` entry is a note under References and assets, with its line in `references.bib`, and the untagged PDF is an Accessibility warning.], width: 60%) <fig-assistant-review-results>
 

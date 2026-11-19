@@ -12,7 +12,7 @@ The editor is divided into three columns (@fig-writing-editor). The sidebar on t
 
 === The sidebar
 
-The sidebar has three tabs. #ui[Files] is the project's file tree, #ui[Research] searches for papers (@ch-references) and #ui[To-dos] is the to-do list (@sec-writing-todos). The magnifying glass searches the tab that is showing: the file names, the research sessions or the to-dos. The #ui[+] button and a right-click on the file tree both hold #ui[New file…], #ui[New folder…], #ui[New .bib], #ui[Upload files…] and #ui[Upload folder…], and a right-click on a file adds #ui[Rename…], #ui[Move to Bin…] and, for a document, #ui[Set as main file]. #ui[Move to Bin…] moves the file or folder to the Bin, the Recycle Bin on Windows, after saving any text typed in it, so it can be put back from there. On macOS 15 and later the message that follows has #ui[Undo], which puts it back in the project at once, as the main file again if it was one. On a drive with no Bin, such as a network share, Spectrum says so and asks before it deletes the file for good. Files can also be dragged between folders and dropped in from Finder. The main file, which Compile builds, is marked #ui[Main], and a drawing from the diagram composer has #ui[Edit diagram] in its menu (@ch-composer).
+The sidebar has three tabs. #ui[Files] is the project's file tree, #ui[Research] searches for papers (@ch-references) and #ui[To-dos] is the to-do list (@sec-writing-todos). The magnifying glass searches the tab that is showing: the file names, the research sessions or the to-dos. The #ui[+] button and a right-click on the file tree both hold #ui[New file…], #ui[New folder…], #ui[New .bib], #ui[Upload files…] and #ui[Upload folder…], and a right-click on a file adds #ui[Rename…], #ui[Move to Bin…] and, for a document, #ui[Set as main file]. #ui[Move to Bin…] moves the file or folder to the Bin, the Recycle Bin on Windows, after saving any text typed in it, so it can be put back from there. On macOS 15 and later the message that follows has #ui[Undo], which puts it back in the project at once, as the main file again if it was one. On a drive with no Bin, such as a network share, Spectrum says so and asks before it deletes the file for good. Files can also be dragged between folders and dropped in from Finder. When a renamed or moved file is named elsewhere in the project, by `\include`, `\input`, `\includegraphics` or `\bibliography` in LaTeX, `#include` or `image()` in Typst, or an image or link in Markdown, Spectrum lists each of these and offers to update them. It saves a Before updating references checkpoint first, so the change can be undone from #menu[Tools][Checkpoints]. Only a path that names the file exactly is changed. The main file, which Compile builds, is marked #ui[Main], and a drawing from the diagram composer has #ui[Edit diagram] in its menu (@ch-composer).
 
 Below the files, #ui[Outline] lists the headings of the document, with the figures and tables by their captions, and a click on one moves the cursor to it. For LaTeX the outline follows `\input` and `\include` across the whole document and, with TexLab running (@sec-writing-lsp), shows the section numbers of the last compile. For Typst it follows `#include`, and for Markdown it lists the headings. The heading the cursor is in is shown in bold.
 
@@ -75,9 +75,10 @@ The LaTeX tab of #menu[Settings][Engines] holds the defaults for every project: 
 
 - #ui[Show live output while compiling], one switch for each engine, which shows the engine's output in the PDF's place while it runs, with a line saying what it is doing. Tectonic's is on by default, since it shows each package it downloads, which can take minutes on a first compile,
 - #ui[TeX folder], for a second TeX installation, whose programs are tried before the ones on the `PATH`, for example `/usr/local/texlive/2026/bin/universal-darwin`,
-- #ui[xjyutping folder], which uses your own copy of the xjyutping package in place of Spectrum's (@sec-writing-jyutping),
-- #ui[Biber for Tectonic], which downloads the Biber version that Tectonic's biblatex needs, since another Biber on the computer will not do. TeX Live and MiKTeX use their own and
-- #ui[Open Logs when a compile fails], which opens Tools › Logs in the PDF's place after a failed compile. Auto compile leaves it closed.
+- #ui[xjyutping folder], which uses your own copy of the xjyutping package in place of Spectrum's (@sec-writing-jyutping) and
+- #ui[Biber for Tectonic], which downloads the Biber version that Tectonic's biblatex needs, since another Biber on the computer will not do. TeX Live and MiKTeX use their own.
+
+Above the three tabs, #ui[Open Logs when a compile fails] opens Tools › Logs in the PDF's place after a failed compile of a LaTeX, Typst or Markdown document. Auto compile leaves it closed.
 
 === Typst
 
@@ -138,7 +139,7 @@ Documents can refer to the labels of another with `xr-hyper`, for example `\exte
 
 === The log
 
-A failed compile marks the status line #ui[Failed — see Logs], and the #ui[Tools] button shows a badge with the number of errors and warnings. Tools › Logs lists them as cards under #ui[Warnings and errors], each with its message and its file and line, which a click jumps to (@fig-writing-logs). #ui[Full log] shows the engine's whole output. #ui[Fix with AI] on a card, or #ui[Fix all with AI] for the whole list, asks the assistant for a fix that opens as changes to review (@ch-assistant). When a compile needs something Spectrum can download, such as pandoc, Biber for Tectonic or a pinned Typst version, the log says so with a button to download it.
+A failed compile marks the status line #ui[Failed — see Logs], and the #ui[Tools] button shows a badge with the number of errors and warnings. Tools › Logs lists them as cards under #ui[Warnings and errors], each with its message and its file and line, which a click jumps to (@fig-writing-logs). #ui[Full log] shows the engine's whole output. #ui[Fix with AI] on a card, or #ui[Fix all with AI] for the whole list, asks the assistant for a fix that opens as changes to review (@ch-assistant). Until a model is set up, these buttons open #menu[Settings][Models] instead. When a compile needs something Spectrum can download, such as pandoc, Biber for Tectonic or a pinned Typst version, the log says so with a button to download it.
 
 #shot("figures/02-writing/logs.png", [Tools › Logs after a compile with one error and two warnings. Each card links to its line in the source and has Fix with AI.], width: 72%) <fig-writing-logs>
 
@@ -191,7 +192,7 @@ Spectrum includes TexLab 5.26.0 and starts it for each open project. TexLab read
 
 #shots(("figures/02-writing/rename.png", "figures/02-writing/rename-confirm.png"), [Rename asks for the new name, left, and then lists the files it will change with the number of changes in each, right.]) <fig-writing-rename>
 
-With TexLab the sidebar's Outline covers the whole document across its `\input` files, with the section numbers of the last compile and the figures and tables by their captions. Document insights marks the labels TexLab finds unused or defined twice and the citations missing from the `.bib`, and Review adds TexLab's findings to its checks (@ch-references).
+With TexLab the sidebar's Outline covers the whole document across its `\input` files, with the section numbers of the last compile and the figures and tables by their captions. A reference or citation in a caption shows as "…". Document insights marks the labels TexLab finds unused or defined twice and the citations missing from the `.bib`, and Review adds TexLab's findings to its checks (@ch-references).
 
 When #ui[Syntax check before compiling] is on, in #menu[Settings][Engines][LaTeX], a compile you start first looks at TexLab's findings in the document's files. When there are missing braces or mismatched environments, it lists them and asks whether to compile anyway, and #ui[Cancel] goes to the first one (@fig-writing-syntax). References and citations with no label or entry never stop a compile, and auto compile skips the check.
 
@@ -231,7 +232,7 @@ The table card builds a table from a grid (@fig-writing-figure). #key("Tab") mov
 - #ui[Merge right], #ui[Merge down] and #ui[Split], which merge cells with `\multicolumn` and `\multirow`, and #ui[Short rule below], which draws a `\cmidrule` under a heading over a group of columns,
 - #ui[Environment], which is `tabular`, `tabularx` or `xltabular` for a table that runs over pages,
 - #ui[Header row], #ui[Line breaks in cells] (with `makecell`), #ui[Notes under the table] (with `threeparttable`) and #ui[Escape special characters], which makes `&`, `%`, `#`, `_` and a price's `$` print as themselves while commands still work and
-- #ui[Float], with #ui[Placement], #ui[Span both columns], #ui[Caption] and #ui[Label].
+- #ui[Float], with #ui[Placement], #ui[Span both columns], #ui[Caption] and #ui[Label]. A table inserted with no caption gets `Caption.` to fill in and a label made from its header row.
 
 #ui[Source] shows the LaTeX the card will insert, which can be edited before #ui[Insert table] or copied with #ui[Copy] (@fig-writing-table-source). In a Typst document the table is a `#table` with its lines as `table.hline` and `table.vline`, and in a Markdown document a pipe table, which has no lines of its own. The packages a float needs, such as `graphicx`, `float`, `booktabs` and `tabularx`, are added before `\begin{document}` when the project does not load them yet. #ui[Table → chart], below the card, plots a table selected in the editor with matplotlib (@fig-writing-table-chart). #ui[Write the code] asks the main model (@ch-assistant) for the plotting code and shows it, and nothing runs until #ui[Run this code]. #ui[Edit] lets you change the code first. The code runs on its own, in the isolation the local agents use: it is given the table, it can write only to a folder of its own, it cannot read the project or your other files or reach the network, and it is stopped after two minutes. Spectrum then saves the chart in `assets/plots`, as a PNG or, when the file name ends in `.pdf`, `.svg` or `.jpg`, in that form, and inserts it as a figure after the table. When the code fails, the card says on which line and why, and #ui[Write it again with this error] asks the model for code that works. Charts need Python 3 with matplotlib on the computer.
 
@@ -372,7 +373,7 @@ Every shortcut in @tab-writing-shortcuts can be changed in #menu[Settings][Short
   caption: [The shortcuts that can be changed in #menu[Settings][Shortcuts].],
 ) <tab-writing-shortcuts>
 
-A few shortcuts are fixed, and they are listed in @tab-writing-fixed. While the PDF has the focus, #key("⌘", "F") finds text in the PDF, and Page Up, Page Down, Home and End move through its pages.
+A few shortcuts are fixed, and they are listed in @tab-writing-fixed. #key("Tab") indents in the editor, so to move the focus on by keyboard, press #key("Esc") first and then #key("Tab"). While the PDF has the focus, #key("⌘", "F") finds text in the PDF, and Page Up, Page Down, Home and End move through its pages.
 
 #figure(
   table(
@@ -383,6 +384,7 @@ A few shortcuts are fixed, and they are listed in @tab-writing-fixed. While the 
     [Find next and previous], [#key("⌘", "G") and #key("⇧", "⌘", "G")],
     [Undo and redo], [#key("⌘", "Z") and #key("⇧", "⌘", "Z")],
     [Settings], [#key("⌘", ",")],
+    [Move the focus out of the editor], [#key("Esc"), then #key("Tab")],
     [Go to definition (TexLab, Tinymist)], [#key("F12"), or a click with #key("⌘") held],
     [Find references], [#key("⇧", "F12")],
     [Rename a label, citation key or command], [#key("F2")],

@@ -16,7 +16,7 @@ import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tablePackages, tableRules, tableTypst, uniqueName, withMerge } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, uniqueName, withMerge } from '../floats';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -1300,8 +1300,8 @@ function InsertTable() {
     float,
     placement,
     span: span && !long,
-    caption,
-    label: label ?? tableLabel(caption),
+    caption: tableTitle(caption, cells).caption,
+    label: label ?? tableTitle(caption, cells).label,
     escape,
     merges: fitted,
     partRules: fitPartRules(partRules, cells.length, cols),
@@ -1680,11 +1680,11 @@ function InsertTable() {
           {latex && !long && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
           <div className="field">
             <label htmlFor={`${id}-caption`}>Caption</label>
-            <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Leave empty to write it later" />
+            <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Caption, shown above the table" />
           </div>
           <div className="field">
             <label htmlFor={`${id}-label`}>Label</label>
-            <input id={`${id}-label`} className="input" value={label ?? tableLabel(caption)} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
+            <input id={`${id}-label`} className="input" value={label ?? tableTitle(caption, cells).label} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
           </div>
         </>
       )}

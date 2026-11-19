@@ -225,7 +225,8 @@ const FileTree = forwardRef<
   const commit = async () => {
     const edit = inlineRef.current;
     if (!edit || busy.current) return;
-    const value = edit.value.trim().replace(/^\/+|\/+$/g, '');
+    // the rename box selects the name without its extension, so typing the whole name gave intro.tex.tex
+    const value = edit.value.trim().replace(/^\/+|\/+$/g, '').replace(/(\.[^./]+)\1$/i, '$1');
     if (!value || (edit.kind === 'rename' && value === nameOf(edit.path))) {
       setInline(null);
       return;
