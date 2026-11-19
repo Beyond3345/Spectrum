@@ -33,7 +33,8 @@ test('native agent sandbox contains files, descendants, and local services', { s
         assert.throws(()=>fs.readFileSync(file));
         assert.throws(()=>fs.writeFileSync(file,'changed'));
       }
-      for (const file of ['.ENV', '.env.local', '.GIT', '.SPECTRUM', 'secret.KEY', '.Claude']) assert.throws(()=>fs.writeFileSync(file,'secret'));
+      for (const file of ['.ENV', '.env.local', '.GIT', '.SPECTRUM', 'secret.KEY', '.Claude', 'id_rsa', 'ID_ED25519', '.netrc', '.npmrc', 'cert.p12', 'Store.JKS']) assert.throws(()=>fs.writeFileSync(file,'secret'), file);
+      fs.writeFileSync('id_rsa.pub','a public key is no secret');
       // Claude's project settings, which Claude Code reads outside isolation: neither made nor written into
       assert.throws(()=>fs.mkdirSync('sub/.claude',{recursive:true}));
       assert.throws(()=>fs.writeFileSync('.claude/settings.json','{}'));
