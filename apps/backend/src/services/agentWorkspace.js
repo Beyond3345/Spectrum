@@ -85,8 +85,10 @@ export async function initialiseWorkspace(root, runDir, mode) {
   }
   await writeJsonAtomic(path.join(runDir, 'baseline.json'), Object.fromEntries(Object.entries(files).map(([rel, bytes]) => [rel, fileHash(bytes)])));
   if (mode === 'direct') {
-    const version = await createVersion(root, { reason: 'before-ai', label: 'Before agent direct editing' });
-    if (version.version?.skipped?.length) throw new Error('The complete project could not be backed up. Direct editing was not started.');
+    const { skipped } = await createVersion(root, { reason: 'before-ai', label: 'Before agent direct editing' });
+    // what the checkpoint couldn't hold and the agent could still change (it never reaches agentHidden files)
+    const exposed = skipped.filter((rel) => !agentHidden(rel));
+    if (exposed.length) throw new Error(`The complete project could not be backed up: ${exposed.slice(0, 3).join(', ')}${exposed.length > 3 ? ' and others' : ''} couldn’t be read or are over 50 MB. Direct editing was not started: choose Isolated, or fix those files.`);
   }
   return fs.realpath(workspace);
 }

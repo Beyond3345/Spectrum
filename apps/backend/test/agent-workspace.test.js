@@ -100,3 +100,25 @@ test('workspace creation refuses links and omits secrets and app identity', asyn
     } finally { await fs.rm(run, { recursive: true, force: true }); }
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
+
+test('direct editing does not start when the checkpoint before it could not hold a file the agent can change', { skip: process.platform === 'win32' && 'chmod cannot make a file unreadable on Windows' }, async () => {
+  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-direct-')));
+  const run = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-direct-run-'));
+  try {
+    await fs.writeFile(path.join(dir, 'main.tex'), 'safe');
+    // the workspace reader leaves node_modules out, a checkpoint doesn't, and a direct agent can write there
+    await fs.mkdir(path.join(dir, 'node_modules'));
+    await fs.writeFile(path.join(dir, 'node_modules', 'locked.js'), 'x');
+    await fs.chmod(path.join(dir, 'node_modules', 'locked.js'), 0);
+    // nor when the same files were checkpointed already (an unchanged checkpoint reports what it left out too)
+    for (const attempt of ['first', 'again']) await assert.rejects(initialiseWorkspace(dir, path.join(run, attempt), 'direct'), /node_modules\/locked\.js couldn’t be read/);
+    await fs.chmod(path.join(dir, 'node_modules', 'locked.js'), 0o600);
+    // a file only an agent can never reach doesn't stop it
+    await fs.writeFile(path.join(dir, '.env'), 'secret');
+    await fs.chmod(path.join(dir, '.env'), 0);
+    assert.equal(await initialiseWorkspace(dir, path.join(run, 'ok'), 'direct'), dir);
+  } finally {
+    await fs.chmod(path.join(dir, '.env'), 0o600).catch(() => {});
+    await fs.rm(dir, { recursive: true, force: true }); await fs.rm(run, { recursive: true, force: true });
+  }
+});

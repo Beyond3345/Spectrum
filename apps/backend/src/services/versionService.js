@@ -354,7 +354,7 @@ async function saveVersion(root, { label = '', reason = 'manual' } = {}) {
       latest.manifestLabel = latest.label;
       await writeIndex(root, versions);
     }
-    return { version: shownVersion(latest), unchanged: true, skipped: [] };
+    return { version: shownVersion(latest), unchanged: true, skipped: [...skipped, ...large] };
   }
 
   // compiles leave at most one checkpoint every 10 minutes: the latest one in that time takes the place of the others,
