@@ -50,13 +50,13 @@ The #ui[Provider] menu holds a preset for each provider below, as in @fig-assist
 
 Keys for Moonshot, GLM and Qwen only work in the region they were made in, so these presets also have a #ui[Region]. Meta's cheaper Contributor models are left out of the list on purpose, since Meta trains on what is sent to them.
 
-Two choices need no key at all. #ui[Ollama] runs models on your own computer, or on another computer on the network when its address is entered, and #ui[Refresh] reads the list of models from Ollama itself, so the list is whatever has been downloaded. Ollama keeps a short context by default, so raising its own #ui[Context length] to 32k or more lets a whole document fit. #ui[Other (OpenAI-compatible)] takes any server that speaks the OpenAI chat completions API, such as LM Studio or vLLM, and a server at a plain `http://` address needs no key. #ui[Ollama Cloud], on the other hand, runs larger models on Ollama's servers and needs a key from Ollama.
+Two choices need no key at all. #ui[Ollama] runs models on your own computer, or on another computer on the network when its address is entered, and #ui[Refresh] reads the list of models from Ollama itself, so the list is whatever has been downloaded. Ollama keeps a short context by default, so raising its own #ui[Context length] to 32k or more lets a whole document fit. #ui[Other (OpenAI-compatible)] takes any server that speaks the OpenAI chat completions API, such as LM Studio or vLLM, and a server at a plain `http://` address needs no key. An endpoint whose address ends in `/messages` is called as Anthropic's Messages API, and one ending in `/responses` as OpenAI's Responses API. #ui[Ollama Cloud], on the other hand, runs larger models on Ollama's servers and needs a key from Ollama.
 
 === Reasoning effort
 
-The reasoning effort sets how long a model may think before it answers, from #ui[Off] to #ui[Max]. Settings, the assistant and the Spectrum agent's tab offer only the levels the chosen model accepts, and #ui[Recommended] uses the level in @tab-assistant-providers. Spectrum sends the effort in the form each provider expects. Specifically, OpenAI is called through its Responses API with storage turned off, Claude through Anthropic's Messages API, and the providers whose models always think a little start at their lowest level instead of #ui[Off]. Autocomplete and reference splitting use the lowest level a model accepts, so they stay quick. A Spectrum agent thread can have its own model and effort, chosen in the agent's tab (@sec-assistant-workspace).
+The reasoning effort sets how long a model may think before it answers, from #ui[Off] to #ui[Max]. Settings, the assistant and the Spectrum agent's tab offer only the levels the chosen model accepts, and #ui[Recommended] uses the level in @tab-assistant-providers. Spectrum sends the effort in the form each provider expects. Specifically, OpenAI is called through its Responses API with storage turned off, Claude through Anthropic's Messages API, and the providers whose models always think a little start at their lowest level instead of #ui[Off]. Autocomplete and reference splitting use the lowest level a model accepts, so they stay quick. A Spectrum agent thread can have its own model and effort, chosen in the agent's tab (@sec-assistant-ask).
 
-Below the effort, #ui[Price of] the main model takes its input, cached input and output prices in US dollars per million tokens, as the provider's price list gives them. They are optional and only used for the estimate in the agent's meter. Spectrum keeps no price list of its own, since prices change, so without a price the meter shows tokens alone.
+Below the effort, #ui[Price of] the main model takes its input, cached input and output prices in US dollars per million tokens, as the provider's price list gives them. They are optional and only used for the estimate in the agent's meter (@sec-assistant-meter). Spectrum keeps no price list of its own, since prices change, so without a price the meter shows tokens alone.
 
 #shot("figures/03-assistant/settings-model-price.png", [The price fields for the main model. The prices here are an example, and yours come from the provider's price list.], width: 60%) <fig-assistant-model-price>
 
@@ -143,7 +143,7 @@ The switch at the top of the sheet, #ui[Source] and #ui[PDF before and after], s
 
 #shot("figures/03-assistant/review-pdf.png", [#ui[PDF before and after] for the same three changes: the report as it is on the left, and as it would be on the right.]) <fig-assistant-review-pdf>
 
-Before writing anything, Spectrum saves a "Before AI changes" checkpoint, so an accepted change can always be undone from #menu[Tools][Checkpoints] (@ch-references). The same review is used by #ui[Fix with AI] in the Logs and Review tabs and by Quick switch, and the agents' review in the workspace works the same way (@sec-assistant-workspace). The tidying that follows a conversion to another format is still reviewed a file at a time.
+Before writing anything, Spectrum saves a "Before AI changes" checkpoint, so an accepted change can always be undone from #menu[Tools][Checkpoints] (@ch-references). The same review is used by #ui[Fix with AI] in the Logs and Review tabs and by Quick switch, and the agents' review in the workspace works the same way (@sec-assistant-agent-review). A file that a suggestion would delete is marked #ui[Deleted] in the list. The tidying that follows a conversion to another format is still reviewed a file at a time.
 
 === Image to LaTeX
 
@@ -230,9 +230,13 @@ The agent workspace is where a model works across the whole project. It is opene
 - #ui[Spectrum agent], the built-in agent, which reads the project through the main model and proposes changes (the assistant's Edit mode before 2.0) and
 - #ui[Local agents], which runs a coding agent installed on your computer (@sec-assistant-external).
 
-#shot("figures/03-assistant/agent-workspace.png", [The agent workspace on a new conversation, with its two tabs, its header and the task buttons.], width: 65%) <fig-assistant-workspace>
+#shot("figures/03-assistant/agent-workspace.png", [The Spectrum agent's tab on a new thread. The header holds the history, the #ui[Isolated] badge, the persona and the model and thinking menu, and the task buttons fill the empty thread.], width: 65%) <fig-assistant-workspace>
 
-A new conversation opens on "What would you like to do today?" with five task buttons. Each fills in a prepared message with its skill, which you can change before sending it (@fig-assistant-task).
+The header holds the history of threads or sessions (the clock), the #ui[Isolated] or #ui[Direct] badge, the persona picker and, at the right, the model menu, the meter and #ui[Stop]. A local agent shows its own model and mode menus beside its badge instead, and only when the agent lists them. The sections below follow a request from the message box to the changes it leaves behind and what it cost.
+
+=== Asking the agent <sec-assistant-ask>
+
+A new thread opens on "What would you like to do today?" with five task buttons. Each fills in a prepared message with its skill, which you can change before sending it (@fig-assistant-task).
 
 #figure(
   table(
@@ -250,27 +254,40 @@ A new conversation opens on "What would you like to do today?" with five task bu
 
 #shot("figures/03-assistant/agent-task-prepared.png", [#ui[Manuscript review] pressed. The message, the `peer-review` skill chip and the #ui[Critical reviewer] persona are filled in, and nothing is sent until the send button is pressed.], width: 65%) <fig-assistant-task>
 
-The chips under the message box decide what goes with a message: the open file, the selection (#ui[Selection, 1 line]), the compile log and the open to-dos. The to-dos go with the first message of a conversation unless their chip is taken off. Typing `/` lists the agent's commands and the project's skills (@fig-assistant-slash), and a skill chosen there goes with the message in whole. The Spectrum agent has two more chips there, #ui[Plan] (@sec-assistant-plan) and one for the project's `AGENTS.md` (@sec-assistant-instructions).
+The chips under the message box decide what goes with a message: the open file, the selection (#ui[Selection, 1 line]), the compile log and the open to-dos. The to-dos go with the first message of a thread unless their chip is taken off. Typing `/` lists the agent's commands and the project's skills (@fig-assistant-slash), and a skill chosen there goes with the message in whole. The Spectrum agent has two more chips there, #ui[Plan] (@sec-assistant-plan) and one for the project's `AGENTS.md` (@sec-assistant-instructions).
 
 #shot("figures/03-assistant/agent-slash-skills.png", [`/` in the message box lists the skills that are on for the project.], width: 60%) <fig-assistant-slash>
 
-The header holds the history of threads or sessions (the clock), the #ui[Isolated] or #ui[Direct] badge, a local agent's model and mode options, the persona picker, the meter and #ui[Stop]. The transcript shows the messages, the agent's thinking folded away, a card for each tool call that updates as it runs, questions and permission requests in line and a #ui[Restore] row for each Before AI changes checkpoint. The agent's plan stays at the top, and #ui[Save open steps as to-dos] adds its open steps to the to-do list (@ch-writing).
-
-In the Spectrum agent's tab, the menu at the right of the header chooses the model and the thinking for the thread (@fig-assistant-model-menu). It lists the models of the provider in #menu[Settings][Models], and under #ui[Thinking] only the levels the chosen model accepts. A new thread starts with the model and effort from Settings, and each thread keeps its own choice, which applies from its next request. If the provider in Settings changes, a thread goes back to the model in Settings. A local agent offers the models and modes it has itself, as the menus beside its badge, and only when the agent lists them.
+In the Spectrum agent's tab, the menu at the right of the header chooses the model and the thinking for the thread (@fig-assistant-model-menu). It lists the models of the provider in #menu[Settings][Models], and under #ui[Thinking] only the levels the chosen model accepts, while #ui[Models and prices…] opens Settings. A new thread starts with the model and effort from Settings, and each thread keeps its own choice, which applies from its next request. If the provider in Settings changes, a thread goes back to the model in Settings.
 
 #shot("figures/03-assistant/agent-model-menu.png", [The model and thinking menu of a Spectrum agent thread, with the Anthropic Claude preset.], width: 35%) <fig-assistant-model-menu>
 
-The meter beside it counts what the agent used (@fig-assistant-meter). For the Spectrum agent, #ui[Turn] is the request running or the last one and #ui[Thread] all of the thread's requests together, in tokens read and written. The share marked #ui[cached] is how much of what the model read came from the provider's cache, which costs less. A cost appears only as an estimate, marked #ui[est.], when every model the thread used has a price in #menu[Settings][Models]. Holding the pointer over the meter shows each count in full and, where there is a price, what the cache saved. For a local agent the meter shows what the agent reports: how full its context is, with a bar that turns orange from 80 per cent, the cost of the session when the agent gives one and the tokens of its last task. An agent that reports none of these shows no meter.
-
-#shot("figures/03-assistant/agent-meter.png", [The meter of a thread of two requests. Most of what the model read came from the cache, and the cost is an estimate from the prices in Settings.], width: 65%) <fig-assistant-meter>
-
-The Spectrum agent works for up to 25 steps, and each step shows as a card while it happens, with how long it took, as the answer appears word by word. It can read and search the project, change a file by replacing exact text, propose a new file or the deletion of one, compile its changes on a copy of the project and read the errors at their lines, look up the bibliography, search the literature, read and suggest to-dos and load skills. It can also ask you a question and show a plan before it starts (@sec-assistant-plan). Its tools are the ones a local agent gets from Spectrum, with its own for the project's files. After changing a source file it compiles, fixes the first error and compiles again, three times at most, and says in its answer whether the document builds. Its threads are saved with the project's chats but listed only in the workspace. A to-do it suggests appears as a card with #ui[Add] and is only saved once added.
-
-#ui[Stop] ends the request to the model and the step that is running at once, and what the agent had done is kept. A message sent while the agent works waits above the message box as #ui[Queued]. #ui[Steer now] hands it to the agent between two steps, and otherwise it is sent as the next request when the answer has come. A page opened or reloaded while the agent works shows the run where it is, with the messages that were waiting.
-
-With each message the agent is given the document's language and an outline of the project as it is saved, which is the same for LaTeX, Typst and Markdown: the main file, the files it reads (`\input`, `#include` and `#import`), the bibliography files, a Markdown front matter, the headings with their file and line, the labels, the keys cited and the references and citations that do not resolve. While the language's own skill (`spectrum-latex`, `spectrum-typst` or `spectrum-markdown`) is on, the agent is pointed to it for fixing a compile.
+With each message the agent is given the document's language and an outline of the project as it is saved, which is the same for LaTeX, Typst and Markdown: the main file, the files it reads (`\input`, `#include` and `#import`), the bibliography files, a Markdown front matter, the headings with their file and line, the labels, the keys cited and the references and citations that do not resolve. While the language's own skill (`spectrum-latex`, `spectrum-typst` or `spectrum-markdown`) is on, the agent is pointed to it for fixing a compile. A later message in the same thread keeps what the agent read before, so it does not read the same files again.
 
 Everything the agent reads that you did not type, such as a file, a compile log, a search result, a paper's abstract or a tool's answer, reaches the model marked with where it came from, and the model is told that such text is material to work on and never an instruction. A sentence planted in a web page or a PDF therefore cannot pass for your request. A skill is marked as a skill, a method to follow that cannot change the agent's rules.
+
+=== Watching the agent work <sec-assistant-work>
+
+The Spectrum agent works in the open. Each step appears as a card while it runs, with how long it took once it has finished, and what the agent says between its steps and its answer appear as they are written (@fig-assistant-working). A card opens to what the step returned: an edit to its comparison and a compile to its errors. A step too quick to time shows no time.
+
+#shot("figures/03-assistant/agent-working.png", [The Spectrum agent at work. Four steps are done, the compile of its draft took 1.6 seconds, a message waits above the message box with #ui[Steer now], and #ui[Stop] is in the header.], width: 65%) <fig-assistant-working>
+
+The agent works for up to 25 steps. In them it can,
+
+- read the project, search its text and read the project map and the bibliography,
+- change a file by replacing exact text or by writing it again, propose a new file or the deletion of one,
+- compile the project with its changes on a copy and read the errors at their lines, in LaTeX, Typst and Markdown,
+- search the literature, fetch a paper's BibTeX and, where web search is set up, search the web (@sec-assistant-search),
+- read and suggest to-dos and load skills and
+- ask you a question, show a plan before it starts (@sec-assistant-plan) and suggest a line for `AGENTS.md` (@sec-assistant-instructions).
+
+Its tools are the ones a local agent gets from Spectrum (@sec-assistant-external), with its own for the project's files. Nothing in your project changes until you apply a change: the agent writes its proposed changes over a copy of the project, and its compile builds that copy. After changing a source file it compiles, fixes the first error and compiles again, three times at most, and says in its answer whether the document builds. The compile card says how it went in its title, such as "Compiled the draft: builds" or the number of errors. #ui[Fix with AI] in the Logs and Review tabs does the same (@sec-assistant-review).
+
+The transcript also folds away the agent's thinking, shows questions and permission requests in line, and has a #ui[Restore] row for each Before AI changes checkpoint. A to-do the agent suggests appears as a card with #ui[Add] and is only saved once added. The thread is saved with the project's chats but listed only in the workspace.
+
+=== Stopping and steering
+
+#ui[Stop], in the header while the agent works, ends the request to the model and the step that is running at once, a compile included, and what the agent had done is kept. A message sent while the agent works waits above the message box as #ui[Queued], as the box itself says ("Enter queues it while the agent works"). #ui[Steer now] hands it to the agent between two steps, and otherwise it is sent as the next request when the answer has come. A message still waiting after #ui[Stop] stays there with #ui[Send] and #ui[Remove]. Closing the workspace does not stop the agent, and a page opened or reloaded while it works shows the run where it is, with the messages that were waiting.
 
 === Planning first and questions <sec-assistant-plan>
 
@@ -281,10 +298,10 @@ The Spectrum agent can show its plan before it changes anything. #ui[Plan], a ch
 Each step of the plan has a tick box, and a step that is unticked is left out. #ui[Edit as text] shows the steps one a line, where they can be reworded, reordered, added to and removed. The plan is then settled with one of three buttons,
 
 - #ui[Approve and run], which starts the work on the ticked steps,
-- #ui[Approve, ask before each file], which starts it and has the agent stop before each new file it would change, and
+- #ui[Approve, ask before each file], which starts it and has the agent stop before each new file it would change and
 - #ui[Keep planning], which leaves #ui[Plan] on and puts the cursor in the message box, where you say what the plan should change.
 
-The approved steps stay at the top of the thread as the plan, and each is ticked off as the agent finishes it.
+The approved steps stay at the top of the thread as the plan, and each is ticked off as the agent finishes it. #ui[Save open steps as to-dos] adds the steps still open to the to-do list (@ch-writing).
 
 Nothing an agent proposes is written before you apply it in the review, whichever button is used, so #ui[Approve, ask before each file] is not a second permission to write. It sets the pace instead. The agent prepares its changes to one file and then asks, for example, "Go on to refs.bib?" (@fig-assistant-plan-pause), so that the first file's changes can be reviewed, applied or rejected before the agent builds on them. #ui[Go on] starts the next file, and the agent is told of any change you rejected in the meantime. A file whose change already waits in the tray is not asked about again. #ui[Cancel] closes the question, and your next request then runs the rest of the plan without stopping.
 
@@ -296,59 +313,69 @@ When a request is unclear and a wrong guess would waste the work, the agent asks
 
 A plan or a question that waits for you holds nothing open. Its turn has ended, so no request to the model is running and there is nothing to stop. It is saved with the thread and is therefore still there after the page is reloaded or Spectrum is closed and opened again, and your answer starts the next turn. A message that was queued while the agent worked is not taken as the answer: it stays above the message box with #ui[Send].
 
-=== Standing instructions in AGENTS.md <sec-assistant-instructions>
+=== Reviewing an agent's changes <sec-assistant-agent-review>
 
-Things an agent should know about one project, such as its spelling, the journal's style or a folder it must never touch, are kept in a file named `AGENTS.md` at the top of the project. The Spectrum agent is given this file with every request as your standing instructions for the project, up to its first 20,000 characters. Most local agents read a file of this name by themselves from their copy of the project. A persona (@sec-assistant-personas) applies to every project, while `AGENTS.md` applies to the one it is in.
-
-The chip under the message box shows where the file stands,
-
-- #ui[Add AGENTS.md] when the project has none, which offers a short file to start from, with the main file, its language and three example rules, and opens it in the editor,
-- #ui[Using AGENTS.md] when the agent is given the file, which opens it, and
-- #ui[AGENTS.md not used] when the file has not been approved, as described below.
-
-The file is yours, and the agent never writes it by itself. A change the agent proposes to it goes through the review like any other change, and the changed file is then read and approved again before the agent is given it. When you state a lasting rule in a conversation, the agent can suggest it as a line for the file. The suggestion appears as a card (@fig-assistant-instructions), and only #ui[Add] on the card puts the line in, under a heading "Remembered" at the end of the file. This is all the memory the Spectrum agent has: every remembered line is a line of `AGENTS.md`, which you can read, change and delete in the editor. A suggested line is at most 300 characters and a turn can suggest three, and no line is added once the file would pass 20,000 characters.
-
-#shot("figures/03-assistant/agent-instructions.png", [Two lines the agent suggested for `AGENTS.md`. The first has been added, and the chip says the file is in use.], width: 65%) <fig-assistant-instructions>
-
-A project can come from elsewhere, such as a clone from GitHub, an imported archive or a folder someone shared, and an `AGENTS.md` that came with it is text you have not seen. Spectrum therefore gives the file to the agent only as you approved it on this computer. A file you save in the editor is approved as it was saved, and so is a line you add from a suggestion's card. A file that arrived with the project, or was changed by anything other than your own typing, is not given to the agent: a pull, a sync from another computer, an agent working in the project's folder and an agent's change that you applied in the review all count. A line above the message box then says so (@fig-assistant-instructions-ask). #ui[Read it] opens the file, and #ui[Use it], which is available once the file has been opened, approves it as it is. The approval is kept on this computer and outside the project's folder, so it cannot arrive with a project. Until then the agent can still read the file as it reads any file of the project, which is as material and never as instructions.
-
-#shot("figures/03-assistant/agent-instructions-ask.png", [An `AGENTS.md` that changed outside Spectrum. The agent is not given it until it has been read and #ui[Use it] is pressed.], width: 65%) <fig-assistant-instructions-ask>
-
-This check is the Spectrum agent's. A local agent that reads `AGENTS.md` by itself reads the file in its copy of the project as it is.
-
-=== When a run does not finish
-
-A run can end before its answer in four ways, and in each the work done so far is kept (@fig-assistant-continue).
-
-- A request to the model fails. Spectrum first tries a busy provider again as described in @sec-assistant-panel, and the thread says how long it waits and which try it is. If the request still fails, the thread shows the steps that were finished, the failure under them and the changes prepared so far in the tray, where they can be reviewed and applied as usual.
-- The agent reaches its limit of 25 steps.
-- The answer is cut off by the model's output limit.
-- You press #ui[Stop].
-
-#ui[Continue] under the thread goes on in the same run, from the conversation as it stood with every step it had finished, and builds on the changes still open. Spectrum keeps a run for an hour after its last answer and until the app closes. After that, #ui[Continue] starts a new run that is told which steps were finished, so it still goes on and does not start again. When nothing had been done before a failure, the button is #ui[Try again].
-
-#shot("figures/03-assistant/agent-continue.png", [A run that failed on its third step. The two finished steps and the prepared change are kept, and #ui[Continue] goes on from them.], width: 65%) <fig-assistant-continue>
-
-=== Changes from an agent
-
-Changes from either agent wait in a tray above the message box, such as "2 files, +6 −5". The tray opens a review in the pane (@fig-assistant-agent-review), which lists the files with the number of changes in each and shows the chosen file as its separate changes, exactly as #ui[Review changes] does (@sec-assistant-panel). A file the agent made is marked #ui[New] and one it removed #ui[Deleted], while a new file with the text of a deleted one is marked #ui[Moved].
+Changes from either agent wait in a tray above the message box, such as "2 files, +6 −5". #ui[Review] on the tray opens a review in the pane (@fig-assistant-agent-review), which lists the files with the number of changes in each and shows the chosen file as its separate changes, as #ui[Review changes] does (@sec-assistant-changes). A file the agent made is marked #ui[New] and one it would delete #ui[Deleted], while a new file with the text of a deleted one is marked #ui[Moved].
 
 #shot("figures/03-assistant/agent-review.png", [The Spectrum agent's changes in review. `main.tex` has three changes, and the one in focus is under the Method heading.], width: 55%) <fig-assistant-agent-review>
 
-Each change has #ui[Edit], #ui[Reject] and #ui[Apply], and the keys are the same, with #key("A") for apply. #ui[Apply] and #ui[Reject] in the file's bar settle the whole file, and #ui[Apply all] and #ui[Reject all] the whole tray. A change that is applied is written into your file after a "Before AI changes" checkpoint, which appears in the conversation with #ui[Restore], and the rest of the agent's work on that file stays in the tray. A local agent is told on its next task which of its changes were applied, edited or rejected, and its copy of the file is brought into line.
+Each change has #ui[Edit], #ui[Reject] and #ui[Apply], and the keys are the same as in #ui[Review changes], with #key("A") for apply. #ui[Apply] and #ui[Reject] in the file's bar settle the whole file, and #ui[Apply all] and #ui[Reject all] the whole tray. A change that is applied is written into your file after a "Before AI changes" checkpoint, which appears in the conversation with #ui[Restore], and the rest of the agent's work on that file stays in the tray. A local agent is told on its next task which of its changes were applied, edited or rejected, and its copy of the file is brought into line.
+
+A proposed deletion is reviewed as one change that takes out every line of the file. Only when it is applied whole is the file moved to the Bin, or deleted where there is no Bin, and the Before AI changes checkpoint keeps a copy either way. A deletion taken in part, or edited before it is applied, is an edit like any other, so the file stays with the lines that are left.
 
 The comparison is always against your file as it is now, with the left side labelled #ui[Your file]. Edits you made while the agent worked are therefore kept: the agent's changes are moved onto your text where the two do not touch. Where you and the agent changed the same lines, the change is marked "You changed these lines too" and shows both versions, yours on the left and the agent's on the right (@fig-assistant-agent-overlap). Such a change is settled with one of four buttons,
 
 - #ui[Keep mine], which leaves your lines as they are,
 - #ui[Use the agent's], which replaces your lines with the agent's,
-- #ui[Take both], which keeps your lines and puts the agent's after them, and
+- #ui[Take both], which keeps your lines and puts the agent's after them and
 - #ui[Edit], which opens both versions in one box to be edited into what the file should say.
 
 #ui[Apply] for the file and #ui[Apply all] apply only the changes that do not overlap your own, and say how many are left for you to choose. If the agent also changed a file's line endings, a line above the comparison offers that as one more change with #ui[Keep mine] and #ui[Apply].
 
-#shot("figures/03-assistant/agent-review-overlap.png", [A sentence was added to line 34 in the editor while the agent rewrote the same line. Both versions are shown, with the four ways to settle them.], width: 55%) <fig-assistant-agent-overlap>
+#shot("figures/03-assistant/agent-review-overlap.png", [A sentence was added to line 33 in the editor while the agent rewrote the same line. Both versions are shown, with the four ways to settle them.], width: 55%) <fig-assistant-agent-overlap>
 
-#ui[PDF before and after] works as in #ui[Review changes]. For a local agent the page after is compiled from the agent's own copy of the project. Closing the workspace does not stop a task, and a dot on the #ui[Agent] button shows a task that is running, waiting for an answer or has changes to review.
+#ui[PDF before and after] works as in #ui[Review changes]. For a local agent the page after is compiled from the agent's own copy of the project. A dot on the #ui[Agent] button shows a task that is running, waiting for an answer or has changes to review.
+
+=== Standing instructions in AGENTS.md <sec-assistant-instructions>
+
+Things an agent should know about one project, such as its spelling, the journal's style or a folder it must never touch, are kept in a file named `AGENTS.md` at the top of the project. The Spectrum agent is given this file with every request as your standing instructions for the project, up to its first 20,000 characters. #ui[Fix with AI] is given it too. Most local agents read a file of this name by themselves from their copy of the project. A persona (@sec-assistant-personas) applies to every project, while `AGENTS.md` applies to the one it is in.
+
+The chip under the message box shows where the file stands,
+
+- #ui[Add AGENTS.md] when the project has none, which offers a short file to start from, with the main file, its language and three example rules, and opens it in the editor,
+- #ui[Using AGENTS.md] when the agent is given the file, which opens it and
+- #ui[AGENTS.md not used] when the file has not been approved, as described below.
+
+The file is yours, and the agent never writes it by itself. When you state a lasting rule in a conversation, the agent can suggest it as a line for the file. The suggestion appears as a card (@fig-assistant-instructions), and only #ui[Add] on the card puts the line in, under a heading "Remembered" at the end of the file. This is all the memory the Spectrum agent has: every remembered line is a line of `AGENTS.md`, which you can read, change and delete in the editor. A suggested line is at most 300 characters and a turn can suggest three, and no line is added once the file would pass 20,000 characters.
+
+#shot("figures/03-assistant/agent-instructions.png", [Two lines the agent suggested for `AGENTS.md`. The first has been added, and the chip says the file is in use.], width: 65%) <fig-assistant-instructions>
+
+A project can come from elsewhere, such as a clone from GitHub, an imported archive or a folder someone shared, and an `AGENTS.md` that came with it is text you have not seen. Spectrum therefore gives the file to the agent only as you approved it on this computer. Two things approve it: your own save of the file in the editor, and a line you add with #ui[Add] on a suggestion's card. Nothing else does. A file that arrived with the project is not given to the agent, and neither is one changed by a pull, a sync from another computer, an agent working in the project's folder or an agent's change that you applied in the review, even though you applied it yourself. A line above the message box then says so (@fig-assistant-instructions-ask). #ui[Read it] opens the file, and #ui[Use it], which is available once the file has been opened, approves it as it is. The approval is kept on this computer and outside the project's folder, so it cannot arrive with a project. Until then the agent can still read the file as it reads any file of the project, which is as material and never as instructions.
+
+#shot("figures/03-assistant/agent-instructions-ask.png", [An `AGENTS.md` that changed outside Spectrum. The agent is not given it until it has been read and #ui[Use it] is pressed.], width: 65%) <fig-assistant-instructions-ask>
+
+This check is the Spectrum agent's. A local agent that reads `AGENTS.md` by itself reads the file in its copy of the project as it is.
+
+=== When a run does not finish <sec-assistant-unfinished>
+
+A run can end before its answer in four ways, and in each the work done so far is kept, with a line under the thread that says why (@fig-assistant-continue).
+
+- A request to the model fails. Spectrum first tries a busy provider again as described in @sec-assistant-panel, and the thread says how long it waits and which try it is. If the request still fails, the thread shows the steps that were finished, the failure under them and the changes prepared so far in the tray, where they can be reviewed and applied as usual.
+- The agent reaches its limit of 25 steps.
+- The answer is cut off by the model's output limit.
+- You press #ui[Stop], and the line says "You stopped the agent. What it had done is kept."
+
+#ui[Continue] goes on in the same run, from the conversation as it stood with everything the agent had read and done, and builds on the changes still open. Spectrum keeps a run for an hour after its last answer and until the app closes. After that, #ui[Continue] starts a new run that is told which steps were finished, so it still goes on and does not start again. When nothing had been done before a failure, the button is #ui[Try again].
+
+#shot("figures/03-assistant/agent-continue.png", [A run whose fourth request failed. The three finished steps and the prepared change are kept, and #ui[Continue] goes on from them.], width: 65%) <fig-assistant-continue>
+
+=== What a run cost <sec-assistant-meter>
+
+The meter in the header counts what the agent used (@fig-assistant-meter). For the Spectrum agent, #ui[Turn] is the request running or the last one and #ui[Thread] all of the thread's requests together, in tokens read and written. Requests to Claude and OpenAI models ask the provider to cache what stays the same from one request to the next, and the share marked #ui[cached] is how much of what the model read came from that cache, which costs less. A cost appears only as an estimate, marked #ui[est.], when every model the thread used has a price in #menu[Settings][Models] (@sec-assistant-models). Holding the pointer over the meter shows each count in full and, where there is a price, what the cache saved.
+
+#shot("figures/03-assistant/agent-meter.png", [The meter of a thread of two requests. Most of what the model read came from the cache, and the cost is an estimate from the prices in Settings.], width: 65%) <fig-assistant-meter>
+
+For a local agent the meter shows what the agent reports: how full its context is, with a bar that turns orange from 80 per cent, the cost of the session when the agent gives one and the tokens of its last task. An agent that reports none of these shows no meter.
 
 == External agents <sec-assistant-external>
 
@@ -385,7 +412,9 @@ The menu at the left of the #ui[Local agents] header chooses how an agent may to
 
 In either mode, and for the Spectrum agent too, some files of a project are kept from every agent: Spectrum's own `.spectrum` folder, `.git`, `.claude`, and the files that look like secrets by their names. These are `.env` files, `.netrc`, `.npmrc` and `.pypirc`, private keys such as `id_rsa`, and files ending in `.pem`, `.key`, `.p12`, `.pfx`, `.keystore`, `.jks` or `.ppk`. It is the same list that the GitHub backup leaves out (@ch-references), so a file that is not uploaded is not shown to an agent either.
 
-An isolated agent keeps working on its copy while changes wait, so you can go on prompting and apply or reject each file when you like. An applied file becomes the agent's new starting point, and a rejected one is put back to your version in the agent's copy, which the agent is told with its next task. The isolated agent can reach public HTTPS and DNS but not local services, so local models and MCP servers set up outside Spectrum are not available to it. A project with symbolic links, files over 50 MB, or more than 500 MB or 10,000 files is refused rather than copied incompletely.
+An isolated agent keeps working on its copy while changes wait, so you can go on prompting and apply or reject each change when you like. What you apply becomes the agent's new starting point, and what you reject is put back to your version in the agent's copy, which the agent is told with its next task. The isolated agent can reach public HTTPS and DNS but not local services, so local models and MCP servers set up outside Spectrum are not available to it. A project with symbolic links, files over 50 MB, or more than 500 MB or 10,000 files is refused rather than copied incompletely.
+
+In an Isolated session the agent stays running for five minutes after a task, so the next message starts at once, and at most three such agents wait at a time. It stops when you open another session or close the project, and Spectrum starts it again when it is needed. A Direct session's agent stops after each task instead, since anything it left running would write into the project outside the task's checkpoint. Either way, a local agent also stops when Spectrum is force-quit or crashes, and does not run on by itself. A very long output from an agent, such as a whole log, keeps its first and last 100 KB with a line saying how many characters were left out between, so that it does not push the earlier turns out of the session.
 
 On macOS, a local agent also gets Spectrum's tools from a small server it starts inside its isolation: `compile`, `get_log`, `project_map`, `bib_entries`, `bib_search`, `search_text`, `literature_search`, `fetch_bibtex`, `list_todos`, `suggest_todo` and `load_skill`. For a Markdown document, `compile` and `get_log` give each error at its line of the `.md` file, as the Logs tab does, and not at a line of the file pandoc generated. Each tool's answer reaches the agent marked with the tool it came from, as text to read and not an instruction. Local agents on Windows get no Spectrum tools yet, as #menu[Settings][Agents] says there. Keys, working copies, session mappings and transcripts stay on this computer.
 
