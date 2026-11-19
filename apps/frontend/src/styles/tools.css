@@ -2479,6 +2479,12 @@ textarea.table-latex {
   margin-top: 16px;
 }
 
+/* a long unbroken line in an answer or a thought (a path, an address, a token) wraps, and never widens the transcript */
+.agent-scroll .md {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .agent-foot {
   flex: none;
   display: flex;

@@ -244,7 +244,7 @@ export default function SpectrumAgentTab({
     const { runId, base } = attached;
     const source = new EventSource(agentRunEventsUrl(runId));
     let held: AgentEvent[] = [];
-    let timer = 0;
+    let frame = 0;
     let over = false;
     // the waiting messages the agent has read in this turn
     const read = new Set<number>();
@@ -257,9 +257,9 @@ export default function SpectrumAgentTab({
       setStopping(false);
       setEvents([]);
     };
-    // many pieces of an answer a second: taken in together, a few times a second
+    // many pieces of an answer a second: taken in together, once a frame
     const flush = async () => {
-      timer = 0;
+      frame = 0;
       const batch = held;
       held = [];
       setEvents((old) => batch.reduce(addRunEvent, old));
@@ -286,7 +286,10 @@ export default function SpectrumAgentTab({
     };
     source.onmessage = (message) => {
       held.push(JSON.parse(message.data) as AgentEvent);
-      timer ||= window.setTimeout(() => void flush(), 40);
+      // a window in the background draws no frames and runs its timers late: there each event is taken in as it comes,
+      // so the turn's result is saved on time
+      if (document.hidden) void flush();
+      else frame ||= requestAnimationFrame(() => void flush());
     };
     source.onerror = () => {
       // EventSource connects again by itself; once the backend no longer has the run (it was restarted), it gives up
@@ -296,7 +299,7 @@ export default function SpectrumAgentTab({
     };
     return () => {
       source.close();
-      window.clearTimeout(timer);
+      cancelAnimationFrame(frame);
     };
   }, [attached]);
 
