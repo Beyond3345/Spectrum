@@ -56,6 +56,8 @@ async function start(name, secret, { stdin = false, wait = true } = {}) {
   return server;
 }
 
+// named for the port, so two copies of Spectrum on one computer keep their own
+const name = ({ port }) => `spectrum_session_${port}`;
 const get = ({ port }, url, headers = {}, method = 'GET') => new Promise((resolve, reject) => {
   request({ port, host: '127.0.0.1', path: url, headers, method }, (res) => {
     let body = '';
@@ -75,10 +77,11 @@ test('with a secret, the API answers only the window that carries it', async () 
   };
 
   assert.equal((await ask('/api/health')).status, 403);
-  assert.equal((await ask('/api/health', { cookie: 'spectrum_session=' })).status, 403);
-  assert.equal((await ask('/api/health', { cookie: `spectrum_session=${crypto.randomBytes(32).toString('hex')}` })).status, 403);
-  assert.equal((await ask('/api/health', { cookie: `spectrum_session=${secret.slice(0, -1)}` })).status, 403);
+  assert.equal((await ask('/api/health', { cookie: `${name(server)}=` })).status, 403);
+  assert.equal((await ask('/api/health', { cookie: `${name(server)}=${crypto.randomBytes(32).toString('hex')}` })).status, 403);
+  assert.equal((await ask('/api/health', { cookie: `${name(server)}=${secret.slice(0, -1)}` })).status, 403);
   // the secret under another name, or as a header of another kind, is not the cookie
+  assert.equal((await ask('/api/health', { cookie: `spectrum_session=${secret}; spectrum_session_${server.port + 1}=${secret}` })).status, 403);
   assert.equal((await ask('/api/health', { cookie: `other=${secret}`, authorization: `Bearer ${secret}` })).status, 403);
   // however the path is spelt, and whatever the method
   assert.equal((await ask('/%61pi/projects')).status, 403);
@@ -87,7 +90,7 @@ test('with a secret, the API answers only the window that carries it', async () 
   assert.equal(refused.status, 403);
   assert.equal(JSON.parse(refused.body).code, 'session');
 
-  const cookie = `theme=dark; spectrum_session=${secret}`;
+  const cookie = `theme=dark; ${name(server)}=${secret}`;
   assert.equal((await ask('/api/health', { cookie })).status, 200);
   assert.equal((await ask('/api/projects', { cookie })).status, 200);
   // the cookie does not excuse a page of another program or another site
@@ -102,7 +105,7 @@ test('with a secret, the API answers only the window that carries it', async () 
   assert.equal(opened.status, 302);
   assert.equal(opened.headers.location, '/open?path=%2Ftmp%2Fa+b%C3%A9.tex');
   assert.equal((await get(server, `/session?t=${secret}&next=${encodeURIComponent('/open?path=/tmp/a bé.tex')}`)).headers.location, '/open?path=/tmp/a%20b%C3%A9.tex');
-  assert.deepEqual(opened.headers['set-cookie'], [`spectrum_session=${secret}; Path=/; HttpOnly; SameSite=Strict`]);
+  assert.deepEqual(opened.headers['set-cookie'], [`${name(server)}=${secret}; Path=/; HttpOnly; SameSite=Strict`]);
   // a wrong one sets nothing and still lands on the app, which shows its message
   const wrong = await ask(`/session?t=${'0'.repeat(64)}&next=/projects`);
   assert.equal(wrong.status, 302);
@@ -123,7 +126,7 @@ test('the shell’s secret comes on stdin, and a shell that sends none stops the
   const secret = crypto.randomBytes(32).toString('hex');
   const server = await start('stdin', secret, { stdin: true });
   assert.equal((await get(server, '/api/health')).status, 403);
-  assert.equal((await get(server, '/api/health', { cookie: `spectrum_session=${secret}` })).status, 200);
+  assert.equal((await get(server, '/api/health', { cookie: `${name(server)}=${secret}` })).status, 200);
   assert.ok(!server.output.includes(secret));
 
   const silent = await start('silent', null, { stdin: true, wait: false });

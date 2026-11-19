@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { PORT } from '../config/constants.js';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
@@ -43,8 +44,11 @@ export function isLocalRequest(req) {
   return true;
 }
 
-/** The cookie a window of the desktop app presents on every request: this launch's secret. */
-export const SESSION_COOKIE = 'spectrum_session';
+/**
+ * The cookie a window of the desktop app presents on every request: this launch's secret. Named for the port, since a
+ * browser keeps cookies by host alone and two copies of Spectrum (the app and a debug build) would take each other's.
+ */
+export const SESSION_COOKIE = `spectrum_session_${PORT}`;
 
 /**
  * This launch's secret, or '' when there is none and the API is open to this computer as before (npm run dev,

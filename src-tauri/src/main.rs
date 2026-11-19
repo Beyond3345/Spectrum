@@ -1394,9 +1394,10 @@ fn wait_for_backend(app: &AppHandle, port: u16, secret: &str) -> Result<(), Stri
     Err("The Spectrum server didn't respond within 40 seconds.".into())
 }
 
-/// The shell's own request to the API carries the secret as a window's would.
-fn health_request(secret: &str) -> String {
-    format!("GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nCookie: spectrum_session={secret}\r\nConnection: close\r\n\r\n")
+/// The shell's own request to the API carries the secret as a window's would, in the cookie the
+/// backend names for its port (authUtils.js, SESSION_COOKIE).
+fn health_request(port: u16, secret: &str) -> String {
+    format!("GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nCookie: spectrum_session_{port}={secret}\r\nConnection: close\r\n\r\n")
 }
 
 fn health_ok(port: u16, secret: &str) -> bool {
@@ -1405,7 +1406,7 @@ fn health_ok(port: u16, secret: &str) -> bool {
         return false;
     };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-    let request = health_request(secret);
+    let request = health_request(port, secret);
     if stream.write_all(request.as_bytes()).is_err() {
         return false;
     }
@@ -1567,7 +1568,8 @@ mod tests {
             // what the backend redirects to is the page asked for, to the letter
             assert_eq!(page.join(&query["next"]).unwrap(), page);
         }
-        assert!(health_request(&secret).contains(&format!("\r\nCookie: spectrum_session={secret}\r\n")));
+        assert!(health_request(38787, &secret)
+            .contains(&format!("\r\nCookie: spectrum_session_38787={secret}\r\n")));
     }
 
     #[test]
