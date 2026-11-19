@@ -65,6 +65,7 @@ import type { Section as SettingsSection } from './SettingsSheet';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
+import { referenceEdits } from '../editor/references';
 import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
 import ConvertSheet from './ConvertSheet';
 import JyutpingSheet from './JyutpingSheet';
@@ -1028,6 +1029,41 @@ function Editor({ projectId }: { projectId: string }) {
     setShownDoc(remap);
     shownRef.current = remap(shownRef.current);
     setCompiledDoc(remap);
+    updateReferences(from, to, [...fileSet].map(remap)).catch((err) => notify(`Couldn’t update the references: ${errorText(err)}`, 'error'));
+  };
+
+  /**
+   * After a rename or move: offers to rewrite the \include, \includegraphics, #include, image() and Markdown links that
+   * named the old path (references.ts), listing each change, with a checkpoint first; all or none. Nothing names it:
+   * nothing is asked.
+   */
+  const updateReferences = async (from: string, to: string, paths: string[]) => {
+    const sources = paths.filter((p) => /\.(tex|ltx|typ|md|markdown)$/i.test(p) && !heldRef.current.has(p));
+    const texts = new Map(await Promise.all(sources.map(async (p) => [p, await readText(p).catch(() => '')] as const)));
+    const plan = referenceEdits(texts, from, to, new Set(paths));
+    if (!plan.length) return;
+    const count = plan.reduce((n, p) => n + p.changes.length, 0);
+    const ok = await confirmDialog({
+      title: `Update ${plural(count, 'reference')} to “${nameOf(to)}”?`,
+      message: `${plan.map((p) => `${p.path}: ${p.changes.join(', ')}`).join('\n')}\n\nA “Before updating references” checkpoint is saved first.`,
+      confirmLabel: 'Update',
+      cancelLabel: 'Leave them'
+    });
+    if (!ok) return;
+    const { version } = await createVersion('manual', `Before updating references to ${to}`);
+    const written: typeof plan = [];
+    try {
+      for (const p of plan) {
+        if ((await readText(p.path)) !== p.before) throw new Error(`${nameOf(p.path)} changed meanwhile.`);
+        await writeProjectFile(p.path, p.after);
+        written.push(p);
+      }
+    } catch (err) {
+      const stuck: string[] = [];
+      for (const p of written.reverse()) await writeProjectFile(p.path, p.before).catch(() => stuck.push(p.path));
+      throw new Error(`${errorText(err)}${stuck.length ? ` ${stuck.join(', ')} couldn’t be put back; checkpoint ${version?.number} has them as they were.` : ' Nothing was changed.'}`);
+    }
+    notify(`Updated ${plural(count, 'reference')} in ${plural(plan.length, 'file')}`, 'success');
   };
 
   const onDeleted = (path: string) => {
