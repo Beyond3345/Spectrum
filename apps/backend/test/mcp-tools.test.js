@@ -97,6 +97,30 @@ test('project_map reads a Typst and a Markdown document too', async () => {
   assert.deepEqual(markdown.labels.map((l) => l.label), ['sec:results']);
   assert.deepEqual(markdown.bibFiles, ['refs.bib']);
   assert.deepEqual(markdown.unresolvedCites.map((c) => c.key), ['nobody']);
+  // what the Spectrum agent's project outline is made from: the language, the front matter and the keys cited
+  assert.equal(markdown.language, 'Markdown');
+  assert.deepEqual(markdown.frontMatter, { bibliography: 'refs.bib' });
+  assert.deepEqual(markdown.citedKeys, ['known', 'nobody']);
+  assert.equal(typst.language, 'Typst');
+  assert.equal('frontMatter' in typst, false);
+
+  // a file Typst imports is part of the document; a package is not, and the context may be given in place of its folder
+  await write(path.join(work, 'main.typ'), '#import "@preview/cetz:0.3.1": canvas\n#import "template.typ": conf\n= Only <one>\n');
+  await write(path.join(work, 'template.typ'), '#let conf(doc) = doc\n');
+  assert.deepEqual((await tools.projectMap(work, { mainFile: 'main.typ' })).files, [{ file: 'main.typ' }, { file: 'template.typ', includedFrom: 'main.typ' }]);
+});
+
+test('a Markdown compile’s errors are at lines of the .md, never of the file pandoc generated', () => {
+  const fromLog = tools.logErrors('main.md.tex:96: Undefined control sequence.\nLaTeX Warning: Reference `x\' on page 1 undefined\n');
+  assert.deepEqual(fromLog.errors, ['main.md.tex:96: Undefined control sequence.']);
+  const traced = tools.markdownErrors([
+    { severity: 'error', message: 'Undefined control sequence.', file: 'main.md', line: 12, column: 1 },
+    { severity: 'error', message: 'Missing $ inserted.', file: 'main.md' },
+    { severity: 'warning', message: 'No entry in the bibliography for the citation @Missing2020.', file: 'main.md', line: 16, column: 1 }
+  ], fromLog);
+  assert.deepEqual(traced.errors, ['main.md:12: Undefined control sequence.', 'main.md: Missing $ inserted.']);
+  assert.equal(traced.warnings, 2);
+  assert.deepEqual(traced.undefined, ['main.md:16: No entry in the bibliography for the citation @Missing2020.', 'LaTeX Warning: Reference `x\' on page 1 undefined']);
 });
 
 test('with no main file named, a Typst or Markdown project still has a main document', async () => {
