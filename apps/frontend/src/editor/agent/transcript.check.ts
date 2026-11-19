@@ -1,7 +1,7 @@
 // Self-check for the local agent transcript. Run:
 // npx esbuild apps/frontend/src/editor/agent/transcript.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/transcript.cjs && node <scratch>/transcript.cjs
 import type { AgentEvent } from '../../api/client';
-import { addEvent, closeChanges, metaOf, openChanges, project, resumeNote, storedChanges } from './transcript';
+import { addEvent, addRunEvent, closeChanges, metaOf, openChanges, project, resumeNote, retryLine, runView, stepCall, storedChanges, threadItems } from './transcript';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -195,6 +195,100 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
     eq(open.map((c) => [c.filePath, c.original, c.proposed]), [['a.tex', 'A0', 'A2'], ['gone.tex', '', 'G'], ['e.tex', 'E0', 'E1']], 'open proposals');
     eq(after.map((c) => [c.filePath, c.original, c.proposed]), [['gone.tex', '', 'G'], ['a.tex', 'A0', 'A3']], 'a superseded one is closed');
     eq(reopened.map((c) => [c.filePath, c.original === bib, c.proposed === added]), [['refs.bib', true, true]], 'the base back from its patch');
-    console.log('transcript: all checks passed');
+    // ─── a Spectrum agent turn, heard as events while it happens ───
+{
+  let n = 0;
+  const lastOf = <T,>(list: T[]): T | undefined => list[list.length - 1];
+  const rev = (type: string, data: unknown, first?: number): AgentEvent => ({ id: ++n, type, data, at: at(n), ...(first !== undefined && { first }) });
+  const said = (items: ReturnType<typeof runView>['items']) => items.map((i) => [i.type, 'text' in i ? i.text : i.type === 'tool' ? `${i.call.title}|${i.call.status}` : i.type === 'todo' ? i.todo.text : '']);
+  const turn = [
+    rev('state', { status: 'running', turn: 1 }),
+    rev('user', { text: 'Fix the errors' }),
+    rev('text', { text: 'Looking ' }),
+    rev('text', { text: 'around.' }),
+    rev('step', { id: 's0-0', tool: 'read_file', about: 'main.tex', status: 'started' }),
+    rev('step', { id: 's0-1', tool: 'search_text', about: 'citep', status: 'started' }),
+    rev('step', { id: 's0-0', tool: 'read_file', about: 'main.tex', ok: true, ms: 12, status: 'done' }),
+    rev('usage', { input: 100, output: 5, total: { input: 100, output: 5, cacheRead: 0, cacheWrite: 0 }, model: 'm' })
+  ];
+  let held = turn.reduce(addRunEvent, [] as AgentEvent[]);
+  eq(held.length, 7, 'the pieces of a message are held as one event');
+  eq(held[2].first, 3, 'which names its first piece');
+  eq(turn.reduce(addRunEvent, held).length, 7, 'an event heard already is passed over');
+  let view = runView(held);
+  // the turn's own request is the thread's last message already
+  eq(said(view.items), [['assistant', 'Looking around.'], ['tool', 'Read “main.tex”|completed'], ['tool', 'Search the project for “citep”|in_progress']], 'steps appear as they start and are updated in place');
+  eq(view.items[1].type === 'tool' && view.items[1].call.ms, 12, 'with how long each took');
+  eq([view.status, view.waiting, view.usage?.input, view.result], ['running', '', 100, null], 'still going');
+
+  // a busy provider: the wait is said, and the half answer of the try given up is dropped
+  const busy = [rev('step', { id: 's0-1', tool: 'search_text', about: 'citep', ok: true, ms: 3, status: 'done' }), rev('text', { text: 'Half an ans' }), rev('retry', { attempt: 2, of: 3, waitMs: 4000, streamed: true })];
+  held = busy.reduce(addRunEvent, held);
+  view = runView(held);
+  eq(view.waiting, 'The provider is busy. Retrying in 4 s, 2 of 3…', 'the wait');
+  eq(lastOf(view.items)?.type, 'tool', 'the half answer is gone');
+  eq(retryLine({ attempt: 3, of: 3, waitMs: 0 }), 'The provider is busy. Trying again, 3 of 3…', 'no wait to speak of');
+
+  // the edit with its diff, a compile that says how it went, a message steered in, a to-do, then the result
+  const rest = [
+    rev('step', { id: 's1-0', tool: 'edit_file', about: 'main.tex', status: 'started' }),
+    rev('step', { id: 's1-0', tool: 'edit_file', about: 'main.tex', ok: true, ms: 1, status: 'done', show: { diff: { path: 'main.tex', oldText: '\\citep', newText: '\\parencite' } } }),
+    rev('user', { text: 'Keep the passive voice', steered: true }),
+    rev('step', { id: 's2-0', tool: 'compile', status: 'started' }),
+    rev('step', { id: 's2-0', tool: 'compile', ok: true, ms: 3400, status: 'done', show: { text: '2 errors\nmethod.tex:41: Undefined control sequence\nmethod.tex:88: Missing $ inserted' } }),
+    rev('todo', { text: 'Check the figure', link: { file: 'main.tex', line: 3 } }),
+    rev('step', { id: 's3-0', tool: 'compile', status: 'started' }),
+    rev('text', { text: 'It builds ' }),
+    rev('text', { text: 'now.' })
+  ];
+  held = rest.reduce(addRunEvent, held);
+  view = runView(held);
+  eq(view.waiting, '', 'the wait is over once the next thing happens');
+  eq(said(view.items).slice(3), [['tool', 'Edit “main.tex”|completed'], ['user', 'Keep the passive voice'], ['tool', 'Compiled the draft: 2 errors|completed'], ['todo', 'Check the figure'], ['tool', 'Compile the draft|in_progress'], ['assistant', 'It builds now.']], 'the rest of the turn');
+  const edit = view.items[3];
+  eq(edit.type === 'tool' && edit.call.content, [{ type: 'diff', path: 'main.tex', oldText: '\\citep', newText: '\\parencite' }], 'an edit opens to its two sides');
+  const compiled = view.items[5];
+  eq(compiled.type === 'tool' && [compiled.call.kind, compiled.call.ms, compiled.call.content[0]], ['execute', 3400, { type: 'content', content: { type: 'text', text: '2 errors\nmethod.tex:41: Undefined control sequence\nmethod.tex:88: Missing $ inserted' } }], 'a compile opens to its errors');
+
+  // a page that connects later is sent the answer whole, in place of the pieces it had
+  const whole = { id: n + 1, type: 'text', data: { text: 'It builds now. All of it.' }, at: at(n + 1), first: n - 1 };
+  n += 1;
+  held = addRunEvent(held, whole);
+  eq(lastOf(runView(held).items), { type: 'assistant', key: `rt${whole.first}`, text: 'It builds now. All of it.' }, 'the stored message replaces its pieces');
+
+  // Stop: the step still going is no longer, and the result is the turn's
+  const result = { turn: 1, ok: false, reply: 'Stopped.', incomplete: 'stopped', patches: [], steps: [] };
+  held = [rev('state', { status: 'stopping', turn: 1 }), rev('result', result), rev('state', { status: 'stopped', turn: 1, incomplete: 'stopped' })].reduce(addRunEvent, held);
+  view = runView(held);
+  eq(view.status, 'stopped', 'the run’s state');
+  eq(lastOf(view.items.filter((i) => i.type === 'tool'))?.call.status, 'failed', 'no step is left going');
+  eq([view.result?.incomplete, view.result?.at], ['stopped', at(n - 1)], 'the outcome, dated by the backend');
+}
+
+// a finished turn in the thread reads as it did while it happened: what was said between the steps is in its place
+{
+  const steps = [{ tool: 'read_file', about: 'main.tex', ok: true, ms: 12 }, { tool: 'compile', ok: true, ms: 900, show: { text: 'builds' } }, { tool: 'delete_file', about: 'old.tex', ok: false }];
+  const items = threadItems([
+    { role: 'user', content: 'Fix it', createdAt: '' },
+    { role: 'assistant', content: 'Done.', createdAt: '', meta: { steps, says: [{ before: 0, text: 'Looking around.' }, { before: 1, text: 'Keep it short', user: true }, { before: 3, text: 'One left.' }], todos: [{ text: 'Check' }] } },
+    { role: 'assistant', content: 'Request failed: Overloaded.', createdAt: '', meta: { error: true, resume: 'failed' } },
+    // a thread saved before 2.6: steps with no time, nothing said between them
+    { role: 'assistant', content: 'Earlier.', createdAt: '', meta: { steps: [{ tool: 'apply_patch', about: 'a.tex', ok: true }, { tool: 'get_compile_log', ok: true }] } }
+  ]);
+  eq(
+    items.map((i) => [i.type, 'text' in i ? i.text : i.type === 'tool' ? i.call.title : i.type === 'todo' ? i.todo.text : '']),
+    [['user', 'Fix it'], ['assistant', 'Looking around.'], ['tool', 'Read “main.tex”'], ['user', 'Keep it short'], ['tool', 'Compiled the draft: builds'], ['tool', 'Propose deleting “old.tex”'], ['assistant', 'One left.'], ['assistant', 'Done.'], ['todo', 'Check'], ['notice', 'Request failed: Overloaded.'], ['tool', 'Propose a change to “a.tex”'], ['tool', 'Read the compile log'], ['assistant', 'Earlier.']],
+    'a thread’s items'
+  );
+  eq(new Set(items.map((i) => i.key)).size, items.length, 'each with its own key');
+  eq(stepCall({ tool: 'some_new_tool', ok: true }, 'x').title, 'some_new_tool', 'a tool this build has no words for is named as it is');
+  // a proposed deletion stays one through the thread's store
+  const stored = storedChanges([{ filePath: 'old.tex', original: 'x', proposed: '', deleted: true }]);
+  eq(stored, [{ filePath: 'old.tex', proposed: '', deleted: true, original: 'x' }], 'kept as a deletion');
+  void openChanges({ id: 'd', title: '', createdAt: '', updatedAt: '', mode: 'assistant', messages: [{ role: 'assistant', content: '', createdAt: '', meta: { changes: stored } }] }, async () => 'x').then((open) => eq(open.map((c) => [c.filePath, c.deleted]), [['old.tex', true]], 'and offered again as one'));
+  eq(resumeNote({ resume: 'stopped' }), 'The user stopped your last run before its answer. Go on from there. Do not redo what is finished.', 'a stopped run');
+}
+
+console.log('transcript: all checks passed');
   });
 }

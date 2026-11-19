@@ -342,7 +342,14 @@ const ENGINES = ['auto', 'pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic
 const todoLink = z.object({ file: z.string().optional(), line: z.number().int().optional(), doc: z.string().optional(), page: z.number().int().optional(), key: z.string().optional() });
 // what a compile found, its own errors first: the compile's one-line failure only when the log named none
 export const buildErrors = (r) => (r.errors?.length ? r.errors : r.error ? [r.error] : []);
-const errorLines = (r) => [...buildErrors(r), ...(r.undefined || [])];
+/** How a compile went, for its card: a first line that says it (“builds”, “2 errors”), then what it found. */
+function buildShown(r) {
+  const errors = buildErrors(r);
+  const missing = r.undefined || [];
+  const few = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const head = !r.ok ? (errors.length ? few(errors.length, 'error', 'errors') : 'it did not build') : missing.length ? `builds, with ${few(missing.length, 'undefined citation or reference', 'undefined citations or references')}` : 'builds';
+  return { text: [head, ...errors, ...missing].slice(0, 21).join('\n') };
+}
 
 export const TOOLS = [
   {
@@ -352,7 +359,7 @@ export const TOOLS = [
     // it writes this run's build folder and log, so two never run at once
     readOnly: false,
     run: async (ctx, input) => compile(await ctx.root(), ctx.state, input, ctx.compileOptions),
-    show: (r) => ({ text: r.ok && !errorLines(r).length ? 'Builds.' : errorLines(r).slice(0, 20).join('\n') || 'It did not build.' })
+    show: buildShown
   },
   {
     name: 'get_log',

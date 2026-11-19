@@ -240,7 +240,8 @@ export async function patchesToChanges(api: Pick<EditorApi, 'ensureFileContent'>
       filePath: patch.path,
       original: patch.original ?? (await api.ensureFileContent(patch.path).catch(() => '')),
       proposed: patch.content,
-      source
+      source,
+      ...(patch.deleted && { deleted: true })
     }))
   );
 }
@@ -254,9 +255,12 @@ export const modelSetUp = (llm: { apiKey?: string; endpoint?: string }) => Boole
 /** Fix with AI's tooltip: with no model set up it opens Settings › Models instead */
 export const fixTitle = (api: Pick<EditorApi, 'llm'>) => (modelSetUp(api.llm.main) ? undefined : 'No AI model is set up yet: opens Settings › Models');
 
+/** What Fix with AI says of the compile its run ended with: whether the fix builds, or where it still fails. */
+export const buildLine = (build?: { ok: boolean; errors: string[] }) => (!build ? '' : build.ok ? 'Builds.' : `Still fails at ${build.errors[0] || 'the compile'}`);
+
 /**
  * Fix with AI, as the Logs and Review tabs offer it: one tools run asked for a patch, which opens as reviewable changes
- * named `label`. file: where the problem is (the open file otherwise); withLog: the compile log goes along. Says how it
+ * named `label`, and ends with a compile of the fix (on a copy: nothing is written), told with the reply. file: where the problem is (the open file otherwise); withLog: the compile log goes along. Says how it
  * went itself and returns the AI's reply ('' when the request failed).
  */
 export async function fixWithAI(api: EditorApi, { task, prompt, selection = '', file, label, withLog = true }: { task: string; prompt: string; selection?: string; file?: string; label: string; withLog?: boolean }) {
@@ -277,14 +281,16 @@ export async function fixWithAI(api: EditorApi, { task, prompt, selection = '', 
       llmConfig: api.llm.main,
       interaction: 'agent',
       history: [],
-      reasoningEffort: api.settings.reasoningEffort
+      reasoningEffort: api.settings.reasoningEffort,
+      verify: true,
+      compile: { typstVersion: api.settings.compileDefaults.typstVersion, markdownEngine: api.settings.compileDefaults.markdownEngine }
     });
     const changes = await patchesToChanges(api, res.patches || [], label);
     if (changes.length) api.proposeChanges(changes, { open: true });
     else if (res.ok) api.notify('No fix was proposed.');
     else api.notify(res.reply || 'The request failed.', 'error');
     // a failed request's reply is its error, told above already
-    return res.ok || changes.length ? res.reply || '' : '';
+    return res.ok || changes.length ? [res.reply, buildLine(res.build)].filter(Boolean).join('\n\n') : '';
   } catch (err) {
     api.notify(`Couldn’t get a fix: ${errorText(err)}`, 'error');
     return '';

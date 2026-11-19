@@ -1,5 +1,5 @@
 import { applyPatch, createPatch } from 'diff';
-import type { AgentEvent, AgentStep, AgentUserRequest, ChatThread, Incomplete, SuggestedTodo } from '../../api/client';
+import type { AgentEvent, AgentRunResult, AgentSaid, AgentStep, AgentUsage, AgentUserRequest, ChatThread, Incomplete, SuggestedTodo } from '../../api/client';
 
 // A local agent's stored events (agentSessionService.js) as the workspace shows them: messages with their streamed
 // chunks joined, one card per tool call updated in place, the latest plan, commands and options. And what a Spectrum
@@ -22,6 +22,8 @@ export interface ToolCall {
   locations: { path: string; line?: number }[];
   rawInput?: unknown;
   rawOutput?: unknown;
+  /** how long it took, where the agent says (the Spectrum agent's steps) */
+  ms?: number;
 }
 
 export type PlanEntry = { content: string; priority?: string; status: string };
@@ -167,13 +169,19 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
  * earlier 2.0 builds kept a closed change in changes, with its status.
  */
 export type ChangeStatus = 'applied' | 'rejected' | 'superseded';
-type StoredChange = { filePath: string; original?: string; originalPatch?: string; proposed?: string; status?: ChangeStatus };
+type StoredChange = { filePath: string; original?: string; originalPatch?: string; proposed?: string; status?: ChangeStatus; deleted?: boolean };
 export type ThreadMeta = {
   changes?: StoredChange[];
   closed?: { filePath: string; status: ChangeStatus }[];
   todos?: SuggestedTodo[];
   checkpoints?: Checkpoint[];
   steps?: AgentStep[];
+  /** what was said between the steps: the model's words, and messages steered in */
+  says?: AgentSaid[];
+  /** the tokens of the turn's model calls */
+  usage?: AgentUsage;
+  /** the run and turn this reply is the result of ("run:turn"), so a page that connects later saves it once */
+  run?: string;
   error?: boolean;
   /** the run ended before its answer, and Continue goes on from it */
   resume?: Incomplete;
@@ -184,7 +192,8 @@ export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) 
 export const RESUME_HINT: Record<Incomplete, string> = {
   failed: 'The run stopped at a failed request. What it had done is kept.',
   steps: 'The agent stopped at its limit of 25 steps.',
-  cut: 'The answer was cut off by the model’s output limit.'
+  cut: 'The answer was cut off by the model’s output limit.',
+  stopped: 'You stopped the agent. What it had done is kept.'
 };
 
 /**
@@ -195,7 +204,7 @@ export function resumeNote(meta: ThreadMeta) {
   if (!meta.resume) return '';
   const steps = (meta.steps || []).filter((s) => s.ok).map((s) => [s.tool, s.about].filter(Boolean).join(' '));
   return [
-    { failed: 'Your last run stopped before its answer, at a request to the model that failed.', steps: 'Your last run stopped at its limit of 25 steps, before its answer.', cut: 'Your last answer was cut off by the output limit: go on from where it stops, without repeating it.' }[meta.resume],
+    { failed: 'Your last run stopped before its answer, at a request to the model that failed.', steps: 'Your last run stopped at its limit of 25 steps, before its answer.', cut: 'Your last answer was cut off by the output limit: go on from where it stops, without repeating it.', stopped: 'The user stopped your last run before its answer.' }[meta.resume],
     steps.length ? `Steps it had finished: ${steps.slice(-40).join('; ')}.` : '',
     meta.changes?.length ? `The changes it prepared (${meta.changes.map((c) => c.filePath).join(', ')}) are still open: read_file shows each file with them, and a new change builds on them.` : '',
     meta.resume === 'cut' ? '' : 'Go on from there. Do not redo what is finished.'
@@ -206,8 +215,8 @@ export function resumeNote(meta: ThreadMeta) {
  * A turn's changes as a thread keeps them: a large file's base as the patch from the proposal back to it, a few bytes
  * where the base itself would take as much of the chat cap again.
  */
-export const storedChanges = (changes: { filePath: string; original: string; proposed: string }[]): StoredChange[] =>
-  changes.map(({ filePath, original, proposed }) => ({ filePath, proposed, ...(!original || original.length + proposed.length < 1_000_000 ? { original } : { originalPatch: createPatch(filePath, proposed, original) }) }));
+export const storedChanges = (changes: { filePath: string; original: string; proposed: string; deleted?: boolean }[]): StoredChange[] =>
+  changes.map(({ filePath, original, proposed, deleted }) => ({ filePath, proposed, ...(deleted && { deleted }), ...(!original || original.length + proposed.length < 1_000_000 ? { original } : { originalPatch: createPatch(filePath, proposed, original) }) }));
 
 /**
  * Each file's latest proposal not applied or rejected yet, against the file it was proposed against, so applying it
@@ -227,10 +236,10 @@ export async function openChanges(chat: ChatThread, read: (path: string) => Prom
   const list = await Promise.all(
     [...proposed].map(async ([filePath, c]) => {
       const back = c.originalPatch != null && applyPatch(c.proposed ?? '', c.originalPatch);
-      return { filePath, original: typeof back === 'string' ? back : c.original ?? (await read(filePath).catch(() => '')), proposed: c.proposed ?? '', source: 'Spectrum agent' };
+      return { filePath, original: typeof back === 'string' ? back : c.original ?? (await read(filePath).catch(() => '')), proposed: c.proposed ?? '', source: 'Spectrum agent', ...(c.deleted && { deleted: true }) };
     })
   );
-  return list.filter((c) => c.original !== c.proposed);
+  return list.filter((c) => c.deleted || c.original !== c.proposed);
 }
 
 /**
@@ -256,9 +265,17 @@ export function closeChanges(messages: ChatThread['messages'], paths: string[], 
 const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
   read_file: ['read', 'Read a file', 'Read'],
   list_files: ['search', 'List the project’s files', 'List the files in'],
+  edit_file: ['edit', 'Edit a file', 'Edit'],
   propose_patch: ['edit', 'Propose a change', 'Propose a change to'],
   apply_patch: ['edit', 'Propose a change', 'Propose a change to'],
+  delete_file: ['delete', 'Propose deleting a file', 'Propose deleting'],
+  compile: ['execute', 'Compile the draft'],
+  get_log: ['read', 'Read the compile log'],
   get_compile_log: ['read', 'Read the compile log'],
+  search_text: ['search', 'Search the project', 'Search the project for'],
+  project_map: ['read', 'Read the project’s map'],
+  bib_entries: ['read', 'List the bibliography'],
+  bib_search: ['search', 'Search the bibliography', 'Search the bibliography for'],
   web_search: ['search', 'Search the web', 'Search the web for'],
   arxiv_search: ['search', 'Search arXiv', 'Search arXiv for'],
   literature_search: ['search', 'Search the literature', 'Search the literature for'],
@@ -270,8 +287,100 @@ const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
   suggest_todo: ['other', 'Suggest a to-do', 'Suggest the to-do']
 };
 
-/** A Spectrum agent's tool call as a tool card shows it. */
-export function stepCall(step: AgentStep, id: string): ToolCall {
+/**
+ * A Spectrum agent's tool call as a tool card shows it: still going (status 'started', from a run's event) or done,
+ * with how long it took and what it opens to. A compile's card says how the build went in its title.
+ */
+export function stepCall(step: AgentStep & { status?: string }, id: string): ToolCall {
   const [kind, alone, about] = STEPS[step.tool] || ['other', step.tool];
-  return { toolCallId: id, title: about && step.about ? `${about} “${step.about}”` : alone, kind, status: step.ok ? 'completed' : 'failed', content: [], locations: [] };
+  const built = step.tool === 'compile' && step.ok ? step.show?.text?.split('\n')[0] : '';
+  const title = built ? `Compiled the draft: ${built}` : about && step.about ? `${about} “${step.about}”` : alone;
+  const content: ToolContent[] = step.show?.diff ? [{ type: 'diff', ...step.show.diff }] : step.show?.text ? [{ type: 'content', content: { type: 'text', text: step.show.text } }] : [];
+  return { toolCallId: id, title, kind, status: step.status === 'started' ? 'in_progress' : step.ok ? 'completed' : 'failed', content, locations: [], ...(step.ms !== undefined && { ms: step.ms }) };
+}
+
+/** A Spectrum agent thread's messages as the transcript's items: each reply with its steps, and what was said between them, in their order. */
+export function threadItems(messages: ChatThread['messages']): Item[] {
+  return messages.flatMap((m, i): Item[] => {
+    const meta = metaOf(m);
+    const steps = meta.steps || [];
+    const says = meta.says || [];
+    const said = (j: number) => says.flatMap((s, k): Item[] => ((j < steps.length ? s.before === j : s.before >= j) ? [{ type: s.user ? 'user' : 'assistant', key: `w${i}-${k}`, text: s.text }] : []));
+    return [
+      ...steps.flatMap((step, j): Item[] => [...said(j), { type: 'tool', key: `s${i}-${j}`, call: stepCall(step, `${i}-${j}`) }]),
+      ...said(steps.length),
+      m.role === 'user' ? { type: 'user', key: `u${i}`, text: m.content } : meta.error ? { type: 'notice', key: `n${i}`, text: m.content, error: true } : { type: 'assistant', key: `a${i}`, text: m.content },
+      ...(meta.todos || []).map((todo, j): Item => ({ type: 'todo', key: `t${i}-${j}`, todo })),
+      ...(meta.checkpoints || []).map((checkpoint): Item => ({ type: 'checkpoint', key: `c${i}-${checkpoint.id}`, checkpoint }))
+    ];
+  });
+}
+
+// ─── A Spectrum agent run's events (agentRunService.js), heard while a turn happens ───
+
+/**
+ * A run's event added to those held. A text piece joins the one before it, as the backend stores them, so a long
+ * answer is one event; an event that stands for earlier pieces (first, replayed to a page that connects later) takes
+ * their place; one heard already is passed over.
+ */
+export function addRunEvent(old: AgentEvent[], e: AgentEvent) {
+  const last = old[old.length - 1];
+  if (last && e.id <= last.id) return old;
+  if (e.first !== undefined) return [...old.filter((item) => item.id < e.first!), e];
+  if (e.type === 'text' && last?.type === 'text') return [...old.slice(0, -1), { ...e, first: last.first ?? last.id, data: { text: last.data.text + e.data.text } }];
+  return [...old, e];
+}
+
+/** What the page says while the agent waits to try a busy provider again. */
+export const retryLine = ({ attempt, of, waitMs }: { attempt: number; of: number; waitMs: number }) =>
+  waitMs >= 500 ? `The provider is busy. Retrying in ${Math.ceil(waitMs / 1000)} s, ${attempt} of ${of}…` : `The provider is busy. Trying again, ${attempt} of ${of}…`;
+
+/**
+ * A turn's events as the transcript shows them while it happens: the same items a finished turn has (threadItems),
+ * so nothing moves when it ends. items leave out the turn's own request, which the thread already shows; waiting:
+ * what to say in place of “Working…” (a retry's wait); status: the run's; usage: the turn's tokens so far; result:
+ * the turn's outcome once it has ended.
+ */
+export function runView(events: AgentEvent[]) {
+  const items: Item[] = [];
+  const calls = new Map<string, Extract<Item, { type: 'tool' }>>();
+  let waiting = '';
+  let status = 'running';
+  let usage: AgentUsage | null = null;
+  let result: (AgentRunResult & { at: string }) | null = null;
+  for (const e of events) {
+    const d = e.data || {};
+    const last = items[items.length - 1];
+    if (e.type === 'usage') {
+      usage = d.total;
+      continue;
+    }
+    if (e.type === 'state') status = d.status;
+    else if (e.type === 'result') result = { ...d, at: e.at };
+    else if (e.type === 'retry') {
+      // the text of the try given up is dropped: the next try says it again
+      if (d.streamed && last?.type === 'assistant') items.pop();
+      waiting = retryLine(d);
+      continue;
+    } else if (e.type === 'text') {
+      if (last?.type === 'assistant') last.text += d.text;
+      else items.push({ type: 'assistant', key: `rt${e.first ?? e.id}`, text: String(d.text || '') });
+    } else if (e.type === 'user') {
+      if (d.steered) items.push({ type: 'user', key: `ru${e.id}`, text: String(d.text || '') });
+    } else if (e.type === 'step') {
+      const call = stepCall(d, `r${d.id}`);
+      const held = calls.get(d.id);
+      if (held) held.call = call;
+      else {
+        const item = { type: 'tool' as const, key: `rs${d.id}`, call };
+        calls.set(d.id, item);
+        items.push(item);
+      }
+    } else if (e.type === 'todo') items.push({ type: 'todo', key: `rd${e.id}`, todo: { text: d.text, ...(d.link && { link: d.link }) } });
+    else if (e.type === 'notice' && d.message) items.push({ type: 'notice', key: `rn${e.id}`, text: String(d.message), error: false });
+    waiting = '';
+  }
+  // a turn that ended leaves none of its steps still going
+  if (!RUNNING.includes(status)) for (const item of calls.values()) if (item.call.status === 'in_progress') item.call = { ...item.call, status: 'failed' };
+  return { items, waiting, status, usage, result };
 }

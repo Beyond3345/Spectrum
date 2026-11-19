@@ -1235,6 +1235,8 @@ export interface AgentPatch {
   /** the file as the AI saw it */
   original: string;
   content: string;
+  /** the agent proposes deleting the file */
+  deleted?: boolean;
 }
 
 export function runAgent(payload: {
@@ -1256,18 +1258,88 @@ export function runAgent(payload: {
   /** a skill's id, whose instructions go in whole (the composer's /skill-id) */
   skill?: string;
   /** tools mode: the thread's proposals still open, which the run goes on from */
-  drafts?: { path: string; original: string; proposed: string }[];
+  drafts?: AgentDraft[];
+  /** tools mode (Fix with AI): a run that changed something ends with a compile, answered in `build` */
+  verify?: boolean;
+  /** tools mode: the Typst version and Markdown engine this computer compiles with, for the agent's own compile */
+  compile?: { typstVersion?: string; markdownEngine?: string };
 }) {
-  // tools mode: changes lists its patches as local agents' changes tray does, todos the to-dos it suggests and steps
-  // its tool calls; incomplete: why a run ended before its answer, with what it had prepared returned all the same
-  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; changes?: AgentChange[]; todos?: SuggestedTodo[]; steps?: AgentStep[]; incomplete?: Incomplete }>('/api/agent/run', json('POST', payload));
+  return request<AgentRunResult & { suggestion: string }>('/api/agent/run', json('POST', payload));
 }
 
-/** Why a run ended before its answer: a model request failed, the step limit was reached, or the answer stopped at the output limit */
-export type Incomplete = 'failed' | 'steps' | 'cut';
+/** A proposal still open in a thread, which a run goes on from */
+export type AgentDraft = { path: string; original: string; proposed: string; deleted?: boolean };
 
-/** One of the Spectrum agent's tool calls: the tool, what it was about (a path, a query, an id) and whether it worked */
-export type AgentStep = { tool: string; about?: string; ok: boolean };
+/**
+ * A tools run's outcome: changes lists its patches as local agents' changes tray does, todos the to-dos it suggests,
+ * steps its tool calls and says what was said between them; incomplete: why it ended before its answer, with what it
+ * had prepared returned all the same; usage: the tokens of its model calls; build: the compile a verify run ends
+ * with; unsent: messages steered too late to be read
+ */
+export type AgentRunResult = {
+  ok: boolean;
+  reply: string;
+  patches?: AgentPatch[];
+  changes?: AgentChange[];
+  todos?: SuggestedTodo[];
+  steps?: AgentStep[];
+  says?: AgentSaid[];
+  incomplete?: Incomplete;
+  usage?: AgentUsage;
+  build?: { ok: boolean; errors: string[] };
+  unsent?: string[];
+  /** in a run's `result` event: which of its turns this is */
+  turn?: number;
+};
+
+/** Why a run ended before its answer: a model request failed, the step limit was reached, the answer stopped at the output limit, or the user stopped it */
+export type Incomplete = 'failed' | 'steps' | 'cut' | 'stopped';
+
+/**
+ * One of the Spectrum agent's tool calls: the tool, what it was about (a path, a query, an id), whether it worked, how
+ * long it took, and what its card opens to (an output's text, or the two sides of an edit)
+ */
+export type AgentStep = { tool: string; about?: string; ok: boolean; ms?: number; show?: { text?: string; diff?: { path: string; oldText: string; newText: string } } };
+/** What was said before step `before` of a turn: the model's own words, or (user) a message steered in */
+export type AgentSaid = { before: number; text: string; user?: boolean };
+/** Tokens as the provider counted them: all it read (cacheRead and cacheWrite are part of input) and what it wrote */
+export type AgentUsage = { input: number; output: number; cacheRead?: number; cacheWrite?: number };
+
+// ─── The Spectrum agent's runs (agentRunService.js): a thread's turns as jobs, heard as events ───
+
+export interface AgentRunSnapshot { id: string; projectId: string; threadId: string; status: string; turn: number; lastEventId: number }
+/** A turn's request: what a tools run takes, for a thread; model, reasoningEffort and planFirst are the turn's own */
+export type AgentTurnRequest = {
+  projectId: string;
+  threadId: string;
+  /** the request as the model reads it, and as the user typed it */
+  prompt: string;
+  shown?: string;
+  selection?: string;
+  activePath?: string;
+  compileLog?: string;
+  llmConfig?: Partial<LLMConfig>;
+  model?: string;
+  reasoningEffort?: ReasoningEffort;
+  searchConfig?: SearchConfig;
+  history?: { role: 'user' | 'assistant'; content: string }[];
+  instructions?: string;
+  skill?: string;
+  drafts?: AgentDraft[];
+  compile?: { typstVersion?: string; markdownEngine?: string };
+  /** passed through to the run: the plan card builds on it */
+  planFirst?: boolean;
+};
+/** Starts a turn; the answer comes at once, and the turn is heard at agentRunEventsUrl. 409 while one is going. */
+export const startAgentTurn = (payload: AgentTurnRequest) => request<{ ok: boolean; run: AgentRunSnapshot }>('/api/agent/runs', json('POST', payload));
+/** Continue: the run's own conversation from where its last turn stopped. 404 once the run is no longer kept. */
+export const continueAgentRun = (id: string, payload: Omit<AgentTurnRequest, 'projectId' | 'threadId' | 'prompt'>) => request<{ ok: boolean; run: AgentRunSnapshot }>(`/api/agent/runs/${id}/continue`, json('POST', payload));
+export const stopAgentRun = (id: string) => request<{ ok: boolean }>(`/api/agent/runs/${id}/stop`, json('POST'));
+/** Hands the agent a message between this turn's steps. 409 once the turn has ended. */
+export const steerAgentRun = (id: string, text: string) => request<{ ok: boolean }>(`/api/agent/runs/${id}/steer`, json('POST', { text }));
+/** The run of a thread while the backend keeps it (an hour after its last turn), or null */
+export const findAgentRun = (projectId: string, threadId: string) => request<{ ok: boolean; run: AgentRunSnapshot | null }>(`/api/agent/runs?${new URLSearchParams({ projectId, threadId })}`);
+export const agentRunEventsUrl = (id: string, after = 0) => `/api/agent/runs/${id}/events?after=${after}`;
 
 export function callLLM(payload: {
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];

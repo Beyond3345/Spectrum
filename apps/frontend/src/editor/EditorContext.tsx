@@ -9,6 +9,8 @@ export interface PendingChange {
   original: string;
   proposed: string;
   source?: string;
+  /** the change is the file's deletion: applying it moves the file to the Bin */
+  deleted?: boolean;
 }
 
 export interface CompileError {

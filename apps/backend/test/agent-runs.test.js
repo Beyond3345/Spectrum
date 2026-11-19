@@ -448,8 +448,8 @@ test('compile builds the proposals on a copy of the project: a Typst error is at
   assert.equal(out[7].ok, true);
   const compiles = of(events, 'step').filter((s) => s.tool === 'compile' && s.status !== 'started');
   assert.deepEqual(compiles.map((s) => s.status), ['done', 'done', 'done']);
-  assert.match(compiles[1].show.text, /^main\.typ:3:/);
-  assert.equal(compiles[2].show.text, 'Builds.');
+  assert.match(compiles[1].show.text, /^1 error\nmain\.typ:3:/);
+  assert.equal(compiles[2].show.text, 'builds');
   assert.equal(await fs.readFile(path.join(p.path, 'main.typ'), 'utf8'), '= One\n\nSome text.\n');
   const work = path.join(getRun(json.run.id).stateDir, 'work');
   assert.deepEqual((await fs.readdir(work)).sort(), ['main.typ']);

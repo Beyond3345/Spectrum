@@ -205,8 +205,10 @@ test('each tool of the registry has the one shape, a schema a model can read and
   assert.deepEqual(tools.checkedInput(compile, { main: 'a.tex', extra: 1 }), { main: 'a.tex' });
   assert.throws(() => tools.checkedInput(compile, { engine: 'word' }), /Invalid input for compile: engine: /);
   assert.throws(() => tools.checkedInput(tools.TOOLS.find((t) => t.name === 'bib_search'), {}), /query/);
-  assert.deepEqual(compile.show({ ok: false, errors: ['main.tex:3: Undefined control sequence.'], undefined: [] }), { text: 'main.tex:3: Undefined control sequence.' });
-  assert.deepEqual(compile.show({ ok: true, errors: [], undefined: [] }), { text: 'Builds.' });
+  assert.deepEqual(compile.show({ ok: false, error: 'No PDF was produced.', errors: ['main.tex:3: Undefined control sequence.'], undefined: [] }), { text: '1 error\nmain.tex:3: Undefined control sequence.' });
+  assert.deepEqual(compile.show({ ok: false, error: 'No LaTeX engine found.' }), { text: '1 error\nNo LaTeX engine found.' });
+  assert.deepEqual(compile.show({ ok: true, errors: [], undefined: ['Citation `x\' undefined'] }), { text: 'builds, with 1 undefined citation or reference\nCitation `x\' undefined' });
+  assert.deepEqual(compile.show({ ok: true, errors: [], undefined: [] }), { text: 'builds' });
 });
 
 test('compile builds the copy into the run’s folder and writes nothing into the copy', { skip: !hasTeX && 'Needs a TeX installation.' }, async () => {

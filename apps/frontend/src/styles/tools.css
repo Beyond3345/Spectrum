@@ -2806,6 +2806,44 @@ textarea.table-latex {
   border-radius: 50%;
 }
 
+/* how long a step took, beside its status */
+.agent-tool-time {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* messages typed while the agent works, waiting above the message box */
+.agent-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-queued {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 6px 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  font-size: 13px;
+}
+
+.agent-queued-label {
+  color: var(--text-secondary);
+}
+
+.agent-queued-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* changes tray and its review */
 
 .agent-tray {

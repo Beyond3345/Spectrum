@@ -198,6 +198,9 @@ const KIND_ICONS: Record<string, string> = {
   switch_mode: 'arrow.triangle.2.circlepath'
 };
 
+/** How long a step took, to a tenth of a second; nothing for one too quick to be worth saying. */
+const took = (ms?: number) => (ms === undefined || ms < 50 ? '' : `${(ms / 1000).toFixed(ms < 9950 ? 1 : 0)} s`);
+
 /** One tool call, updated in place as the agent reports on it; opens to its output, terminal or diff. */
 export function ToolCard({ call, terminals }: { call: ToolCall; terminals: Record<string, string> }) {
   const [open, setOpen] = useState(false);
@@ -215,6 +218,7 @@ export function ToolCard({ call, terminals }: { call: ToolCall; terminals: Recor
           {call.title || 'Tool call'}
         </span>
         {count && <DiffCount {...count} />}
+        {call.status !== 'in_progress' && took(call.ms) && <span className="agent-tool-time">{took(call.ms)}</span>}
         <span className="agent-tool-status">
           {call.status === 'completed' ? (
             <Icon name="checkmark" />
@@ -608,8 +612,11 @@ export function AgentComposer({
   draft,
   picker,
   placeholder,
+  queues = false,
   onSend
 }: {
+  /** while busy, a message is still taken (the tab queues it for the agent) and the send button stays on */
+  queues?: boolean;
   busy: boolean;
   /** nothing to send to yet (no agent set up): the send button is off, without busy's spinner */
   disabled?: boolean;
@@ -685,7 +692,7 @@ export function AgentComposer({
       use = typed[1];
       message = typed[2].trim();
     }
-    if (busy || disabled || (!message && !use)) return;
+    if ((busy && !queues) || disabled || (!message && !use)) return;
     onSend(message, { skill: use, research, context: { file: on('file'), selection: on('selection'), log: on('log'), todos: on('todos') } });
     setText('');
     setSkill(undefined);
@@ -773,8 +780,8 @@ export function AgentComposer({
             )
         )}
         <span className="grow" />
-        <button className="composer-send" title="Send (↵)" aria-label="Send" disabled={busy || disabled || (!text.trim() && !skill)} onClick={send}>
-          {busy ? <span className="spinner" /> : <Icon name="arrow.up" />}
+        <button className="composer-send" title={busy && queues ? 'Queue for the agent (↵)' : 'Send (↵)'} aria-label={busy && queues ? 'Queue' : 'Send'} disabled={(busy && !queues) || disabled || (!text.trim() && !skill)} onClick={send}>
+          {busy && !queues ? <span className="spinner" /> : <Icon name="arrow.up" />}
         </button>
       </div>
     </div>
