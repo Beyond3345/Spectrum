@@ -21,7 +21,7 @@ A Markdown project in Spectrum has a main `.md` file (usually `main.md`), `.bib`
 ## The compile loop
 
 1. Compile (`compile`, or ask the user to compile and send the log).
-2. pandoc's own errors give a line and column in the `.md` (a broken front matter is the usual one). Errors from the second step are traced back to the `.md` line by their text; when one is not, look at the generated source (Logs › Show generated LaTeX) to see what pandoc made of the passage.
+2. pandoc's own errors give a line and column in the `.md` (a broken front matter is the usual one). Errors from the second step are traced back to the `.md` line by their text; when one is not, read the generated source to see what pandoc made of the passage: the `compile` tool names its folder as `generated`, and in the app it is Logs › Show generated LaTeX.
 3. Fix the first error with the smallest change, then compile again. Stop after five rounds without progress and explain what is left.
 
 ## Reading common problems
