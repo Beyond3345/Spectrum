@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { ComponentProps } from 'react';
 import Select from '../../../app/Select';
-import { UnitsSwitch } from '../../controls';
+import { More, UnitsSwitch } from '../../controls';
 import { plain } from '../../sketch';
 import type { DiagramMode } from '../../types';
 import { formCode, formStyle, newFormModel, presetFor, valuesOf, PRESETS } from './presets';
@@ -117,6 +117,15 @@ function VennTable({ values, readOnly, set }: { values: FormValues; readOnly?: b
   );
 }
 
+/** The fields in runs: each grouped field with the fields of its group next to it, each other field alone. */
+const folded = (fields: FormField[]) =>
+  fields.reduce<FormField[][]>((runs, field) => {
+    const last = runs[runs.length - 1];
+    if (field.group && last?.[0].group === field.group) last.push(field);
+    else runs.push([field]);
+    return runs;
+  }, []);
+
 function Canvas({ model, onChange, readOnly }: CanvasProps) {
   const preset = presetFor(model.preset);
   if (!preset) return <div className="diagram-hint form-frame">This build of Spectrum has no form called {model.preset}.</div>;
@@ -128,9 +137,18 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
     <div className="form-frame">
       <h2>{preset.label}</h2>
       <div className="diagram-inspector-fields">
-        {preset.fields.filter((field) => (field.shown?.(values) ?? true) && !(venn && /^(shade|text)\d$/.test(field.key))).map((field) => (
-          <FieldRow key={field.key} field={field} value={values[field.key]} readOnly={readOnly} onChange={(value) => set(field.key, value)} />
-        ))}
+        {folded(preset.fields.filter((field) => (field.shown?.(values) ?? true) && !(venn && /^(shade|text)\d$/.test(field.key)))).map((run) => {
+          const rows = run.map((field) => <FieldRow key={field.key} field={field} value={values[field.key]} readOnly={readOnly} onChange={(value) => set(field.key, value)} />);
+          const group = run[0].group;
+          // folded, and open by itself while one of them differs from the preset's own
+          return group ? (
+            <More key={`${model.preset}:${group}`} summary={group} open={run.some((field) => values[field.key] !== preset.values[field.key])}>
+              {rows}
+            </More>
+          ) : (
+            rows
+          );
+        })}
         {venn && <VennTable values={values} readOnly={readOnly} set={set} />}
       </div>
     </div>

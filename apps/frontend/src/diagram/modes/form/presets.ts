@@ -16,8 +16,12 @@ import { venn } from './venn';
 export type FormValue = string | number | boolean;
 export type FormValues = Record<string, FormValue>;
 
-/** shown: whether the frame shows the field for these values (a third set's fields with three sets); none: always */
-type FieldBase = { key: string; label: string; hint?: string; shown?(values: FormValues): boolean };
+/**
+ * shown: whether the frame shows the field for these values (a third set's fields with three sets); none: always.
+ * group: the fold it sits in with the fields of the same group next to it, as Names. newer: added after 2.4 to a preset
+ * 2.4 had, so a value other than the preset's own makes the drawing file version 5.
+ */
+type FieldBase = { key: string; label: string; hint?: string; shown?(values: FormValues): boolean; group?: string; newer?: boolean };
 export type FormField =
   | (FieldBase & { kind: 'number'; unit?: string; min?: number; max?: number; step?: number })
   | (FieldBase & { kind: 'text' })
@@ -85,8 +89,17 @@ export const presetFor = (id: string) => PRESETS.find((preset) => preset.id === 
 
 export const newFormModel = (id: string): FormModel => ({ preset: id, values: { ...presetFor(id)?.values } });
 
-/** The drawing is a preset new in 2.5, which builds up to 2.4 don't have (fileFormat's version5). */
-export const formNeedsVersion5 = (model: FormModel) => !!presetFor(model?.preset)?.version5;
+/**
+ * The drawing is a preset new in 2.5, which builds up to 2.4 don't have, or sets a field added since (a point's name in
+ * Mohr's circle), which they would draw without (fileFormat's version5).
+ */
+export function formNeedsVersion5(model: FormModel) {
+  const preset = presetFor(model?.preset);
+  if (!preset) return false;
+  if (preset.version5) return true;
+  const values = valuesOf(preset, model.values ?? {});
+  return preset.fields.some((field) => field.newer && values[field.key] !== preset.values[field.key]);
+}
 
 /** A value kept as its field's kind: a number in range, a choice it offers; anything else, the preset's own. */
 function valueFor(field: FormField, value: unknown, fallback: FormValue): FormValue {

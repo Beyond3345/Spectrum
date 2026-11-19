@@ -3,9 +3,9 @@
 // its axes are turned by θ when there is an xy term (cot 2θ = (A − C)/B, which is turning to the eigenvectors of
 // [[A, B/2], [B/2, C]]), and the squares are completed, as MATH2150's notes do it. Drawn as the notes draw theirs: the
 // curve thick and teal on axes through the origin, the centre or vertex a dot, the foci red crosses, the asymptotes and
-// the directrix dashed grey, and the turned axes u and v (as the working names them) dashed through the centre.
+// the directrix dashed grey, and the turned axes U and V dashed through the centre. Every name is the user's to change.
 import { escapeTex, num } from '../shared';
-import { at, fmt, pictureOf, results, RESULTS_FIELD, scene } from './fluids';
+import { at, fmt, nameField, nameOf, pictureOf, results, RESULTS_FIELD, scene } from './fluids';
 import type { Pt } from './fluids';
 import { clipLine, plain, plane, viewOf } from './plane';
 import type { FormField, FormPreset, FormValues } from './presets';
@@ -135,8 +135,16 @@ export const equationTex = ({ A, B, C, D, E, F }: ConicInput) => `${sum([[A, 'x^
 
 /** (x − 2), (y + 0.75), or the bare name when there is no shift */
 const shifted = (name: string, by: number) => (fmt(by) === '0' ? name : `(${name} ${by > 0 ? '-' : '+'} ${fmt(Math.abs(by))})`);
-const squared = (name: string, by: number) => `${shifted(name, by)}^2`;
+/** squared, a name of more than a letter in braces so X' or U_1 takes its square: {X'}^2 */
+const squared = (name: string, by: number) => `${fmt(by) === '0' && name.length > 1 ? `{${name}}` : shifted(name, by)}^2`;
 const point = (p: Pt) => `(${fmt(p.x)}, ${fmt(p.y)})`;
+
+/** What the figure and the working call things: the turned axes, the centre, the vertices and foci, a parabola's own. */
+export type ConicNames = { axes: [string, string]; centre: string; vertices: [string, string]; foci: [string, string]; vertex: string; focus: string };
+/** As the notes draw them (the turned axes U and V), with V₁, V₂, C, F₁ and F₂ for the rest */
+export const CONIC_NAMES: ConicNames = { axes: ['U', 'V'], centre: 'C', vertices: ['V_1', 'V_2'], foci: ['F_1', 'F_2'], vertex: 'V', focus: 'F' };
+/** a point's name and coordinates in the working, or the coordinates alone when it has no name */
+const pointNamed = (name: string, p: Pt) => `$${name}${point(p)}$`;
 
 /** The line through p along d: y = mx + c, or x = c when it is vertical. */
 export function lineTex(p: Pt, d: Pt) {
@@ -161,28 +169,29 @@ const NAMES: Record<Conic['kind'], string> = {
  * What the conic is and how that was found, a line each: its kind, the turn, the completed squares, the standard form
  * and its numbers. `own`: it was given by its own numbers, so there was no discriminant to read or square to complete.
  */
-export function conicWorking(q: Conic, own = false): string[] {
-  const out = steps(q, own);
+export function conicWorking(q: Conic, own = false, names: ConicNames = CONIC_NAMES): string[] {
+  const out = steps(q, own, names);
   // with nothing to say about how it was classified, its name leads the next line
   return own && out.length > 1 ? [`${out[0]}: ${out[1]}`, ...out.slice(2)] : out;
 }
 
-function steps(q: Conic, own: boolean): string[] {
+function steps(q: Conic, own: boolean, names: ConicNames): string[] {
   if (q.family === 'none') return [q.kind === 'line' ? `Not a conic (no $x^2$, $xy$ or $y^2$ term): the straight line $${lineTex(q.through, q.dir)}$` : 'Not a conic: the equation has no $x$ or $y$'];
   const turned = q.theta !== 0;
-  const [p, r] = turned ? ['u', 'v'] : ['x', 'y'];
+  // the turned coordinates are named as the turned axes are; one left unnamed in the figure is u or v here
+  const [p, r] = turned ? [names.axes[0] || 'u', names.axes[1] || 'v'] : ['x', 'y'];
   const out = [own ? NAMES[q.kind] : `${NAMES[q.kind]}: $B^2 - 4AC = ${fmt(q.family === 'parabola' ? 0 : q.disc)}${q.family === 'ellipse' ? ' < 0' : q.family === 'hyperbola' ? ' > 0' : ''}$`];
   if (turned) out.push(`axes turned by $\\theta = ${fmt(q.theta)}^\\circ$${own ? '' : ', where $\\cot 2\\theta = \\frac{A - C}{B}$'}`);
   if (q.family !== 'parabola') {
     const [U0, V0] = [-q.g1 / (2 * q.l1), -q.g2 / (2 * q.l2)];
     const K = q.kind === 'point' || q.kind === 'lines' ? 0 : q.g1 ** 2 / (4 * q.l1) + q.g2 ** 2 / (4 * q.l2) - q.F;
-    if (q.kind === 'circle') return [...out, `$${squared(p, U0)} + ${squared(r, V0)} = ${fmt(K / q.l1)}$`, `centre $C${point(q.centre)}$, radius $${fmt(q.a)}$`];
+    if (q.kind === 'circle') return [...out, `$${squared(p, U0)} + ${squared(r, V0)} = ${fmt(K / q.l1)}$`, `centre ${pointNamed(names.centre, q.centre)}, radius $${fmt(q.a)}$`];
     if (!own) out.push(`$${sum([[q.l1, squared(p, U0)], [q.l2, squared(r, V0)]])} = ${fmt(K)}$`);
     if (q.kind === 'ellipse' || q.kind === 'hyperbola') {
       const over = (name: string, by: number, d: number) => `\\frac{${squared(name, by)}}{${fmt(Math.abs(d))}}`;
       const [first, second] = [over(p, U0, K / q.l1), over(r, V0, K / q.l2)];
       out.push(`$${q.kind === 'ellipse' ? `${first} + ${second}` : K / q.l1 > 0 ? `${first} - ${second}` : `${second} - ${first}`} = 1$`);
-      out.push(`centre $C${point(q.centre)}$, $a = ${fmt(q.a)}$, $b = ${fmt(q.b)}$, $c = ${fmt(q.c)}$, $e = ${fmt(q.e)}$`);
+      out.push(`centre ${pointNamed(names.centre, q.centre)}, $a = ${fmt(q.a)}$, $b = ${fmt(q.b)}$, $c = ${fmt(q.c)}$, $e = ${fmt(q.e)}$`);
       if (q.kind === 'hyperbola') out.push(`asymptotes ${asymptotes(q).map((d) => `$${lineTex(q.centre, d)}$`).join(' and ')}`);
     } else if (q.kind === 'point') out.push(`only $${point(q.centre)}$ satisfies it`);
     else if (q.kind === 'lines') out.push(`the lines ${q.dirs.map((d) => `$${lineTex(q.centre, d)}$`).join(' and ')}, crossing at $${point(q.centre)}$`);
@@ -195,7 +204,7 @@ function steps(q: Conic, own: boolean): string[] {
   if (q.kind === 'parabola') {
     const coefficient = fmt(-gl / sq);
     out.push(`$${squared(s, S0)} = ${coefficient === '1' ? '' : coefficient === '-1' ? '-' : coefficient}${shifted(l, rest / gl)}$`);
-    out.push(`vertex $V${point(q.vertex)}$, $4a = ${fmt(4 * q.a)}$, $a = ${fmt(q.a)}$, focus $F${point(q.focus)}$`, `directrix $${lineTex(q.foot, perp(q.axis))}$, $e = 1$`);
+    out.push(`vertex ${pointNamed(names.vertex, q.vertex)}, $4a = ${fmt(4 * q.a)}$, $a = ${fmt(q.a)}$, focus ${pointNamed(names.focus, q.focus)}`, `directrix $${lineTex(q.foot, perp(q.axis))}$, $e = 1$`);
   } else {
     out.push(`$${squared(s, S0)} = ${fmt(q.kind === 'line' ? 0 : rest / sq)}$`);
     if (q.kind === 'line') out.push(`the line $${lineTex(q.through, q.dir)}$`);
@@ -218,9 +227,22 @@ export const inputOf = (values: FormValues): ConicInput =>
 /** how far along a hyperbola's branches (the parameter of a cosh t, b sinh t) and a parabola's arms (in a) the curve is drawn */
 const [BRANCH, ARM] = [1.5, 4];
 
+/**
+ * The names the form gives. The turned axes are U and V, u and v, or typed; U and V become u and v beside a turned
+ * parabola whose vertex or focus is U or V, so the figure and its working never give two things one name.
+ */
+export function conicNames(values: FormValues, q: Conic): ConicNames {
+  const own = (key: string) => nameOf(values, key);
+  const [vertex, focus] = [own('vertex'), own('focus')];
+  const clash = q.kind === 'parabola' && q.theta !== 0 && [vertex, focus].some((name) => name === 'U' || name === 'V');
+  const axes: [string, string] = values.axisNames === 'own' ? [own('axisU'), own('axisV')] : values.axisNames === 'uv' || clash ? ['u', 'v'] : ['U', 'V'];
+  return { axes, centre: own('centre'), vertices: [own('vertex1'), own('vertex2')], foci: [own('focus1'), own('focus2')], vertex, focus };
+}
+
 export function conicDrawing(values: FormValues) {
   const input = inputOf(values);
   const q = conic(input);
+  const names = conicNames(values, q);
   const show = (key: string) => values[key] === true;
   const sc = scene();
   const degrees = (d: Pt) => (Math.atan2(d.y, d.x) * 180) / Math.PI;
@@ -259,7 +281,9 @@ export function conicDrawing(values: FormValues) {
     sc.seg([from, to]);
     return [from, to];
   };
-  const named = (name: string, p: Pt) => (show('coordinates') ? `${name.startsWith('$') ? name.slice(0, -1) : `${name} $`}${point(p)}$` : name);
+  /** a point's label: its name, with its coordinates when they're shown; an empty name, no label */
+  const named = (name: string, p: Pt) => (!name ? '' : show('coordinates') ? `$${name}${point(p)}$` : `$${name}$`);
+  const label = (p: Pt, tex: string, d: Pt, colour?: string) => tex && sc.label(p, tex, d, false, colour);
 
   if (q.kind === 'hyperbola' && show('asymptotes')) {
     sc.add('% Asymptotes');
@@ -267,9 +291,9 @@ export function conicDrawing(values: FormValues) {
   }
   if (turnedAxes && middle) {
     sc.add(`% The axes turned by ${fmt(q.theta)} degrees`);
-    for (const [d, name] of [[q.u, '$u$'], [q.v, '$v$']] as const) {
+    for (const [d, name] of [[q.u, names.axes[0]], [q.v, names.axes[1]]] as const) {
       const ends = line(middle, d, '->, dashed', 0.03);
-      if (ends) sc.label(ends[1], name, d);
+      if (ends && name) sc.label(ends[1], `$${name}$`, d);
     }
   }
   if (q.kind === 'parabola' && show('directrix')) {
@@ -307,14 +331,14 @@ export function conicDrawing(values: FormValues) {
     // below and to the right, as the notes have it; between the lines when lines cross at the centre
     const crossed = turnedAxes || q.kind === 'lines' || (q.kind === 'hyperbola' && show('asymptotes'));
     const between = ((q.theta - 22.5) * Math.PI) / 180;
-    sc.label(P(q.centre), named('$C$', q.centre), crossed ? { x: Math.cos(between), y: Math.sin(between) } : { x: 1, y: -1 });
+    label(P(q.centre), named(names.centre, q.centre), crossed ? { x: Math.cos(between), y: Math.sin(between) } : { x: 1, y: -1 });
   }
   if (q.kind === 'ellipse' || q.kind === 'hyperbola') {
     const side = below(perp(q.axis));
     if (show('foci')) {
       q.foci.forEach((f, i) => {
         cross(P(f));
-        sc.label(P(f), named(`$F_${i + 1}$`, f), side, false, 'red');
+        label(P(f), named(names.foci[i], f), side, 'red');
       });
     }
     // an ellipse's vertices named outside it, a hyperbola's between its branches
@@ -322,22 +346,22 @@ export function conicDrawing(values: FormValues) {
     if (show('vertices')) {
       q.vertices.forEach((p, i) => {
         sc.dot(P(p));
-        sc.label(P(p), named(`$V_${i + 1}$`, p), add({ x: q.axis.x * (i ? out : -out), y: q.axis.y * (i ? out : -out) }, side, q.kind === 'ellipse' ? 0 : 1));
+        label(P(p), named(names.vertices[i], p), add({ x: q.axis.x * (i ? out : -out), y: q.axis.y * (i ? out : -out) }, side, q.kind === 'ellipse' ? 0 : 1));
       });
     }
   }
   if (q.kind === 'parabola') {
     if (show('vertices')) {
       sc.dot(P(q.vertex));
-      sc.label(P(q.vertex), named('$V$', q.vertex), add({ x: -q.axis.x, y: -q.axis.y }, below(perp(q.axis))));
+      label(P(q.vertex), named(names.vertex, q.vertex), add({ x: -q.axis.x, y: -q.axis.y }, below(perp(q.axis))));
     }
     if (show('foci')) {
       cross(P(q.focus));
-      sc.label(P(q.focus), named('$F$', q.focus), add(q.axis, below(perp(q.axis))), false, 'red');
+      label(P(q.focus), named(names.focus, q.focus), add(q.axis, below(perp(q.axis))), 'red');
     }
   }
 
-  const working = conicWorking(q, values.input === 'standard');
+  const working = conicWorking(q, values.input === 'standard', names);
   if (show('results')) results(sc, ((v.x1 - v.x0) * k) / 2, working);
   return { ...pictureOf(sc, [`Conic: ${equationTex(input)}`, ...working.map(plain)], false), conic: q };
 }
@@ -345,6 +369,10 @@ export function conicDrawing(values: FormValues) {
 const general = (v: FormValues) => v.input !== 'standard';
 const standard = (v: FormValues) => v.input === 'standard';
 const coefficient = (key: string, label: string, hint?: string): FormField => ({ key, label, kind: 'number', min: -1e6, max: 1e6, shown: general, ...(hint && { hint }) });
+/** the kind of conic the form's values draw, for the names it shows */
+const kindOf = (v: FormValues) => conic(inputOf(v));
+const central = (v: FormValues) => ['circle', 'ellipse', 'hyperbola', 'lines', 'point'].includes(kindOf(v).kind);
+const twoEnded = (v: FormValues) => ['ellipse', 'hyperbola'].includes(kindOf(v).kind);
 
 export const CONIC: FormPreset = {
   id: 'conic',
@@ -371,12 +399,31 @@ export const CONIC: FormPreset = {
     { key: 'vertices', label: 'Vertices', kind: 'switch' },
     { key: 'directrix', label: 'Directrix', kind: 'switch', hint: 'A parabola’s.' },
     { key: 'asymptotes', label: 'Asymptotes', kind: 'switch', hint: 'A hyperbola’s.' },
-    { key: 'axes', label: 'Turned axes u and v', kind: 'switch', hint: 'Through the centre, when there is an xy term.' },
+    { key: 'axes', label: 'Turned axes', kind: 'switch', hint: 'Through the centre, when there is an xy term.' },
     { key: 'coordinates', label: 'Coordinates beside the names', kind: 'switch' },
     { key: 'ticks', label: 'Numbers on the axes', kind: 'switch' },
-    { ...RESULTS_FIELD, label: 'Write the working under the figure' }
+    { ...RESULTS_FIELD, label: 'Write the working under the figure' },
+    // what the figure and the working call things: maths without the dollar signs, an empty one hiding its label
+    {
+      key: 'axisNames',
+      label: 'Turned axes',
+      kind: 'choice',
+      group: 'Names',
+      options: [['UV', 'U and V'], ['uv', 'u and v'], ['own', 'Typed']],
+      shown: (v) => kindOf(v).theta !== 0,
+      hint: 'The working names the turned coordinates the same. U and V are u and v beside a parabola’s vertex V.'
+    },
+    nameField('axisU', 'First turned axis', { shown: (v) => v.axisNames === 'own' && kindOf(v).theta !== 0 }),
+    nameField('axisV', 'Second turned axis', { shown: (v) => v.axisNames === 'own' && kindOf(v).theta !== 0 }),
+    nameField('centre', 'Centre', { shown: central, hint: 'Each name is maths, without the dollar signs: C, V_1, F_2. An empty one hides its label.' }),
+    nameField('vertex1', 'First vertex', { shown: twoEnded }),
+    nameField('vertex2', 'Second vertex', { shown: twoEnded }),
+    nameField('focus1', 'First focus', { shown: twoEnded }),
+    nameField('focus2', 'Second focus', { shown: twoEnded }),
+    nameField('vertex', 'Vertex', { shown: (v) => kindOf(v).kind === 'parabola', hint: 'Each name is maths, without the dollar signs: V, F. An empty one hides its label.' }),
+    nameField('focus', 'Focus', { shown: (v) => kindOf(v).kind === 'parabola' })
   ],
   // the notes' rotated ellipse (Section 5, "Ellipse with a cross term"): 5x² + 4xy + 5y² + 20x + 8y − 1 = 0
-  values: { input: 'general', A: 5, B: 4, C: 5, D: 20, E: 8, F: -1, kind: 'ellipse', h: 0, k: 0, a: 3, b: 2, axis: 'x', opens: 'right', turn: 0, title: '', foci: true, vertices: true, directrix: true, asymptotes: true, axes: true, coordinates: false, ticks: true, results: true },
+  values: { input: 'general', A: 5, B: 4, C: 5, D: 20, E: 8, F: -1, kind: 'ellipse', h: 0, k: 0, a: 3, b: 2, axis: 'x', opens: 'right', turn: 0, title: '', foci: true, vertices: true, directrix: true, asymptotes: true, axes: true, coordinates: false, ticks: true, results: true, axisNames: 'UV', axisU: 'U', axisV: 'V', centre: 'C', vertex1: 'V_1', vertex2: 'V_2', focus1: 'F_1', focus2: 'F_2', vertex: 'V', focus: 'F' },
   toCode: (values) => conicDrawing(values).code
 };
