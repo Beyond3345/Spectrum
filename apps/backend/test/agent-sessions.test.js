@@ -49,6 +49,14 @@ test('ACP lifecycle: permissions, isolated changes, application, resume, cancell
     await Promise.race([run.task, new Promise((_, reject) => setTimeout(() => reject(new Error('Cancelled task did not settle.')), 1000).unref())]);
     assert.equal(run.status, 'interrupted');
     assert.equal(run.busy, false);
+    // an agent that exits mid-task: the session says so with the agent's last words, not the protocol's
+    await promptAgent(run, 'crash now');
+    await run.task;
+    assert.equal(run.status, 'failed');
+    const failures = run.events.filter((e) => e.type === 'state' && e.data.status === 'failed' && e.data.error).map((e) => e.data.error);
+    assert.equal(failures.length, 1, JSON.stringify(failures));
+    assert.match(failures[0], /^Agent exited \(7\)\. out of memory/);
+    assert.equal(run.busy, false);
     const directProject = await createProject({ name: 'Direct agent fixture' });
     await fs.writeFile(path.join(directProject.path, 'main.tex'), 'direct original\n');
     const directMeta = await newAgentRun({ projectId: directProject.id, agentId: 'qoder', mode: 'direct' });

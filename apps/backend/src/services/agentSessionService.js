@@ -787,7 +787,15 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       r.turnCount++;
       emit(r, 'complete', result);
       outcome = [r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined];
-    } catch (err) { outcome = r.cancelled ? ['interrupted', 'Stopped.'] : ['failed', err.message]; disconnect(r); }
+    } catch (err) {
+      // an agent that stopped by itself is told of by its exit, with its last words: wait a moment for that, so the
+      // protocol's own word for a closed pipe doesn't take its place
+      const child = r.child;
+      if (!r.cancelled && child?.pid && child.exitCode === null && child.signalCode === null) await timeout(new Promise((resolve) => child.once('exit', resolve)), 500, 'still running').catch(() => {});
+      const told = r.status === 'failed' && child && (child.exitCode !== null || child.signalCode !== null);
+      outcome = r.cancelled ? ['interrupted', 'Stopped.'] : ['failed', told ? undefined : err.message];
+      disconnect(r);
+    }
     finally {
       for (const [id, pending] of r.pending) { pending.reject(new Error('The task ended.')); emit(r, 'answered', { requestId: id }); }
       r.pending.clear();
