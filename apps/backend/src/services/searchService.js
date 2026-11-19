@@ -261,7 +261,8 @@ async function searchBrave(query, limit, apiKey, references = true) {
     // an inline Goggle: the citable sites rank higher, nothing is dropped
     ...(references && { goggles: CITABLE_SITES.map((site) => `$boost=3,site=${site}`).join('\n') })
   });
-  const data = await getJson(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+  // tests point SPECTRUM_BRAVE_BASE at a local stub
+  const data = await getJson(`${(process.env.SPECTRUM_BRAVE_BASE || 'https://api.search.brave.com').replace(/\/+$/, '')}/res/v1/web/search?${params}`, {
     headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey }
   });
   return (data.web?.results || []).map((item) => page(item.title, item.url, item.description, item.page_age));

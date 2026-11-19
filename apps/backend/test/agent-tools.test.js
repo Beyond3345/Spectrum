@@ -40,7 +40,11 @@ test('a local agent on macOS gets Spectrum’s tools, which run inside its isola
     assert.deepEqual(mcpServers[0].args.slice(1, 3), ['--root', run.workspace]);
     const { tools } = log.find((q) => q.tools);
     assert.ok(tools.results, JSON.stringify(tools));
-    const answer = (name) => JSON.parse(tools.results[name].content[0].text);
+    // each answer comes inside a marker naming its tool (a skill's as a skill), which no text in it can close
+    const text = (name) => tools.results[name].content[0].text;
+    assert.match(text('project_map'), /^<untrusted source="project_map">\n\{[\s\S]*\}\n<\/untrusted>$/);
+    assert.match(text('load_skill'), /^<skill id="spectrum-latex">\n\{[\s\S]*\}\n<\/skill>$/);
+    const answer = (name) => JSON.parse(text(name).replace(/^<[^>]*>\n/, '').replace(/\n<\/\w+>$/, ''));
     const map = answer('project_map');
     assert.equal(map.mainFile, 'main.tex');
     assert.deepEqual(map.unresolvedCites.map((c) => c.key), ['missing']);

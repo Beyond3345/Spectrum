@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { spawnWindowsAgent, windowsWorker } from './agentSandboxWindows.js';
+import { AGENT_SECRET_EXTENSIONS, secretNamePattern } from '../utils/pathUtils.js';
 
 export async function isolationAvailable() {
   if (process.platform === 'darwin') return true;
@@ -24,6 +25,9 @@ export function developerReads() {
   return developer;
 }
 const q = (value) => JSON.stringify(value);
+// the names no agent may read or write, in a profile's pattern: Spectrum's, git's and Claude's folders and the secret
+// files of pathUtils' list, each letter in either case
+const HIDDEN = `\\.spectrum|\\.git|\\.claude|${secretNamePattern(AGENT_SECRET_EXTENSIONS)}`.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`);
 
 /** offline: no network at all (a chart's script), where an agent has HTTPS. */
 export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort, offline = false }) {
@@ -39,7 +43,7 @@ export function sandboxProfile({ workspace, home, executable, runtimeExecutable 
 ${forbiddenRoots.map((p) => `(deny file-read* file-write* (subpath ${q(p)}))`).join('\n')}
 (allow file-read* file-write-data (literal "/dev/null") (literal "/dev/zero") (subpath "/dev/fd"))
 (allow file-read* (literal "/dev/random") (literal "/dev/urandom"))
-(deny file-read* file-write* (regex ${q(`${workspace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/(.*/)?(\\.[sS][pP][eE][cC][tT][rR][uU][mM]|\\.[gG][iI][tT]|\\.[cC][lL][aA][uU][dD][eE]|\\.[eE][nN][vV](\\..*)?|.*\\.[pP][eE][mM]|.*\\.[kK][eE][yY])(/.*)?$`)}))
+(deny file-read* file-write* (regex ${q(`${workspace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/(.*/)?(${HIDDEN})(/.*)?$`)}))
 (allow mach-lookup
   (global-name "com.apple.system.opendirectoryd.libinfo")
   (global-name "com.apple.system.opendirectoryd.membership")

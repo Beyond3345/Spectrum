@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { SECRET_NAME, agentHiddenName, agentHiddenNameSource } from '../src/utils/pathUtils.js';
+import { secretLooking } from '../src/services/gitService.js';
+import { sandboxProfile } from '../src/services/agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, captureAgentProposal, applyWorkspaceChanges, agentRecoveries, recoverAgentApply, rebaseChange } from '../src/services/agentWorkspace.js';
 
 test('review snapshots preserve bytes, reject stale proposals, and protect concurrent edits', async () => {
@@ -88,6 +91,8 @@ test('workspace creation refuses links and omits secrets and app identity', asyn
     await fs.mkdir(path.join(dir, '.spectrum')); await fs.writeFile(path.join(dir, '.spectrum/project.json'), 'identity');
     // a key by a name APFS would take for id.key (with a Kelvin sign)
     await fs.writeFile(path.join(dir, 'id.Key'), 'do not copy');
+    // the key and credential files the GitHub backup leaves out, by the same list
+    for (const name of ['id_rsa', 'ID_ED25519', '.netrc', '.npmrc', '.pypirc', 'cert.p12', 'Store.JKS', 'putty.ppk']) await fs.writeFile(path.join(dir, name), 'do not copy');
     const run = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-copy-'));
     try {
       const workspace = await initialiseWorkspace(dir, run, 'review');
@@ -121,4 +126,30 @@ test('direct editing does not start when the checkpoint before it could not hold
     await fs.chmod(path.join(dir, '.env'), 0o600).catch(() => {});
     await fs.rm(dir, { recursive: true, force: true }); await fs.rm(run, { recursive: true, force: true });
   }
+});
+
+test('one list says what a secret file is called, for the GitHub backup and for every way an agent reaches a file', () => {
+  const secrets = ['.env', '.env.local', '.ENV', '.netrc', '.npmrc', '.pypirc', 'id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519', 'server.pem', 'cert.p12', 'cert.PFX', 'release.keystore', 'trust.jks', 'putty.ppk'];
+  const plain = ['main.tex', 'environment.tex', 'id_rsa.pub', 'pem', 'keynote.txt', 'refs.bib', '.gitignore', 'npmrc.md'];
+  for (const name of secrets) {
+    assert.equal(SECRET_NAME.test(name), true, name);
+    assert.equal(secretLooking(`keys/${name}`), true, name);
+    // whatever the backup leaves out, no agent reads
+    assert.equal(agentHiddenName(name), true, name);
+  }
+  for (const name of plain) {
+    assert.equal(SECRET_NAME.test(name), false, name);
+    assert.equal(agentHiddenName(name), false, name);
+  }
+  // a .key file: kept from agents whatever it holds, backed up unless it holds a key (Keynote's decks are .key too)
+  assert.equal(agentHiddenName('slides.key'), true);
+  assert.equal(SECRET_NAME.test('slides.key'), false);
+  // the same function as text, as the isolated workspace reader and the skills copier run it
+  const alone = new Function(`return ${agentHiddenNameSource}`)();
+  for (const name of [...secrets, ...plain, 'slides.key', '.git', '.Spectrum', '.claude', 'id.\u212Aey']) assert.equal(alone(name), agentHiddenName(name), name);
+  // and the sandbox's own rule, written from the list
+  const rule = sandboxProfile({ workspace: '/w', home: '/h', executable: '/usr/bin/true' }).split('\n').find((line) => line.includes('[sS][pP][eE][cC]'));
+  const pattern = new RegExp(JSON.parse(rule.match(/\(regex (".*")\)\)$/)[1]));
+  for (const name of [...secrets, 'slides.key', 'ID_RSA', 'Server.PEM']) assert.equal(pattern.test(`/w/sub/${name}`), true, name);
+  for (const name of plain) assert.equal(pattern.test(`/w/sub/${name}`), false, name);
 });

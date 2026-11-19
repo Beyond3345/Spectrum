@@ -6,17 +6,19 @@ import { fetchBibtex, literatureSearch } from '../services/researchTools.js';
 import { SKILL_ID, readFrontMatter, skillBody } from '../services/skillService.js';
 import { suggestedTodo } from '../services/agentService.js';
 import { withoutComments } from '../latex/text.js';
+import { DOC_LANGUAGES, docKind } from '../utils/docLanguage.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 
 // What Spectrum's tools server does for an agent, inside the agent's isolation: root is its working copy, state its
 // run's folder in its private home, where Spectrum leaves context.json ({ mainFile, engine, todos }) before the
-// session and reads suggestions.jsonl after it.
+// session and reads suggestions.jsonl after it. The Spectrum agent reads the project's map from here too, with the
+// context itself in place of the folder.
 
 const slashed = (p) => p.split(path.sep).join('/');
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 async function context(state) {
-  return JSON.parse(await fs.readFile(path.join(state, 'context.json'), 'utf8').catch(() => '{}'));
+  return typeof state === 'string' ? JSON.parse(await fs.readFile(path.join(state, 'context.json'), 'utf8').catch(() => '{}')) : state || {};
 }
 
 /**
@@ -43,15 +45,16 @@ const REF = /\\(?:ref|eqref|autoref|cref|Cref|pageref|nameref|vref|labelcref)\*?
 const CITE = /\\(?:no)?(?:cite|citep|citet|citealp|citealt|citeauthor|citeyear|parencite|textcite|autocite|footcite|smartcite|supercite)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^}]+)\}/g;
 const BIBLIOGRAPHY = /\\(?:bibliography|addbibresource|addglobalbib)\s*(?:\[[^\]]*\])?\{([^}]+)\}/g;
 
-// Typst: = headings, <label> (not #cite(<key>)), #include "…" from the file's folder (or the project's with a leading /)
+// Typst: = headings, <label> (not #cite(<key>)), #include "…" and #import "…" from the file's folder (or the project's
+// with a leading /); an import of a package (@preview/…) is no file of the project's
 const TYPST_HEADING = /^(=+)\s+(.*?)\s*$/gm;
 const TYPST_LABEL = /(?<![(\w])<([A-Za-z_][\w:.-]*)>/g;
-const TYPST_INCLUDE = /#include\s+"([^"]+)"/g;
+const TYPST_INCLUDE = /#(?:include|import)\s+"(?!@)([^"]+)"/g;
 // Markdown: # headings, {#id} on a heading or figure. Both: @key, a label's or else a citation's, and Typst's #cite(<key>)
 const MARKDOWN_HEADING = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/gm;
 const MARKDOWN_LABEL = /\{[^}\n]*#([A-Za-z_][\w:.-]*)[^}\n]*\}/g;
 const AT_KEY = /(?<![\w.@])@([A-Za-z_][\w:.\-/]*[\w])|#cite\(\s*<([^>]+)>/g;
-const kindOf = (file) => (/\.typ$/i.test(file) ? 'typst' : /\.(?:md|markdown)$/i.test(file) ? 'markdown' : 'latex');
+const kindOf = (file) => docKind(file) || 'latex';
 // what isn't the document's text, each line kept so line numbers hold: Typst's // comments, Markdown's code blocks
 const blank = (s) => s.replace(/[^\n]/g, '');
 const withoutTypstComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/(^|[^:])\/\/.*$/gm, '$1');
@@ -108,13 +111,15 @@ async function bibEntries(root, files) {
   return { bibs, entries };
 }
 
-/** The document's outline, labels, inputs, unresolved references and citations, main file and engine. */
+/** The document's language, outline, labels, inputs, citations, unresolved references and citations, main file and engine. */
 export async function projectMap(root, state) {
   const main = await mainFile(root, state);
   if (!main) return { mainFile: null, note: 'This project has no LaTeX, Typst or Markdown document.' };
   const files = await documentFiles(root, main);
   const { bibs, entries } = await bibEntries(root, files);
   const outline = [], labels = [], refs = [], cites = [], atKeys = [];
+  // a Markdown document's front matter: what pandoc reads its title, authors, bibliography and style from
+  const front = kindOf(main) === 'markdown' ? Object.fromEntries(Object.entries(readFrontMatter(await fs.readFile(safeJoin(root, main), 'utf8').catch(() => '')).data).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, v.slice(0, 200)])) : null;
   for (const { file, text } of files) {
     const at = (m) => ({ file, line: lineOf(text, m.index) });
     const kind = kindOf(file);
@@ -136,11 +141,14 @@ export async function projectMap(root, state) {
   for (const { cite, ...ref } of atKeys) (!cite && known.has(ref.key) ? refs : cites).push(ref);
   return {
     mainFile: main,
+    language: DOC_LANGUAGES[kindOf(main)].name,
     engine: (await context(state)).engine || 'auto',
     files: files.map(({ file, from }) => ({ file, ...(from && { includedFrom: from }) })),
+    ...(front && Object.keys(front).length && { frontMatter: front }),
     outline,
     labels,
     bibFiles: bibs,
+    citedKeys: [...new Set(cites.map((c) => c.key).filter((k) => k && k !== '*'))],
     unresolvedRefs: refs.filter((r) => r.key && !known.has(r.key)),
     unresolvedCites: cites.filter((c) => c.key && c.key !== '*' && !keys.has(c.key))
   };
@@ -191,13 +199,31 @@ export async function compile(root, state, { main, engine } = {}) {
     pdf = path.join(state, `${path.basename(file, path.extname(file))}.pdf`);
     await fs.writeFile(pdf, Buffer.from(result.pdf, 'base64'));
   }
-  return { ok: result.ok && result.status === 0, mainFile: file, engine: result.engine, ...(result.error && { error: result.error }), ...(pdf && { pdf }), ...logErrors(log) };
+  // a Markdown document's log names lines of the file pandoc generated, which the agent never wrote: the compile's own
+  // diagnostics, traced to the .md as the Logs tab shows them, stand in for the log's
+  const found = kindOf(file) === 'markdown' && Array.isArray(result.errors) ? markdownErrors(result.errors, logErrors(log)) : logErrors(log);
+  await fs.writeFile(path.join(state, 'last.json'), JSON.stringify(found));
+  const generated = kindOf(file) === 'markdown' && (await fs.stat(path.join(state, 'build', 'generated')).catch(() => null))?.isDirectory() ? path.join(state, 'build', 'generated') : null;
+  return { ok: result.ok && result.status === 0, mainFile: file, engine: result.engine, ...(result.error && { error: result.error }), ...(pdf && { pdf }), ...(generated && { generated }), ...found };
+}
+
+/** A Markdown compile's diagnostics as "main.md:9: message" (the file alone where no line could be traced), with the log's own count of warnings added. */
+export function markdownErrors(diagnostics, fromLog) {
+  const at = (d) => `${d.file}${d.line ? `:${d.line}` : ''}: ${d.message}`;
+  const warnings = diagnostics.filter((d) => d.severity !== 'error');
+  return {
+    errors: diagnostics.filter((d) => d.severity === 'error').map(at).slice(0, 50),
+    warnings: fromLog.warnings + warnings.length,
+    undefined: [...warnings.filter((d) => /^No entry in the bibliography/.test(d.message)).map(at), ...fromLog.undefined].slice(0, 50)
+  };
 }
 
 export async function getLog(state) {
   const log = await fs.readFile(path.join(state, 'last.log'), 'utf8').catch(() => null);
   if (log === null) return { note: 'Nothing has been compiled in this session yet. Call compile first.' };
-  return { ...logErrors(log), tail: log.slice(-4000) };
+  // as compile answered, which for a Markdown document is not what the log alone says
+  const found = JSON.parse(await fs.readFile(path.join(state, 'last.json'), 'utf8').catch(() => 'null')) || logErrors(log);
+  return { ...found, tail: log.slice(-4000) };
 }
 
 export async function listTodos(state) {

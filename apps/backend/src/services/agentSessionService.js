@@ -20,7 +20,8 @@ import { spawnAgentProcess, killAgentProcess, isolationAvailable } from './agent
 import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
 import { activeSkills, listSkills, loadSkill, SKILL_ID } from './skillService.js';
-import { agentHidden, safeJoin } from '../utils/pathUtils.js';
+import { agentHidden, agentHiddenNameSource, safeJoin } from '../utils/pathUtils.js';
+import { skillText, untrusted } from '../utils/outsideText.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 
 const execFileAsync = promisify(execFile);
@@ -495,7 +496,8 @@ const SKILL_FOLDERS = process.platform === 'win32' ? ['.agents/skills'] : ['.age
 const SKILL_MARK = '.spectrum-managed';
 const copySkills = `const fs=require('node:fs'), path=require('node:path');
   const { skills, folders, mark, onlyAdd } = JSON.parse(fs.readFileSync(0, 'utf8'));
-  const kept = (src) => !/^(\\.spectrum|\\.git|\\.claude|\\.env(\\..*)?)$|\\.(pem|key)$/i.test(path.basename(src));
+  const hidden = ${agentHiddenNameSource};
+  const kept = (src) => !hidden(path.basename(src));
   const rename = (from, to) => {
     for (let n = 0; ; n++) {
       try { return fs.renameSync(from, to); }
@@ -725,10 +727,11 @@ function contextBlocks(r, context) {
     context.log && { uri: `${TEXT_URI}compile-log`, label: 'The last compile log', mimeType: 'text/plain', text: context.log },
     context.todos && { uri: `${TEXT_URI}todos`, label: 'The project’s open to-dos', mimeType: 'text/markdown', text: context.todos },
     context.research && { uri: `${TEXT_URI}research/${context.research.id}`, label: 'The research session', mimeType: 'application/json', text: context.research.text },
-    context.skill && { uri: `${TEXT_URI}skills/${context.skill.id}/SKILL.md`, label: `The skill “${context.skill.id}” to follow for this task`, mimeType: 'text/markdown', text: context.skill.text }
+    context.skill && { uri: `${TEXT_URI}skills/${context.skill.id}/SKILL.md`, label: `The skill “${context.skill.id}” to follow for this task`, mimeType: 'text/markdown', text: context.skill.text, skill: context.skill.id }
   ].filter(Boolean);
-  for (const { label, ...resource } of parts) {
-    blocks.push(r.capabilities?.promptCapabilities?.embeddedContext ? { type: 'resource', resource } : { type: 'text', text: `${label}:\n${resource.text}` });
+  for (const { label, skill, ...resource } of parts) {
+    // an embedded resource says what it is by its address; as plain text it goes in the marker the tools' answers use
+    blocks.push(r.capabilities?.promptCapabilities?.embeddedContext ? { type: 'resource', resource } : { type: 'text', text: `${label}:\n${skill ? skillText(skill, resource.text) : untrusted(label, resource.text)}` });
   }
   return blocks;
 }

@@ -10,7 +10,7 @@ export const STARTER_PERSONAS: Persona[] = [
     name: 'Research writer',
     colour: 'blue',
     prompt:
-      'Help write the academic prose in this project, in clear and formal Australian English. Keep the author’s argument and voice, and give each paragraph one point to make. Back claims with entries from the project’s bibliography and never make up a reference: when a source is missing, say so and suggest what to search for. Leave LaTeX commands, labels and citation keys as they are.'
+      'Help write the academic prose in this project, in clear and formal Australian English. Keep the author’s argument and voice, and give each paragraph one point to make. Back claims with entries from the project’s bibliography and never make up a reference: when a source is missing, say so and suggest what to search for. Leave the document’s markup, labels and citation keys as they are.'
   },
   {
     id: 'document-editor',

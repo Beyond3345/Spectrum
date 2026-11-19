@@ -108,19 +108,19 @@ export const TASKS: AgentTask[] = [
     label: 'Literature sweep',
     icon: 'books.vertical',
     skill: 'paper-lookup',
-    prompt: 'Search the literature on this project’s topic. List the most relevant papers with full references and a line on why each matters, and say which are already in the project’s .bib.'
+    prompt: 'Search the literature on this project’s topic. List the most relevant papers with full references and a line on why each matters, and say which are already in the project’s bibliography.'
   },
   {
     label: 'Related work',
     icon: 'text.book.closed',
     skill: 'spectrum-related-work',
-    prompt: 'Draft or improve the related work section. Group prior work by theme, cite only keys that exist in the project’s .bib (propose entries for anything missing) and show where this project’s contribution fits.'
+    prompt: 'Draft or improve the related work section. Group prior work by theme, cite only keys that exist in the project’s bibliography (propose entries for anything missing) and show where this project’s contribution fits.'
   },
   {
     label: 'Citation audit',
     icon: 'quote.opening',
     skill: 'citation-management',
-    prompt: 'Check every citation in the project: keys that are undefined, unused or duplicated, and entries with missing or wrong details such as DOIs, years and titles. Propose fixes to the .bib.'
+    prompt: 'Check every citation in the project: keys that are undefined, unused or duplicated, and entries with missing or wrong details such as DOIs, years and titles. Propose fixes to the bibliography.'
   },
   {
     label: 'Manuscript review',

@@ -137,7 +137,11 @@ class Worker {
     }
     static bool Secret(string name) {
         name=name.ToLowerInvariant();
-        return name==".spectrum"||name==".git"||name==".claude"||name==".env"||name.StartsWith(".env.")||name.EndsWith(".pem")||name.EndsWith(".key");
+        // the list of apps/backend/src/utils/pathUtils.js (secretNamePattern, with .key): keep the two the same
+        if(name==".spectrum"||name==".git"||name==".claude"||name==".env"||name.StartsWith(".env.")) return true;
+        foreach(string exact in new[]{".netrc",".npmrc",".pypirc","id_rsa","id_dsa","id_ecdsa","id_ed25519"}) if(name==exact) return true;
+        foreach(string extension in new[]{".pem",".p12",".pfx",".keystore",".jks",".ppk",".key"}) if(name.EndsWith(extension)) return true;
+        return false;
     }
     static IntPtr Attribute(int key,object value) {
         IntPtr buffer=Marshal.AllocHGlobal(Marshal.SizeOf(value));

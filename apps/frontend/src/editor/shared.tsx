@@ -1,6 +1,7 @@
 import { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
 export { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
 import { withoutComments } from '../../../backend/src/latex/text.js';
+import { docKind } from '../../../backend/src/utils/docLanguage.js';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { runAgent } from '../api/client';
@@ -172,10 +173,9 @@ export const parseJsonReply = <T,>(text: string) => {
 
 export const isTex = (path: string) => path.toLowerCase().endsWith('.tex');
 
-export type DocKind = 'latex' | 'typst' | 'markdown';
+export type { DocKind } from '../../../backend/src/utils/docLanguage.js';
 /** The kind of document a file is, by its extension; null for anything else (.bib, images). */
-export const docKind = (path: string): DocKind | null =>
-  /\.(tex|ltx)$/i.test(path) ? 'latex' : /\.typ$/i.test(path) ? 'typst' : /\.(md|markdown)$/i.test(path) ? 'markdown' : null;
+export { docKind } from '../../../backend/src/utils/docLanguage.js';
 export const isDocument = (path: string) => docKind(path) !== null;
 /** The line that includes bibFile in a main file of its kind, for the hint shown when it is not included yet. */
 export const bibIncludeLine = (mainFile: string, bibFile: string) => {
@@ -207,47 +207,6 @@ export function figureSnippet(filePath: string) {
     `\\label{fig:${filePath.replace(/[^a-zA-Z0-9]+/g, '-')}}`,
     '\\end{figure}'
   ].join('\n');
-}
-
-const parentPath = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
-
-/** File list + section outline of the document, starting at the main file and following \input/\include. */
-export async function buildProjectContext(api: Pick<EditorApi, 'mainFile' | 'activePath' | 'ensureFileContent'>) {
-  const root = api.mainFile || api.activePath;
-  if (!root) return '';
-  const visited = new Set<string>();
-  const queue = [root];
-  const summaries: string[] = [];
-  while (queue.length) {
-    const current = queue.shift()!;
-    if (visited.has(current)) continue;
-    visited.add(current);
-    if (!isTex(current)) continue;
-    let content = '';
-    try {
-      content = await api.ensureFileContent(current);
-    } catch {
-      continue;
-    }
-    const headings: string[] = [];
-    const includes: string[] = [];
-    for (const line of content.split(/\r?\n/)) {
-      const clean = withoutComments(line);
-      for (const m of clean.matchAll(/\\+(section|subsection|subsubsection)\*?\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)) {
-        const level = m[1] === 'section' ? 0 : m[1] === 'subsection' ? 1 : 2;
-        if (headings.length < 12) headings.push(`${'  '.repeat(level)}- ${m[2].trim() || '(untitled)'}`);
-      }
-      for (const m of clean.matchAll(/\\(?:input|include)\s*\{([^}]+)\}/g)) includes.push(m[1].trim());
-    }
-    summaries.push(`File: ${current}\n${headings.join('\n')}`);
-    const base = parentPath(current);
-    for (const raw of includes) {
-      const target = raw.replace(/^\//, '').replace(/(\.tex)?$/, '.tex');
-      const resolved = base ? `${base}/${target}` : target;
-      if (!visited.has(resolved)) queue.push(resolved);
-    }
-  }
-  return `Project files: ${[...visited].join(', ')}\nOutline:\n${summaries.join('\n')}`;
 }
 
 /**

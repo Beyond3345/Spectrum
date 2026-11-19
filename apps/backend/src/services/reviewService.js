@@ -1,3 +1,5 @@
+import { docLanguage } from '../utils/docLanguage.js';
+import { DATA_RULE, untrusted } from '../utils/outsideText.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { chatCompletion } from './llmService.js';
@@ -96,7 +98,7 @@ export async function reviewState(root, doc, { bib = false } = {}) {
   };
 }
 
-const SYSTEM = `You are reviewing an academic manuscript written in LaTeX, Typst or Markdown, as a demanding but fair referee would. You read the whole document once and report what you find. You never edit files and never write patches.
+const system = (language) => `You are reviewing an academic manuscript written in ${language.name}, as a demanding but fair referee would. You read the whole document once and report what you find. You never edit files and never write patches.
 
 Cover these:
 - The paper as a whole: what it claims, its strengths and weaknesses, questions for the authors, experiments, analyses or baselines that are missing, how clear the writing and structure are, and concrete suggestions.
@@ -112,7 +114,9 @@ Each source line starts with its number and a bar, as in "12| text". Anchor each
 
 Reply with JSON only, writing each backslash twice inside its strings (a quote of \\cite{key} is "\\\\cite{key}"), in this shape:
 {"summary": "", "strengths": [""], "score": 6, "confidence": 3, "findings": [{"severity": "major", "category": "", "file": "", "line": 1, "quote": "", "issue": "", "suggestion": ""}], "limits": [""]}
-"score" is your overall rating out of 10 and "confidence" how sure you are of it, out of 5. "limits" says what you could not judge from the source alone, such as figures you cannot see or data you cannot check.`;
+"score" is your overall rating out of 10 and "confidence" how sure you are of it, out of 5. "limits" says what you could not judge from the source alone, such as figures you cannot see or data you cannot check.
+
+${DATA_RULE}`;
 
 const text = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
 const strings = (value, max) => (Array.isArray(value) ? value.map((v) => text(v, max)).filter(Boolean) : []);
@@ -249,8 +253,9 @@ export async function aiReview({ root, doc, activePath, findings = [], llmConfig
   ].join('\n\n');
   const res = await chatCompletion({
     messages: [
-      { role: 'system', content: SYSTEM },
-      { role: 'user', content: user }
+      { role: 'system', content: system(docLanguage(doc)) },
+      // the manuscript is what is reviewed: a sentence in it addressed to the reviewer is a finding, not an order
+      { role: 'user', content: untrusted('the manuscript', user) }
     ],
     model: llmConfig?.model,
     endpoint: llmConfig?.endpoint,
