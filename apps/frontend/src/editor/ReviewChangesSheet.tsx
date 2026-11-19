@@ -45,10 +45,10 @@ export default function ReviewChangesSheet({
   useEffect(() => {
     if (!changes.length) onClose();
   }, [changes.length, onClose]);
-  // a button that went with its change leaves the focus nowhere: the keys go on working
+  // the keys work from the start, and go on working when a button went with its change and took the focus with it
   useEffect(() => {
-    if (document.activeElement === document.body) layout.current?.focus({ preventScroll: true });
-  }, [changes]);
+    if (!layout.current?.contains(document.activeElement)) layout.current?.focus({ preventScroll: true });
+  }, [changes, showPdf]);
 
   const accept = async (list: PendingChange[]) => {
     setBusy(true);

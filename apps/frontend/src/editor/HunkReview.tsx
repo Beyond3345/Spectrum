@@ -65,10 +65,15 @@ export default function HunkList({
   };
   // an overlap's editor starts from both versions, the user's first, so nothing of theirs is lost while they edit
   const startEdit = (h: Hunk) => setEditing({ hunk: h, text: editText(h.base ? { ...h, lines: [...r.mine.slice(h.start, h.end), ...h.lines] } : h) });
+  // the focus goes back to the review around the list, so its keys work again
+  const closeEdit = () => {
+    setEditing(null);
+    root.current?.closest<HTMLElement>('[tabindex="-1"]')?.focus({ preventScroll: true });
+  };
   const applyEdit = () => {
     if (!edit || busy) return;
     onChoice?.({ apply: [edit.hunk], lines: new Map([[edit.hunk, editedLines(r, edit.hunk, edit.text)]]) });
-    setEditing(null);
+    closeEdit();
   };
 
   const onKey: ReviewKeys['current'] = onChoice
@@ -173,7 +178,7 @@ export default function HunkList({
                         if (e.key === 'Escape') {
                           // the editor closes, not the sheet around it
                           e.stopPropagation();
-                          setEditing(null);
+                          closeEdit();
                         } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) applyEdit();
                       }}
                     />
@@ -181,7 +186,7 @@ export default function HunkList({
                       <span className="field-hint grow">
                         {h.base ? 'Your lines, then the agent’s: edit them into what the file should say.' : 'What you apply is written in place of the lines on the left.'}
                       </span>
-                      <button className="btn small" onClick={() => setEditing(null)}>Cancel</button>
+                      <button className="btn small" onClick={closeEdit}>Cancel</button>
                       <button className="btn small primary" disabled={busy} onClick={applyEdit}>{applyLabel} edited</button>
                     </div>
                   </div>
