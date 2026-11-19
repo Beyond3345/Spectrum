@@ -168,10 +168,25 @@ export default function LocalAgentTab({
     }
   };
 
+  // A browser opens six connections to a host at most, and a window's streams (the project's events, TexLab, Tinymist,
+  // a Spectrum agent turn, a compile and its log) can take them all, so a save waits. The session's stream is open
+  // while its tab is shown, a task runs or the agent asks something; an idle session's, out of sight, is closed, and
+  // opening it again replays what came since.
+  const latestEvents = useRef(events);
+  latestEvents.current = events;
+  const listening = (!hidden && active) || running || pending.length > 0;
+
+  // another session or none is shown, or the project closed: an agent kept waiting for this one's next turn stops
   useEffect(() => {
     if (!session) return;
     const id = session.id;
-    const source = new EventSource(`/api/agent-sessions/${id}/events?after=${session.events[session.events.length - 1]?.id || 0}`);
+    return () => void closeLocalAgentSession(id).catch(() => undefined);
+  }, [session?.id]);
+
+  useEffect(() => {
+    if (!session || !listening) return;
+    const id = session.id;
+    const source = new EventSource(`/api/agent-sessions/${id}/events?after=${latestEvents.current[latestEvents.current.length - 1]?.id || 0}`);
     source.onmessage = (message) => {
       const e = JSON.parse(message.data) as AgentEvent;
       setEvents((old) => addEvent(old, e));
@@ -198,12 +213,8 @@ export default function LocalAgentTab({
     source.onerror = () => {
       /* EventSource retries with Last-Event-ID; completion is a protocol event. */
     };
-    return () => {
-      source.close();
-      // another session or none is shown, or the project closed: an agent kept waiting for this one's next turn stops
-      closeLocalAgentSession(id).catch(() => undefined);
-    };
-  }, [session?.id]);
+    return () => source.close();
+  }, [session?.id, listening]);
 
   const scroll = useFollow([view, reviewing, hidden]);
 
