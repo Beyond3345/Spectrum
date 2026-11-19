@@ -146,6 +146,20 @@ const vertical = { shape: 'rectangle', width: 1, angle: 90, rho: water, hinge: '
   eq(floatingDrawing({ ...FLOATING.values, bodyRD: 7.6 }, {}).code.body.includes('It sinks'), true, 'and says so');
 }
 
+// ─── Names: the hinge and the stop, G, B and M, the user's to change ───
+{
+  const gateWith = (more: object) => gateDrawing({ ...GATE.values, ...more }, {}).code.body;
+  const plain = gateWith({});
+  eq(['{$A$}', '{$B$}', '$F_B = '].filter((t) => !plain.includes(t)), [], 'the hinge A and the stop B, as before');
+  const renamed = gateWith({ hingeName: 'H', stopName: "S'" });
+  eq([renamed.includes('{$H$}'), renamed.includes("{$S'$}"), renamed.includes("$F_{S'} = "), renamed.includes('$F_H = '), renamed.includes("stop S' = "), /\{\$[AB]\$\}|F_B/.test(renamed)], [true, true, true, true, true, false], 'renamed: their labels, their forces, the results and the comments');
+  eq(/\{\$[AB]\$\}/.test(gateWith({ hingeName: '', stopName: '' })), false, 'an empty name hides its label');
+  const float = (more: object) => floatingDrawing({ ...FLOATING.values, ...more }, {}).code.body;
+  eq(['{$G$}', '{$B$}', '{$M$}', '$KB = ', '$BM = ', '$GM = '].filter((t) => !float({}).includes(t)), [], 'G, B and M, as before');
+  const ship = float({ gName: 'G_1', bName: 'B_0', mName: '' });
+  eq([ship.includes('{$G_1$}'), ship.includes('{$B_0$}'), /\{\$M\$\}/.test(ship), ship.includes('$KB_0 = '), ship.includes('$KG_1 = '), ship.includes('$G_1 = ')], [true, true, false, true, true, true], 'renamed, M hidden; the results use the names');
+}
+
 // ─── Drawings: labels clear of each other and of what's drawn, in the course's cases ───
 for (const [what, drawing] of [
   ['gate Q21a', gateDrawing(GATE.values, {})],

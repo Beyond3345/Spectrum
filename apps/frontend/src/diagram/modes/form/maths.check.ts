@@ -361,6 +361,11 @@ const g = (A: number, B: number, C: number, D: number, E: number, F: number, mor
   eq((transformationDrawing({ ...TRANSFORMATION.values, show: 'grid' }).code.body.match(/very thin|red!45/g) ?? []).length, 2, 'a grid before and after');
   eq(transformationDrawing({ ...TRANSFORMATION.values, name: 'H_x(1)' }).code.body.includes('$\\det H_x(1) = 2$'), true, 'its name in the working');
   eq(formCode({ preset: 'transformation', values: { ...TRANSFORMATION.values, name: '50%' } }, {}).body.includes('$50\\%\\mathbf{e}_2$'), true, 'a % in the name escaped');
+  // the vectors' names: \hat{\imath}-style or any, in the figure and the working; empty leaves the arrows unnamed
+  const hats = transformationDrawing({ ...TRANSFORMATION.values, basisName: '\\hat{e}', eigenName: '\\vec{u}' }).code.body;
+  eq(['{$A\\hat{e}_2$}', '{$\\hat{e}_2$}', '{$A\\vec{u}_1$}', '$A\\hat{e}_1 = (1, 0)$', '$\\vec{u}_1 = '].filter((t) => !hats.includes(t)), [], 'e and v renamed in the figure and the working');
+  const unnamed = transformationDrawing({ ...TRANSFORMATION.values, basisName: '', eigenName: '' }).code.body;
+  eq([['{$A\\mathbf{e}_2$}', '{$\\mathbf{e}_2$}', '{$A\\mathbf{v}_1$}', '{$\\mathbf{v}_1$}'].some((t) => unnamed.includes(t)), unnamed.includes('$A\\mathbf{e}_1 = (1, 0)$')], [false, true], 'empty: no names on the arrows, the working with e and v')
   for (const [a11, a12, a21, a22] of [[0, 0, 0, 0], [2, 6, 1, 3], [1, 0, 0, 1], [-0.8, 0.6, 0.6, 0.8], [1000, 0, 0, 0.001]]) eq(/NaN|Infinity|undefined/.test(transformationDrawing({ ...TRANSFORMATION.values, a11, a12, a21, a22 }).code.body), false, `[${a11} ${a12}; ${a21} ${a22}]`);
 }
 const drawings: [string, ReturnType<typeof conicDrawing> | ReturnType<typeof transformationDrawing>][] = [

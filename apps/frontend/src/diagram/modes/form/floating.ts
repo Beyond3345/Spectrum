@@ -4,7 +4,7 @@
 // GM = KB + BM − KG says whether it's stable for a small heel. Drawn upright with G, B and M, W and F_B, the waterline
 // with ▽ and the dimensions.
 import { unitWriter } from '../../units';
-import { at, fluidFields, fluidOf, fmt, LOOK_FIELD, pictureOf, results, RESULTS_FIELD, scene } from './fluids';
+import { at, fluidFields, fluidOf, fmt, LOOK_FIELD, nameField, nameOf, named, pictureOf, results, RESULTS_FIELD, scene } from './fluids';
 import type { FormPreset, FormValues } from './presets';
 
 export type FloatInput = { shape: 'box' | 'cylinder'; width: number; height: number; rdBody: number; rdFluid: number; kg?: number };
@@ -54,7 +54,8 @@ export function floatingDrawing(values: FormValues, style: Record<string, unknow
   sc.add(`% The ${input.shape === 'cylinder' ? 'cylinder, upright' : 'block'}`, `\\filldraw[fill=${look === 'exam' ? 'white' : 'black!20'}, line width=0.8pt] ${body.map(at).join(' -- ')} -- cycle;`);
   sc.seg(body, true);
 
-  // G, B and M on the centre line, W down from G and F_B up to the base
+  // G, B and M on the centre line (their names the user's), W down from G and F_B up to the base
+  const [gName, bName, mName] = ['gName', 'bName', 'mName'].map((key) => nameOf(values, key));
   const y = (above: number) => above * k - d;
   const G = { x: 0, y: y(r.KG) };
   const B = { x: 0, y: y(r.KB) };
@@ -68,13 +69,13 @@ export function floatingDrawing(values: FormValues, style: Record<string, unknow
   sc.label({ x: 0.05, y: (fb[0].y + fb[1].y) / 2 }, '$F_B$', { x: 1, y: 0 });
   sc.add('% Centres of gravity and buoyancy, and the metacentre');
   sc.dot(G);
-  sc.label(G, '$G$', { x: 1, y: 0.3 });
+  if (gName) sc.label(G, named(gName), { x: 1, y: 0.3 });
   sc.dot(B);
-  sc.label(B, '$B$', { x: -1, y: -0.3 });
+  if (bName) sc.label(B, named(bName), { x: -1, y: -0.3 });
   if (r.floats) {
     const M = { x: 0, y: y(r.KM) };
     sc.dot(M);
-    sc.label(M, '$M$', { x: 1, y: 0.3 });
+    if (mName) sc.label(M, named(mName), { x: 1, y: 0.3 });
   }
   sc.add('% Dimensions');
   sc.dimension({ x: w, y: -d }, { x: w, y: Math.min(0, top) }, { x: 0.4, y: 0 }, si.equals('d', fmt(r.d, 3), 'm'));
@@ -86,8 +87,8 @@ export function floatingDrawing(values: FormValues, style: Record<string, unknow
   const parts = r.floats
     ? [
         `${si.equals('d', fmt(r.d, 3), 'm')}, ${fmt(r.fraction * 100, 3)}\\,\\% submerged`,
-        `$KB = ${fmt(r.KB, 3)}$, $BM = ${fmt(r.BM, 3)}$, $KG = ${fmt(r.KG, 3)}$`,
-        `${si.equals('GM', fmt(r.GM!, 3), 'm')}: ${verdict}`
+        `$K${bName} = ${fmt(r.KB, 3)}$, $${bName}${mName} = ${fmt(r.BM, 3)}$, $K${gName} = ${fmt(r.KG, 3)}$`,
+        `${si.equals(`${gName}${mName}`, fmt(r.GM!, 3), 'm')}: ${verdict}`
       ]
     : [`It sinks: RD ${fmt(input.rdBody)} is not less than the liquid’s ${fmt(f.rd)}`];
   if (values.results === true) results(sc, 0, parts);
@@ -111,10 +112,13 @@ export const FLOATING: FormPreset = {
     { key: 'uniform', label: 'Uniform body (G at mid-height)', kind: 'switch' },
     { key: 'kg', label: 'G above the base (KG)', kind: 'number', unit: 'm', min: 0, max: 1000, shown: (v) => v.uniform !== true },
     LOOK_FIELD,
-    RESULTS_FIELD
+    RESULTS_FIELD,
+    nameField('gName', 'Centre of gravity', { hint: 'Each name is maths, without the dollar signs: G, B, M. The results use them, as GM. An empty name hides its label.' }),
+    nameField('bName', 'Centre of buoyancy'),
+    nameField('mName', 'Metacentre')
   ],
   // Lecture 5, Example 5: a cube of ice (RD 0.92) in seawater (RD 1.025), 25 cm of it above the surface
-  values: { shape: 'box', width: 2.44, height: 2.44, bodyRD: 0.92, fluid: 'seawater', fluidRD: 0, uniform: true, kg: 1, look: 'colour', results: true },
+  values: { shape: 'box', width: 2.44, height: 2.44, bodyRD: 0.92, fluid: 'seawater', fluidRD: 0, uniform: true, kg: 1, look: 'colour', results: true, gName: 'G', bName: 'B', mName: 'M' },
   conventions: ['siUnits'],
   toCode: (values, style) => floatingDrawing(values, style).code
 };

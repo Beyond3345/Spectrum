@@ -4,7 +4,7 @@
 // the hinge, and draws them as the course's slides and exam papers do: the fluid with its ▽ mark, the hatched wall and
 // bed, the gate, the pressure prism with its pressures, F_R in red at the centre of pressure, and the dimensions.
 import { unitWriter } from '../../units';
-import { at as pt, fluidFields, fluidOf, fmt, G, LOOK_FIELD, pictureOf, pressure, results, RESULTS_FIELD, scene } from './fluids';
+import { at as pt, fluidFields, fluidOf, fmt, G, LOOK_FIELD, nameField, nameOf, named, pictureOf, pressure, results, RESULTS_FIELD, scene } from './fluids';
 import type { Pt } from './fluids';
 import type { FormPreset, FormValues } from './presets';
 
@@ -210,7 +210,10 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
   if (r.F1 > 0) resultant(r.xi1, r.F1, 1, two ? 'F_{R1}' : 'F_R', red);
   if (input.other && r.F2 > 0) resultant(r.xi2, r.F2, -1, 'F_{R2}', blue);
 
-  // the hinge A and the stop B, with the stop's force
+  // the hinge A and the stop B (their names the user's), with the stop's force
+  const [hingeName, stopName] = [nameOf(values, 'hingeName'), nameOf(values, 'stopName')];
+  /** the force at a named point: F_B, F_{B'}; F when it has no name */
+  const forceAt = (name: string) => (!name ? 'F' : name.length === 1 ? `F_${name}` : `F_{${name}}`);
   if (input.hinge !== 'none') {
     const hingeEnd = input.hinge === 'top' ? 0 : L;
     const stopEnd = L - hingeEnd;
@@ -222,8 +225,8 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
     const wedge = [E, add(E, n1, -0.3), add(E, inward, 0.25)];
     sc.add(`\\filldraw[fill=black!45, line width=0.4pt] ${wedge.map(pt).join(' -- ')} -- cycle;`);
     sc.seg(wedge, true);
-    sc.label(H, '$A$', { x: -n1.x + 0.3, y: -n1.y + 0.6 });
-    sc.label(E, '$B$', { x: -n1.x, y: -n1.y - 0.6 });
+    if (hingeName) sc.label(H, named(hingeName), { x: -n1.x + 0.3, y: -n1.y + 0.6 });
+    if (stopName) sc.label(E, named(stopName), { x: -n1.x, y: -n1.y - 0.6 });
     if (r.stop !== null && Math.abs(r.stop) > 1e-9) {
       // from the dry side, just past the wedge, when it holds the gate against the first fluid; else from that fluid's side
       const to = r.stop > 0 ? add(E, inward, 0.32) : add(at(stopEnd), inward, 0.32);
@@ -232,7 +235,7 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
       sc.seg([from, to]);
       // beyond its tail, towards the gate's middle (off the bed for a stop at the foot)
       const sign = r.stop > 0 ? -1 : 1;
-      sc.label(from, si.equals('F_B', kN(Math.abs(r.stop)), 'kN'), { x: n1.x * sign + inward.x * 0.5, y: n1.y * sign + inward.y * 0.5 });
+      sc.label(from, si.equals(forceAt(stopName), kN(Math.abs(r.stop)), 'kN'), { x: n1.x * sign + inward.x * 0.5, y: n1.y * sign + inward.y * 0.5 });
     }
   }
 
@@ -263,13 +266,13 @@ export function gateDrawing(values: FormValues, style: Record<string, unknown>) 
     `Hydrostatic force on a ${input.shape} gate: ${fmt(L, 3)} m along it${input.shape === 'rectangle' ? `, ${fmt(input.width, 3)} m wide` : ''}, ${fmt(input.angle, 3)} degrees to the horizontal, top edge ${fmt(top, 3)} m deep; area ${fmt(area)} m2`,
     r.F1 > 0 ? `F_R = ${kN(r.F1)} kN at y_p = ${fmt(r.yp1)} m along the plane from the free surface, ${fmt(r.hp1)} m deep` : 'The gate is clear of the fluid',
     ...(input.other ? [`Other side: F_R2 = ${kN(r.F2)} kN at y_p = ${fmt(r.yp2)} m from its free surface; net ${kN(r.net)} kN`] : []),
-    ...(r.stop !== null ? [`Force on the stop B = ${kN(r.stop)} kN, on the hinge A = ${kN(r.hinge!)} kN (positive towards the first fluid)`] : [])
+    ...(r.stop !== null ? [`Force on the stop ${stopName} = ${kN(r.stop)} kN, on the hinge ${hingeName} = ${kN(r.hinge!)} kN (positive towards the first fluid)`] : [])
   ];
   if (values.results === true) {
     const parts = [
       r.F1 > 0 ? `${si.equals(two ? 'F_{R1}' : 'F_R', kN(r.F1), 'kN')} at ${si.equals('y_p', fmt(r.yp1, 3), 'm')}` : 'The gate is clear of the fluid',
       ...(input.other && r.F2 > 0 ? [`${si.equals('F_{R2}', kN(r.F2), 'kN')} at ${si.equals('y_p', fmt(r.yp2, 3), 'm')}`] : []),
-      ...(r.stop !== null ? [`stop ${si.equals('F_B', kN(r.stop), 'kN')}, hinge ${si.equals('F_A', kN(r.hinge!), 'kN')}`] : [])
+      ...(r.stop !== null ? [`stop ${si.equals(forceAt(stopName), kN(r.stop), 'kN')}, hinge ${si.equals(forceAt(hingeName), kN(r.hinge!), 'kN')}`] : [])
     ];
     results(sc, (xL + xR) / 2, parts);
   }
@@ -299,10 +302,12 @@ export const GATE: FormPreset = {
     { key: 'depth2', label: 'Its depth at the gate’s foot', kind: 'number', unit: 'm', min: 0, max: 1000, shown: (v) => v.other === true },
     { key: 'g', label: 'g', kind: 'number', unit: 'm/s²', min: 0.1, max: 100 },
     LOOK_FIELD,
-    RESULTS_FIELD
+    RESULTS_FIELD,
+    nameField('hingeName', 'Hinge', { shown: (v) => v.hinge !== 'none', hint: 'Each name is maths, without the dollar signs: A, B. The forces on them are F with the name below. An empty name hides its label.' }),
+    nameField('stopName', 'Stop', { shown: (v) => v.hinge !== 'none' })
   ],
   // Tutorial 3, question 21(a): a 3 m gate hinged at its top edge 2 m under the water, held by a ridge at its foot
-  values: { shape: 'rectangle', length: 3, width: 1, angle: 90, top: 2, fluid: 'water', fluidRD: 0, hinge: 'top', other: false, fluid2: 'seawater', fluid2RD: 0, depth2: 1, g: G, look: 'colour', results: true },
+  values: { shape: 'rectangle', length: 3, width: 1, angle: 90, top: 2, fluid: 'water', fluidRD: 0, hinge: 'top', other: false, fluid2: 'seawater', fluid2RD: 0, depth2: 1, g: G, look: 'colour', results: true, hingeName: 'A', stopName: 'B' },
   conventions: ['siUnits'],
   toCode: (values, style) => gateDrawing(values, style).code
 };
