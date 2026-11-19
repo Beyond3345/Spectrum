@@ -148,7 +148,9 @@ test('a turn is a job: its steps and its answer are heard as they happen, read-o
   assert.deepEqual(events.slice(0, 2).map((e) => [e.type, e.data.status ?? e.data.text]), [['state', 'running'], ['user', 'go']]);
   const steps = of(events, 'step');
   // three read-only calls of one model turn: all started before any is done
-  assert.deepEqual(steps.slice(0, 6).map((s) => `${s.tool} ${s.status}`), ['read_file started', 'search_text started', 'project_map started', 'read_file done', 'search_text done', 'project_map done'].sort((a, b) => (a.endsWith('started') ? 0 : 1) - (b.endsWith('started') ? 0 : 1)));
+  // (they end in whichever order they finish)
+  assert.deepEqual(steps.slice(0, 3).map((s) => `${s.tool} ${s.status}`), ['read_file started', 'search_text started', 'project_map started']);
+  assert.deepEqual(steps.slice(3, 6).map((s) => `${s.tool} ${s.status}`).sort(), ['project_map done', 'read_file done', 'search_text done']);
   assert.deepEqual(steps.slice(0, 3).map((s) => s.status), ['started', 'started', 'started']);
   const edit = steps.find((s) => s.tool === 'edit_file' && s.status === 'done');
   assert.deepEqual(edit.show, { diff: { path: 'main.tex', oldText: 'line two', newText: 'line 2' } });
