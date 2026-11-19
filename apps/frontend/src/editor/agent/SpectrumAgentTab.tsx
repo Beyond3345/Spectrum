@@ -576,7 +576,15 @@ export default function SpectrumAgentTab({
     attach(run.id, append(owner, chatMessage('user', label)));
   };
   return (
-    <div className="agent-tab" hidden={hidden} ref={tabRef}>
+    <div
+      className="agent-tab"
+      hidden={hidden}
+      ref={tabRef}
+      // coming back from the editor, where AGENTS.md may just have been written
+      onFocus={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) void refreshRules();
+      }}
+    >
       <div className="agent-bar">
         <MenuButton
           icon="clock"
