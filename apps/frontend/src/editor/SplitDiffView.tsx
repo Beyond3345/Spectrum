@@ -1,6 +1,8 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { diffArrays, diffLines, diffWordsWithSpace } from 'diff';
-import type { ChangeObject } from 'diff';
+import type { ReactNode } from 'react';
+import { diffArrays, diffWordsWithSpace } from 'diff';
+import { countOf, hunksOf, toLines } from './reviewHunks';
+import type { Hunk } from './reviewHunks';
 
 /** Part of a changed line; changed parts get the stronger tint. */
 export type DiffSegment = { text: string; changed: boolean };
@@ -17,6 +19,8 @@ export type DiffRow = {
   words?: { left: DiffSegment[]; right: DiffSegment[] };
   /** this side's last line has no newline at the end and the other side's has one */
   noNewline?: 'left' | 'right';
+  /** which of the changes a changed row belongs to, from 0 */
+  hunk?: number;
 };
 
 /** Unchanged lines left out between hunks, shown when asked. */
@@ -31,26 +35,8 @@ const LONG_LINE = 4000;
 /** ms all the word diffs of one file may take; changed lines after that are tinted whole */
 const WORD_BUDGET = 100;
 
-function splitLines(text: string) {
-  const lines = text.split('\n');
-  if (lines[lines.length - 1] === '') lines.pop();
-  return lines;
-}
-
-// the line diffs used last, most recent first: the review sheet counts every file, then shows one
-const recent: { original: string; proposed: string; parts: ChangeObject<string>[] }[] = [];
-
-function lineDiff(original: string, proposed: string, timeout = TIMEOUT) {
-  const at = recent.findIndex((r) => r.original === original && r.proposed === proposed);
-  const parts = (at < 0 ? undefined : recent.splice(at, 1)[0].parts) ??
-    diffLines(original, proposed, { timeout }) ?? [
-      { value: original, added: false, removed: true, count: splitLines(original).length },
-      { value: proposed, added: true, removed: false, count: splitLines(proposed).length }
-    ].filter((p) => p.value);
-  recent.unshift({ original, proposed, parts });
-  recent.length = Math.min(recent.length, 32);
-  return parts;
-}
+// a row's text is its line without the line end; a CR stays, so a change of line endings shows
+const bare = (line: string) => (line.endsWith('\n') ? line.slice(0, -1) : line);
 
 // a mark after the split (an accent, a vowel sign, a skin tone, a joined emoji) would draw detached
 const CLUSTER_TAIL = /^[\p{M}\u200d\u{1F3FB}-\u{1F3FF}]/u;
@@ -76,15 +62,17 @@ function wordDiff(left: string, right: string, until: number) {
 /**
  * Side-by-side rows: removed lines beside the added lines that replace them as 'changed' rows,
  * the rest 'removed' or 'added', and unchanged lines more than `context` away from a change
- * folded away. Identical texts give no rows.
+ * folded away. Identical texts give no rows. hunks: the changes from original to proposed, when
+ * the caller has them (a review's, which may sit one right after another).
  */
-export function buildDiffRows(original: string, proposed: string, { context = 3, timeout = TIMEOUT } = {}): DiffItem[] {
+export function buildDiffRows(original: string, proposed: string, { context = 3, timeout = TIMEOUT, hunks }: { context?: number; timeout?: number; hunks?: Hunk[] } = {}): DiffItem[] {
   if (original === proposed) return [];
-  const parts = lineDiff(original, proposed, timeout);
+  const before = toLines(original).map(bare);
   const wordsUntil = Date.now() + WORD_BUDGET;
   const rows: DiffRow[] = [];
   let leftNo = 0;
   let rightNo = 0;
+  let hunk = 0;
   // removed lines beside added ones by position, the leftovers on one side alone
   const pair = (old: string[], neu: string[]) => {
     for (let k = 0; k < old.length || k < neu.length; k++) {
@@ -99,25 +87,22 @@ export function buildDiffRows(original: string, proposed: string, { context = 3,
       }
       row.id = `${row.leftNo ?? ''}:${row.rightNo ?? ''}`;
       if (row.type === 'changed' && Date.now() < wordsUntil) row.words = wordDiff(old[k], neu[k], wordsUntil);
+      row.hunk = hunk;
       rows.push(row);
     }
   };
+  const same = (until: number) => {
+    while (leftNo < until) {
+      const line = before[leftNo++];
+      rightNo++;
+      rows.push({ id: `${leftNo}:${rightNo}`, type: 'context', left: line, right: line, leftNo, rightNo });
+    }
+  };
   const alike = (a: string, b: string) => Date.now() < wordsUntil && wordDiff(a, b, wordsUntil) !== undefined;
-  for (let i = 0; i < parts.length; ) {
-    if (!parts[i].added && !parts[i].removed) {
-      for (const line of splitLines(parts[i++].value)) {
-        leftNo++;
-        rightNo++;
-        rows.push({ id: `${leftNo}:${rightNo}`, type: 'context', left: line, right: line, leftNo, rightNo });
-      }
-      continue;
-    }
-    let old: string[] = [];
-    let neu: string[] = [];
-    for (; i < parts.length && (parts[i].added || parts[i].removed); i++) {
-      if (parts[i].added) neu = neu.concat(splitLines(parts[i].value));
-      else old = old.concat(splitLines(parts[i].value));
-    }
+  for (const h of hunks ?? hunksOf(original, proposed, timeout)) {
+    same(h.start);
+    const old = before.slice(h.start, h.end);
+    const neu = h.lines.map(bare);
     // a line added above an edited one would pair with it, so in a small uneven hunk the alike
     // lines pair first and the rest by position between them
     // ponytail: alike pairs are word-diffed twice (to pair, then to show); memoize if the budget runs short
@@ -138,7 +123,9 @@ export function buildDiffRows(original: string, proposed: string, { context = 3,
       if (!p.removed) ni += p.count;
     }
     pair(old.slice(o), neu.slice(n));
+    hunk++;
   }
+  same(before.length);
 
   // "a" against "a\n" differs only in the newline, which nothing else would show
   if (original && proposed && original.endsWith('\n') !== proposed.endsWith('\n')) {
@@ -171,15 +158,7 @@ export function buildDiffRows(original: string, proposed: string, { context = 3,
 }
 
 /** Lines added/removed between two texts. */
-export function countChanges(original: string, proposed: string) {
-  let added = 0;
-  let removed = 0;
-  for (const part of lineDiff(original, proposed)) {
-    if (part.added) added += part.count;
-    else if (part.removed) removed += part.count;
-  }
-  return { added, removed };
-}
+export const countChanges = (original: string, proposed: string) => countOf(hunksOf(original, proposed));
 
 /** "+12 −3", leaving out a zero side. */
 export function DiffCount({ added, removed }: { added: number; removed: number }) {
@@ -218,19 +197,29 @@ const DiffLine = memo(function DiffLine({ row }: { row: DiffRow }) {
 
 const NONE = new Set<string>();
 
-/** Side-by-side diff of the changed lines with a little context; unchanged runs fold away. */
+/**
+ * Side-by-side diff of the changed lines with a little context; unchanged runs fold away. With `hunks` (the changes
+ * from original to proposed) and `hunk`, each change's rows are handed to `hunk` to wrap with its own controls.
+ */
 export default function SplitDiffView({
   original,
   proposed,
   leftLabel = 'Before',
-  rightLabel = 'After'
+  rightLabel = 'After',
+  hunks,
+  hunk,
+  resetKey
 }: {
   original: string;
   proposed: string;
   leftLabel?: string;
   rightLabel?: string;
+  hunks?: Hunk[];
+  hunk?: (index: number, rows: ReactNode) => ReactNode;
+  /** scrolls back to the top when it changes; without it, whenever the texts do */
+  resetKey?: string;
 }) {
-  const items = useMemo(() => buildDiffRows(original, proposed), [original, proposed]);
+  const items = useMemo(() => buildDiffRows(original, proposed, { hunks }), [original, proposed, hunks]);
   // folds the user opened, for these items only (another file starts folded again)
   const [shown, setShown] = useState({ items, all: false, ids: NONE });
   const { all, ids } = shown.items === items ? shown : { all: false, ids: NONE };
@@ -238,11 +227,20 @@ export default function SplitDiffView({
 
   useLayoutEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [items]);
+  }, [resetKey ?? items]);
 
   const folded = items.some((item) => item.type === 'fold');
   // an opened fold keeps its button above its rows, so focus stays put and it can close again
   const visible = items.flatMap((item) => (item.type !== 'fold' ? [item] : all ? item.rows : ids.has(item.id) ? [item, ...item.rows] : [item]));
+
+  // each change's rows together, for `hunk` to wrap
+  const grouped: (DiffItem | [number, DiffRow[]])[] = [];
+  for (const item of visible) {
+    const last = grouped[grouped.length - 1];
+    if (!hunk || item.type === 'fold' || item.hunk === undefined) grouped.push(item);
+    else if (Array.isArray(last) && last[0] === item.hunk) last[1].push(item);
+    else grouped.push([item.hunk, [item]]);
+  }
 
   return (
     <div
@@ -266,8 +264,10 @@ export default function SplitDiffView({
         </span>
       </div>
       {!items.length && <div className="tool-empty">No changes — both sides are the same.</div>}
-      {visible.map((item) =>
-        item.type === 'fold' ? (
+      {grouped.map((item) =>
+        Array.isArray(item) ? (
+          hunk!(item[0], item[1].map((row) => <DiffLine key={row.id} row={row} />))
+        ) : item.type === 'fold' ? (
           <button
             key={item.id}
             className="split-fold"
