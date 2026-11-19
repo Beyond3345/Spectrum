@@ -89,8 +89,8 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
   const reads = [...SYSTEM_READS, ...developerReads(), workRoot, homeRoot, ...roots, path.dirname(runtimeExecutable || executable)];
   if (!reads.some((root) => executable === root || executable.startsWith(root + path.sep))) throw new Error('This command is outside the approved runtime folders. Add its specific runtime folder in Setup.');
   const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline });
-  const child = spawn('/usr/bin/sandbox-exec', ['-p', profile, executable, ...args], {
-    cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe'],
+  const child = spawn('/bin/sh', ['-c', WATCHDOG, 'sh', profile, executable, ...args], {
+    cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
     env: {
       PATH: process.env.PATH || '/usr/bin:/bin', HOME: home, TMPDIR: path.join(home, 'tmp'),
       XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local/share'),
@@ -98,8 +98,18 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
       ...env
     }
   });
+  // once it has exited, what it left in its group goes too
+  child.once('exit', () => child.stdio[3]?.destroy());
   return child;
 }
+
+/**
+ * The process starts as a shell that leaves a watchdog in the new process group and becomes sandbox-exec (the same
+ * pid). The watchdog, outside isolation, waits on a pipe whose other end only the backend holds, and kills the group
+ * when it closes: when the backend is killed (a crash, Force Quit), or once the process has exited. Its own output
+ * goes nowhere, so it never holds the process's pipes open. Windows: the isolation worker watches the backend itself.
+ */
+const WATCHDOG = '(read x <&3; kill -KILL 0) </dev/null >/dev/null 2>&1 & exec 3<&-; p=$1; shift; exec /usr/bin/sandbox-exec -p "$p" "$@"';
 
 export function killAgentProcess(child) {
   if (!child?.pid) return;

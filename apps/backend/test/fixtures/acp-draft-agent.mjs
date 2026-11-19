@@ -3,7 +3,8 @@
 // its own, and --lose-sessions loads none (an agent that no longer has the session). A prompt ending in please-fail fails, please-ask asks for permission and ends the turn without waiting,
 // please-hang never answers, please-link leaves a link in the workspace, and please-flood and please-huge stream a
 // long message (30,000 short pieces, or 40 of 64 KB), and please-plan sends a plan_update and asks an elicitation/create
-// question without waiting (both only in ACP's unstable schema). Every request it gets goes to $HOME/acp-log.jsonl.
+// question without waiting (both only in ACP's unstable schema), and please-usage reports the context's use and the
+// turn's tokens. Every request it gets goes to $HOME/acp-log.jsonl.
 import readline from 'node:readline';
 import { appendFileSync, promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -48,6 +49,10 @@ lines.on('line', async (line) => {
     }
     const pieces = asked.endsWith('please-flood') ? Array(30000).fill('ab ') : asked.endsWith('please-huge') ? Array(40).fill('x'.repeat(65536)) : Array.from({ length: 30 }, (_, i) => `piece-${i} `);
     for (const piece of pieces) update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: piece } });
+    if (asked.endsWith('please-usage')) {
+      update({ sessionUpdate: 'usage_update', used: 53000, size: 200000, cost: { amount: 0.42, currency: 'USD' } });
+      return send({ id: m.id, result: { stopReason: 'end_turn', usage: { totalTokens: 1500, inputTokens: 1200, outputTokens: 300 } } });
+    }
     send({ id: m.id, result: { stopReason: 'end_turn' } });
   } else if (m.id !== undefined && m.method) send({ id: m.id, error: { code: -32601, message: 'Unsupported fixture method' } });
 });

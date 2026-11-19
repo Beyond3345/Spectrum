@@ -1951,6 +1951,8 @@ export const createLocalAgentSession = (projectId: string, agentId: string, mode
 /** persona: left out keeps the session's; another one starts a new agent session that hears the conversation so far */
 export const sendLocalAgentPrompt = (id: string, prompt: string, options: { context?: AgentPromptContext; persona?: AgentPersona | null } = {}) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/prompt`, json('POST', { prompt, ...options }));
 export const stopLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/stop`, json('POST', {}));
+/** The workspace left the session: its agent, if waiting between turns, stops. */
+export const closeLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/close`, json('POST', {}));
 export const answerLocalAgent = (id: string, requestId: string, answer: unknown) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/answer`, json('POST', { requestId, answer }));
 export const setLocalAgentOption = (id: string, configId: string, value: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/option`, json('POST', { configId, value }));
 export const getLocalAgentChanges = (id: string) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/changes`);

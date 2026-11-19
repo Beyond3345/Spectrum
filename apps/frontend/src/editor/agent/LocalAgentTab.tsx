@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   answerLocalAgent,
+  closeLocalAgentSession,
   createLocalAgentSession,
   getLocalAgentChanges,
   getLocalAgentSession,
@@ -195,7 +196,11 @@ export default function LocalAgentTab({
     source.onerror = () => {
       /* EventSource retries with Last-Event-ID; completion is a protocol event. */
     };
-    return () => source.close();
+    return () => {
+      source.close();
+      // another session or none is shown, or the project closed: an agent kept waiting for this one's next turn stops
+      closeLocalAgentSession(id).catch(() => undefined);
+    };
   }, [session?.id]);
 
   const scroll = useFollow([view, reviewing, hidden]);

@@ -12,7 +12,7 @@ test('ACP lifecycle: permissions, isolated changes, application, resume, cancell
   process.env.SPECTRUM_PROJECTS_DIR = path.join(dir, 'projects');
   const { createProject } = await import('../src/services/projectService.js');
   const { saveAgentConfig } = await import('../src/services/agentProfiles.js');
-  const { newAgentRun, getAgentRun, promptAgent, answerAgentRequest, stopAgentRun, shutdownAgents, reviewAgentChanges, pendingChanges } = await import('../src/services/agentSessionService.js');
+  const { newAgentRun, getAgentRun, promptAgent, answerAgentRequest, stopAgentRun, shutdownAgents, reviewAgentChanges, pendingChanges, closeAgentRun } = await import('../src/services/agentSessionService.js');
   const { workspaceChanges } = await import('../src/services/agentWorkspace.js');
   const fixture = fileURLToPath(new URL('./fixtures/acp-agent.mjs', import.meta.url));
   try {
@@ -41,6 +41,9 @@ test('ACP lifecycle: permissions, isolated changes, application, resume, cancell
     assert.equal(changes.length, 4);
     await reviewAgentChanges(run, { action: 'apply', paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])) });
     assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'agent draft\n');
+    // kept between turns; closed, the next turn starts it again and resumes the session
+    assert.ok(run.child && run.child.exitCode === null);
+    closeAgentRun(run);
     await promptAgent(run, 'wait forever');
     const resumeDeadline = Date.now() + 10000;
     while (run.events.filter((e) => e.type === 'session').length < 2 && run.status !== 'failed' && Date.now() < resumeDeadline) await new Promise((resolve) => setTimeout(resolve, 20));
