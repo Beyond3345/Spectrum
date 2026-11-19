@@ -11,6 +11,7 @@ import { autocompletion, nextSnippetField, prevSnippetField } from '@codemirror/
 import { foldService, syntaxHighlighting } from '@codemirror/language';
 import { applyPatch, structuredPatch } from 'diff';
 import {
+  deleteFile,
   ApiError,
   blobUrl,
   closeTemplateDraft,
@@ -146,7 +147,7 @@ import { Tinymist, tinymistCompletions } from '../editor/lsp/tinymist';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
+import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
@@ -1384,6 +1385,8 @@ function Editor({ projectId }: { projectId: string }) {
   const rebase = async (change: PendingChange) => {
     const current = await ensureFileContent(change.filePath).catch(() => '');
     if (current === change.original) return { change, ok: true };
+    // a deletion of a file edited since is shown again, against the file as it is now
+    if (isDeletion(change)) return { change: { ...change, original: current }, ok: false };
     const merged = applyPatch(current, structuredPatch(change.filePath, change.filePath, change.original, change.proposed, undefined, undefined, { context: 1 }));
     return { change: { ...change, original: current, proposed: merged === false ? change.proposed : merged }, ok: merged !== false };
   };
@@ -1396,7 +1399,7 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   const proposeChanges = (changes: PendingChange[], opts?: { open?: boolean }) => {
-    const useful = changes.filter((c) => c.original !== c.proposed);
+    const useful = changes.filter((c) => c.deleted || c.original !== c.proposed);
     if (!useful.length) return;
     setPending((prev) => [...prev.filter((p) => !useful.some((c) => c.filePath === p.filePath)), ...useful]);
     if (opts?.open) openReview(useful).catch(() => setReviewOpen(true));
@@ -1454,7 +1457,18 @@ function Editor({ projectId }: { projectId: string }) {
     }
     if (!ready.length) return { applied: [], stale, checkpoint: null };
     const { version } = await createVersion('before-ai');
-    for (const change of ready) await writeProjectFile(change.filePath, change.proposed);
+    for (const change of ready) {
+      if (!isDeletion(change)) {
+        await writeProjectFile(change.filePath, change.proposed);
+        continue;
+      }
+      // a proposed deletion: to the Bin where there is one; the checkpoint just saved has the file either way
+      let res = await deleteFile(projectId, change.filePath, { bin: true });
+      if (!res.ok && res.noBin) res = await deleteFile(projectId, change.filePath);
+      if (!res.ok) throw new Error(res.error || `Couldn’t delete ${nameOf(change.filePath)}.`);
+      onDeleted(change.filePath);
+      await refreshTree();
+    }
     // one accepted in part stays, as what is left of it against the file as written
     setPending((prev) =>
       prev.flatMap((p) => {

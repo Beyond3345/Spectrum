@@ -185,7 +185,7 @@ test('the Spectrum agent loads skills, reads and suggests to-dos, and proposes c
   assert.deepEqual(json.patches.map((patch) => [patch.path, patch.original, patch.content]), [['main.tex', 'line one\nline two\n', 'line one\nline 2\nline three\n'], ['sections/new.tex', '', 'New section\n']]);
   assert.equal(await fs.readFile(path.join(p.path, 'main.tex'), 'utf8'), 'line one\nline two\n', 'nothing is written');
   // each tool call, for the transcript's cards
-  assert.deepEqual(json.steps.slice(0, 3), [{ tool: 'load_skill', about: 'alpha', ok: true }, { tool: 'read_skill_file', about: 'references/apis.md', ok: true }, { tool: 'read_skill_file', about: '../../../state.json', ok: false }]);
+  assert.deepEqual(json.steps.slice(0, 3).map(({ tool, about, ok }) => ({ tool, about, ok })), [{ tool: 'load_skill', about: 'alpha', ok: true }, { tool: 'read_skill_file', about: 'references/apis.md', ok: true }, { tool: 'read_skill_file', about: '../../../state.json', ok: false }]);
   assert.equal(json.steps.length, SCRIPT.length);
 
   // the next turn goes on from the proposals the thread has open, and proposes only what it changed
@@ -447,7 +447,7 @@ test('a run whose provider fails part-way keeps its steps and its prepared chang
   assert.equal(json.ok, false);
   assert.equal(json.incomplete, 'failed');
   assert.match(json.reply, /HTTP 529\): Overloaded\. Spectrum tried 3 times\./);
-  assert.deepEqual(json.steps, [{ tool: 'read_file', about: 'main.tex', ok: true }, { tool: 'propose_patch', about: 'main.tex', ok: true }]);
+  assert.deepEqual(json.steps.map(({ tool, about, ok }) => ({ tool, about, ok })), [{ tool: 'read_file', about: 'main.tex', ok: true }, { tool: 'propose_patch', about: 'main.tex', ok: true }]);
   assert.deepEqual(json.patches.map((x) => [x.path, x.original, x.content]), [['main.tex', 'as it was\n', 'work done before the failure\n']]);
   // two steps, then the failing call three times
   assert.equal(calls.length, 5);

@@ -182,6 +182,60 @@ const parseArgs = (args) => {
 };
 const functionsOf = (tools) => (tools?.length ? tools.map((t) => t.function) : null);
 
+// Prompt caching. A tool loop sends the same long prefix (tools, instructions, the conversation so far) again at every
+// step: a caller that will do so passes `cache`, a key for its conversation, and each format asks for caching its own
+// way. A one-off request (autocomplete, a rewrite) passes none: a cache written and never read costs more than no cache.
+const CACHED = { type: 'ephemeral' };
+
+/** A provider's event stream as its events, each one's data parsed; a keep-alive or a line that isn't JSON is passed over. */
+async function* sseEvents(body) {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const events = function* (final) {
+    for (;;) {
+      const end = buffer.search(/\r?\n\r?\n/);
+      if (end < 0 && !(final && buffer.trim())) return;
+      const block = end < 0 ? buffer : buffer.slice(0, end);
+      buffer = end < 0 ? '' : buffer.slice(end).replace(/^\r?\n\r?\n/, '');
+      const data = block.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
+      if (!data || data === '[DONE]') continue;
+      try {
+        yield JSON.parse(data);
+      } catch {
+        // not an event
+      }
+    }
+  };
+  for await (const chunk of body) {
+    buffer += decoder.decode(chunk, { stream: true });
+    yield* events(false);
+  }
+  yield* events(true);
+}
+
+// what a streamed Chat Completions piece repeats whole rather than continues
+const WHOLE = ['id', 'type', 'name', 'role', 'index'];
+/** A Chat Completions delta added to the message so far: text and arguments continue, a list's items join by index. */
+function mergeDelta(target, delta) {
+  for (const [key, value] of Object.entries(delta || {})) {
+    if (value == null) continue;
+    if (typeof value === 'string') target[key] = WHOLE.includes(key) ? value || target[key] : (target[key] || '') + value;
+    else if (Array.isArray(value)) {
+      const list = (target[key] ||= []);
+      for (const item of value) {
+        if (item === null || typeof item !== 'object') { list.push(item); continue; }
+        // a server that numbers nothing sends each tool call whole, or continues the last one
+        const known = item.id ? list.findIndex((x) => x?.id === item.id) : -1;
+        const at = Number.isInteger(item.index) ? item.index : known >= 0 ? known : item.id ? list.length : Math.max(0, list.length - 1);
+        const { index, ...rest } = item;
+        list[at] = mergeDelta(list[at] || {}, rest);
+      }
+    } else if (typeof value === 'object') target[key] = mergeDelta(target[key] && typeof target[key] === 'object' ? target[key] : {}, value);
+    else target[key] = value;
+  }
+  return target;
+}
+
 // Request formats. Each turns OpenAI-style messages and tools into its own body, and its reply back
 // into an OpenAI-style message. The raw reply items ride along on the message (_anthropic, _responses)
 // so a tool loop can send them back unchanged, as both APIs require for reasoning.
@@ -189,13 +243,29 @@ const ADAPTERS = {
   chat: {
     url: (url) => url,
     headers: (key) => ({ Authorization: `Bearer ${key}` }),
-    body: ({ model, messages, tools, temperature, extra }) => ({
+    body: ({ model, messages, tools, temperature, extra, cacheKey }) => ({
       model,
-      messages,
+      // another format's own reply items (a run whose model changed) are not this one's to send
+      messages: messages.map(({ _anthropic, _responses, ...m }) => m),
       ...(temperature !== undefined && { temperature }),
       ...(tools?.length && { tools }),
+      ...(cacheKey && { prompt_cache_key: cacheKey }),
       ...extra
     }),
+    // a stream's pieces put back together as the reply a request without one gets
+    stream: {
+      fields: { stream: true, stream_options: { include_usage: true } },
+      open: () => ({ choices: [{ message: { role: 'assistant' } }] }),
+      add(data, event) {
+        if (event.error) data.error = event.error;
+        if (event.usage) data.usage = event.usage;
+        const choice = event.choices?.[0];
+        if (!choice) return '';
+        if (choice.finish_reason) data.choices[0].finish_reason = choice.finish_reason;
+        mergeDelta(data.choices[0].message, choice.delta);
+        return typeof choice.delta?.content === 'string' ? choice.delta.content : '';
+      }
+    },
     // a refusal comes with no content and its reason beside it
     message: (data) => data?.choices?.[0]?.message && { ...data.choices[0].message, ...(!data.choices[0].message.content && data.choices[0].message.refusal && { content: data.choices[0].message.refusal }), truncated: data.choices[0].finish_reason === 'length' }
   },
@@ -204,7 +274,7 @@ const ADAPTERS = {
   anthropic: {
     url: (url) => (/\/messages$/.test(url) ? url : `${new URL(url).origin}/v1/messages`),
     headers: (key) => ({ 'x-api-key': key, 'anthropic-version': '2023-06-01' }),
-    body: ({ model, messages, tools, extra }) => {
+    body: ({ model, messages, tools, extra, cache }) => {
       const system = [];
       const turns = [];
       const add = (role, blocks) => {
@@ -232,15 +302,53 @@ const ADAPTERS = {
           }));
         }
       }
+      const defs = functionsOf(tools)?.map((f) => ({ name: f.name, description: f.description, input_schema: f.parameters }));
+      if (cache) {
+        // three of the four breakpoints a request may have: the tools, the instructions after them, and the
+        // conversation up to its last block, which the next step of the loop reads back and adds to
+        if (defs) defs[defs.length - 1] = { ...defs.at(-1), cache_control: CACHED };
+        const last = turns.at(-1)?.content;
+        const at = last ? last.findLastIndex((b) => !['thinking', 'redacted_thinking'].includes(b.type)) : -1;
+        if (at >= 0) last[at] = { ...last[at], cache_control: CACHED };
+      }
       return {
         model,
         // required by the API; generous because thinking counts towards it
         max_tokens: ['xhigh', 'max'].includes(extra.output_config?.effort) ? 32000 : 16000,
-        ...(system.length && { system: system.join('\n\n') }),
+        ...(system.length && { system: cache ? [{ type: 'text', text: system.join('\n\n'), cache_control: CACHED }] : system.join('\n\n') }),
         messages: turns,
-        ...(functionsOf(tools) && { tools: functionsOf(tools).map((f) => ({ name: f.name, description: f.description, input_schema: f.parameters })) }),
+        ...(defs && { tools: defs }),
         ...extra
       };
+    },
+    stream: {
+      fields: { stream: true },
+      open: () => ({ content: [], usage: {} }),
+      add(data, event) {
+        const block = data.content[event.index];
+        if (event.type === 'error') data.error = event.error || { message: 'The stream failed.' };
+        else if (event.type === 'message_start') Object.assign(data.usage, event.message?.usage);
+        else if (event.type === 'content_block_start') data.content[event.index] = { ...event.content_block };
+        else if (event.type === 'content_block_delta' && block) {
+          const d = event.delta || {};
+          if (d.type === 'text_delta') {
+            block.text = (block.text || '') + d.text;
+            return d.text;
+          }
+          // a tool call's input arrives as pieces of its JSON, read when the block ends
+          if (d.type === 'input_json_delta') block._json = (block._json || '') + d.partial_json;
+          else if (d.type === 'thinking_delta') block.thinking = (block.thinking || '') + d.thinking;
+          else if (d.type === 'signature_delta') block.signature = d.signature;
+          else if (d.type === 'citations_delta') (block.citations ||= []).push(d.citation);
+        } else if (event.type === 'content_block_stop' && block && '_json' in block) {
+          block.input = parseArgs(block._json);
+          delete block._json;
+        } else if (event.type === 'message_delta') {
+          Object.assign(data, event.delta);
+          Object.assign(data.usage, event.usage);
+        }
+        return '';
+      }
     },
     message: (data) => {
       if (!Array.isArray(data?.content)) return null;
@@ -261,8 +369,9 @@ const ADAPTERS = {
   responses: {
     url: (url) => url.replace(/\/chat\/completions$/, '/responses'),
     headers: (key) => ({ Authorization: `Bearer ${key}` }),
-    body: ({ model, messages, tools, extra }) => ({
+    body: ({ model, messages, tools, extra, cache }) => ({
       model,
+      ...(cache && { prompt_cache_key: cache }),
       input: messages.flatMap((m) => {
         if (m.role === 'tool') return [{ type: 'function_call_output', call_id: m.tool_call_id, output: String(m.content ?? '') }];
         if (m.role === 'assistant') {
@@ -282,6 +391,17 @@ const ADAPTERS = {
       ...(extra.reasoning && { include: ['reasoning.encrypted_content'] }),
       ...extra
     }),
+    stream: {
+      fields: { stream: true },
+      open: () => ({}),
+      add(data, event) {
+        if (event.type === 'response.output_text.delta') return event.delta || '';
+        // the last event carries the whole response, as a request without a stream returns it
+        if (['response.completed', 'response.incomplete', 'response.failed'].includes(event.type)) Object.assign(data, event.response);
+        else if (event.type === 'error') data.error = { message: event.message || event.error?.message };
+        return '';
+      }
+    },
     message: (data) => {
       if (!Array.isArray(data?.output)) return null;
       const calls = data.output.filter((item) => item.type === 'function_call');
@@ -296,6 +416,38 @@ const ADAPTERS = {
   }
 };
 
+// the servers that refused a prompt cache key, by host: asked once, not at every step of a run
+const noCacheKey = new Set();
+
+/** Tokens as the provider counted them: all it read (input, with what the cache served and what it stored) and what it wrote. */
+function usageOf(u) {
+  if (!u) return null;
+  const cacheRead = u.cache_read_input_tokens ?? u.prompt_tokens_details?.cached_tokens ?? u.input_tokens_details?.cached_tokens ?? u.prompt_cache_hit_tokens ?? 0;
+  const cacheWrite = u.cache_creation_input_tokens ?? 0;
+  // the Messages API counts what the cache served and stored apart from the rest; the others inside their total
+  const input = u.prompt_tokens ?? (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + cacheWrite;
+  return { input, output: u.completion_tokens ?? u.output_tokens ?? 0, ...(cacheRead && { cacheRead }), ...(cacheWrite && { cacheWrite }) };
+}
+
+/** onText for the answer's text alone: a leading <think>…</think> (open and local reasoning models) is held back until it closes. */
+function visibleText(onText) {
+  let raw = '';
+  let sent = 0;
+  return (piece) => {
+    raw += piece;
+    const lead = raw.trimStart();
+    if (lead.length < 7 && '<think>'.startsWith(lead)) return;
+    let out = raw;
+    if (lead.startsWith('<think>')) {
+      const end = raw.indexOf('</think>');
+      if (end < 0) return;
+      out = raw.slice(end + 8).trimStart();
+    }
+    if (out.length > sent) onText(out.slice(sent));
+    sent = out.length;
+  };
+}
+
 /**
  * One chat call. Returns { ok, message } where message is an OpenAI-style assistant message
  * (content and/or tool_calls), or { ok: false, error }.
@@ -306,44 +458,67 @@ const ADAPTERS = {
  * A busy provider (429, 500, 502, 503, 504, 529) or a reply that broke off part-way is tried again, `retries` times at
  * most (twice unless told), after the wait the provider names or 1 s then 3 s; the result's `retries` says how many
  * it took. An answer that stopped at the output limit comes back with `truncated: true`.
+ * onText: asks the provider for a stream and hears the answer's text as it comes, piece by piece; the result is the
+ * same whole message either way. onRetry({ attempt, of, waitMs, streamed }): heard before each wait to try again
+ * (attempt 2 of 3 is the second try); streamed says text of the try given up was already heard, and is to be dropped.
+ * cache: a key for the conversation a tool loop sends again at each step, which asks the provider to cache its prefix.
+ * usage: { input, output, cacheRead?, cacheWrite? } when the provider counts tokens.
  */
-export async function chatCompletion({ messages, model, endpoint, apiKey, tools, temperature = 0.2, reasoningEffort, provider: providerId, signal, retries: maxRetries = MAX_RETRIES }) {
+export async function chatCompletion({ messages, model, endpoint, apiKey, tools, temperature = 0.2, reasoningEffort, provider: providerId, signal, retries: maxRetries = MAX_RETRIES, onText, onRetry, cache }) {
   const resolved = resolveLLMConfig({ endpoint, apiKey, model });
   if (missingKey(resolved)) {
     return { ok: false, error: NO_API_KEY };
   }
   const url = normalizeChatEndpoint(resolved.endpoint);
   const provider = providerFor(url, providerId);
-  const adapter = ADAPTERS[provider?.api || 'chat'];
+  // a server Spectrum has no preset for speaks the format its address names: …/messages the Messages API,
+  // …/responses the Responses API, anything else Chat Completions
+  const api = provider?.api || (/\/messages$/i.test(url) ? 'anthropic' : /\/responses$/i.test(url) ? 'responses' : 'chat');
+  const adapter = ADAPTERS[api];
   // a local Ollama takes no key, so a key typed for another server never goes there
   const key = provider?.local ? '' : resolved.apiKey;
   // an Ollama model's effort levels come from Ollama itself
   const known = (provider?.live && (await liveModel(url, resolved.model))) || provider?.models.find((m) => m.id === resolved.model);
-  const options = {
-    // several presets reject any temperature but their own
-    temperature: provider ? undefined : temperature,
-    extra: provider ? effortFields(provider, known, reasoningEffort) : LEVELS.includes(reasoningEffort) ? { reasoning_effort: reasoningEffort } : {}
-  };
   let host = 'the model provider';
   try {
     host = new URL(url).host;
   } catch {
     // keep the generic name
   }
+  const options = {
+    // several presets reject any temperature but their own
+    temperature: provider ? undefined : temperature,
+    // an explicit level for a server with no preset, in its format's own words
+    extra: provider ? effortFields(provider, known, reasoningEffort) : !LEVELS.includes(reasoningEffort) ? {} : api === 'anthropic' ? { output_config: { effort: reasoningEffort } } : api === 'responses' ? { reasoning: { effort: reasoningEffort } } : { reasoning_effort: reasoningEffort },
+    cache: cache ? String(cache).slice(0, 64) : undefined,
+    // Chat Completions has no word for caching of its own: OpenAI's key goes to a server Spectrum has no preset for
+    // (most are OpenAI's API behind another address) until it refuses it; the presets cache by themselves or not at all
+    cacheKey: cache && !provider && api === 'chat' && !noCacheKey.has(host) ? String(cache).slice(0, 64) : undefined,
+    stream: onText ? { ...adapter.stream.fields } : null
+  };
   const stopped = { ok: false, error: 'Stopped.', stopped: true };
   const tooSlow = { ok: false, error: `${host} took too long to answer. Try again.` };
   let res;
   let text;
+  let data = null;
   let retries = 0;
   // asked to wait longer than Spectrum will: said in the error instead
   let longWait = null;
-  // Sent again when the provider rejected a parameter (one is dropped each time, so three calls at most) or was busy.
+  // waits before another try, telling the caller; false once stopped
+  const again = async (ms, streamed) => {
+    onRetry?.({ attempt: retries + 2, of: maxRetries + 1, waitMs: ms, streamed });
+    await pause(ms, signal);
+    retries += 1;
+    return !signal?.aborted;
+  };
+  // Sent again when the provider rejected a parameter (one is dropped each time) or was busy.
   for (;;) {
+    data = null;
     try {
       res = await fetch(adapter.url(url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(key && adapter.headers(key)) },
-        body: JSON.stringify(adapter.body({ model: resolved.model, messages, tools, ...options })),
+        body: JSON.stringify({ ...adapter.body({ model: resolved.model, messages, tools, ...options }), ...options.stream }),
         signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS)
       });
     } catch (err) {
@@ -351,18 +526,47 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
       if (err.name === 'TimeoutError') return tooSlow;
       return { ok: false, error: provider?.local ? `Couldn’t reach Ollama at ${host}. ${NO_OLLAMA}` : `Couldn’t reach ${host}. Check the endpoint in Settings › Models.` };
     }
+    // heard as it comes; a server that answers a stream request whole is read whole
+    const streaming = res.ok && options.stream && /event-stream/i.test(res.headers.get('content-type') || '');
+    let streamed = false;
     try {
-      text = await res.text();
+      if (streaming) {
+        const said = visibleText((piece) => {
+          streamed = true;
+          onText(piece);
+        });
+        const whole = adapter.stream.open();
+        for await (const event of sseEvents(res.body)) {
+          const piece = adapter.stream.add(whole, event);
+          if (piece) said(piece);
+        }
+        // a failure said inside the stream, after the provider took the request: as a reply that broke off
+        if (whole.error) throw Object.assign(new Error(String(whole.error.message || 'The stream failed.')), { provider: true });
+        data = whole;
+      } else text = await res.text();
     } catch (err) {
       if (signal?.aborted) return stopped;
       if (err.name === 'TimeoutError') return tooSlow;
       // the provider answered and the reply broke off: the address is right, so this is worth another try
       if (retries < maxRetries) {
-        await pause(BACKOFF_MS[retries++] ?? BACKOFF_MS.at(-1), signal);
-        if (signal?.aborted) return stopped;
+        if (!(await again(BACKOFF_MS[retries] ?? BACKOFF_MS.at(-1), streamed))) return stopped;
         continue;
       }
+      if (err.provider) return { ok: false, error: `The model provider reported an error part-way through the answer: ${err.message.replace(/\.$/, '')}.${retries ? ` Spectrum tried ${retries + 1} times.` : ''}` };
       return { ok: false, error: `The connection to ${host} was lost part-way through the answer${retries ? `, ${retries + 1} times running` : ''}. Try again.` };
+    }
+    if (streaming) break;
+    if (res.status === 400 || res.status === 422) {
+      // a server that takes no cache key or no usage in a stream: asked without, and this server not again
+      if (options.cacheKey && /prompt_cache_key|unknown|unrecogni[sz]ed|unexpected|extra|additional|not permitted|unsupported/i.test(text)) {
+        noCacheKey.add(host);
+        options.cacheKey = undefined;
+        continue;
+      }
+      if (options.stream?.stream_options && /stream_options|include_usage/i.test(text)) {
+        options.stream = { stream: true };
+        continue;
+      }
     }
     if (res.status === 400) {
       // Models without reasoning controls reject them.
@@ -382,9 +586,7 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
       longWait = asked;
       break;
     }
-    await pause(asked ?? BACKOFF_MS[retries] ?? BACKOFF_MS.at(-1), signal);
-    if (signal?.aborted) return stopped;
-    retries += 1;
+    if (!(await again(asked ?? BACKOFF_MS[retries] ?? BACKOFF_MS.at(-1), false))) return stopped;
   }
   if (!res.ok) {
     // the local app has no key: a 401 is a :cloud model while it's signed out of ollama.com
@@ -394,11 +596,12 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
     const said = longWait !== null ? `The provider is busy and asks for a wait of about ${about(longWait)} before another request. Try again then.` : `${providerError(res.status, text)}${retries ? ` Spectrum tried ${retries + 1} times.` : ''}`;
     return { ok: false, error: resolved.apiKey?.length >= 8 ? said.split(resolved.apiKey).join('[API key]') : said, status: res.status, ...(retries && { retries }) };
   }
-  let data = null;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    return { ok: false, error: 'The model provider sent a reply that couldn’t be read.' };
+  if (!data) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return { ok: false, error: 'The model provider sent a reply that couldn’t be read.' };
+    }
   }
   const reply = adapter.message(data);
   if (!reply) {
@@ -412,8 +615,7 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   if (truncated && (message.tool_calls?.length || !content)) {
     return { ok: false, error: 'The answer was cut off before it finished. Try a lower effort or a smaller request.' };
   }
-  // tokens as the provider counted them: Chat Completions' prompt and completion, the Messages and Responses APIs' input and output
-  const usage = data.usage && { input: data.usage.prompt_tokens ?? data.usage.input_tokens ?? 0, output: data.usage.completion_tokens ?? data.usage.output_tokens ?? 0 };
+  const usage = usageOf(data.usage);
   // a text answer that stopped at the output limit is still an answer: the caller says it was cut off
   return { ok: true, message: { ...message, content }, ...(truncated && { truncated: true }), ...(usage && { usage }), ...(retries && { retries }) };
 }

@@ -217,7 +217,7 @@ Every skill has a switch. With #ui[All projects] chosen at the top, a switch cha
 
 #shot("figures/03-assistant/skill-files.png", [The file browser of a built-in skill. "Built in: duplicate it to make changes" says why the text cannot be edited.], width: 75%) <fig-assistant-skill-files>
 
-The Spectrum agent has the list of skills in its instructions and loads them itself, but it cannot run their scripts. Before each local agent session, Spectrum copies the skills that are on for the project into the agent's private home, marked as Spectrum's, so skills the agent installed itself are left alone. Lastly, #ui[Share skills with other agents on this computer], at the foot of the pane and off by default, links your own skills that are switched on into `~/.agents/skills` and `~/.claude/skills` for agents you run outside Spectrum. It does this only where `~/.agents` or `~/.claude` already exists, and never in place of anything already there.
+The Spectrum agent has the list of skills in its instructions, a line for each, and loads them itself, but it cannot run their scripts. Before each local agent session, Spectrum copies the skills that are on for the project into the agent's private home, marked as Spectrum's, so skills the agent installed itself are left alone. Lastly, #ui[Share skills with other agents on this computer], at the foot of the pane and off by default, links your own skills that are switched on into `~/.agents/skills` and `~/.claude/skills` for agents you run outside Spectrum. It does this only where `~/.agents` or `~/.claude` already exists, and never in place of anything already there.
 
 == The agent workspace <sec-assistant-workspace>
 
@@ -252,7 +252,9 @@ The chips under the message box decide what goes with a message: the open file, 
 
 The header holds the session history (the clock), the #ui[Isolated] or #ui[Direct] badge, the agent's model and mode options, the persona picker and #ui[Stop]. The transcript shows the messages, the agent's thinking folded away, a card for each tool call that updates as it runs, questions and permission requests in line and a #ui[Restore] row for each Before AI changes checkpoint. The agent's plan stays at the top, and #ui[Save open steps as to-dos] adds its open steps to the to-do list (@ch-writing).
 
-The Spectrum agent works for up to 25 steps. It can read the project, search the literature, read and suggest to-dos and load skills, and its threads are saved with the project's chats but listed only in the workspace. A to-do it suggests appears as a card with #ui[Add] and is only saved once added.
+The Spectrum agent works for up to 25 steps, and each step shows as a card while it happens, with how long it took, as the answer appears word by word. It can read and search the project, change a file by replacing exact text, propose a new file or the deletion of one, compile its changes on a copy of the project and read the errors at their lines, look up the bibliography, search the literature, read and suggest to-dos and load skills. Its tools are the ones a local agent gets from Spectrum, with its own for the project's files. After changing a source file it compiles, fixes the first error and compiles again, three times at most, and says in its answer whether the document builds. Its threads are saved with the project's chats but listed only in the workspace. A to-do it suggests appears as a card with #ui[Add] and is only saved once added.
+
+#ui[Stop] ends the request to the model and the step that is running at once, and what the agent had done is kept. A message sent while the agent works waits above the message box as #ui[Queued]. #ui[Steer now] hands it to the agent between two steps, and otherwise it is sent as the next request when the answer has come. A page opened or reloaded while the agent works shows the run where it is.
 
 With each message the agent is given the document's language and an outline of the project as it is saved, which is the same for LaTeX, Typst and Markdown: the main file, the files it reads (`\input`, `#include` and `#import`), the bibliography files, a Markdown front matter, the headings with their file and line, the labels, the keys cited and the references and citations that do not resolve. While the language's own skill (`spectrum-latex`, `spectrum-typst` or `spectrum-markdown`) is on, the agent is pointed to it for fixing a compile.
 
@@ -260,13 +262,14 @@ Everything the agent reads that you did not type, such as a file, a compile log,
 
 === When a run does not finish
 
-A run can end before its answer in three ways, and in each the work done so far is kept (@fig-assistant-continue).
+A run can end before its answer in four ways, and in each the work done so far is kept (@fig-assistant-continue).
 
-- A request to the model fails. Spectrum first tries a busy provider again as described in @sec-assistant-panel. If the request still fails, the thread shows the steps that were finished, the failure under them and the changes prepared so far in the tray, where they can be reviewed and applied as usual.
+- A request to the model fails. Spectrum first tries a busy provider again as described in @sec-assistant-panel, and the thread says how long it waits and which try it is. If the request still fails, the thread shows the steps that were finished, the failure under them and the changes prepared so far in the tray, where they can be reviewed and applied as usual.
 - The agent reaches its limit of 25 steps.
 - The answer is cut off by the model's output limit.
+- You press #ui[Stop].
 
-#ui[Continue] under the thread starts a new run that is told which steps were finished and builds on the changes still open, so it goes on and does not start again. When nothing had been done before a failure, the button is #ui[Try again].
+#ui[Continue] under the thread goes on in the same run, from the conversation as it stood with every step it had finished, and builds on the changes still open. Spectrum keeps a run for an hour after its last answer and until the app closes. After that, #ui[Continue] starts a new run that is told which steps were finished, so it still goes on and does not start again. When nothing had been done before a failure, the button is #ui[Try again].
 
 #shot("figures/03-assistant/agent-continue.png", [A run that failed on its third step. The two finished steps and the prepared change are kept, and #ui[Continue] goes on from them.], width: 65%) <fig-assistant-continue>
 
@@ -328,7 +331,7 @@ In either mode, and for the Spectrum agent too, some files of a project are kept
 
 An isolated agent keeps working on its copy while changes wait, so you can go on prompting and apply or reject each file when you like. An applied file becomes the agent's new starting point, and a rejected one is put back to your version in the agent's copy, which the agent is told with its next task. The isolated agent can reach public HTTPS and DNS but not local services, so local models and MCP servers set up outside Spectrum are not available to it. A project with symbolic links, files over 50 MB, or more than 500 MB or 10,000 files is refused rather than copied incompletely.
 
-On macOS, a local agent also gets Spectrum's tools from a small server it starts inside its isolation: `compile`, `get_log`, `project_map`, `bib_entries`, `bib_search`, `literature_search`, `fetch_bibtex`, `list_todos`, `suggest_todo` and `load_skill`. For a Markdown document, `compile` and `get_log` give each error at its line of the `.md` file, as the Logs tab does, and not at a line of the file pandoc generated. Each tool's answer reaches the agent marked with the tool it came from, as text to read and not an instruction. Local agents on Windows get no Spectrum tools yet, as #menu[Settings][Agents] says there. Keys, working copies, session mappings and transcripts stay on this computer.
+On macOS, a local agent also gets Spectrum's tools from a small server it starts inside its isolation: `compile`, `get_log`, `project_map`, `bib_entries`, `bib_search`, `search_text`, `literature_search`, `fetch_bibtex`, `list_todos`, `suggest_todo` and `load_skill`. For a Markdown document, `compile` and `get_log` give each error at its line of the `.md` file, as the Logs tab does, and not at a line of the file pandoc generated. Each tool's answer reaches the agent marked with the tool it came from, as text to read and not an instruction. Local agents on Windows get no Spectrum tools yet, as #menu[Settings][Agents] says there. Keys, working copies, session mappings and transcripts stay on this computer.
 
 == Review <sec-assistant-review>
 
@@ -351,7 +354,7 @@ Review checks the document that #ui[Compile] builds before it goes anywhere. It 
   caption: [The groups of checks in Review. A Typst document runs Compile and layout and Privacy and blind review. A Markdown document also runs References and assets, which checks its citations against the `.bib` its front matter names, entries never cited, missing images and links to files that are not in the project, each at its line of the `.md`. Accessibility and Submission readiness run for LaTeX only.],
 ) <tab-assistant-review>
 
-The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes). Until a model is set up, it opens #menu[Settings][Models] instead. A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
+The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes). The fix is compiled on a copy of the project first, and the row then says "Builds." or "Still fails at" with the first error left. Until a model is set up, it opens #menu[Settings][Models] instead. A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
 
 The AI review reads the main file and every file it brings in with `\input`, `\include` or `#include`. A document longer than about 160,000 characters of source, roughly 25,000 words, is read in parts, one request each, and each part is told the summary of the parts before it. The status line shows the part being read, such as "AI review, part 2 of 4, chapters/ch3.tex:252 to chapters/ch6.tex:2", and each point is tied to its own file and line. #ui[Stop] ends the review after the parts already read, and the limits of the review say how far it got. A very large thesis takes one request for each part, so a 900 KB thesis is about six requests and takes about six times as long as a paper.
 

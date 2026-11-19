@@ -11,6 +11,8 @@ export interface PendingChange {
   source?: string;
   /** on a change accepted in part: the proposal that stays in review once `proposed` is written */
   rest?: string;
+  /** the change is the file's deletion: applying it moves the file to the Bin */
+  deleted?: boolean;
 }
 
 export interface CompileError {

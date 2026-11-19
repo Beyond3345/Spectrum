@@ -1,6 +1,6 @@
 // Self-check for the shared helpers that pick a project's files. Run:
 // npx esbuild apps/frontend/src/editor/shared.check.ts --bundle --platform=node --log-level=warning | node
-import { NO_ANSWER, bibIncludeLine, fixWithAI, withRetries, inlineImage, keptMainFile, modelSetUp } from './shared';
+import { NO_ANSWER, bibIncludeLine, buildLine, fixWithAI, isDeletion, withRetries, inlineImage, keptMainFile, modelSetUp } from './shared';
 import type { EditorApi } from './EditorContext';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -39,6 +39,18 @@ const opened: unknown[] = [];
 const noModel = { llm: { main: { endpoint: 'https://api.openai.com/v1' } }, openSettings: (s?: string) => opened.push(s), notify: () => opened.push('toast') } as unknown as EditorApi;
 eq(await fixWithAI(noModel, { task: 'debug_compile', prompt: 'x', label: 'Fix with AI' }), '', 'nothing is asked');
 eq(opened, ['models'], 'Settings opens at Models');
+
+// ─── Fix with AI ends with a compile, and says how it went ───
+
+eq(buildLine({ ok: true, errors: [] }), 'Builds.', 'the fix builds');
+eq(buildLine({ ok: false, errors: ['main.typ:3:6: error: unknown variable: x', 'main.typ:9:1: error: y'] }), 'Still fails at main.typ:3:6: error: unknown variable: x', 'the first error left');
+eq(buildLine({ ok: false, errors: [] }), 'Still fails at the compile', 'a failure the log did not place');
+eq(buildLine(undefined), '', 'nothing changed, nothing compiled');
+
+// a proposed deletion taken in part keeps the file: only the proposal that leaves nothing deletes it
+eq(isDeletion({ deleted: true, proposed: '' }), true, 'a deletion applied whole');
+eq(isDeletion({ deleted: true, proposed: 'a line kept\n' }), false, 'a deletion with a line kept is an edit');
+eq(isDeletion({ proposed: '' }), false, 'a file emptied by an edit stays');
 
 // ─── the editor's first load: a failed or silent request is tried again, then the error is thrown ───
 

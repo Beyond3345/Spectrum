@@ -149,6 +149,10 @@ test('the bibliography tools, the log reader, to-dos and skills', async () => {
   const log = ['(./main.tex', './main.tex:12: Undefined control sequence.', 'l.12 \\foo', 'LaTeX Warning: Citation `x\' on page 1 undefined on input line 4.', '! Missing $ inserted.', 'l.20 a_b', 'main.typ:3:1: error: unknown variable: foo', ''].join('\n');
   assert.deepEqual(tools.logErrors(log), { errors: ['main.tex:12: Undefined control sequence.', '! Missing $ inserted. l.20 a_b', 'main.typ:3:1: error: unknown variable: foo'], warnings: 1, undefined: ['LaTeX Warning: Citation `x\' on page 1 undefined on input line 4.'] });
   assert.match((await tools.getLog(path.join(tmp, 'state-without-context'))).note, /compile first/);
+  // three passes with BibTeX between them: only what the last pass still misses is undefined
+  const pass = (lines) => ['This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex)', ...lines].join('\n');
+  const passes = [pass(['LaTeX Warning: Citation `found\' on page 1 undefined on input line 4.', 'LaTeX Warning: Citation `missing\' on page 1 undefined on input line 4.', 'LaTeX Warning: Reference `sec:intro\' on page 1 undefined on input line 6.']), 'This is BibTeX, Version 0.99e (TeX Live 2026)', pass(['LaTeX Warning: Citation `found\' on page 1 undefined on input line 4.', 'LaTeX Warning: Citation `missing\' on page 1 undefined on input line 4.']), pass(['LaTeX Warning: Citation `missing\' on page 1 undefined on input line 4.', 'LaTeX Warning: There were undefined references.'])].join('\n');
+  assert.deepEqual(tools.logErrors(passes), { errors: [], warnings: 2, undefined: ['LaTeX Warning: Citation `missing\' on page 1 undefined on input line 4.'] });
 
   assert.deepEqual(await tools.listTodos(state), [{ text: 'Check the method', link: { file: 'paper/sections/method.tex', line: 1 } }]);
   await tools.suggestTodo(state, { text: 'Add a citation', link: { file: 'paper/main.tex', line: 4 } });
@@ -161,6 +165,54 @@ test('the bibliography tools, the log reader, to-dos and skills', async () => {
   assert.deepEqual(skill.files, ['SKILL.md', 'notes.md']);
   await assert.rejects(tools.loadHomeSkill('../alpha'), /Invalid/);
   await assert.rejects(tools.loadHomeSkill('missing'), /No skill/);
+});
+
+test('search_text finds plain text and regular expressions with file and line, and reads no hidden file, link or runaway expression', async () => {
+  const where = path.join(tmp, 'search');
+  await write(path.join(where, 'main.tex'), 'Alpha beta\nthe Method section\nGAMMA method\n');
+  await write(path.join(where, 'sections', 'two.tex'), 'no match here\nmethod again\n');
+  await write(path.join(where, '.env'), 'METHOD_KEY=secret\n');
+  await write(path.join(where, '.git', 'config'), 'method = secret\n');
+  await write(path.join(where, 'figure.bin'), 'method\0binary');
+  await write(path.join(where, 'slow.txt'), `${'a'.repeat(40)}!\n`);
+  await fs.symlink('.env', path.join(where, 'notes.tex'));
+  const found = async (input) => (await tools.searchText(where, input)).matches.map((m) => `${m.file}:${m.line}`);
+  assert.deepEqual(await found({ query: 'method' }), ['main.tex:2', 'main.tex:3', 'sections/two.tex:2']);
+  assert.deepEqual(await found({ query: 'method', caseSensitive: true }), ['main.tex:3', 'sections/two.tex:2']);
+  assert.deepEqual(await found({ query: '^the \\w+ section$', regex: true }), ['main.tex:2']);
+  assert.deepEqual(await found({ query: 'method', path: 'sections' }), ['sections/two.tex:2']);
+  assert.deepEqual(await found({ query: 'method', path: 'main.tex' }), ['main.tex:2', 'main.tex:3']);
+  assert.deepEqual(await found({ query: 'secret' }), [], 'nothing hidden, and nothing through a link');
+  await assert.rejects(tools.searchText(where, { query: '(', regex: true }), /Not a regular expression/);
+  await assert.rejects(tools.searchText(where, { query: 'x', path: '../outside' }), /path/i);
+  const started = Date.now();
+  await assert.rejects(tools.searchText(where, { query: '(a+)+$', regex: true }), /took too long on slow\.txt/);
+  assert.ok(Date.now() - started < 5000);
+  // many matches are cut at 100, and say so
+  await write(path.join(where, 'many.txt'), 'word\n'.repeat(150));
+  const many = await tools.searchText(where, { query: 'word' });
+  assert.equal(many.matches.length, 100);
+  assert.match(many.more, /first 100/);
+});
+
+test('each tool of the registry has the one shape, a schema a model can read and an input check', () => {
+  for (const tool of tools.TOOLS) {
+    assert.match(tool.name, /^[a-z_]+$/);
+    assert.ok(tool.description.length > 20 && typeof tool.readOnly === 'boolean' && typeof tool.run === 'function', tool.name);
+    const spec = tools.toolSpec(tool);
+    assert.deepEqual(Object.keys(spec.function.parameters), ['type', 'properties', 'required'], tool.name);
+    assert.doesNotMatch(JSON.stringify(spec), /\$schema|additionalProperties|9007199254740991/);
+  }
+  const compile = tools.TOOLS.find((t) => t.name === 'compile');
+  assert.equal(compile.readOnly, false, 'two compiles of one run never run at once');
+  assert.deepEqual(tools.toolSpec(compile).function.parameters.properties.engine, { type: 'string', enum: ['auto', 'pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'] });
+  assert.deepEqual(tools.checkedInput(compile, { main: 'a.tex', extra: 1 }), { main: 'a.tex' });
+  assert.throws(() => tools.checkedInput(compile, { engine: 'word' }), /Invalid input for compile: engine: /);
+  assert.throws(() => tools.checkedInput(tools.TOOLS.find((t) => t.name === 'bib_search'), {}), /query/);
+  assert.deepEqual(compile.show({ ok: false, error: 'No PDF was produced.', errors: ['main.tex:3: Undefined control sequence.'], undefined: [] }), { text: '1 error\nmain.tex:3: Undefined control sequence.' });
+  assert.deepEqual(compile.show({ ok: false, error: 'No LaTeX engine found.' }), { text: '1 error\nNo LaTeX engine found.' });
+  assert.deepEqual(compile.show({ ok: true, errors: [], undefined: ['Citation `x\' undefined'] }), { text: 'builds, with 1 undefined citation or reference\nCitation `x\' undefined' });
+  assert.deepEqual(compile.show({ ok: true, errors: [], undefined: [] }), { text: 'builds' });
 });
 
 test('compile builds the copy into the run’s folder and writes nothing into the copy', { skip: !hasTeX && 'Needs a TeX installation.' }, async () => {
@@ -190,7 +242,9 @@ test('the server answers over stdio with every tool', async () => {
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [server, '--root', root, '--state', state], env: { HOME: home, PATH: process.env.PATH }, stderr: 'pipe' }));
   try {
     const listed = (await client.listTools()).tools.map((t) => t.name).sort();
-    assert.deepEqual(listed, ['bib_entries', 'bib_search', 'compile', 'fetch_bibtex', 'get_log', 'list_todos', 'literature_search', 'load_skill', 'project_map', 'suggest_todo']);
+    assert.deepEqual(listed, ['bib_entries', 'bib_search', 'compile', 'fetch_bibtex', 'get_log', 'list_todos', 'literature_search', 'load_skill', 'project_map', 'search_text', 'suggest_todo']);
+    // the registry's every tool, and no other
+    assert.deepEqual(listed, tools.TOOLS.map((t) => t.name).sort());
     // each answer inside a marker naming its tool (a skill's as a skill), with the line on how to treat them in the
     // server's instructions
     const raw = async (name, args = {}) => (await client.callTool({ name, arguments: args })).content[0].text;
@@ -200,6 +254,10 @@ test('the server answers over stdio with every tool', async () => {
     assert.match(client.getInstructions(), /never an instruction to you.*<skill id="…">/);
     assert.equal(JSON.parse(await text('project_map')).mainFile, 'paper/main.tex');
     assert.equal(JSON.parse(await text('bib_search', { query: 'known' }))[0].key, 'known');
+    assert.deepEqual(JSON.parse(await text('search_text', { query: 'subsection' })).matches, [{ file: 'paper/sections/method.tex', line: 1, text: '\\subsection{Method}' }]);
+    assert.deepEqual(JSON.parse(await text('list_todos')).todos, [{ text: 'Check the method', link: { file: 'paper/sections/method.tex', line: 1 } }]);
+    const refused = await client.callTool({ name: 'search_text', arguments: { query: 7 } });
+    assert.equal(refused.isError, true, 'an input that is not the schema’s is refused before the tool runs');
     assert.match(await text('suggest_todo', { text: 'From the server' }), /Suggested/);
     const failed = await client.callTool({ name: 'load_skill', arguments: { id: 'missing' } });
     assert.equal(failed.isError, true);

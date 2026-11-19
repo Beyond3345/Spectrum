@@ -8,7 +8,7 @@ import type { ReviewKeys } from './HunkReview';
 import SplitDiffView, { DiffCount, countChanges } from './SplitDiffView';
 import { review, settle } from './reviewHunks';
 import type { Choice } from './reviewHunks';
-import { errorText } from './shared';
+import { errorText, isDeletion } from './shared';
 import { toast } from '../app/Toast';
 
 /**
@@ -74,7 +74,7 @@ export default function ReviewChangesSheet({
     const next = changes[changes.indexOf(current) + direction];
     if (next) setSelected(next.filePath);
   };
-  const pdfs = api && onRevise && reviewPdfs(api, () => changes.map((c) => ({ path: c.filePath, content: c.proposed })));
+  const pdfs = api && onRevise && reviewPdfs(api, () => changes.map((c) => ({ path: c.filePath, content: isDeletion(c) ? null : c.proposed })));
 
   return (
     <Sheet
@@ -114,8 +114,9 @@ export default function ReviewChangesSheet({
                   className={`review-file ${change.filePath === current.filePath ? 'active' : ''}`}
                   onClick={() => setSelected(change.filePath)}
                 >
-                  <Icon name="doc.text" />
+                  <Icon name={isDeletion(change) ? 'trash' : 'doc.text'} />
                   <span className="review-file-name" title={change.filePath}>{change.filePath}</span>
+                  {isDeletion(change) && <span className="badge">Deleted</span>}
                   {n && <DiffCount {...n} />}
                 </button>
               );
