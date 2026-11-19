@@ -68,7 +68,7 @@ const setup = () => (ready ??= (async () => {
   return { ...s, open, turn, lastPrompt, sending, stored, copy, reopen, relocate };
 })());
 
-test('a long streamed message keeps the turn’s start, and a huge one is stored in parts under the caps', { skip, timeout: 120000 }, async () => {
+test('a long streamed message keeps the turn’s start, and a huge one keeps its head and tail, not pushing out the turns before it', { skip, timeout: 120000 }, async () => {
   const { open, turn, stored, listAgentRuns } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' });
   await turn(run, 'hello\nwith more on the next line');
@@ -81,11 +81,41 @@ test('a long streamed message keeps the turn’s start, and a huge one is stored
   const message = run.events.findLast((e) => e.data?.sessionUpdate === 'agent_message_chunk');
   assert.equal(message.data.content.text, 'ab '.repeat(30000));
 
+  // 40 pieces of 64 KB, twice: the store keeps every turn, each flood as its first and last 100 KB
   await turn(run, 'please-huge');
-  const parts = run.events.filter((e) => e.data?.content?.text?.startsWith('xxx'));
-  assert.ok(parts.length >= 2, 'the message went on in a stored event of its own');
-  for (const e of run.events) assert.ok(JSON.stringify(e).length < 1.2 * 1024 * 1024, `event ${e.id} is under half the cap and a piece`);
-  assert.ok((await fs.stat(path.join(run.dir, 'session.json'))).size < 2.2 * 1024 * 1024);
+  await turn(run, 'please-huge');
+  const kept = (await stored(run)).events;
+  assert.deepEqual(users(kept), ['hello\nwith more on the next line', 'please-flood', 'please-huge', 'please-huge'], 'no turn was shed to make room');
+  const floods = kept.filter((e) => e.data?.content?.text?.startsWith('xxx'));
+  assert.equal(floods.length, 2, 'one stored event for each');
+  for (const e of floods) {
+    const left = 40 * 65536 - 2 * 100 * 1024;
+    assert.equal(e.cut, left);
+    assert.match(e.data.content.text, /^x{102400}\n\n\[… 2,416,640 characters left out …\]\n\nx{102400}$/);
+  }
+  assert.ok((await fs.stat(path.join(run.dir, 'session.json'))).size < 1024 * 1024);
+});
+
+test('a message is clipped piece by piece as it would be whole, and says how much was left out', async () => {
+  const { clipText } = await setup();
+  const whole = Array.from({ length: 5000 }, (_, i) => `${i} `).join('').repeat(20);
+  let kept = { text: '', cut: 0 };
+  for (let at = 0; at < whole.length; at += 997) kept = clipText(kept.text, whole.slice(at, at + 997), kept.cut);
+  assert.deepEqual(kept, clipText(whole));
+  assert.equal(kept.cut, whole.length - 2 * 102400);
+  assert.equal(kept.text, `${whole.slice(0, 102400)}\n\n[… ${kept.cut.toLocaleString('en-AU')} characters left out …]\n\n${whole.slice(-102400)}`);
+  assert.deepEqual(clipText('short', ' and more'), { text: 'short and more', cut: 0 });
+});
+
+test('the agent’s usage reaches the session’s events, which the transcript doesn’t show', { skip, timeout: 120000 }, async () => {
+  const { open, turn } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  await turn(run, 'please-usage');
+  assert.deepEqual(run.events.filter((e) => e.type === 'usage').map((e) => e.data), [
+    { context: { used: 53000, size: 200000, cost: { amount: 0.42, currency: 'USD' } } },
+    { turn: { totalTokens: 1500, inputTokens: 1200, outputTokens: 300 } }
+  ]);
+  assert.ok(!run.events.some((e) => e.data?.sessionUpdate === 'usage_update'), 'once, as usage');
 });
 
 test('a turn’s changes are stored by name, without their text, so a large file sheds none of the transcript', { skip, timeout: 120000 }, async () => {

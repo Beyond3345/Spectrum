@@ -40,41 +40,78 @@ const changeKey = (c) => `${c.path}\0${c.afterHash}`;
 export const pendingChanges = async (r) => (await workspaceChanges(r)).filter((c) => !r.resolved.has(changeKey(c)));
 
 const MAX_EVENTS = 1000;
-const MAX_EVENT_BYTES = 2 * 1024 * 1024;
+const MAX_EVENT_BYTES = 4 * 1024 * 1024;
+// one stored message or output keeps its first and last CLIP characters, and says how many were left out between
+const CLIP = 100 * 1024;
 const CHUNKS = ['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk'];
 // what session/load replays of the conversation, which the transcript already holds; its commands, modes and settings
 // still count
 const HISTORY = [...CHUNKS, 'tool_call', 'tool_call_update', 'plan', 'plan_update', 'plan_removed'];
+// what a full store sheds first, oldest first: the detail of tool calls, thoughts and terminals, never the conversation
+const detail = (e) => e.type === 'terminal' || (e.type === 'update' && ['tool_call', 'tool_call_update', 'agent_thought_chunk'].includes(e.data?.sessionUpdate));
 const eventBytes = new WeakMap();
-const sizeOf = (event) => eventBytes.get(event) ?? JSON.stringify(event).length;
+const sizeOf = (event) => {
+  let size = eventBytes.get(event);
+  if (size === undefined) eventBytes.set(event, size = JSON.stringify(event).length);
+  return size;
+};
+const leftOut = (n) => `\n\n[… ${n.toLocaleString('en-AU')} characters left out …]\n\n`;
+/**
+ * text with more after it, its middle left out once it passes 2 × CLIP: { text, cut }. cut: how many characters text
+ * already leaves out, when it is a head, the line saying so and a tail.
+ */
+export function clipText(text, more = '', cut = 0) {
+  if (!cut && text.length + more.length <= 2 * CLIP) return { text: text + more, cut };
+  const tail = (cut ? text.slice(-CLIP) : text.slice(CLIP)) + more;
+  const dropped = tail.length - CLIP;
+  return { text: text.slice(0, CLIP) + leftOut(cut + dropped) + tail.slice(dropped), cut: cut + dropped };
+}
+const clipAll = (value) => typeof value === 'string' ? clipText(value).text : Array.isArray(value) ? value.map(clipAll) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, clipAll(v)])) : value;
 /** The next piece of a message streamed into the last one, or the next update of the same tool call: one stored event. */
 function joined(last, type, data) {
   if (type !== 'update' || last?.type !== 'update' || last.data?.sessionUpdate !== data?.sessionUpdate) return null;
   if (CHUNKS.includes(data.sessionUpdate)) {
-    // a message past half the cap goes on in a stored event of its own, which the cap can shed in turn
-    if (sizeOf(last) > MAX_EVENT_BYTES / 2) return null;
     if (last.data.content?.type !== 'text' || data.content?.type !== 'text' || (last.data.messageId ?? null) !== (data.messageId ?? null)) return null;
-    return { ...last.data, content: { ...last.data.content, text: last.data.content.text + data.content.text } };
+    const { text, cut } = clipText(last.data.content.text, data.content.text, last.cut);
+    return { data: { ...last.data, content: { ...last.data.content, text } }, cut };
   }
-  return data.sessionUpdate === 'tool_call_update' && last.data.toolCallId === data.toolCallId ? { ...last.data, ...data } : null;
+  return data.sessionUpdate === 'tool_call_update' && last.data.toolCallId === data.toolCallId ? { data: { ...last.data, ...data } } : null;
+}
+/** As the store keeps event: a message or anything else past 2 × CLIP keeps the head and tail of each long text. */
+function clipped(event) {
+  if (sizeOf(event) <= 2 * CLIP) return event;
+  const { data } = event;
+  if (!(CHUNKS.includes(data?.sessionUpdate) && data.content?.type === 'text')) return { ...event, data: clipAll(data) };
+  const { text, cut } = clipText(data.content.text);
+  return { ...event, data: { ...data, content: { ...data.content, text } }, ...(cut && { cut }) };
 }
 // Listeners hear every piece as it comes. The store keeps one event per message, so a long turn keeps its start under
 // the caps: it takes the latest piece's id and names its first in `first`, and a client replaying the store drops the
-// pieces it already had, from first to id.
+// pieces it already had, from first to id. A message past 2 × CLIP is kept as its head and tail (A-20), so one output
+// never pushes the conversation before it out of the store.
 const emit = (r, type, data) => {
   r.updatedAt = new Date().toISOString();
   const event = { id: ++r.sequence, type, data, at: r.updatedAt };
   const last = r.events.at(-1);
   const whole = joined(last, type, data);
   if (whole) {
-    const stored = { ...event, first: last.first ?? last.id, data: whole };
-    // a piece adds only its text (as JSON, less the quotes); a tool call's update may replace what it had
-    eventBytes.set(stored, CHUNKS.includes(data.sessionUpdate) ? sizeOf(last) + JSON.stringify(data.content.text).length - 2 : JSON.stringify(stored).length);
+    const piece = CHUNKS.includes(data.sessionUpdate);
+    // a message's text is clipped as it is joined
+    const stored = { ...event, first: last.first ?? last.id, data: whole.data, ...(whole.cut && { cut: whole.cut }) };
+    const kept = piece ? stored : clipped(stored);
+    // a piece adds only its text (as JSON, less the quotes) less what was left out; a tool call's update may replace
+    // what it had
+    const text = (e) => e.data.content.text.length;
+    eventBytes.set(kept, piece ? sizeOf(last) + JSON.stringify(data.content.text).length - 2 - (text(last) + data.content.text.length - text(stored)) : JSON.stringify(kept).length);
     r.eventBytes -= sizeOf(last);
-    r.events[r.events.length - 1] = stored;
-  } else r.events.push(event);
+    r.events[r.events.length - 1] = kept;
+  } else r.events.push(clipped(event));
   r.eventBytes += sizeOf(r.events.at(-1));
-  while (r.events.length > MAX_EVENTS || (r.events.length > 1 && r.eventBytes > MAX_EVENT_BYTES)) r.eventBytes -= sizeOf(r.events.shift());
+  while (r.events.length > MAX_EVENTS || (r.events.length > 1 && r.eventBytes > MAX_EVENT_BYTES)) {
+    // ponytail: past the detail, the oldest event goes, conversation and all; 4 MB is some 20 clipped floods
+    const at = Math.max(0, r.events.findIndex(detail));
+    r.eventBytes -= sizeOf(r.events.splice(at, 1)[0]);
+  }
   for (const listener of r.listeners) listener(event);
   return event;
 };
@@ -284,7 +321,14 @@ async function connect(r) {
   // while a session opens, its updates may come before its id does
   const checkSession = (params) => { if (r.remoteId && !r.opening && params.sessionId && params.sessionId !== r.remoteId) throw new Error('Unknown agent session.'); };
   const app = client({ name: 'spectrum', version: APP_VERSION })
-    .onNotification('session/update', ({ params }) => { checkSession(params); if (!(r.replaying && HISTORY.includes(params.update?.sessionUpdate))) emit(r, 'update', params.update); })
+    .onNotification('session/update', ({ params }) => {
+      checkSession(params);
+      const u = params.update;
+      if (r.replaying && HISTORY.includes(u?.sessionUpdate)) return;
+      // what the agent's context holds now, for a later display: { context: { used, size, cost? } }
+      if (u?.sessionUpdate === 'usage_update') emit(r, 'usage', { context: { used: u.used, size: u.size, ...(u.cost && { cost: u.cost }) } });
+      else emit(r, 'update', u);
+    })
     .onRequest('session/request_permission', ({ params }) => { checkSession(params); return requestUser(r, 'permission', params); })
     .onRequest('elicitation/create', ({ params }) => requestUser(r, 'question', params))
     .onNotification('elicitation/complete', ({ params }) => emit(r, 'notice', params))
@@ -789,6 +833,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       r.openedNew = r.freshSession = false;
       r.turnCount++;
       emit(r, 'complete', result);
+      // the turn's tokens, where the agent counts them: { turn: { totalTokens, inputTokens, outputTokens, … } }
+      if (result.usage) emit(r, 'usage', { turn: result.usage });
       outcome = [r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined];
     } catch (err) {
       // an agent that stopped by itself is told of by its exit, with its last words: wait a moment for that, so the
