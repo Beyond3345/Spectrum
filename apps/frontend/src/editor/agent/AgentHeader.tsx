@@ -60,7 +60,8 @@ export default function AgentHeader(
   const { choice, onChoose, onManage } = props;
   const meter = spectrumMeter(props.messages, props.live, choice.model, settings.modelPrices);
   const modelName = choice.models.find(([id]) => id === choice.model)?.[1] || choice.model || 'No model';
-  const effortName = choice.efforts.find(([v]) => v === choice.effort)?.[1];
+  // the recommended level by its name: “Recommended (Medium)” is “Medium” on the button
+  const effortName = choice.efforts.find(([v]) => v === choice.effort)?.[1]?.replace(/^Recommended \((.+)\)$/, '$1');
   return (
     <>
       <MenuButton

@@ -2594,6 +2594,7 @@ textarea.table-latex {
 
 .agent-meter {
   display: inline-flex;
+  margin-left: auto;
   align-items: center;
   gap: 8px;
   min-width: 0;

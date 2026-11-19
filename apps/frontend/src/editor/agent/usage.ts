@@ -83,21 +83,25 @@ export function spectrumMeter(messages: ChatThread['messages'], live: AgentUsage
 type AcpUsage = { totalTokens?: number; inputTokens?: number; outputTokens?: number; thoughtTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number };
 
 /**
- * A local agent's meter, from what it reported: how full its context is and the session's cost (ACP usage_update),
- * and the last task's tokens (a prompt's usage). Nothing when the agent reports neither.
+ * A local agent's meter, from what it reported: how full its context is and the session's cost (ACP usage_update; the
+ * cost is the session's whole, so the last one said stands until another comes), and the last task's tokens (a
+ * prompt's usage, gone once a new task starts). Nothing when the agent reports neither.
  */
 export function localMeter(events: AgentEvent[]): Meter | null {
-  type Context = { used: number; size: number; cost?: { amount: number; currency: string } };
+  type Cost = { amount: number; currency: string };
+  type Context = { used: number; size: number; cost?: Cost };
   let context: Context | null = null;
+  let cost: Cost | null = null;
   let task: AcpUsage | null = null;
   for (const e of events) {
+    if (e.type === 'user') task = null;
     if (e.type !== 'usage' || !e.data) continue;
     const { context: c, turn } = e.data as { context?: Context; turn?: AcpUsage };
     if (c && Number.isFinite(c.used) && c.size > 0) context = c;
+    if (c?.cost && Number.isFinite(c.cost.amount) && typeof c.cost.currency === 'string') cost = c.cost;
     if (turn && typeof turn === 'object') task = turn;
   }
   const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-  const cost = context?.cost && Number.isFinite(context.cost.amount) && typeof context.cost.currency === 'string' ? context.cost : null;
   const total = task ? n(task.totalTokens) || n(task.inputTokens) + n(task.outputTokens) + n(task.thoughtTokens) + n(task.cachedReadTokens) + n(task.cachedWriteTokens) : 0;
   if (!context && !total) return null;
   const full = context ? Math.min(1, context.used / context.size) : undefined;

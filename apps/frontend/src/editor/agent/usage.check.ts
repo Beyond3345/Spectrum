@@ -57,6 +57,8 @@ eq(m.full, 0.265, 'how full');
 has(m.title, '53,000 of 200,000 tokens (27%).', 'context told');
 has(m.title, 'as the agent reports it: USD 0.42', 'the agent’s cost is not an estimate');
 has(m.title, 'Last task: 12,400 tokens (9,000 in, 400 out, 3,000 from the cache)', 'task told');
+m = localMeter([ev(1, { context: { used: 53_000, size: 200_000, cost: { amount: 0.42, currency: 'USD' } } }), ev(2, { turn: { totalTokens: 100 } }), { id: 3, type: 'user', data: { text: 'next' }, at: '' } as AgentEvent, ev(4, { context: { used: 60_000, size: 200_000 } })])!;
+eq(m.parts, ['Context 30%', 'USD 0.42'], 'the session’s cost stands until another is said; a new task drops the last one’s tokens');
 m = localMeter([ev(1, { context: { used: 190_000, size: 200_000 } })])!;
 has(m.title, 'nearly full', 'a full context warns');
 eq(m.parts, ['Context 95%'], 'context alone');
