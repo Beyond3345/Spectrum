@@ -604,6 +604,7 @@ before(async () => {
   process.env.SPECTRUM_CROSSREF_BASE = `${base}/crossref`;
   process.env.SPECTRUM_ARXIV_BASE = `${base}/arxiv`;
   process.env.SPECTRUM_EXA_BASE = `${base}/exa`;
+  process.env.SPECTRUM_BRAVE_BASE = `${base}/brave`;
 });
 
 after(() => mock?.close());

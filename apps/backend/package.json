@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node src/index.js",
     "start": "node src/index.js",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --import ./test/no-network.mjs --test \"test/*.test.js\""
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.0.2",
