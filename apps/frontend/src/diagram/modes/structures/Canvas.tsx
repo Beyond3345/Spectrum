@@ -18,6 +18,8 @@ import type { Part, Pt, StructureModel, Units } from './model';
 import { solve } from './solve';
 import { setShown } from './store';
 import { symbolSvg } from './symbols';
+import { WIDTH_PT } from '../vectors/model';
+import type { Thickness } from '../vectors/model';
 
 /** screen pixels a centimetre at 100 % */
 const PX_PER_CM = 36;
@@ -416,6 +418,14 @@ export default function StructureCanvas({
   // the export's \footnotesize at this zoom, and a TeX point in screen pixels for the line widths (structures.css),
   // neither smaller than the canvas can show plainly
   const fontSize = Math.max(9, TEXT_CM * k);
+  /** a part's own colour as it prints (black the canvas's ink, so it shows on the dark canvas too), and its thickness at its printed width */
+  const inkOf = (colour: string) => (colour === 'black' ? 'var(--ckt-ink)' : colourCss(colour));
+  const strokeOf = ({ colour, width }: { colour?: string; width?: Thickness }): CSSProperties => ({
+    ...(colour && { stroke: inkOf(colour) }),
+    ...(width !== undefined && { strokeWidth: `max(1px, calc(${typeof width === 'number' ? width : WIDTH_PT[width]} * var(--st-pt, 0px)))` })
+  });
+  /** a symbol's or a label's colour: the ink it's drawn in, so a selected label still shows as selected */
+  const inkStyle = (colour?: string) => (colour ? ({ '--ckt-ink': inkOf(colour) } as CSSProperties) : undefined);
   const drawItem = (item: Item, key: string, shift: Pt = { x: 0, y: 0 }) => {
     const id = 'id' in item ? item.id : undefined;
     const on = id !== undefined && selected.has(id);
@@ -429,7 +439,7 @@ export default function StructureCanvas({
           <g key={key} {...hit} className={`st-item ${on ? 'selected' : ''}`}>
             {on && <Tag points={pts} className="st-halo" />}
             {id && <Tag points={pts} className="st-hit" />}
-            <Tag points={pts} className={`st-ink st-${item.ink} ${item.fill === 'load' ? 'st-fill-load' : ''}`} style={item.fill && item.fill !== 'load' ? { fill: colourCss(style.diagrams[item.fill].fill), fillOpacity: style.diagrams[item.fill].opacity } : undefined} markerEnd={item.arrow ? 'url(#st-arrow)' : undefined} markerStart={item.arrow === '<->' ? 'url(#st-arrow-start)' : undefined} />
+            <Tag points={pts} className={`st-ink st-${item.ink} ${item.fill === 'load' ? 'st-fill-load' : ''}`} style={{ ...(item.fill && item.fill !== 'load' && { fill: colourCss(style.diagrams[item.fill].fill), fillOpacity: style.diagrams[item.fill].opacity }), ...strokeOf(item) }} markerEnd={item.arrow ? 'url(#st-arrow)' : undefined} markerStart={item.arrow === '<->' ? 'url(#st-arrow-start)' : undefined} />
           </g>
         );
       }
@@ -447,14 +457,14 @@ export default function StructureCanvas({
           <g key={key} {...hit} className={`st-item ${on ? 'selected' : ''}`}>
             {on && <path d={d} className="st-halo" />}
             {id && <path d={d} className="st-hit" />}
-            <path d={d} className={`st-ink st-${item.ink}`} markerEnd="url(#st-arrow)" />
+            <path d={d} className={`st-ink st-${item.ink}`} style={strokeOf(item)} markerEnd="url(#st-arrow)" />
           </g>
         );
       }
       case 'pic': {
         const p = T(item.at);
         return (
-          <g key={key} {...hit} className={`st-item ${on ? 'selected' : ''} ${item.faint ? 'st-faint-pic' : ''}`} transform={`translate(${p.x},${p.y}) scale(${k},${-k}) rotate(${item.rotate})`}>
+          <g key={key} {...hit} className={`st-item ${on ? 'selected' : ''} ${item.faint ? 'st-faint-pic' : ''}`} style={inkStyle(item.colour)} transform={`translate(${p.x},${p.y}) scale(${k},${-k}) rotate(${item.rotate})`}>
             {on && <circle r={0.45} className="st-halo-pic" />}
             {id && <rect x={-0.45} y={-0.7} width={0.9} height={0.8} className="st-hit-box" />}
             {symbolSvg(item.name).map((shape, i) =>
@@ -474,7 +484,7 @@ export default function StructureCanvas({
         const p = { x: at.x + (item.anchor.includes('west') ? sep : item.anchor.includes('east') ? -sep : 0), y: at.y + (item.anchor.includes('south') ? -sep - 0.2 * fontSize : item.anchor.includes('north') ? sep : 0) };
         const [anchor, baseline] = TEXT_ANCHOR[item.anchor];
         return (
-          <text key={key} {...hit} x={p.x} y={p.y} className={`st-text ${on ? 'selected' : ''}`} fontSize={fontSize} textAnchor={anchor} dominantBaseline={baseline}>
+          <text key={key} {...hit} x={p.x} y={p.y} className={`st-text ${on ? 'selected' : ''}`} style={inkStyle(item.colour)} fontSize={fontSize} textAnchor={anchor} dominantBaseline={baseline}>
             {sketched(item.tex)}
           </text>
         );

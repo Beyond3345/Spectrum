@@ -3,7 +3,7 @@
 // another symbol set is a \pic, defined inside the picture (only the ones used), its set's packages and libraries
 // added to what the document loads. Spectrum's own circuitikz shapes (MU Style) are declared in the picture too, only
 // when it uses one.
-import { SYMBOL_SETS, picDefinition, shapeDefinitions } from '../../../../../backend/src/data/symbolSets.js';
+import { FLUID_KEYS, KEYED_PICS, SYMBOL_SETS, picDefinition, shapeDefinitions } from '../../../../../backend/src/data/symbolSets.js';
 import { unitWriter } from '../../units';
 import { annotationCode, isBehind, patternDefinition, patternsUsed, textKeys, usesArrows } from './annotate';
 import { anchorFor, markLayout, pinLabelSpots } from './labels';
@@ -239,7 +239,8 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     const turns = [rotate && `rotate=${rotate}`, el.flipX && 'xscale=-1', el.flipY && 'yscale=-1'].filter(Boolean);
     const name = el.name || named.has(el.id) ? ` (${nameOf(el)})` : '';
     // a set's shape that takes text gets it as the pic's text, which its pic sets in a node (\\tikzpictext)
-    const picKeys = [...turns, ...(part?.text && el.text?.trim() ? [`pic text={${el.text}}`] : [])];
+    // a manometer's liquid and levels (symbolSets.js KEYED_PICS) are its options
+    const picKeys = [...(el.options || []), ...turns, ...(part?.text && el.text?.trim() ? [`pic text={${el.text}}`] : [])];
     if (part?.set) return `\\pic${picKeys.length ? `[${picKeys.join(', ')}]` : ''}${name} at ${at(el.at)} {${part.tikz}};`;
     // Text is a plain node: its keys are only its look and the turns
     const keys = [...(part && !part.tikz ? textKeys(el) : [part?.tikz || 'circ']), ...(el.options || []), ...turns];
@@ -272,7 +273,14 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
   const shapes = shapeDefinitions(model.elements.flatMap((el) => (isPart(el) && !PARTS.get(el.type)?.set ? [[PARTS.get(el.type)?.tikz || '', ...(el.options || [])].join(', ')] : [])));
   // and the fill patterns its annotations use (the patterns library's own, declared in the picture)
   const patterns = patternsUsed(model.elements);
-  const definitions = [...shapes, ...pics.map((part) => picDefinition(part.tikz, SYMBOL_SETS[part.set!].pics[part.tikz])), ...patterns.map(patternDefinition)];
+  // a part that sets a liquid or a level brings the keys and its keyed body; one that sets none, the plain pic as before
+  const keyed = new Set(model.elements.flatMap((el) => (el.kind === 'node' && el.options?.length && KEYED_PICS[PARTS.get(el.type)?.tikz ?? ''] ? [PARTS.get(el.type)!.tikz] : [])));
+  const definitions = [
+    ...shapes,
+    ...(keyed.size ? [FLUID_KEYS] : []),
+    ...pics.map((part) => picDefinition(part.tikz, keyed.has(part.tikz) ? KEYED_PICS[part.tikz] : SYMBOL_SETS[part.set!].pics[part.tikz])),
+    ...patterns.map(patternDefinition)
+  ];
   const annotations = model.elements.filter((el): el is Annotation => el.kind === 'annotation' && el.points.length > 0);
   const lines = [
     // a liquid or solid fill first, behind the parts drawn in it

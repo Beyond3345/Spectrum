@@ -450,10 +450,10 @@ The switches each show or hide a part of the figure,
     align: (left, left),
     table.header[Switch][What it shows],
     [Foci], [The foci as red crosses, $F_1$ and $F_2$, or a parabola's $F$],
-    [Vertices], [The vertices $A$ and $B$, or a parabola's vertex, as dots],
+    [Vertices], [The vertices $V_1$ and $V_2$, or a parabola's vertex $V$, as dots. They are not named $A$ and $B$, which are the coefficients in $B^2 - 4 A C$],
     [Directrix], [A parabola's directrix, dashed grey],
     [Asymptotes], [A hyperbola's asymptotes, dashed grey],
-    [Turned axes U and V], [The turned axes, dashed through the centre or vertex, when there is an $x y$ term],
+    [Turned axes u and v], [The turned axes $u$ and $v$ of the working, dashed through the centre or vertex, when there is an $x y$ term],
     [Coordinates beside the names], [Each named point's coordinates, as $C(-2, 0)$],
     [Numbers on the axes], [Tick numbers on the $x$ and $y$ axes, in steps of 1, 2 or 5 times a power of ten],
     [Write the working under the figure], [The classification and the working, as lines under the figure],
@@ -495,13 +495,13 @@ The signs of $lambda_1 lambda_2$, which match the sign of $-(B^2 - 4 A C)$, and 
 
 Given by its own numbers, the conic is first written as an equation and then goes through the same steps. About its centre or vertex it is $x^2 slash a^2 + y^2 slash b^2 = 1$ for an ellipse, $x^2 slash a^2 - y^2 slash b^2 = 1$ or $y^2 slash a^2 - x^2 slash b^2 = 1$ for a hyperbola, and $y^2 = plus.minus 4 a x$ or $x^2 = plus.minus 4 a y$ for a parabola, which is then turned by #ui[Turned by] and moved to $(h, k)$. Since there is no discriminant to read and no square to complete, its working starts with its name and its standard form.
 
-The working under the figure has a line each for the name and the discriminant, the turn, the completed squares, the standard form, and the centre, $a$, $b$, $c$ and $e$ (or the vertex, $4 a$, the focus and the directrix), with a hyperbola's asymptotes as lines $y = m x + c$. The figure draws the curve thick and teal on axes through the origin (or along the view's edge when the conic is far from it), the centre or vertex as a dot and the foci as red crosses, as the notes draw them. When there is nothing to draw, the figure says "No real points" or "Not a conic".
+The working under the figure has a line each for the name and the discriminant, the turn, the completed squares, the standard form, and the centre $C$, $a$, $b$, $c$ and $e$ (or the vertex $V$, $4 a$, the focus $F$ and the directrix), with a hyperbola's asymptotes as lines $y = m x + c$. The figure draws the curve thick and teal on axes through the origin (or along the view's edge when the conic is far from it), the centre or vertex as a dot and the foci as red crosses, as the notes draw them, each named as the working names it. When there is nothing to draw, the figure says "No real points" or "Not a conic".
 
 === Worked example
 
 The notes' rotated ellipse, $5 x^2 + 4 x y + 5 y^2 + 20 x + 8 y - 1 = 0$, has $B^2 - 4 A C = 16 - 100 = -84 < 0$. Since $A = C$, $cot 2 theta = 0$ and $theta = 45°$, which gives $lambda_1 = 7$, $lambda_2 = 3$, $g_1 = 14 sqrt(2)$ and $g_2 = -6 sqrt(2)$. Completing the squares,
 $ 7 (u + sqrt(2))^2 + 3 (v - sqrt(2))^2 = 21, quad "that is" quad (u + sqrt(2))^2 / 3 + (v - sqrt(2))^2 / 7 = 1, $
-an ellipse with $a = sqrt(7) = 2.646$, $b = sqrt(3) = 1.732$, $c = 2$ and $e = 0.7559$, centred at $(-2, 0)$ in the original axes with its major axis along $V$. These are a new Conic section drawing's starting values (@fig-forms-conic-form), and @fig-forms-conic shows the same working under the figure.
+an ellipse with $a = sqrt(7) = 2.646$, $b = sqrt(3) = 1.732$, $c = 2$ and $e = 0.7559$, centred at $(-2, 0)$ in the original axes with its major axis along $v$. These are a new Conic section drawing's starting values (@fig-forms-conic-form), and @fig-forms-conic shows the same working under the figure.
 
 #figure(
   grid(columns: (1fr, 1fr), gutter: 10pt, align: top,
@@ -509,7 +509,7 @@ an ellipse with $a = sqrt(7) = 2.646$, $b = sqrt(3) = 1.732$, $c = 2$ and $e = 0
   caption: [The form of a new Conic section drawing: the notes' rotated ellipse, with its switches.],
 ) <fig-forms-conic-form>
 
-#shot("figures/11-forms/conic-preview.png", [The notes' rotated ellipse, with the turned axes U and V and the working under it.], width: 46%) <fig-forms-conic>
+#shot("figures/11-forms/conic-preview.png", [The notes' rotated ellipse, with the turned axes $u$ and $v$ and the working under it.], width: 46%) <fig-forms-conic>
 
 Given by its own numbers instead, a hyperbola centred at $(1, -1)$ with $a = 2$ and $b = 1.5$, opening left and right, has $c = sqrt(4 + 2.25) = 2.5$ and $e = 1.25$, foci at $(-1.5, -1)$ and $(3.5, -1)$ and asymptotes $y + 1 = plus.minus 0.75 (x - 1)$. With #ui[Given as] set to #ui[An ellipse, hyperbola or parabola], #ui[Conic] to #ui[Hyperbola], the centre to $(1, -1)$, #ui[a] to 2 and #ui[b] to 1.5, @fig-forms-conic-standard shows the same with #ui[Coordinates beside the names] on.
 

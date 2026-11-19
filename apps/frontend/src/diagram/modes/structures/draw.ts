@@ -6,7 +6,9 @@ import { anchorFor, overlap, placeLabels, shapesOf, textBox } from './labels';
 import type { Anchor, Box } from './labels';
 import { SUPPORT_DEPTH } from './symbols';
 import { UNITS, frameOf, loadDirection, memberName, members, nodeMap, placeAt, supports } from './model';
-import type { Cut, Load, Member, Pt, StructureModel, Support, Units } from './model';
+import type { Cut, Load, Look, Member, Pt, StructureModel, Support, Thickness, Units } from './model';
+import { isColour } from '../shared';
+import { asThickness } from '../vectors/code';
 import { displacementAt, evalPoly, extremesInside, forcesAt, rootsInside } from './solve';
 import type { Piece, Solution } from './solve';
 import { readLooks } from './looks';
@@ -84,14 +86,23 @@ export function readStyle(raw: Record<string, unknown>): StructStyle {
 export type Ink = 'member' | 'bar' | 'zero' | 'line' | 'load' | 'reaction' | 'force' | 'dimension' | 'cut' | 'faint' | 'axis';
 export type Fill = 'shear' | 'moment' | 'axial' | 'load';
 
+/** A part's own colour and thickness on what it draws (code.ts writes them after the ink's, so they win). */
+type Own = { colour?: string; width?: Thickness };
+
 export type Item =
-  | { t: 'line'; pts: Pt[]; ink: Ink; closed?: boolean; fill?: Fill; arrow?: '->' | '<->'; id?: string }
+  | ({ t: 'line'; pts: Pt[]; ink: Ink; closed?: boolean; fill?: Fill; arrow?: '->' | '<->'; id?: string } & Own)
   /** an arc with an arrowhead at its `to` end; angles in degrees */
-  | { t: 'arc'; c: Pt; r: number; from: number; to: number; ink: Ink; id?: string }
-  | { t: 'pic'; name: string; at: Pt; rotate: number; id?: string; faint?: boolean }
+  | ({ t: 'arc'; c: Pt; r: number; from: number; to: number; ink: Ink; id?: string } & Own)
+  | { t: 'pic'; name: string; at: Pt; rotate: number; id?: string; faint?: boolean; colour?: string }
   /** a label; one with `around` may move around that point to keep clear of the drawing (labels.ts) */
-  | { t: 'text'; at: Pt; tex: string; anchor: Anchor; id?: string; around?: Pt; optional?: boolean }
+  | { t: 'text'; at: Pt; tex: string; anchor: Anchor; id?: string; around?: Pt; optional?: boolean; colour?: string }
   | { t: 'dot'; at: Pt; r: number; open: boolean };
+
+/** A part's colour and thickness for its lines, or its colour alone for its text and symbols: only what the code can write. */
+export function own(p: Look, lines = true): Own {
+  const width = lines ? asThickness(p.width) : undefined;
+  return { ...(p.colour && isColour(p.colour) && { colour: p.colour }), ...(width !== undefined && { width }) };
+}
 
 /** A part of the picture: a comment heads it in the export, and a shift puts it in a scope. */
 export interface Block {
@@ -211,7 +222,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       if (!range) continue;
       const f = frameOf(model, m);
       const ends = range.map((s) => P(add(f.a, times(f.u, Math.min(s, f.length)))));
-      out.push({ t: 'line', pts: ends, ink: zero?.has(m.id) ? 'zero' : m.bar ? 'bar' : 'member', id: m.id });
+      out.push({ t: 'line', pts: ends, ink: zero?.has(m.id) ? 'zero' : m.bar ? 'bar' : 'member', id: m.id, ...own(m) });
     }
     // hinges, released ends and truss joints, over the members
     for (const m of all) {
@@ -244,7 +255,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
   };
 
   const supportItems = (keepNode: (id: string) => boolean, faint = false): Item[] =>
-    supports(model).filter((s) => nodes.has(s.node) && keepNode(s.node)).map((s) => ({ t: 'pic', name: s.type, at: P(nodes.get(s.node)!), rotate: s.angle || 0, id: s.id, faint }));
+    supports(model).filter((s) => nodes.has(s.node) && keepNode(s.node)).map((s) => ({ t: 'pic', name: s.type, at: P(nodes.get(s.node)!), rotate: s.angle || 0, id: s.id, faint, ...own(s, false) }));
 
   const nameItems = (keepNode: (id: string) => boolean): Item[] => {
     if (!style.names) return [];
@@ -268,20 +279,20 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
   const memberOf = (id: string) => all.find((m) => m.id === id);
   const wMax = Math.max(1e-12, ...model.parts.flatMap((p) => (p.kind === 'dist' ? [Math.abs(p.w1), Math.abs(p.w2)] : [])));
 
-  /** a force arrow ending at a point, with its label at the tail */
-  const arrowTo = (at: Pt, d: Pt, tex: string, ink: Ink, id?: string, length = LOAD): Item[] => {
+  /** a force arrow ending at a point, with its label at the tail; a load's own colour and thickness on both */
+  const arrowTo = (at: Pt, d: Pt, tex: string, ink: Ink, id?: string, length = LOAD, look: Look = {}): Item[] => {
     const tip = add(at, times(d, -GAP));
     const tail = add(tip, times(d, -length));
     return [
-      { t: 'line', pts: [tail, tip], ink, arrow: '->', id },
-      { t: 'text', at: add(tail, times(d, -0.05)), tex, anchor: anchorFor(times(d, -1)), id, around: tail }
+      { t: 'line', pts: [tail, tip], ink, arrow: '->', id, ...own(look) },
+      { t: 'text', at: add(tail, times(d, -0.05)), tex, anchor: anchorFor(times(d, -1)), id, around: tail, ...own(look, false) }
     ];
   };
 
   /** a moment arc around a point, anticlockwise when ccw, with its label above */
-  const momentAt = (at: Pt, ccw: boolean, tex: string, ink: Ink, id?: string, r = 0.35, label: Pt = { x: 0, y: 1 }): Item[] => [
-    { t: 'arc', c: at, r, from: ccw ? -60 : 210, to: ccw ? 210 : -60, ink, id },
-    { t: 'text', at: add(at, times(label, r + 0.08)), tex, anchor: anchorFor(label), id, around: at }
+  const momentAt = (at: Pt, ccw: boolean, tex: string, ink: Ink, id?: string, r = 0.35, label: Pt = { x: 0, y: 1 }, look: Look = {}): Item[] => [
+    { t: 'arc', c: at, r, from: ccw ? -60 : 210, to: ccw ? 210 : -60, ink, id, ...own(look) },
+    { t: 'text', at: add(at, times(label, r + 0.08)), tex, anchor: anchorFor(label), id, around: at, ...own(look, false) }
   ];
 
   /** loads, those on clipped members only between lo and hi */
@@ -318,13 +329,14 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         const spans = zero > from + 1e-9 * f.length && zero < to - 1e-9 * f.length ? [[from, zero], [zero, to]] : [[from, to]];
         for (const [a, b] of spans) {
           const side = sideAt((a + b) / 2);
-          out.push({ t: 'line', pts: [base(a, side), base(b, side), top(b, side), top(a, side)], ink: 'line', closed: true, fill: 'load', id: p.id });
+          // the band takes the load's colour, its arrows its thickness too
+        out.push({ t: 'line', pts: [base(a, side), base(b, side), top(b, side), top(a, side)], ink: 'line', closed: true, fill: 'load', id: p.id, ...own(p, false) });
         }
-        for (const s of stops) if (Math.abs(w(s)) > 1e-9 * wMax) out.push({ t: 'line', pts: [top(s), base(s)], ink: 'load', arrow: '->', id: p.id });
+        for (const s of stops) if (Math.abs(w(s)) > 1e-9 * wMax) out.push({ t: 'line', pts: [top(s), base(s)], ink: 'load', arrow: '->', id: p.id, ...own(p) });
         const unitTex = `${F}/${L}`;
         const label = (s: number, tex: string) => {
           const e = times(d, sideAt(s));
-          out.push({ t: 'text', at: add(top(s), times(e, -0.05)), tex, anchor: anchorFor(times(e, -1)), id: p.id, around: top(s) });
+          out.push({ t: 'text', at: add(top(s), times(e, -0.05)), tex, anchor: anchorFor(times(e, -1)), id: p.id, around: top(s), ...own(p, false) });
         };
         if (p.label) label((from + to) / 2, p.label);
         else if (Math.abs(w(from) - w(to)) < 1e-9 * wMax) label((from + to) / 2, value(Math.abs(w(from)), unitTex));
@@ -338,10 +350,10 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       if (p.kind === 'force') {
         const m = 'member' in p.on ? memberOf(p.on.member) : undefined;
         const d = times(loadDirection(p, m ? frameOf(model, m).u : undefined), p.value < 0 ? -1 : 1);
-        out.push(...arrowTo(at, d, p.label || value(Math.abs(p.value), F), 'load', p.id));
+        out.push(...arrowTo(at, d, p.label || value(Math.abs(p.value), F), 'load', p.id, LOAD, p));
       } else {
         const ccw = !p.cw === p.value >= 0;
-        out.push(...momentAt(at, ccw, p.label || value(Math.abs(p.value), momentUnit), 'load', p.id));
+        out.push(...momentAt(at, ccw, p.label || value(Math.abs(p.value), momentUnit), 'load', p.id, undefined, undefined, p));
       }
     }
     return out;
@@ -403,20 +415,20 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
           [s, t, length] = [add(s, off), add(t, off), Math.hypot(b.x - a.x, b.y - a.y)];
         }
         // short extension lines, which never cross the supports or reaction arrows above them
-        for (const end of [s, t]) out.push({ t: 'line', pts: [add(end, times(n, -0.35)), add(end, times(n, 0.1))], ink: 'dimension', id: p.id });
-        out.push({ t: 'line', pts: [s, t], ink: 'dimension', arrow: '<->', id: p.id });
-        out.push({ t: 'text', at: add(times(add(s, t), 0.5), times(n, 0.06)), tex: p.label || value(length, L), anchor: anchorFor(n), id: p.id, around: times(add(s, t), 0.5) });
+        for (const end of [s, t]) out.push({ t: 'line', pts: [add(end, times(n, -0.35)), add(end, times(n, 0.1))], ink: 'dimension', id: p.id, ...own(p) });
+        out.push({ t: 'line', pts: [s, t], ink: 'dimension', arrow: '<->', id: p.id, ...own(p) });
+        out.push({ t: 'text', at: add(times(add(s, t), 0.5), times(n, 0.06)), tex: p.label || value(length, L), anchor: anchorFor(n), id: p.id, around: times(add(s, t), 0.5), ...own(p, false) });
       } else if (p.kind === 'label') {
-        out.push({ t: 'text', at: P(p.at), tex: p.text, anchor: 'center', id: p.id });
+        out.push({ t: 'text', at: P(p.at), tex: p.text, anchor: 'center', id: p.id, ...own(p, false) });
       } else if (p.kind === 'angle') {
         const n = nodes.get(p.node);
         if (!n) continue;
         const to = p.to > p.from ? p.to : p.to + 360;
         const c = P(n);
-        out.push({ t: 'arc', c, r: 0.7, from: p.from, to, ink: 'dimension', id: p.id });
+        out.push({ t: 'arc', c, r: 0.7, from: p.from, to, ink: 'dimension', id: p.id, ...own(p) });
         const mid = (((p.from + to) / 2) * Math.PI) / 180;
         const d = { x: Math.cos(mid), y: Math.sin(mid) };
-        if (p.label) out.push({ t: 'text', at: add(c, times(d, 0.78)), tex: p.label, anchor: anchorFor(d), id: p.id, around: c });
+        if (p.label) out.push({ t: 'text', at: add(c, times(d, 0.78)), tex: p.label, anchor: anchorFor(d), id: p.id, around: c, ...own(p, false) });
       } else if (p.kind === 'axes') {
         const at = P(p.at);
         out.push({ t: 'line', pts: [at, add(at, { x: 0.9, y: 0 })], ink: 'axis', arrow: '->', id: p.id });

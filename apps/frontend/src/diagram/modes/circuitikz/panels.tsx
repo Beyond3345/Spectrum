@@ -19,6 +19,7 @@ import { UnitsSwitch } from '../../controls';
 import { setFor } from '../../sets';
 import { useSymbols } from './symbols';
 import { useSettings } from '../../../app/settings';
+import { FLUID_LEVELS } from '../../../../../backend/src/data/symbolSets.js';
 
 const GROUPS = [...new Set(CATALOGUE.map((part) => part.group))];
 
@@ -247,9 +248,53 @@ function MarkFields({ label, mark, onChange, hint, u, voltage }: { label: string
   );
 }
 
+/** A level in cm, taken when typing stops (Enter or leaving the box): each new level draws the part again in TeX. */
+function LevelInput({ id, value, min, max, onChange }: { id: string; value: number; min: number; max: number; onChange(v: number): void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const take = () => {
+    const v = Number(text);
+    if (text.trim() && Number.isFinite(v)) onChange(Math.min(max, Math.max(min, Math.round(v * 1000) / 1000)));
+    else setText(String(value));
+  };
+  return (
+    <span className="diagram-pair form-number">
+      <input id={id} className="input" type="number" inputMode="decimal" step={0.05} min={min} max={max} value={text} onChange={(e) => setText(e.target.value)} onBlur={take} onKeyDown={(e) => e.key === 'Enter' && take()} />
+      <span className="muted">cm</span>
+    </span>
+  );
+}
+
+const LIQUIDS: [string, string][] = [['', 'None'], ['water', MATERIALS.water[0]], ['oil', MATERIALS.oil[0]], ['mercury', MATERIALS.mercury[0]]];
+
+/**
+ * A manometer's, piezometer's, barometer's or column's liquids and levels (symbolSets.js FLUID_LEVELS), as its pic's
+ * options: spx/fluid/liquid=water, spx/fluid/manometer/left=0.3. One at its starting value is left out, so a part with
+ * none set writes the plain pic.
+ */
+function LiquidFields({ tikz, options, onChange }: { tikz: string; options: string[]; onChange: (options: string[]) => void }) {
+  const { liquids, levels } = FLUID_LEVELS[tikz];
+  const valueOf = (key: string) => options.find((o) => o.startsWith(`${key}=`))?.slice(key.length + 1);
+  const set = (key: string, value: string | undefined) => onChange([...options.filter((o) => !o.startsWith(`${key}=`)), ...(value === undefined ? [] : [`${key}=${value}`])]);
+  return (
+    <>
+      {liquids.map((label, i) => {
+        const key = `spx/fluid/liquid${i ? ` ${i + 1}` : ''}`;
+        return <Field key={key} label={label}>{() => <Select value={valueOf(key) ?? ''} options={LIQUIDS} onChange={(liquid) => set(key, liquid || undefined)} />}</Field>;
+      })}
+      {levels.map(([name, label, start, min, max]) => {
+        const key = `${tikz}/${name}`;
+        const value = Number(valueOf(key) ?? start);
+        return <Field key={key} label={label} hint={name === levels[levels.length - 1][0] ? 'Heights in cm above the point the part is placed by, as its walls are drawn.' : undefined}>{(id) => <LevelInput id={id} value={value} min={min} max={max} onChange={(v) => set(key, v === start ? undefined : String(v))} />}</Field>;
+      })}
+    </>
+  );
+}
+
 function OptionFields({ el, onChange }: { el: PathPart | NodePart; onChange: (options: string[]) => void }) {
   const part = PARTS.get(el.type);
   const options = el.options || [];
+  if (part && FLUID_LEVELS[part.tikz]) return <LiquidFields tikz={part.tikz} options={options} onChange={onChange} />;
   if (!part?.options?.length && !part?.enumOptions?.length) return null;
   const toggle = (name: string, on: boolean) => onChange(on ? [...options, name] : options.filter((o) => o !== name));
   return (

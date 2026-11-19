@@ -3,7 +3,7 @@
 // its axes are turned by θ when there is an xy term (cot 2θ = (A − C)/B, which is turning to the eigenvectors of
 // [[A, B/2], [B/2, C]]), and the squares are completed, as MATH2150's notes do it. Drawn as the notes draw theirs: the
 // curve thick and teal on axes through the origin, the centre or vertex a dot, the foci red crosses, the asymptotes and
-// the directrix dashed grey, and the turned axes U and V dashed through the centre.
+// the directrix dashed grey, and the turned axes u and v (as the working names them) dashed through the centre.
 import { escapeTex, num } from '../shared';
 import { at, fmt, pictureOf, results, RESULTS_FIELD, scene } from './fluids';
 import type { Pt } from './fluids';
@@ -176,13 +176,13 @@ function steps(q: Conic, own: boolean): string[] {
   if (q.family !== 'parabola') {
     const [U0, V0] = [-q.g1 / (2 * q.l1), -q.g2 / (2 * q.l2)];
     const K = q.kind === 'point' || q.kind === 'lines' ? 0 : q.g1 ** 2 / (4 * q.l1) + q.g2 ** 2 / (4 * q.l2) - q.F;
-    if (q.kind === 'circle') return [...out, `$${squared(p, U0)} + ${squared(r, V0)} = ${fmt(K / q.l1)}$`, `centre $${point(q.centre)}$, radius $${fmt(q.a)}$`];
+    if (q.kind === 'circle') return [...out, `$${squared(p, U0)} + ${squared(r, V0)} = ${fmt(K / q.l1)}$`, `centre $C${point(q.centre)}$, radius $${fmt(q.a)}$`];
     if (!own) out.push(`$${sum([[q.l1, squared(p, U0)], [q.l2, squared(r, V0)]])} = ${fmt(K)}$`);
     if (q.kind === 'ellipse' || q.kind === 'hyperbola') {
       const over = (name: string, by: number, d: number) => `\\frac{${squared(name, by)}}{${fmt(Math.abs(d))}}`;
       const [first, second] = [over(p, U0, K / q.l1), over(r, V0, K / q.l2)];
       out.push(`$${q.kind === 'ellipse' ? `${first} + ${second}` : K / q.l1 > 0 ? `${first} - ${second}` : `${second} - ${first}`} = 1$`);
-      out.push(`centre $${point(q.centre)}$, $a = ${fmt(q.a)}$, $b = ${fmt(q.b)}$, $c = ${fmt(q.c)}$, $e = ${fmt(q.e)}$`);
+      out.push(`centre $C${point(q.centre)}$, $a = ${fmt(q.a)}$, $b = ${fmt(q.b)}$, $c = ${fmt(q.c)}$, $e = ${fmt(q.e)}$`);
       if (q.kind === 'hyperbola') out.push(`asymptotes ${asymptotes(q).map((d) => `$${lineTex(q.centre, d)}$`).join(' and ')}`);
     } else if (q.kind === 'point') out.push(`only $${point(q.centre)}$ satisfies it`);
     else if (q.kind === 'lines') out.push(`the lines ${q.dirs.map((d) => `$${lineTex(q.centre, d)}$`).join(' and ')}, crossing at $${point(q.centre)}$`);
@@ -195,7 +195,7 @@ function steps(q: Conic, own: boolean): string[] {
   if (q.kind === 'parabola') {
     const coefficient = fmt(-gl / sq);
     out.push(`$${squared(s, S0)} = ${coefficient === '1' ? '' : coefficient === '-1' ? '-' : coefficient}${shifted(l, rest / gl)}$`);
-    out.push(`vertex $${point(q.vertex)}$, $4a = ${fmt(4 * q.a)}$, $a = ${fmt(q.a)}$, focus $${point(q.focus)}$`, `directrix $${lineTex(q.foot, perp(q.axis))}$, $e = 1$`);
+    out.push(`vertex $V${point(q.vertex)}$, $4a = ${fmt(4 * q.a)}$, $a = ${fmt(q.a)}$, focus $F${point(q.focus)}$`, `directrix $${lineTex(q.foot, perp(q.axis))}$, $e = 1$`);
   } else {
     out.push(`$${squared(s, S0)} = ${fmt(q.kind === 'line' ? 0 : rest / sq)}$`);
     if (q.kind === 'line') out.push(`the line $${lineTex(q.through, q.dir)}$`);
@@ -267,7 +267,7 @@ export function conicDrawing(values: FormValues) {
   }
   if (turnedAxes && middle) {
     sc.add(`% The axes turned by ${fmt(q.theta)} degrees`);
-    for (const [d, name] of [[q.u, '$U$'], [q.v, '$V$']] as const) {
+    for (const [d, name] of [[q.u, '$u$'], [q.v, '$v$']] as const) {
       const ends = line(middle, d, '->, dashed', 0.03);
       if (ends) sc.label(ends[1], name, d);
     }
@@ -322,14 +322,14 @@ export function conicDrawing(values: FormValues) {
     if (show('vertices')) {
       q.vertices.forEach((p, i) => {
         sc.dot(P(p));
-        sc.label(P(p), named(i ? '$B$' : '$A$', p), add({ x: q.axis.x * (i ? out : -out), y: q.axis.y * (i ? out : -out) }, side, q.kind === 'ellipse' ? 0 : 1));
+        sc.label(P(p), named(`$V_${i + 1}$`, p), add({ x: q.axis.x * (i ? out : -out), y: q.axis.y * (i ? out : -out) }, side, q.kind === 'ellipse' ? 0 : 1));
       });
     }
   }
   if (q.kind === 'parabola') {
     if (show('vertices')) {
       sc.dot(P(q.vertex));
-      sc.label(P(q.vertex), named('vertex', q.vertex), add({ x: -q.axis.x, y: -q.axis.y }, below(perp(q.axis))));
+      sc.label(P(q.vertex), named('$V$', q.vertex), add({ x: -q.axis.x, y: -q.axis.y }, below(perp(q.axis))));
     }
     if (show('foci')) {
       cross(P(q.focus));
@@ -371,7 +371,7 @@ export const CONIC: FormPreset = {
     { key: 'vertices', label: 'Vertices', kind: 'switch' },
     { key: 'directrix', label: 'Directrix', kind: 'switch', hint: 'A parabola’s.' },
     { key: 'asymptotes', label: 'Asymptotes', kind: 'switch', hint: 'A hyperbola’s.' },
-    { key: 'axes', label: 'Turned axes U and V', kind: 'switch', hint: 'Through the centre, when there is an xy term.' },
+    { key: 'axes', label: 'Turned axes u and v', kind: 'switch', hint: 'Through the centre, when there is an xy term.' },
     { key: 'coordinates', label: 'Coordinates beside the names', kind: 'switch' },
     { key: 'ticks', label: 'Numbers on the axes', kind: 'switch' },
     { ...RESULTS_FIELD, label: 'Write the working under the figure' }

@@ -348,7 +348,21 @@ Selecting works as in every composer (@ch-composer). In Structures a selection c
 
 Supports, loads and angle arcs turn with the joints they are on. A mirror also swaps a moment's sense and the side a section cut keeps, and a load square to a mirrored member stays on the side it was mirrored to. A horizontal dimension becomes vertical after a quarter turn.
 
-#shot("figures/07-structures/group.png", [Joints A and C, member AC, the pin, the load and the 4~m dimension selected by a box. The inspector offers Mirror and Turn by for the six items.]) <fig-structures-group>
+#shot("figures/07-structures/group.png", [Joints A and C, member AC, the pin, the load and the 4~m dimension selected by a box. The inspector offers Colour, Thickness, Mirror and Turn by for the six items.]) <fig-structures-group>
+
+=== Colour and thickness <sec-structures-colour>
+
+A selection of one part or several also takes a #ui[Colour] and a #ui[Thickness], at the foot of the inspector, as Vector diagrams does (@fig-structures-colour). The colour is a swatch, an xcolor name or mix typed in, such as `blue!50`, or one picked from the well, and #ui[Black] gives each part its own again. The thickness is one of TikZ's names from ultra thin to ultra thick, or a width in points, and #ui[Default] gives each part its own again.
+
+- A member or a truss bar takes both, on its line.
+- A point force or a moment takes both: the colour on its arrow and its label, the thickness on its arrow. A distributed load takes the colour on its band, its arrows and its label, and the thickness on its arrows.
+- A dimension and an angle arc take both, on their lines and their labels.
+- A support and a label take a colour only, since a support's symbol keeps its own line weights.
+- Joints, axes and section cuts take neither.
+
+The canvas and the PDF show the same colours and thicknesses. They change only how a part is drawn: the reactions, the force diagrams, the member forces and the values the solver gives keep their own look, so a coloured support's reaction arrow is still drawn as every reaction is. A support is drawn in the loading diagram, and only faintly on the canvas in the free-body views, which draw its reactions in its place. A drawing with a colour or a thickness on any part is a file version 5 drawing.
+
+#shot("figures/07-structures/colour.png", [The beam with its uniform load in blue and the 20~kN force at D in red and very thick. The force's inspector ends with its Colour and Thickness.]) <fig-structures-colour>
 
 Some edits act on what a part hangs on.
 
@@ -371,8 +385,9 @@ Structures writes its drawing as a standalone TikZ document in `diagrams/`, whic
 
 - The document loads only `tikz`, with the `arrows.meta` and `babel` libraries, and `siunitx` when units are written with it.
 - The picture's options define a style for each kind of line, such as `struct member` at 1.2~pt and `struct load` at 0.6~pt, the fills of the force diagrams and each support symbol as a pic, such as `spx/struct/pin`. Nothing reaches the document's preamble.
+- A part's own colour and thickness follow its style, as in `\draw[struct member, draw=blue, very thick]`, `\pic[red] at (0,0) {spx/struct/pin};` or `\node[anchor=south, red]`. A part without them is written as before.
 - A comment first names the view and the status, such as `% Structure, free-body diagram with shear and bending moment diagrams: Determinate and stable`. Then each part of the picture is headed by its own comment: `% Structure`, `% Supports`, `% Loads`, `% Reactions`, `% Dimensions and labels` and one for each diagram, which sits in a scope shifted below or beside the structure.
 
 #shot("figures/07-structures/code.png", [The Code tab of the beam, with the styles in the picture's options and the comment that heads each part.], width: 92%) <fig-structures-code>
 
-A drawing that uses something added in 2.5 (a settlement, a load per horizontal length, an internal shear release, the deflected shape or x of zero shear) is saved as file version 5, which Spectrum 2.4 and earlier open as code.
+A drawing that uses something added in 2.5 (a settlement, a load per horizontal length, an internal shear release, the deflected shape or x of zero shear) or a part's colour or thickness is saved as file version 5, which Spectrum 2.4 and earlier open as code. Spectrum 2.5 opens one with a colour or a thickness but draws those parts in their own look.

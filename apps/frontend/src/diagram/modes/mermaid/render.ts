@@ -4,12 +4,25 @@ let library: Promise<typeof import('mermaid').default> | null = null;
 let count = 0;
 export const RASTER_SCALE = 3;
 
-/** The diagram as SVG. strict: Mermaid sanitises labels and runs no script or link; no HTML labels, so it rasterises. */
+/** Mermaid's settings. strict: Mermaid sanitises labels and runs no script or link; no HTML labels, so it rasterises.
+ *  `secure` lists the keys a diagram's own %%{init}%% line or front matter may not change (Mermaid drops them at any
+ *  depth, so flowchart.htmlLabels goes too): HTML labels would let an <img> fetch, and theme CSS or a font family is
+ *  written into a style sheet where url() can. The first six are Mermaid's own; giving the list replaces them. */
+export const mermaidConfig = (dark: boolean) => ({
+  startOnLoad: false,
+  securityLevel: 'strict' as const,
+  htmlLabels: false,
+  // an error comes back as a rejection, not as Mermaid's own error picture
+  suppressErrorRendering: true,
+  theme: dark ? ('dark' as const) : ('default' as const),
+  secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges', 'htmlLabels', 'themeCSS', 'fontFamily', 'altFontFamily'],
+});
+
+/** The diagram as SVG, with the settings above whatever the diagram says. */
 export async function renderMermaid(code: string, dark = false) {
   library ??= import('mermaid').then((m) => m.default);
   const mermaid = await library;
-  // an error comes back as a rejection, not as Mermaid's own error picture
-  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', htmlLabels: false, suppressErrorRendering: true, theme: dark ? 'dark' : 'default' });
+  mermaid.initialize(mermaidConfig(dark));
   count += 1;
   const { svg } = await mermaid.render(`spectrum-mermaid-${count}`, code);
   return svg;
