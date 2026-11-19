@@ -34,6 +34,7 @@ const server = new McpServer({ name: 'spectrum', version: APP_VERSION }, { instr
 const ctx = {
   root: async () => root,
   state,
+  opensFiles: true,
   todos: () => tools.listTodos(state),
   // left for Spectrum to show once the turn ends
   suggestTodo: (todo) => tools.suggestTodo(state, todo),

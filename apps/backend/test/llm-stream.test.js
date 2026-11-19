@@ -216,3 +216,20 @@ test('a busy provider’s wait is told before it, and Stop ends the wait and the
   assert.equal(cut.stopped, true);
   assert.ok(pieces.length >= 3 && Date.now() - at < 2000);
 });
+
+test('a server with no preset speaks the format its address names, with the effort in that format’s words', async () => {
+  replies.push((res) => json(res, 200, { content: [{ type: 'text', text: 'from Messages' }], usage: { input_tokens: 3, output_tokens: 1 } }));
+  const claude = await chatCompletion({ apiKey: 'k', endpoint: `${base}/v1/messages`, reasoningEffort: 'high', messages: [{ role: 'user', content: 'Hi' }] });
+  assert.equal(claude.message.content, 'from Messages');
+  assert.equal(seen.at(-1).path, '/v1/messages');
+  assert.deepEqual(seen.at(-1).body.output_config, { effort: 'high' });
+  assert.equal(seen.at(-1).body.max_tokens, 16000);
+  replies.push((res) => json(res, 200, { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: 'from Responses' }] }] }));
+  const gpt = await chatCompletion({ apiKey: 'k', endpoint: `${base}/v1/responses`, reasoningEffort: 'low', cache: 'c', messages: [{ role: 'user', content: 'Hi' }] });
+  assert.equal(gpt.message.content, 'from Responses');
+  assert.deepEqual([seen.at(-1).path, seen.at(-1).body.reasoning, seen.at(-1).body.prompt_cache_key, seen.at(-1).body.store], ['/v1/responses', { effort: 'low' }, 'c', false]);
+  replies.push((res) => json(res, 200, { choices: [{ message: { role: 'assistant', content: 'from Chat' } }] }));
+  const chat = await chatCompletion({ apiKey: 'k', endpoint: `${base}/v1`, reasoningEffort: 'low', messages: [{ role: 'user', content: 'Hi' }] });
+  assert.equal(chat.message.content, 'from Chat');
+  assert.deepEqual([seen.at(-1).path, seen.at(-1).body.reasoning_effort], ['/v1/chat/completions', 'low']);
+});

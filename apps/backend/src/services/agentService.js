@@ -32,7 +32,7 @@ const MAX_CONVERSATION = 400000;
 const MAX_SKILL_FILE = 192 * 1024;
 // the skills list in the agent's instructions: one line for each (its description's first sentence), and all of them;
 // load_skill answers with the whole description and the instructions
-const MAX_SKILL_LINE = 140;
+const MAX_SKILL_LINE = 110;
 const MAX_SKILL_LIST = 6000;
 
 // chatCompletion already words its errors for people
@@ -189,28 +189,28 @@ const count = z.coerce.number().int().min(0);
 const OWN_TOOLS = [
   {
     name: 'web_search',
-    description: 'Search the general web using the configured default and fallback connections. Returns source links and summaries. Input: { query }.',
+    description: 'Search the web through the configured connections. Returns source links and summaries.',
     schema: { query: str },
     readOnly: true,
     run: (ctx, { query }) => searchWithFallback({ query, searchConfig: ctx.searchConfig, purpose: 'chat', maxResults: 5 })
   },
   {
     name: 'read_file',
-    description: `Read a text file of the project, with the changes you proposed so far. Returns ${MAX_READ} characters unless limit asks for fewer or more (up to ${MAX_READ_LIMIT}); a longer file ends with a note saying where to read on. Input: { path, offset?, line?, limit? } (offset in characters, or line to start at that line).`,
+    description: `Read a text file of the project, with the changes you proposed. Returns ${MAX_READ} characters, or limit (up to ${MAX_READ_LIMIT}); a longer file ends with a note on where to read on. Start at offset (in characters) or at line.`,
     schema: { path: str, offset: count.optional(), line: count.optional(), limit: count.optional() },
     readOnly: true,
     run: (ctx, { path: file, ...range }) => ctx.read(ctx.path(file), range)
   },
   {
     name: 'list_files',
-    description: 'List the files under a folder, with the ones you proposed. Input: { dir? }.',
+    description: 'List the files under a folder (dir), with the ones you proposed.',
     schema: { dir: str.optional() },
     readOnly: true,
     run: (ctx, { dir }) => ctx.list(dir)
   },
   {
     name: 'edit_file',
-    description: 'Change a file by replacing exact text: old must be in the file exactly once (copy it from read_file, with enough around it to be unique), or pass all: true to replace every one. The way to make any local change. This does NOT write: the user reviews it with your other changes. Input: { path, old, new, all? }.',
+    description: 'Change a file by replacing exact text: old must be in it exactly once (copy it from read_file, with enough around it), or pass all to replace every one. The way to make a local change. Not written: the user reviews it.',
     schema: { path: str, old: str, new: str, all: z.boolean().optional() },
     readOnly: false,
     run: async (ctx, input) => {
@@ -223,7 +223,7 @@ const OWN_TOOLS = [
   },
   {
     name: 'propose_patch',
-    description: 'Propose a whole file: a new file, or a full rewrite. Input: { path, content }. This does NOT write. A file you have read only part of is refused: read the rest first, or use edit_file.',
+    description: 'Propose a whole file: a new one, or a full rewrite. Not written. Refused for a file you have read only part of: read the rest, or use edit_file.',
     schema: { path: str, content: str },
     readOnly: false,
     run: async (ctx, { path: file, content }) => {
@@ -235,7 +235,7 @@ const OWN_TOOLS = [
   },
   {
     name: 'apply_patch',
-    description: 'Apply a unified diff to a file as you changed it so far (edit_file is the surer way). Input: { patch, path? }. This does NOT write.',
+    description: 'Apply a unified diff to a file as you changed it so far (edit_file is surer). Not written.',
     schema: { patch: str, path: str.optional() },
     readOnly: false,
     run: async (ctx, { patch, path: given }) => {
@@ -251,7 +251,7 @@ const OWN_TOOLS = [
   },
   {
     name: 'delete_file',
-    description: 'Propose deleting a file. Input: { path }. This does NOT delete: the user reviews it with your other changes.',
+    description: 'Propose deleting a file. Not deleted: the user reviews it.',
     schema: { path: str },
     readOnly: false,
     run: async (ctx, { path: file }) => {
@@ -261,7 +261,7 @@ const OWN_TOOLS = [
   },
   {
     name: 'read_skill_file',
-    description: 'Read one of a skill\'s files (up to 192 KB), by its path in the skill. Input: { id, path }.',
+    description: 'Read one of a skill’s files (up to 192 KB), by its path in the skill.',
     schema: { id: str, path: str },
     readOnly: true,
     run: (ctx, { id, path: file }) => readSkillFile(ctx.skillOn(id), file, MAX_SKILL_FILE)

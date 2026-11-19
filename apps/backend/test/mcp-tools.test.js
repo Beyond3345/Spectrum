@@ -149,6 +149,10 @@ test('the bibliography tools, the log reader, to-dos and skills', async () => {
   const log = ['(./main.tex', './main.tex:12: Undefined control sequence.', 'l.12 \\foo', 'LaTeX Warning: Citation `x\' on page 1 undefined on input line 4.', '! Missing $ inserted.', 'l.20 a_b', 'main.typ:3:1: error: unknown variable: foo', ''].join('\n');
   assert.deepEqual(tools.logErrors(log), { errors: ['main.tex:12: Undefined control sequence.', '! Missing $ inserted. l.20 a_b', 'main.typ:3:1: error: unknown variable: foo'], warnings: 1, undefined: ['LaTeX Warning: Citation `x\' on page 1 undefined on input line 4.'] });
   assert.match((await tools.getLog(path.join(tmp, 'state-without-context'))).note, /compile first/);
+  // three passes with BibTeX between them: only what the last pass still misses is undefined
+  const pass = (lines) => ['This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex)', ...lines].join('\n');
+  const passes = [pass(['LaTeX Warning: Citation `found\' on page 1 undefined on input line 4.', 'LaTeX Warning: Citation `missing\' on page 1 undefined on input line 4.', 'LaTeX Warning: Reference `sec:intro\' on page 1 undefined on input line 6.']), 'This is BibTeX, Version 0.99e (TeX Live 2026)', pass(['LaTeX Warning: Citation `found\' on page 1 undefined on input line 4.', 'LaTeX Warning: Citation `missing\' on page 1 undefined on input line 4.']), pass(['LaTeX Warning: Citation `missing\' on page 1 undefined on input line 4.', 'LaTeX Warning: There were undefined references.'])].join('\n');
+  assert.deepEqual(tools.logErrors(passes), { errors: [], warnings: 2, undefined: ['LaTeX Warning: Citation `missing\' on page 1 undefined on input line 4.'] });
 
   assert.deepEqual(await tools.listTodos(state), [{ text: 'Check the method', link: { file: 'paper/sections/method.tex', line: 1 } }]);
   await tools.suggestTodo(state, { text: 'Add a citation', link: { file: 'paper/main.tex', line: 4 } });

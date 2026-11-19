@@ -169,9 +169,13 @@ export async function searchBibEntries(root, state, query) {
   return (await listBibEntries(root, state)).filter((e) => words.every((w) => [e.key, e.title, e.author, e.doi, e.year].some((v) => String(v || '').toLowerCase().includes(w))));
 }
 
-/** "file:line: message" for each error in a log, and how many warnings it has. */
+/** "file:line: message" for each error in a log (of its last pass, for a LaTeX log of several), and how many warnings it has. */
 export function logErrors(log) {
-  const lines = unwrap(log).split('\n');
+  const all = unwrap(log).split('\n');
+  // a LaTeX log holds every pass of the compile, and a citation or reference undefined in the first is often found by
+  // the last: how the document stands is what the last pass says
+  const last = all.findLastIndex((line) => /^This is [A-Za-z-]*TeX, Version /.test(line));
+  const lines = last > 0 ? all.slice(last) : all;
   const errors = [];
   for (let i = 0; i < lines.length && errors.length < 50; i++) {
     const line = lines[i];
@@ -335,6 +339,7 @@ export async function searchText(root, { query, regex = false, caseSensitive = f
 //   suggestTodo(todo) puts a checked to-do forward, → the answer
 //   loadSkill(id)     → a skill's instructions and files
 //   compileOptions    optional, more for compileFolder (the signal Stop aborts; the limits of a Windows compile)
+//   opensFiles        optional, true for an agent that reads files by path itself: compile then says where the PDF is
 // A tool added here reaches both agents: mcp/server.js registers every one, and so does agentService.js, beside the
 // tools that are the Spectrum agent's alone (its files and proposals, which a local agent does with its own tools).
 
@@ -354,11 +359,15 @@ function buildShown(r) {
 export const TOOLS = [
   {
     name: 'compile',
-    description: 'Compile the project as you have changed it: LaTeX with its engine, Typst with Typst, Markdown through pandoc. Returns whether it built, each error as file:line, the undefined citations and references, and the count of warnings. Nothing is written into the project. Input: { main?, engine? } (engine, for LaTeX only).',
+    description: 'Compile the project as you have changed it (LaTeX, Typst, or Markdown through pandoc). Returns whether it built, each error as file:line, the undefined citations and references, and the warning count. Writes nothing into the project. engine is for LaTeX only.',
     schema: { main: z.string().optional(), engine: z.enum(ENGINES).optional() },
     // it writes this run's build folder and log, so two never run at once
     readOnly: false,
-    run: async (ctx, input) => compile(await ctx.root(), ctx.state, input, ctx.compileOptions),
+    run: async (ctx, input) => {
+      const { pdf, generated, ...result } = await compile(await ctx.root(), ctx.state, input, ctx.compileOptions);
+      // where the PDF is, for an agent that can open a file by its path
+      return ctx.opensFiles ? { ...result, ...(pdf && { pdf }), ...(generated && { generated }) } : result;
+    },
     show: buildShown
   },
   {
@@ -370,28 +379,28 @@ export const TOOLS = [
   },
   {
     name: 'project_map',
-    description: 'The main file and engine, the files it includes, the outline and labels with file and line, the bibliography files, the keys cited, and the references and citations that do not resolve. LaTeX, Typst and Markdown; a Typst or Markdown heading’s level is its depth.',
+    description: 'The main file and engine, the files it includes, the outline and labels with file and line, the bibliography files, the keys cited, and the references and citations that do not resolve. A Typst or Markdown heading’s level is its depth.',
     schema: {},
     readOnly: true,
     run: async (ctx) => projectMap(await ctx.root(), ctx.state)
   },
   {
     name: 'bib_entries',
-    description: 'Every entry of the project’s bibliography: key, type, title, authors, year, DOI and file.',
+    description: 'Every bibliography entry: key, type, title, authors, year, DOI and file.',
     schema: {},
     readOnly: true,
     run: async (ctx) => listBibEntries(await ctx.root(), ctx.state)
   },
   {
     name: 'bib_search',
-    description: 'Bibliography entries whose key, title, authors, DOI or year hold every word of the query. Search before adding an entry so a work never gets a second key.',
+    description: 'Bibliography entries whose key, title, authors, DOI or year hold every word of the query. Search before adding an entry, so a work never gets a second key.',
     schema: { query: z.string() },
     readOnly: true,
     run: async (ctx, { query }) => searchBibEntries(await ctx.root(), ctx.state, query)
   },
   {
     name: 'search_text',
-    description: 'Find text in the project’s files: each match as file, line and the line. Plain text in any case, or a regular expression with regex: true. Input: { query, regex?, caseSensitive?, path? } (path: a file or folder to look in).',
+    description: 'Find text in the project’s files: file, line and the line for each match. Plain text in any case, or a regular expression with regex. path: a file or folder to look in.',
     schema: { query: z.string(), regex: z.boolean().optional(), caseSensitive: z.boolean().optional(), path: z.string().optional() },
     readOnly: true,
     run: async (ctx, input) => searchText(await ctx.root(), input),
@@ -399,14 +408,14 @@ export const TOOLS = [
   },
   {
     name: 'literature_search',
-    description: 'Search scholarly databases (OpenAlex, then Semantic Scholar, then arXiv) for papers: titles, authors, years, venues, DOIs and summaries. Input: { query, limit? } (up to 10).',
+    description: 'Search scholarly databases (OpenAlex, then Semantic Scholar, then arXiv): titles, authors, years, venues, DOIs and summaries. limit: up to 10.',
     schema: { query: z.string(), limit: z.number().int().min(1).max(10).optional() },
     readOnly: true,
     run: async (ctx, { query, limit }) => ({ papers: await literatureSearch(query, limit) })
   },
   {
     name: 'fetch_bibtex',
-    description: 'BibTeX for a DOI, an arXiv id or link, or else the best match for a title. Input: { id }.',
+    description: 'BibTeX for a DOI, an arXiv id or link, or else the best match for a title.',
     schema: { id: z.string() },
     readOnly: true,
     run: (ctx, { id }) => fetchBibtex(id)
@@ -420,14 +429,14 @@ export const TOOLS = [
   },
   {
     name: 'suggest_todo',
-    description: 'Suggest a to-do for the user’s list. It is not added: the user sees it as a card and adds it if they want. Input: { text, link? }, link being { file, line } for a source line, { doc, page } for a PDF page or { key } for a reference.',
+    description: 'Suggest a to-do. It is not added: the user sees it as a card and adds it if they want. link: { file, line } for a source line, { doc, page } for a PDF page or { key } for a reference.',
     schema: { text: z.string(), link: todoLink.optional() },
     readOnly: false,
     run: (ctx, input) => ctx.suggestTodo(suggestedTodo(input))
   },
   {
     name: 'load_skill',
-    description: 'Load a skill from the project’s skills: its full instructions and the files it has. Input: { id }.',
+    description: 'Load one of the project’s skills: its full instructions and the files it has.',
     schema: { id: z.string() },
     readOnly: true,
     run: (ctx, { id }) => ctx.loadSkill(id)

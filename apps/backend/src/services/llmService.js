@@ -471,7 +471,10 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   }
   const url = normalizeChatEndpoint(resolved.endpoint);
   const provider = providerFor(url, providerId);
-  const adapter = ADAPTERS[provider?.api || 'chat'];
+  // a server Spectrum has no preset for speaks the format its address names: …/messages the Messages API,
+  // …/responses the Responses API, anything else Chat Completions
+  const api = provider?.api || (/\/messages$/i.test(url) ? 'anthropic' : /\/responses$/i.test(url) ? 'responses' : 'chat');
+  const adapter = ADAPTERS[api];
   // a local Ollama takes no key, so a key typed for another server never goes there
   const key = provider?.local ? '' : resolved.apiKey;
   // an Ollama model's effort levels come from Ollama itself
@@ -485,11 +488,12 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   const options = {
     // several presets reject any temperature but their own
     temperature: provider ? undefined : temperature,
-    extra: provider ? effortFields(provider, known, reasoningEffort) : LEVELS.includes(reasoningEffort) ? { reasoning_effort: reasoningEffort } : {},
+    // an explicit level for a server with no preset, in its format's own words
+    extra: provider ? effortFields(provider, known, reasoningEffort) : !LEVELS.includes(reasoningEffort) ? {} : api === 'anthropic' ? { output_config: { effort: reasoningEffort } } : api === 'responses' ? { reasoning: { effort: reasoningEffort } } : { reasoning_effort: reasoningEffort },
     cache: cache ? String(cache).slice(0, 64) : undefined,
     // Chat Completions has no word for caching of its own: OpenAI's key goes to a server Spectrum has no preset for
     // (most are OpenAI's API behind another address) until it refuses it; the presets cache by themselves or not at all
-    cacheKey: cache && !provider && !noCacheKey.has(host) ? String(cache).slice(0, 64) : undefined,
+    cacheKey: cache && !provider && api === 'chat' && !noCacheKey.has(host) ? String(cache).slice(0, 64) : undefined,
     stream: onText ? { ...adapter.stream.fields } : null
   };
   const stopped = { ok: false, error: 'Stopped.', stopped: true };
