@@ -1400,17 +1400,22 @@ export async function visionToLatex(payload: {
   return request<{ ok: boolean; latex?: string; assetPath?: string; error?: string }>('/api/vision/latex', { method: 'POST', body: form });
 }
 
+/** The model's code for a chart of the table, to show: nothing runs. error and code: the last run's, for code that works. */
 export function plotFromTable(payload: {
   projectId: string;
   tableLatex: string;
   chartType: string;
-  title?: string;
   prompt?: string;
-  filename?: string;
-  retries?: number;
+  error?: string;
+  code?: string;
   llmConfig?: Partial<LLMConfig>;
 }) {
-  return request<{ ok: boolean; assetPath?: string; error?: string }>('/api/plot/from-table', json('POST', payload));
+  return request<{ ok: boolean; code?: string; error?: string }>('/api/plot/from-table', json('POST', payload));
+}
+
+/** Runs a chart's code the user has read, in isolation, and saves the chart in assets/plots. */
+export function runPlotCode(payload: { projectId: string; tableLatex: string; code: string; title?: string; filename?: string }) {
+  return request<{ ok: boolean; assetPath?: string; error?: string }>('/api/plot/run', json('POST', payload));
 }
 
 // ─── Research ───
