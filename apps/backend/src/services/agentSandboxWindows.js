@@ -14,7 +14,7 @@ export async function windowsWorker() {
   throw new Error('The native Windows isolation worker is missing. Build it with node scripts/build-agent-sandbox.mjs. Agents cannot start without it.');
 }
 const inside = (file, root) => file.toLowerCase() === root.toLowerCase() || file.toLowerCase().startsWith(root.toLowerCase() + path.sep);
-export async function spawnWindowsAgent({ executable, args, workspace, home, runtimeExecutable, runtimePaths, forbiddenRoots, cwd, env }) {
+export async function spawnWindowsAgent({ executable, args, workspace, home, runtimeExecutable, runtimePaths, forbiddenRoots, cwd, env, offline = false }) {
   const worker = await windowsWorker();
   const workRoot = await fs.realpath(workspace), homeRoot = await fs.realpath(home);
   const roots = [...new Set(await Promise.all([runtimeExecutable || executable, ...runtimePaths].map((p) => fs.realpath(p))))];
@@ -47,7 +47,7 @@ export async function spawnWindowsAgent({ executable, args, workspace, home, run
   // Node's realpath walk would require metadata access to C:\ and the host home.
   // Keep script resolution within the explicit runtime grants instead.
   const launchArgs = /^node(?:\.exe|-)/i.test(path.basename(executable)) ? ['--preserve-symlinks', '--preserve-symlinks-main', ...args] : args;
-  await fs.writeFile(manifest, JSON.stringify({ executable, args: launchArgs, cwd, workspace: workRoot, home: homeRoot, reads: roots, forbidden: forbiddenRoots, env: cleanEnv, cancel, parent: process.pid }), { mode: 0o600 });
+  await fs.writeFile(manifest, JSON.stringify({ executable, args: launchArgs, cwd, workspace: workRoot, home: homeRoot, reads: roots, forbidden: forbiddenRoots, env: cleanEnv, cancel, parent: process.pid, offline }), { mode: 0o600 });
   const child = spawn(worker, [manifest], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   child.spectrumCancel = () => fs.writeFile(cancel, '').catch(() => {});
   child.once('close', () => fs.rm(control, { recursive: true, force: true }).catch(() => {}));

@@ -16,6 +16,7 @@ using System.Threading;
 class Worker {
     public class Config {
         public string executable, cwd, workspace, home, cancel;
+        public bool offline; // no internetClient: no network at all (a chart's script)
         public string[] args, reads, forbidden;
         public Dictionary<string,string> env;
         public int parent;
@@ -175,7 +176,7 @@ class Worker {
             // Registry reads are needed by Winsock initialization. No COM,
             // private-network, loopback-exemption, or host-broker capability.
             var caps=new List<IntPtr>();
-            foreach(string name in new[]{"registryRead", "internetClient"}) {
+            foreach(string name in c.offline ? new[]{"registryRead"} : new[]{"registryRead", "internetClient"}) {
                 IntPtr groups,capabilities;uint groupCount,capabilityCount;
                 Check(DeriveCapabilitySidsFromName(name,out groups,out groupCount,out capabilities,out capabilityCount),"Derive capability");
                 try {

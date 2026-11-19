@@ -25,7 +25,8 @@ export function developerReads() {
 }
 const q = (value) => JSON.stringify(value);
 
-export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort }) {
+/** offline: no network at all (a chart's script), where an agent has HTTPS. */
+export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort, offline = false }) {
   const reads = [...new Set([...SYSTEM_READS, ...developerReads(), path.dirname(runtimeExecutable), ...runtimePaths])];
   return `(version 1)
 (deny default)
@@ -44,16 +45,16 @@ ${forbiddenRoots.map((p) => `(deny file-read* file-write* (subpath ${q(p)}))`).j
   (global-name "com.apple.system.opendirectoryd.membership")
   (global-name "com.apple.bsd.dirhelper")
   (global-name "com.apple.system.logger")
-  (global-name "com.apple.networkd")
+${offline ? '' : `  (global-name "com.apple.networkd")
   (global-name "com.apple.trustd.agent")
   (global-name "com.apple.TrustEvaluationAgent")
   (global-name "com.apple.SystemConfiguration.DNSConfiguration")
-  (global-name "com.apple.SystemConfiguration.configd"))
-(allow system-socket (require-all (socket-domain AF_SYSTEM) (socket-protocol 2)))
+  (global-name "com.apple.SystemConfiguration.configd")`})
+${offline ? '' : `(allow system-socket (require-all (socket-domain AF_SYSTEM) (socket-protocol 2)))
 ; HTTPS is available; local HTTP APIs and Unix sockets are not.
 (allow network-outbound (require-all (remote tcp "*:443")
   (require-not (remote ip "localhost:*"))))
-(allow network-outbound (remote udp "*:53"))
+(allow network-outbound (remote udp "*:53"))`}
 ${Number.isInteger(internalPort) && internalPort > 0 && internalPort < 65536 ? `(allow network-bind network-inbound (local tcp "localhost:${internalPort}"))\n(allow network-outbound (remote tcp "localhost:${internalPort}"))` : ''}
 `;
 }
@@ -72,10 +73,10 @@ export async function resolveExecutable(command, envPath = process.env.PATH || '
   throw new Error(`“${command}” was not found. Install it or set its executable path in Agents.`);
 }
 
-export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {} }) {
+export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false }) {
   if (!['darwin', 'win32'].includes(process.platform)) throw new Error('Native agent isolation is unavailable on this platform.');
   const executable = await resolveExecutable(command);
-  if (process.platform === 'win32') return spawnWindowsAgent({ executable, args, workspace, home, runtimeExecutable, runtimePaths, forbiddenRoots, cwd, env });
+  if (process.platform === 'win32') return spawnWindowsAgent({ executable, args, workspace, home, runtimeExecutable, runtimePaths, forbiddenRoots, cwd, env, offline });
   const roots = await Promise.all(runtimePaths.map((p) => fs.realpath(p)));
   for (const root of [...roots, path.dirname(runtimeExecutable || executable)]) {
     if (root === '/' || root === '/Users' || root === process.env.HOME || root === path.dirname(process.env.HOME || '/Users/unknown')) throw new Error('Choose a specific runtime folder, not a home folder or system root.');
@@ -83,7 +84,7 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
   const workRoot = await fs.realpath(workspace), homeRoot = await fs.realpath(home);
   const reads = [...SYSTEM_READS, ...developerReads(), workRoot, homeRoot, ...roots, path.dirname(runtimeExecutable || executable)];
   if (!reads.some((root) => executable === root || executable.startsWith(root + path.sep))) throw new Error('This command is outside the approved runtime folders. Add its specific runtime folder in Setup.');
-  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort });
+  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline });
   const child = spawn('/usr/bin/sandbox-exec', ['-p', profile, executable, ...args], {
     cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe'],
     env: {
