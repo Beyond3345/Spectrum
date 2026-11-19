@@ -1,6 +1,7 @@
 import { listAgents, saveAgentConfig, importAgentLogin } from '../services/agentProfiles.js';
-import { changeAdapter, testAgent, getAgentRun, listAgentRuns, newAgentRun, previewDraft, previewProposal, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
+import { changeAdapter, testAgent, getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
 import { agentRecoveries, recoverAgentApply } from '../services/agentWorkspace.js';
+import { previewProposal } from '../services/agentSessionService.js';
 import { mutateProjectRoot } from '../services/projectService.js';
 
 export function registerAgentSessionRoutes(fastify) {
