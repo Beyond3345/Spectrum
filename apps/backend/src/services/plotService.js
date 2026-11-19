@@ -3,6 +3,8 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import crypto from 'crypto';
+import { DATA_DIR } from '../config/constants.js';
 import { isolationAvailable, killAgentProcess, resolveExecutable, spawnAgentProcess } from './agentSandbox.js';
 
 const execFileAsync = promisify(execFile);
@@ -65,31 +67,8 @@ function plotError(output, code, signal, python) {
   return `The code stopped without making a chart${code != null ? ` (exit ${code})` : ''}.${last ? `\n${last}` : ''}`;
 }
 
-/**
- * Runs a chart's script (the model's, shown to the user and run when they said so) in the agents' isolation: a
- * temporary folder of its own is all it can write, it reads only the system and the Python, it has no network, and
- * it stops after TIME_LIMIT_S. The table goes in as data; the chart comes back as { ok, bytes } for Spectrum to put in
- * the project, or { ok: false, error } in words the user can act on.
- */
-export async function runPlot({ tableLatex, title, plotCode, format = 'png' }) {
-  if (!PLOT_FORMATS[format]) return { ok: false, error: 'A chart can be saved as PNG, PDF, SVG or JPEG.' };
-  if (!(await isolationAvailable())) return { ok: false, error: 'Charts run in Spectrum’s isolation, which isn’t available on this computer. On Windows, reinstall Spectrum to repair it.' };
-  const python = resolvePythonExecutable();
-  let runtime;
-  try {
-    runtime = await pythonRuntime(python);
-  } catch {
-    return { ok: false, error: `Spectrum couldn’t find Python 3 (${python}). Install Python 3 with matplotlib, then run the code again.` };
-  }
-  const tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-plot-')));
-  const work = path.join(tmp, 'work');
-  const home = path.join(tmp, 'home');
-  let child, timer, timedOut = false;
-  try {
-    for (const dir of [work, path.join(home, 'tmp'), path.join(home, 'matplotlib')]) await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-    const out = path.join(work, `chart.${format}`);
-    await fs.writeFile(path.join(work, 'payload.json'), JSON.stringify({ tableLatex, title, outputPath: out, plotCode }), 'utf8');
-  const pythonScript = `
+/** The trusted part of a chart's run: reads the table, runs the chart's code on it, and saves the figure. */
+const PLOT_SCRIPT = `
 import json, os, sys, re, importlib.util, traceback
 
 def stop(kind, message='', line=None):
@@ -128,7 +107,6 @@ def parse_table(latex):
     latex = re.sub(r'\\\\begin{tabular}{[^}]*}', '', latex)
     latex = re.sub(r'\\\\end{tabular}', '', latex)
     latex = re.sub(r'\\\\(toprule|midrule|bottomrule|hline)', '', latex)
-    latex = latex.replace('\\\\\\n', '\\\\\\\\')
     rows = [r.strip() for r in latex.split('\\\\\\\\') if r.strip()]
     data = []
     for row in rows:
@@ -224,38 +202,94 @@ except SystemExit:
     raise
 except BaseException as e:
     line = e.lineno if isinstance(e, SyntaxError) and e.filename == '<chart code>' else next((f.lineno for f in reversed(traceback.extract_tb(e.__traceback__)) if f.filename == '<chart code>'), None)
-    stop('denied' if isinstance(e, PermissionError) else 'code', '%s: %s' % (type(e).__name__, e), line)
+    stop('denied' if isinstance(e, PermissionError) else 'code', '%s: %s' % (type(e).__name__, e.msg if isinstance(e, SyntaxError) else e), line)
 
 if title:
     plt.title(title)
 plt.tight_layout()
 plt.savefig(output_path, dpi=150)
 `;
-    await fs.writeFile(path.join(work, 'plot.py'), pythonScript, 'utf8');
-    child = await spawnAgentProcess({
-      command: runtime.executable,
-      args: ['-B', 'plot.py', 'payload.json'],
-      workspace: work,
-      home,
-      runtimePaths: runtime.reads,
-      offline: true,
-      // its caches and settings in its own home: matplotlib writes a font list and a config folder
-      env: {
-        MPLCONFIGDIR: path.join(home, 'matplotlib'), MPLBACKEND: 'Agg', PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8',
-        ...(runtime.userbase && { PYTHONUSERBASE: runtime.userbase }),
-        ...(process.env.PYTHONPATH && { PYTHONPATH: process.env.PYTHONPATH })
-      }
-    });
-    let output = '';
-    // ponytail: only the output's last 8 KB is kept, the part that says what stopped it
-    const keep = (chunk) => { output = (output + chunk).slice(-8192); };
-    child.stdout.on('data', keep);
-    child.stderr.on('data', keep);
-    const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code, signal) => resolve({ code, signal })); });
-    child.stdin.end();
-    timer = setTimeout(() => { timedOut = true; killAgentProcess(child); }, TIME_LIMIT_S * 1000);
-    const { code, signal } = await done;
-    if (timedOut) return { ok: false, error: `The code ran for more than ${TIME_LIMIT_S / 60} minutes, and was stopped.` };
+
+/**
+ * A run of the Python in the agents' isolation, with no network: work is all it can write besides its own home, it
+ * reads only the system and the Python, and it is stopped after TIME_LIMIT_S. { code, signal, output, timedOut }.
+ */
+async function isolated(runtime, { args, work, home, limit = TIME_LIMIT_S }) {
+  const child = await spawnAgentProcess({
+    command: runtime.executable,
+    args: ['-B', ...args],
+    workspace: work,
+    home,
+    runtimePaths: runtime.reads,
+    offline: true,
+    // matplotlib's font list and settings in its own home
+    env: {
+      MPLCONFIGDIR: path.join(home, 'matplotlib'), MPLBACKEND: 'Agg', PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8',
+      ...(runtime.userbase && { PYTHONUSERBASE: runtime.userbase }),
+      ...(process.env.PYTHONPATH && { PYTHONPATH: process.env.PYTHONPATH })
+    }
+  });
+  let output = '', timedOut = false;
+  // ponytail: only the output's last 8 KB is kept, the part that says what stopped it
+  const keep = (chunk) => { output = (output + chunk).slice(-8192); };
+  child.stdout.on('data', keep);
+  child.stderr.on('data', keep);
+  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code, signal) => resolve({ code, signal })); });
+  child.stdin.end();
+  const timer = setTimeout(() => { timedOut = true; killAgentProcess(child); }, limit * 1000);
+  try {
+    return { ...(await done), output, timedOut };
+  } finally {
+    clearTimeout(timer);
+    killAgentProcess(child);
+  }
+}
+
+/**
+ * matplotlib's font list for this Python, which takes it 15 s or more to build: built once by a fixed script (no
+ * chart's code) in isolation, kept in Spectrum's data, and copied into each chart's home. Without it, a chart builds
+ * its own.
+ */
+async function fontCache(runtime, tmp) {
+  const dir = path.join(DATA_DIR, 'plot-fonts', crypto.createHash('sha256').update(runtime.executable).digest('hex').slice(0, 16));
+  const lists = async () => (await fs.readdir(dir).catch(() => [])).filter((name) => /^fontlist.*\.json$/.test(name));
+  if (!(await lists()).length) {
+    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    const home = path.join(tmp, 'fonts-home');
+    await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
+    const script = 'import os, shutil, matplotlib.font_manager as f; [shutil.copy(os.path.join(os.environ["MPLCONFIGDIR"], n), n) for n in os.listdir(os.environ["MPLCONFIGDIR"]) if n.startswith("fontlist")]';
+    await fs.mkdir(path.join(home, 'matplotlib'), { recursive: true });
+    await isolated(runtime, { args: ['-c', script], work: dir, home }).catch(() => {});
+  }
+  return (await lists()).map((name) => path.join(dir, name));
+}
+
+/**
+ * Runs a chart's script (the model's, shown to the user and run when they said so) in isolation. The table goes in
+ * as data; the chart comes back as { ok, bytes } for Spectrum to put in the project, or { ok: false, error } in words
+ * the user can act on.
+ */
+export async function runPlot({ tableLatex, title, plotCode, format = 'png', limit = TIME_LIMIT_S }) {
+  if (!PLOT_FORMATS[format]) return { ok: false, error: 'A chart can be saved as PNG, PDF, SVG or JPEG.' };
+  if (!(await isolationAvailable())) return { ok: false, error: 'Charts run in Spectrum’s isolation, which isn’t available on this computer. On Windows, reinstall Spectrum to repair it.' };
+  const python = resolvePythonExecutable();
+  let runtime;
+  try {
+    runtime = await pythonRuntime(python);
+  } catch {
+    return { ok: false, error: `Spectrum couldn’t find Python 3 (${python}). Install Python 3 with matplotlib, then run the code again.` };
+  }
+  const tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-plot-')));
+  const work = path.join(tmp, 'work');
+  const home = path.join(tmp, 'home');
+  try {
+    for (const dir of [work, path.join(home, 'tmp'), path.join(home, 'matplotlib')]) await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    for (const file of await fontCache(runtime, tmp)) await fs.copyFile(file, path.join(home, 'matplotlib', path.basename(file)));
+    const out = path.join(work, `chart.${format}`);
+    await fs.writeFile(path.join(work, 'payload.json'), JSON.stringify({ tableLatex, title, outputPath: out, plotCode }), 'utf8');
+    await fs.writeFile(path.join(work, 'plot.py'), PLOT_SCRIPT, 'utf8');
+    const { code, signal, output, timedOut } = await isolated(runtime, { args: ['plot.py', 'payload.json'], work, home, limit });
+    if (timedOut) return { ok: false, error: `The code ran for more than ${limit < 60 ? `${limit} seconds` : `${limit / 60} minutes`}, and was stopped.` };
     if (code !== 0) return { ok: false, error: plotError(output, code, signal, python) };
     // written in isolation: only a file of its own, never a link, of a size and kind a chart has
     const stat = await fs.lstat(out).catch(() => null);
@@ -267,8 +301,6 @@ plt.savefig(output_path, dpi=150)
   } catch (err) {
     return { ok: false, error: `The code couldn’t be run: ${err.message}` };
   } finally {
-    clearTimeout(timer);
-    killAgentProcess(child);
     await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
   }
 }
