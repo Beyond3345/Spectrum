@@ -29,6 +29,7 @@ import {
   getProjectSettings,
   getProjectTree,
   getSyncSettings,
+  getTrust,
   jyutpingPreamble,
   gitHubLeft,
   gitHubOpened,
@@ -40,6 +41,7 @@ import {
   saveNote,
   saveThumbnail,
   setProjectMainFile,
+  setTrust,
   changeSpellWord,
   spellSuggest,
   downloadDictionary,
@@ -496,6 +498,27 @@ function Editor({ projectId }: { projectId: string }) {
     window.addEventListener(ENGINES_CHANGED, load);
     return () => window.removeEventListener(ENGINES_CHANGED, load);
   }, [projectId]);
+  // Trust this project (the compile menu's switch): its LaTeX compiles run unconfined and with shell escape. Kept by
+  // the backend on this computer, never in the project; confined: whether compiles are confined here at all (a Mac)
+  const [trust, setTrustState] = useState<{ trusted: boolean; confined: boolean } | null>(null);
+  useEffect(() => {
+    setTrustState(null);
+    getTrust(projectId).then(setTrustState).catch(() => undefined);
+  }, [projectId]);
+  const toggleTrust = async () => {
+    if (!trust) return;
+    const on = !trust.trusted;
+    if (on) {
+      const message = `${trust.confined ? 'Spectrum compiles LaTeX in a sandbox, so a document can’t change your files, run other programs or use the network. Trusting this project turns the sandbox off for it and turns on shell escape' : 'Trusting this project turns on shell escape for its LaTeX compiles'}, so its documents can run any program as you. Trust it only if every file in it is yours or one you have checked. The choice stays on this computer.`;
+      if (!(await confirmDialog({ title: 'Trust this project?', message, confirmLabel: 'Trust' }))) return;
+    }
+    try {
+      const res = await setTrust(projectId, on);
+      setTrustState({ ...trust, trusted: res.trusted });
+    } catch (err) {
+      notify(`Couldn’t change the trust for this project: ${errorText(err)}`, 'error');
+    }
+  };
   const [pdf, setPdf] = useState<{ url: string; blob: boolean } | null>(null);
   /** the document whose PDF the pane shows, and the one compiled last (whose log shows) */
   const [shownDoc, setShownDoc] = useState('');
@@ -3118,6 +3141,9 @@ function Editor({ projectId }: { projectId: string }) {
           [true, 'On: one pass, images as boxes']
         ])
       : []),
+    // off: the compile is confined (on a Mac) and has TeX's restricted shell escape only
+    usesTeX && trust && { label: 'Trust this project', checked: trust.trusted, onSelect: () => void toggleTrust() },
+    usesTeX && trust && { separator: true },
     { label: 'Stop compilation', disabled: !running, onSelect: () => stopCompile(compileIdRef.current).catch(() => undefined) },
     { label: 'Recompile from scratch', disabled: running, onSelect: () => runCompile(compileTarget, { fresh: true }) },
     docs.length > 1 && { label: 'Recompile all', disabled: running, onSelect: () => recompileAll() }

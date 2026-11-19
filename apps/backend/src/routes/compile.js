@@ -3,6 +3,8 @@ import { BIB_TOOLS, runCompile, stopCompile, SUPPORTED_ENGINES } from '../servic
 import { moveToNewFolders } from '../services/foldersService.js';
 import { getProjectRoot, readMeta } from '../services/projectService.js';
 import { synctexEdit, synctexView } from '../services/synctex.js';
+import { confinement } from '../services/compileSandbox.js';
+import { isTrusted, setTrusted } from '../services/trustService.js';
 import { auxKept } from '../services/texlabService.js';
 
 const isCount = (n) => Number.isInteger(n) && n > 0;
@@ -67,6 +69,18 @@ export function registerCompileRoutes(fastify) {
     });
     if (res.ok) auxKept(projectId);
     return folders ? { ...res, folders } : res;
+  });
+
+  // Trust this project (the Compile menu's switch): its LaTeX compiles run unconfined and with full shell escape. Kept
+  // on this computer only (trustService.js). confined: whether compiles are confined here at all (a Mac)
+  fastify.get('/api/projects/:id/trust', async (req) => ({
+    ok: true,
+    trusted: await isTrusted(req.params.id, await getProjectRoot(req.params.id)),
+    confined: (await confinement()) === 'yes'
+  }));
+  fastify.put('/api/projects/:id/trust', async (req, reply) => {
+    if (typeof req.body?.trusted !== 'boolean') return reply.code(400).send({ ok: false, error: 'Invalid trusted.' });
+    return { ok: true, trusted: await setTrusted(req.params.id, await getProjectRoot(req.params.id), req.body.trusted) };
   });
 
   // by the id the editor gave the compile: a stop that arrives before its compile still stops it

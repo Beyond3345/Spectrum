@@ -38,12 +38,31 @@ export function confinement() {
 }
 
 // the small tools TeX's own shell scripts call (mktexpk, mktextfm, latexmk through sh), and the system's Perl and
-// Python, which most of TeX's scripts are written in; /usr/bin/python3 hands over to the developer tools' own
-const SYSTEM_TOOLS = String.raw`^/(bin/(sh|bash|dash|zsh|cat|cp|mv|rm|mkdir|rmdir|ln|ls|echo|test|\[|expr|pwd|chmod|date|sleep)|usr/bin/(env|perl[0-9.]*|python3|sed|awk|basename|dirname|uname|tr|grep|egrep|fgrep|head|tail|sort|uniq|wc|cut|touch|find|which|id|true|false|printf|tee|mktemp|cmp|diff|file|xcrun|xcode-select|locale|getconf)|(Applications/Xcode[^/]*\.app/Contents/Developer|Library/Developer/CommandLineTools)/(usr/bin/python3[0-9.]*|Library/Frameworks/Python3\.framework/.*))$`;
+// Python, which most of TeX's scripts are written in; /usr/bin/python3 hands over to the developer tools' own, and so
+// does lipo, which TeX Live's Biber for both kinds of Mac takes this Mac's half of itself out with
+const SYSTEM_TOOLS = String.raw`^/(bin/(sh|bash|dash|zsh|cat|cp|mv|rm|mkdir|rmdir|ln|ls|echo|test|\[|expr|pwd|chmod|date|sleep)|usr/bin/(env|perl[0-9.]*|python3|sed|awk|basename|dirname|uname|tr|grep|egrep|fgrep|head|tail|sort|uniq|wc|cut|touch|find|which|id|true|false|printf|tee|mktemp|cmp|diff|file|xcrun|xcode-select|locale|getconf|lipo)|(Applications/Xcode[^/]*\.app/Contents/Developer|Library/Developer/CommandLineTools)/(usr/bin/(python3[0-9.]*|lipo|xcrun)|Toolchains/[^/]+/usr/bin/lipo|Library/Frameworks/Python3\.framework/.*))$`;
 const TEX_PROGRAMS = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic', 'kpsewhich', 'bibtex', 'biber', 'makeindex', 'makeglossaries', 'xindy', 'latexminted'];
-// the interpreters `#!/usr/bin/env …` finds first on the compile's PATH, and Ghostscript, which repstopdf turns an
-// .eps figure into a PDF with
+// what TeX's scripts are written in, as `#!/usr/bin/env …` finds each first on the compile's PATH, and Ghostscript,
+// which repstopdf turns an .eps figure into a PDF with
 const INTERPRETERS = ['perl', 'python3', 'gs'];
+
+/**
+ * The filter for one program by its own file, and for a script the interpreter its first line names as well (a
+ * distribution that writes the full path there, as MacPorts and Nix do): a framework's python3 starts the Python inside
+ * its own Python.app, so that framework is the filter.
+ */
+async function programFilter(file, searchPath) {
+  const framework = file.match(/^(.+\/Python3?\.framework)\//)?.[1];
+  const filters = [framework ? `(subpath ${q(framework)})` : `(literal ${q(file)})`];
+  const handle = await fs.open(file, 'r').catch(() => null);
+  if (!handle) return filters;
+  const { buffer, bytesRead } = await handle.read(Buffer.alloc(256), 0, 256, 0).finally(() => handle.close());
+  const [, first, second] = buffer.subarray(0, bytesRead).toString('latin1').match(/^#!\s*(\S+)(?:[ \t]+(?:-S[ \t]+)?([^\s-]\S*))?/) || [];
+  const named = first && (path.basename(first) === 'env' ? second : first);
+  const interpreter = named && (await resolveExecutable(named, searchPath).catch(() => null));
+  if (interpreter && interpreter !== file) filters.push(...(await programFilter(interpreter, searchPath)));
+  return filters;
+}
 // never a whole system folder or the home folder as one program's installation
 const TOO_WIDE = new Set(['/', '/usr', '/usr/local', '/opt', '/opt/homebrew', '/opt/local', '/Library', '/Applications', os.homedir(), path.dirname(os.homedir())]);
 
@@ -64,7 +83,8 @@ function installation(searchPath) {
         if (!file) continue;
         // /usr/local/texlive/2026/bin/universal-darwin/pdftex and …/2026/texmf-dist/scripts/latexmk/latexmk.pl
         const root = file.match(/^(.+?)\/(bin|texmf[^/]*)\//)?.[1];
-        filters.add(root && !TOO_WIDE.has(root) ? `(subpath ${q(root)})` : `(literal ${q(file)})`);
+        if (root && !TOO_WIDE.has(root)) filters.add(`(subpath ${q(root)})`);
+        for (const filter of await programFilter(file, searchPath)) filters.add(filter);
       }
       const kpsewhich = await found('kpsewhich');
       // one at a time: kpsewhich answers only the last -var-value
@@ -73,10 +93,7 @@ function installation(searchPath) {
       if (path.isAbsolute(dist) && !TOO_WIDE.has(await real(dist))) filters.add(`(subpath ${q(await real(dist))})`);
       for (const name of INTERPRETERS) {
         const file = await found(name);
-        if (!file) continue;
-        // a framework's python3 starts the Python inside its own Python.app
-        const framework = file.match(/^(.+\/Python3?\.framework)\//)?.[1];
-        filters.add(framework ? `(subpath ${q(framework)})` : `(literal ${q(file)})`);
+        for (const filter of file ? await programFilter(file, searchPath) : []) filters.add(filter);
       }
       return { filters: [...filters], texmfVar: path.isAbsolute(texmfVar) ? texmfVar : '' };
     })());
@@ -119,9 +136,10 @@ export async function compileSandbox({ build, tmp, searchPath = process.env.PATH
     writable.push(bundles);
   }
   const subpaths = (list) => list.map((p) => `(subpath ${q(p)})`).join(' ');
-  const own = await Promise.all(runs.filter((file) => file && path.isAbsolute(file)).map(real));
+  const own = [];
+  for (const file of runs) if (file && path.isAbsolute(file)) own.push(...(await programFilter(await real(file), searchPath)));
   // Biber starts the copy of itself it unpacked into the cache
-  const may = [...filters, ...own.map((p) => `(literal ${q(p)})`), `(subpath ${q(await real(caches[0]))})`];
+  const may = [...new Set([...filters, ...own]), `(subpath ${q(await real(caches[0]))})`];
   const made = root ? [String.raw`^${quoted(await real(root))}/(.*/)?[^/]+-eps-converted-to\.pdf$`] : [];
   const profile = `(version 1)
 (deny default)
@@ -169,4 +187,40 @@ ${tectonic ? `(allow mach-lookup
       PAR_GLOBAL_TMPDIR: caches[0]
     }
   };
+}
+
+const TRUST_HINT = 'If this project is yours, or you have checked what it does, turn on “Trust this project” in the Compile menu and compile again.';
+// a long path keeps its end, where the file's name is
+const short = (text) => (text.length > 160 ? `…${text.slice(-157)}` : text);
+const listed = (items) => [...new Set(items)].slice(0, 3).map((item) => `“${short(item)}”`).join(', ');
+
+/**
+ * What stopped a compile that Trust this project would allow, as lines for its log in words a user can act on, or ''.
+ * log: the compile's output with TeX's line breaks undone; passLog: the last pass's own log file, where TeX notes the
+ * commands it didn't run; confined: the compile ran in the sandbox, whose refusals the programs report as "Operation
+ * not permitted". failed: the compile ended with errors, so the lines are errors, not warnings.
+ */
+export function blockedNotes(log, passLog, { confined, failed }) {
+  const notes = [];
+  // the sandbox: Lua's "cannot open file '…' (Operation not permitted)", a tool's "touch: …: Operation not permitted",
+  // Biber's "Can't connect to host:port (Operation not permitted)"
+  const refused = confined ? log.split(/\r?\n/).filter((line) => line.includes('Operation not permitted')) : [];
+  const network = refused.some((line) => /connect|socket|resolve|fetch/i.test(line));
+  const things = refused.filter((line) => !/connect|socket|resolve|fetch/i.test(line))
+    // the file in quotes, or what the program names last before the words ("sh: line 4: /a/b.txt: Operation not permitted")
+    .map((line) => line.match(/'([^']+)' \(Operation not permitted/)?.[1] ?? line.replace(/:? ?\(?Operation not permitted.*$/, '').split(': ').pop().trim())
+    .filter(Boolean);
+  if (refused.length) {
+    const what = [things.length && `using ${listed(things)}`, network && 'using the network'].filter(Boolean).join(' and ') || 'something it tried';
+    notes.push(`Spectrum’s sandbox stopped this compile from ${what}. A compile can write only its own build files, run only TeX’s own programs and use no network.`);
+  }
+  // TeX itself: a command its restricted shell escape doesn't run, a package saying it needs shell escape, and a
+  // file outside the build folder it won't write
+  const commands = [...passLog.matchAll(/^runsystem\((.*)\)\.\.\.disabled(?: \(restricted\))?\.$/gm)].map(([, command]) => command);
+  if (commands.length || /^(?:!|.*Error:).*(?:-shell-escape|shell[- ]escape|write18)/im.test(log)) {
+    notes.push(`This document needs full shell escape${commands.length ? ` to run ${listed(commands)}` : ''}. Spectrum compiles with TeX’s restricted shell escape, which runs only TeX’s own short list of programs; trusting the project turns on full shell escape.`);
+  }
+  const unwritten = [...log.matchAll(/Not writing to (.+?) \(openout_any = /g)].map(([, file]) => file);
+  if (unwritten.length) notes.push(`TeX didn’t write ${listed(unwritten)}, outside the document’s build folder; for a trusted project it does.`);
+  return notes.length ? `\n[spectrum${failed ? '' : ' warning'}] ${notes.join(' ')} ${TRUST_HINT}\n` : '';
 }

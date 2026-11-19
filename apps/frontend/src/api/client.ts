@@ -737,6 +737,18 @@ export function compileProject(payload: {
   return request<CompileResult>('/api/compile', json('POST', payload));
 }
 
+/**
+ * Trust this project: whether its LaTeX compiles run unconfined and with full shell escape (kept on this computer, never
+ * in the project), and whether compiles are confined on this computer at all (a Mac).
+ */
+export function getTrust(projectId: string) {
+  return request<{ ok: boolean; trusted: boolean; confined: boolean }>(`/api/projects/${projectId}/trust`);
+}
+
+export function setTrust(projectId: string, trusted: boolean) {
+  return request<{ ok: boolean; trusted: boolean }>(`/api/projects/${projectId}/trust`, json('PUT', { trusted }));
+}
+
 /** Ends the compile started with this id (false when it hasn't started yet; it then stops as it starts). */
 export function stopCompile(compileId: string) {
   return request<{ ok: boolean }>('/api/compile/stop', json('POST', { compileId }));

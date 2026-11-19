@@ -11,6 +11,7 @@ import { DATA_DIR } from '../config/constants.js';
 import { SYMBOL_SETS, picDefinition, setOfPic, shapeDefinitions } from '../data/symbolSets.js';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 import { PATH_KEY, findExecutable, runSpawn, texPath, unwrap } from './compileService.js';
+import { compileSandbox } from './compileSandbox.js';
 import { builtInTectonic } from './engineService.js';
 
 // a -file-line-error line (./main.tex:12: …, main.tex:12: …, C:/…/main.tex:12: …) or a plain TeX error (! …)
@@ -207,7 +208,9 @@ export async function drawSymbols({ parts, style, texFolder }) {
       : ['-Z', 'continue-on-errors', '--keep-logs', '--outdir', '.', 'symbols.tex'];
     const output = [];
     const env = searchPath ? { ...process.env, [PATH_KEY]: searchPath } : process.env;
-    const run = await runSpawn(pdflatex || tectonic, args, dir, (chunk) => output.push(chunk), env, pdflatex ? TIME_LIMIT_MS : TECTONIC_LIMIT_MS);
+    // confined on a Mac, as every compile is: the parts' code is the diagram's, which can come from someone else
+    const box = await compileSandbox({ build: dir, tmp: dir, searchPath: env[PATH_KEY], tectonic: !pdflatex, runs: [tectonic] });
+    const run = await runSpawn(pdflatex || tectonic, args, dir, (chunk) => output.push(chunk), { ...env, ...box?.env }, pdflatex ? TIME_LIMIT_MS : TECTONIC_LIMIT_MS, null, box?.profile);
     const log = unwrap(await fs.readFile(path.join(dir, 'symbols.log'), 'utf8').catch(() => Buffer.concat(output).toString()));
     if (run.timedOut) return { ok: false, error: `Drawing the symbols took over ${pdflatex ? 'a minute' : 'five minutes'}, so it was stopped.`, log };
     const pdf = await fs.readFile(path.join(dir, 'symbols.pdf')).catch(() => null);

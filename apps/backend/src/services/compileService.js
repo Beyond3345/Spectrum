@@ -8,7 +8,7 @@ import { EventEmitter } from 'events';
 import { DATA_DIR } from '../config/constants.js';
 import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { biberCache, biberDownload, builtInTectonic, installBiber, tectonicBiber } from './engineService.js';
-import { SANDBOX_EXEC, compileSandbox, confinement } from './compileSandbox.js';
+import { SANDBOX_EXEC, blockedNotes, compileSandbox, confinement } from './compileSandbox.js';
 import { isTrusted } from './trustService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
@@ -716,6 +716,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // On a Mac every program of the compile runs confined (compileSandbox.js), unless the user trusts the project
   const box = options.trusted ? null : await compileSandbox({ build: outDir, tmp: tmpDir, searchPath: texEnv[PATH_KEY], tectonic: engine === 'tectonic', root: projectRoot, runs: [engineCommand(engine), biber] });
   if (box) texEnv = { ...texEnv, ...box.env };
+  // a trusted project's TeX writes where the document says, as its shell escape could anyway
+  if (options.trusted) texEnv.openout_any = 'a';
   else if (!options.trusted && (await confinement()) === 'no') pushLog(Buffer.from('[spectrum warning] This Mac’s sandbox-exec didn’t run, so this compile wasn’t confined.\n'));
   const confined = (name, runArgs, cwd, limit) => runSpawn(name, runArgs, cwd, pushLog, texEnv, limit, null, box?.profile);
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
@@ -862,6 +864,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   if (engine === 'tectonic' && /biblatex control file version/i.test(log)) {
     log += '\n[spectrum] This document uses biblatex, and Tectonic’s bundled biblatex needs a different biber version than the one installed. Compile it with Auto, pdfLaTeX or XeLaTeX instead.\n';
   }
+  // what the sandbox or TeX's own limits stopped, which Trust this project (a project's switch) would allow
+  if (cache && !options.trusted && !options.untrusted) log += blockedNotes(unwrap(log), await passLog(), { confined: !!box, failed: code !== 0 });
   // biblatex with Biber needs Spectrum's Biber, or a real TeX installation, which Auto has already preferred when there is one
   const notice = engine === 'tectonic' && !biber && needsBiber(tex) ? { code: 'BIBER_MISSING' } : null;
   if (notice) log += BIBLATEX_NOTE;
