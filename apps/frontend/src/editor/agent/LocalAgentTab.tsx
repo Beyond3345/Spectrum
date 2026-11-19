@@ -31,6 +31,7 @@ import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Trans
 import type { ContextKind, Draft, TaskRequest, TrayChange, TrayPart } from './parts';
 import { RUNNING, addEvent, project } from './transcript';
 import AgentLogo from './AgentLogo';
+import AgentHeader from './AgentHeader';
 import { chosenAgent, shownAgents } from './agents';
 import { AGENT_CARD_KEY } from '../../app/AgentSettings';
 import type { Checkpoint } from './transcript';
@@ -404,6 +405,7 @@ export default function LocalAgentTab({
           onManage={() => onOpenSettings('personas')}
         />
         <span className="grow" />
+        <AgentHeader events={events} />
         {session && RUNNING.includes(session.status) && (
           <button className="btn small" onClick={() => stopLocalAgentSession(session.id).catch(fail)}>
             <Icon name="stop.fill" /> Stop
