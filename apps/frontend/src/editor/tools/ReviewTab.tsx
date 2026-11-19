@@ -115,7 +115,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       }
   );
   const { run, ticks } = state;
-  // a Typst or Markdown document runs the compile, references notice and privacy checks only
+  // a Typst or Markdown document runs the compile, references and privacy checks only (Typst's references, a notice)
   const latexDoc = /\.(tex|ltx)$/i.test(doc);
   const groupsForDoc = GROUPS.map(([group]) => group).filter((group) => latexDoc || group === 'compile' || group === 'references' || group === 'privacy');
   const set = (patch: Partial<Kept> | ((was: Kept) => Partial<Kept>)) => setState((was) => ({ ...was, ...(typeof patch === 'function' ? patch(was) : patch) }));

@@ -375,6 +375,27 @@ export function runPreflight(input: PreflightInput): Finding[] {
   }
 
   // ─── References and assets ───
+  /** The .bib entries' own checks (a key twice, the same work twice, a field missing, a DOI that isn't one) and those never cited */
+  const entryChecks = (entries: BibRecord[], cites: { key: string }[], citesAll: boolean) => {
+    const group = 'references';
+    const byKey = new Map<string, BibRecord>();
+    for (const e of entries) {
+      const first = byKey.get(e.key);
+      if (first) add({ group, severity: 'warning', message: `The key ${quoted(e.key)} is in the bibliography twice (first at ${first.file}:${first.line})`, file: e.file, line: e.line, fixable: true });
+      else byKey.set(e.key, e);
+      if (e.duplicateOf) add({ group, severity: 'warning', message: `${quoted(e.key)} looks like the same work as ${quoted(e.duplicateOf.key)} (same ${e.duplicateOf.by})`, file: e.file, line: e.line, fixable: true });
+      const lacking = (REQUIRED[e.type] ?? []).filter((forms) => !forms.some((f) => e.fields.includes(f))).map((forms) => forms[0]);
+      if (lacking.length) add({ group, severity: 'warning', message: `The ${e.type} entry ${quoted(e.key)} has no ${listed(lacking, Infinity, 'or')}`, file: e.file, line: e.line });
+      if (e.doi && !/^10\.\d{4,9}\/\S+$/.test(e.doi.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i, ''))) add({ group, severity: 'warning', message: `The DOI of ${quoted(e.key)} doesn’t look like one (10.xxxx/…)`, file: e.file, line: e.line });
+    }
+    if (cites.length && !citesAll) {
+      const cited = new Set(cites.map((c) => c.key));
+      const unused = new Map<string, BibRecord[]>();
+      for (const e of byKey.values()) if (!cited.has(e.key)) unused.set(e.file, [...(unused.get(e.file) ?? []), e]);
+      for (const [file, list] of unused)
+        add({ group, severity: 'info', message: `${plural(list.length, 'entry', 'entries')} in ${file} ${list.length === 1 ? 'is' : 'are'} never cited: ${listed(list.map((e) => e.key))}`, file, line: list[0].line });
+    }
+  };
   if (latexDoc) {
     const group = 'references';
     // the .bib files the document names, or every one when it names none that exist
@@ -402,23 +423,7 @@ export function runPreflight(input: PreflightInput): Finding[] {
       }
     for (const [key, places] of labels)
       if (places.length > 1) add({ group, severity: 'warning', message: `The label ${quoted(key)} is used ${places.length} times (first at ${places[0].file}:${places[0].line}), so references go to the last one`, ...places[1], fixable: true });
-    const byKey = new Map<string, BibRecord>();
-    for (const e of entries) {
-      const first = byKey.get(e.key);
-      if (first) add({ group, severity: 'warning', message: `The key ${quoted(e.key)} is in the bibliography twice (first at ${first.file}:${first.line})`, file: e.file, line: e.line, fixable: true });
-      else byKey.set(e.key, e);
-      if (e.duplicateOf) add({ group, severity: 'warning', message: `${quoted(e.key)} looks like the same work as ${quoted(e.duplicateOf.key)} (same ${e.duplicateOf.by})`, file: e.file, line: e.line, fixable: true });
-      const lacking = (REQUIRED[e.type] ?? []).filter((forms) => !forms.some((f) => e.fields.includes(f))).map((forms) => forms[0]);
-      if (lacking.length) add({ group, severity: 'warning', message: `The ${e.type} entry ${quoted(e.key)} has no ${listed(lacking, Infinity, 'or')}`, file: e.file, line: e.line });
-      if (e.doi && !/^10\.\d{4,9}\/\S+$/.test(e.doi.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i, ''))) add({ group, severity: 'warning', message: `The DOI of ${quoted(e.key)} doesn’t look like one (10.xxxx/…)`, file: e.file, line: e.line });
-    }
-    if (cites.length && !citesAll) {
-      const cited = new Set(cites.map((c) => c.key));
-      const unused = new Map<string, BibRecord[]>();
-      for (const e of byKey.values()) if (!cited.has(e.key)) unused.set(e.file, [...(unused.get(e.file) ?? []), e]);
-      for (const [file, list] of unused)
-        add({ group, severity: 'info', message: `${plural(list.length, 'entry', 'entries')} in ${file} ${list.length === 1 ? 'is' : 'are'} never cited: ${listed(list.map((e) => e.key))}`, file, line: list[0].line });
-    }
+    entryChecks(entries, cites, citesAll);
     for (const image of images)
       if (!Object.keys(imageFile(image.name)).length && !texFound(image.name)) add({ group, severity: 'error', message: `Can’t find the image ${quoted(image.name)}`, file: image.file, line: image.line });
     const referenced = new Set(refs.map((r) => r.key));
@@ -444,8 +449,52 @@ export function runPreflight(input: PreflightInput): Finding[] {
         const syntax = kind === 'bib-syntax';
         add({ group, severity: syntax ? 'error' : 'warning', message: `${d.message}${token && !syntax ? `: ${quoted(token)}` : ''} (TexLab)`, file, line: d.line, fixable: true });
       }
+  } else if (/\.(?:md|markdown)$/i.test(doc)) {
+    const group = 'references';
+    const text = texts.get(doc) ?? '';
+    // code, comments and maths blanked to spaces, so an @ or a ](…) there is not read and the lines stay where they are
+    const code = text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n\1[`~]*[ \t]*(?=\n|$)|(?![\s\S]))|<!--[\s\S]*?-->|\$\$[\s\S]*?\$\$|(`+)[^\n]*?\2/gm, (m) => m.replace(/[^\n]/g, ' '));
+    const lineOf = lineFinder(code);
+    const front = /^---\n([\s\S]*?)\n(?:---|\.\.\.)[ \t]*(?:\n|$)/.exec(text)?.[1] ?? '';
+    // the .bib files the front matter names (bibliography: refs.bib, or a list), else every one, as Spectrum gives pandoc
+    const bibField = /^bibliography\s*:[ \t]*(.*)((?:\n[ \t]+-[ \t]*.*)*)/m.exec(front);
+    const bibNames = bibField ? [bibField[1], ...bibField[2].split('\n')].map((n) => n.replace(/^[\s-]*|[\s"'\[\]]*$/g, '').replace(/^["']/, '')).flatMap((n) => n.split(/\s*,\s*/)).filter(Boolean) : [];
+    const named = new Set(bibNames.map((n) => lookup([folderOf(doc) + n, n].map(normalise)).path).filter(Boolean) as string[]);
+    const entries = input.bib?.filter((e) => !named.size || named.has(e.file)) ?? [];
+    const keys = new Set(entries.map((e) => e.key));
+    // [@key; see @other, p. 3], and @key in the text; @fig:… and the like are pandoc-crossref's references, not citations
+    const mdCites: (Place & { key: string })[] = [];
+    for (const m of code.matchAll(/(?<![\w.@])-?@([A-Za-z0-9_][\w:.#$%&+?<>~/-]*?)(?=[.,;:!?]?(?:[\s\]};)]|$))/g))
+      if (!/^(?:fig|tbl|eq|sec|lst):/.test(m[1])) mdCites.push({ key: m[1], file: doc, line: lineOf(m.index!) });
+    // nocite: @* counts every entry as cited, and the keys it names are cited
+    const nocite = /^nocite\s*:([\s\S]*?)(?=^\S|(?![\s\S]))/m.exec(front)?.[1] ?? '';
+    for (const m of nocite.matchAll(/@([\w:.-]+)/g)) mdCites.push({ key: m[1], file: doc, line: 1 });
+    if (input.bib && mdCites.length && !keys.size) add({ group, severity: 'error', message: 'The document cites sources but has no bibliography: no .bib file in the project', ...mdCites[0] });
+    else if (input.bib) {
+      const seen = new Set<string>();
+      for (const c of mdCites)
+        if (!keys.has(c.key) && !seen.has(c.key)) {
+          seen.add(c.key);
+          add({ group, severity: 'warning', message: `No bibliography entry has the key ${quoted(c.key)}`, file: c.file, line: c.line, fixable: true });
+        }
+    }
+    entryChecks(entries, mdCites, /@\*/.test(nocite));
+    // images and links to files in the project, as pandoc finds them from the .md's folder; a URL, mailto: or #anchor is left alone
+    const local = (target: string) => !/^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(target);
+    const file = (target: string) => {
+      const name = decodeURIComponent(target.replace(/[#?].*$/, '').replace(/^<|>$/g, ''));
+      return lookup([folderOf(doc) + name, name].map(normalise));
+    };
+    for (const m of code.matchAll(/(!?)\[(?:[^\]\n]|\][^(])*\]\(\s*(<[^>]*>|[^)\s]+)(?:\s+["'(][^)]*)?\)/g)) {
+      const target = m[2];
+      if (!local(target) || !target.replace(/[#?].*$/, '')) continue;
+      const hit = file(target);
+      const line = lineOf(m.index!);
+      if (m[1] && !hit.path) add({ group, severity: 'error', message: hit.folded ? `The image ${quoted(target)} is ${hit.folded} in the project, which differs in letter case` : `Can’t find the image ${quoted(target)}`, file: doc, line });
+      else if (!m[1] && !hit.path) add({ group, severity: 'warning', message: hit.folded ? `The link to ${quoted(target)} goes to ${hit.folded}, which differs in letter case` : `The link to ${quoted(target)} goes to no file in the project`, file: doc, line, fixable: true });
+    }
   } else {
-    add({ group: 'references', severity: 'info', message: 'The source checks read LaTeX, so they don’t apply to Typst or Markdown documents.' });
+    add({ group: 'references', severity: 'info', message: 'The source checks read LaTeX and Markdown, so they don’t apply to Typst documents.' });
   }
 
   // ─── Privacy and blind review ───

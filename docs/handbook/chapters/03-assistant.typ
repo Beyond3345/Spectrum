@@ -320,7 +320,7 @@ Review checks the document that #ui[Compile] builds before it goes anywhere. It 
     [#ui[Submission readiness]], [The PDF version, encryption, fonts that are not embedded, Type 3 fonts, absolute paths, file names that clash by letter case, image formats pdfLaTeX cannot include, the abstract and the keywords],
     [#ui[AI review]], [One read of the whole document by the main model, with the files it includes, which returns a summary, strengths, a score, its confidence and points marked Major, Minor or Note, each tied to a line],
   ),
-  caption: [The groups of checks in Review. A Typst or Markdown document runs Compile and layout and Privacy and blind review, and Accessibility and Submission readiness run for LaTeX only.],
+  caption: [The groups of checks in Review. A Typst document runs Compile and layout and Privacy and blind review. A Markdown document also runs References and assets, which checks its citations against the `.bib` its front matter names, entries never cited, missing images and links to files that are not in the project, each at its line of the `.md`. Accessibility and Submission readiness run for LaTeX only.],
 ) <tab-assistant-review>
 
 The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes). Until a model is set up, it opens #menu[Settings][Models] instead. A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
