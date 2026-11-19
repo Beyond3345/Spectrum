@@ -17,6 +17,7 @@ Object.assign(process.env, {
 const { createProject } = await import('../src/services/projectService.js');
 const { findExecutable, glossariesUnsafe, keptFileFailed, runCompile, runSpawn, stopCompile } = await import('../src/services/compileService.js');
 const { documentLabels, projectStats } = await import('../src/services/statsService.js');
+const { setTrusted } = await import('../src/services/trustService.js');
 const { compile: compileTarget } = await import('../src/services/transferAgent/nodes/compile.js');
 const { registerSystemRoutes } = await import('../src/routes/system.js');
 const { default: Fastify } = await import('fastify');
@@ -517,6 +518,8 @@ test('Stop during Biber says nothing about Biber failing', { skip: WINDOWS ? 'a 
     'main.tex': '\\documentclass{article}\\usepackage{biblatex}\\addbibresource{refs.bib}\\begin{document}\\cite{Knuth1984}\\printbibliography\\end{document}\n',
     'refs.bib': refs
   });
+  // trusted: the stand-in writes its marker outside the build folder, which a confined compile can't
+  await setTrusted(p.id, p.path, true);
   const run = runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex', compileId: 'stop-biber', texFolder: bin });
   while (!existsSync(started)) await new Promise((resolve) => setTimeout(resolve, 50));
   stopCompile('stop-biber');

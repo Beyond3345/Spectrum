@@ -48,6 +48,7 @@ const { createProject } = await import('../src/services/projectService.js');
 const { runCompile, tectonicFontconfig, withBiber } = await import('../src/services/compileService.js');
 const { listenLog } = await import('../src/services/compileLog.js');
 const { tectonicBiber, useEngineList } = await import('../src/services/engineService.js');
+const { setTrusted } = await import('../src/services/trustService.js');
 const biberDir = path.join(tmp, 'data', 'engines', 'biber');
 const ARCH = process.arch === 'arm64' ? 'arm64' : 'x64';
 useEngineList({ ...engineList, biber: { version: '2.17', assets: { [ARCH]: ['MacOS/biber.tar.gz', biberRelease.sha, biberRelease.bytes] } } });
@@ -202,7 +203,9 @@ test('with Spectrum’s Biber, Tectonic finds it before any other on the PATH an
   try {
     const result = await compile(await projectWith(withBiblatex(), 'Biber'));
     assert.equal(result.engine, 'tectonic');
-    assert.ok(result.log.includes('PATH=' + [biberDir, bin].join(path.delimiter) + ' CACHE=' + path.join(biberDir, 'cache')), result.log);
+    // a confined compile (a Mac's) unpacks it into the confined compiles' own cache, which no unconfined compile runs from
+    const cache = process.platform === 'darwin' ? path.join(tmp, 'data', 'compile-cache', 'par') : path.join(biberDir, 'cache');
+    assert.ok(result.log.includes('PATH=' + [biberDir, bin].join(path.delimiter) + ' CACHE=' + cache), result.log);
     assert.doesNotMatch(result.log, /needs the Biber/);
     assert.equal(result.code, undefined);
   } finally {
@@ -273,6 +276,8 @@ test('a pass of the built-in Tectonic gets 15 minutes, not the 3-minute default'
   await fs.writeFile(file, slow, { mode: 0o755 });
   process.env.SPECTRUM_TECTONIC = file;
   const p = await projectWith(plain);
+  // trusted: the stand-in writes its marker outside the build folder, which a confined compile can't
+  await setTrusted(p.id, p.path, true);
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
     const result = compile(p);

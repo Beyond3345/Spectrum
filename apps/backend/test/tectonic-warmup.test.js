@@ -12,7 +12,9 @@ const skip = WINDOWS ? 'a script stands in for Tectonic' : false;
 const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-warm-up-test-')));
 const templates = path.join(tmp, 'templates');
 const bin = path.join(tmp, 'bin');
-const runs = path.join(tmp, 'runs.log');
+// in Tectonic's own cache folder, which a confined Tectonic (a Mac's) may write
+const cacheDir = path.join(tmp, 'tectonic-cache');
+const runs = path.join(cacheDir, 'runs.log');
 const realPath = process.env.PATH;
 Object.assign(process.env, {
   SPECTRUM_DATA_DIR: path.join(tmp, 'data'),
@@ -20,6 +22,7 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_DIR: path.join(tmp, 'user-templates'),
   SPECTRUM_TEMPLATE_SEED_DIR: templates,
   SPECTRUM_TECTONIC: path.join(tmp, 'tectonic'),
+  TECTONIC_CACHE_DIR: cacheDir,
   // nothing is downloaded here
   SPECTRUM_ENGINE_DOWNLOAD_BASE: 'http://127.0.0.1:9',
   PATH: bin
