@@ -8,6 +8,8 @@ import { EventEmitter } from 'events';
 import { DATA_DIR } from '../config/constants.js';
 import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { biberCache, biberDownload, builtInTectonic, installBiber, tectonicBiber } from './engineService.js';
+import { SANDBOX_EXEC, compileSandbox, confinement } from './compileSandbox.js';
+import { isTrusted } from './trustService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
 import { cachePath, getProjectRoot } from './projectService.js';
@@ -92,18 +94,6 @@ export function glossariesUnsafe(aux, base) {
   if (SHELL_READS.test(base)) return true;
   return [...aux.matchAll(GLOSSARY_SETTING)].some(([, name, rest]) => SHELL_READS.test(rest) || GLOSSARY_RULES[name]?.test(rest) === false);
 }
-/**
- * An index or glossary program as it runs on a Mac: able to write only the build folder (its temp files there too) and
- * to reach no network. makeglossaries hands xindy a style file the document wrote, and xindy's styles are Lisp that
- * can run any program, which the settings check above can't tell from a real one. ponytail: it still reads what the
- * user can, and Windows has no such wrapper; compiling inside the agents' isolation would cover the engine too
- */
-async function confined(tool, args, dir, env) {
-  if (process.platform !== 'darwin') return [tool, args, env];
-  const real = await fs.realpath(dir);
-  const profile = `(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (subpath ${JSON.stringify(real)}) (literal "/dev/null") (literal "/dev/tty") (literal "/dev/dtracehelper"))`;
-  return ['/usr/bin/sandbox-exec', ['-p', profile, tool, ...args], { ...env, TMPDIR: real }];
-}
 // draft mode's images, as boxes of their size (Overleaf's fast mode)
 const DRAFT_IMAGES = '\\PassOptionsToPackage{draft}{graphicx}';
 // TeX breaks its log's lines at 79 characters
@@ -122,8 +112,12 @@ function engineCommand(engine) {
 }
 
 // Every engine writes <main>.synctex.gz too, for jumping between the source and the PDF.
-function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = false, untrusted = false, ...options } = {}) {
+function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = false, untrusted = false, trusted = false, ...options } = {}) {
   const halt = haltOnError ? ['-halt-on-error'] : [];
+  // Shell escape, always said on the command line, so a setting in the TeX installation doesn't decide it (MiKTeX takes
+  // the three as TeX Live does): the restricted kind (TeX's short list of its own programs) for a compile, none for an
+  // agent's draft, and all of it for a project the user trusts
+  const shell = untrusted ? '-no-shell-escape' : trusted ? '-shell-escape' : '-shell-restricted';
   switch (engine) {
     case 'pdflatex':
     case 'xelatex':
@@ -131,15 +125,14 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
       // draft: images drawn as boxes, which the first line passes to graphicx; the file it inputs still names the job.
       // ponytail: a name TeX would read as code (with %, # or braces) keeps its images
       const input = draft && !/[\\{}%#&~^$]/.test(mainFile) ? `${DRAFT_IMAGES}\\input{${mainFile}}` : mainFile;
-      // untrusted: no shell escape on the command line, which MiKTeX takes as TeX Live does (its own setting may differ)
-      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, ...(untrusted ? ['-no-shell-escape'] : []), `-output-directory=${outDir}`, input] };
+      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, shell, `-output-directory=${outDir}`, input] };
     }
     case 'latexmk':
       // -norc: a project's own latexmkrc is Perl, which could run anything. ponytail: in draft mode latexmk draws
       // images as boxes but still runs as many passes as it wants
       return {
         cmd: 'latexmk',
-        args: ['-norc', options.latexmkEngine ? `-${options.latexmkEngine}` : '-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...(haltOnError ? halt : ['-f']), ...(draft ? [`-usepretex=${DRAFT_IMAGES}`] : []), `-outdir=${outDir}`, mainFile]
+        args: ['-norc', options.latexmkEngine ? `-${options.latexmkEngine}` : '-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', `-latexoption=${shell}`, ...(haltOnError ? halt : ['-f']), ...(draft ? [`-usepretex=${DRAFT_IMAGES}`] : []), `-outdir=${outDir}`, mainFile]
       };
     case 'tectonic':
       // Tectonic keeps its .aux in memory unless told otherwise, and only finds other
@@ -148,7 +141,7 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
       // It stops at the first error unless told to carry on, as the other engines do; draft is one pass
       return {
         cmd: engineCommand('tectonic'),
-        args: [...(haltOnError ? [] : ['-Z', 'continue-on-errors']), ...(draft ? ['--reruns', '0'] : []), '-Z', `search-path=${outDir}`, '--synctex', '--keep-intermediates', '--outdir', outDir, mainFile]
+        args: [...(haltOnError ? [] : ['-Z', 'continue-on-errors']), ...(trusted ? ['-Z', 'shell-escape'] : []), ...(draft ? ['--reruns', '0'] : []), '-Z', `search-path=${outDir}`, '--synctex', '--keep-intermediates', '--outdir', outDir, mainFile]
       };
     default:
       return null;
@@ -274,9 +267,10 @@ const cmdEscape = (s) => s.replace(/[()\][%!^"`<>&|;, *?]/g, '^$&');
  * Run one command in its own process group, so the time limit also stops what it started
  * (latexmk's pdflatex would otherwise keep running and hold the output pipes open).
  * input, when given, is written to the command's standard input (Typst reads a document from stdin).
+ * profile, when given, is the sandbox-exec profile the command and what it starts run under (compileSandbox's).
  * Resolves { code, timedOut }.
  */
-export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS, input = null) {
+export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS, input = null, profile = null) {
   let file = cmd;
   // never a key or a token of Spectrum's own environment (the .env file's, the system's): a document reads it with
   // kpsewhich -var-value or Lua's os.getenv, and a plot's code or a filter as easily
@@ -296,6 +290,13 @@ export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOU
       file = process.env.ComSpec || 'cmd.exe';
       options.windowsVerbatimArguments = true;
     }
+  }
+  if (profile) {
+    // found first, as a spawn would: a program that isn't installed is still ENOENT, not sandbox-exec's own error
+    const found = path.isAbsolute(cmd) ? cmd : await findExecutable(cmd, safeEnv[PATH_KEY]);
+    if (!found) throw Object.assign(new Error(`spawn ${cmd} ENOENT`), { code: 'ENOENT' });
+    args = ['-p', profile, found, ...args];
+    file = SANDBOX_EXEC;
   }
   // a stopped compile starts nothing more
   if (stopped()) return { code: null, timedOut: false };
@@ -400,7 +401,9 @@ export async function runCompile({ projectId, mainFile, engine = 'pdflatex', com
   const key = compileId || Symbol('compile');
   running.set(key, job);
   try {
-    const result = await jobs.run(job, () => compileWithLinks(engine, projectRoot, absMain, mainFile, options));
+    // read here, never taken from the request: only the switch in the Compile menu trusts a project
+    const trusted = await isTrusted(projectId, projectRoot);
+    const result = await jobs.run(job, () => compileWithLinks(engine, projectRoot, absMain, mainFile, { ...options, trusted }));
     // inside the compile, so the project's folder isn't moved from under it either
     if (checkpoint && result.ok && result.status === 0) result.checkpoint = await createCompileCheckpoint(projectRoot);
     // doc: the document compiled, which a % !TEX root comment may have changed
@@ -653,6 +656,9 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // a scratch build (compileFolder's) keeps nothing
   const cache = options.scratch ? null : await cachePath(projectRoot);
   await ensureDir(outDir);
+  // the programs' temp files, beside the build rather than in it, where they would be taken for the document's own
+  const tmpDir = `${outDir}-tmp`;
+  await ensureDir(tmpDir);
   // Like TeXShop, LaTeX Workshop and Tectonic, run from the main file's folder so
   // \input paths are relative to the main file. The project root stays on the search
   // paths, so paths written relative to the root keep working as well.
@@ -707,6 +713,11 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     return { ok: false, stopped: true, error: 'The compile was stopped.', log: logChunks.join(''), status: -1 };
   }
   texEnv = withBiber(texEnv, biber);
+  // On a Mac every program of the compile runs confined (compileSandbox.js), unless the user trusts the project
+  const box = options.trusted ? null : await compileSandbox({ build: outDir, tmp: tmpDir, searchPath: texEnv[PATH_KEY], tectonic: engine === 'tectonic', root: projectRoot, runs: [engineCommand(engine), biber] });
+  if (box) texEnv = { ...texEnv, ...box.env };
+  else if (!options.trusted && (await confinement()) === 'no') pushLog(Buffer.from('[spectrum warning] This Mac’s sandbox-exec didn’t run, so this compile wasn’t confined.\n'));
+  const confined = (name, runArgs, cwd, limit) => runSpawn(name, runArgs, cwd, pushLog, texEnv, limit, null, box?.profile);
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
   // (one a virus scanner still holds is left: none of it is copied in, and keepBuild clears it again)
   if (options.fresh && cache) await fs.rm(path.join(cache, 'build-files', doc), { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
@@ -772,7 +783,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   try {
     let before = await keptFiles(outDir);
     // Pass 1: generate .aux with \citation{} entries
-    pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv, limit);
+    pass = await confined(cmd, args, mainDir, limit);
     let log = await passLog();
     const carryOn = () => !pass.timedOut && !stopped() && !(options.haltOnError && pass.code !== 0);
     const keptFailed = () => kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log, kept);
@@ -782,11 +793,11 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
       // what BibTeX reads, so a citation only a kept list put there (a caption's, from the .lof) goes again
       const cites = async () => (await auxWithInputs(outDir, `${base}.aux`)).match(/^\\(?:citation|bibdata|bibstyle)\{.*$/gm)?.join('\n') ?? '';
       let cited = await cites();
-      bibliographyStatus = await runBibliography(outDir, base, tex, options, texEnv, pushLog);
+      bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog);
       // Pass 2 + 3: resolve citations and cross-references, while the last pass asks for another or changed what
       // TeX reads back
       for (let n = 2; n <= 3 && carryOn(); n += 1) {
-        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options, texEnv, pushLog);
+        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog);
         let now = await keptFiles(outDir);
         for (const { input, output, cmd: indexer, fallback, args: indexArgs } of INDEXERS) {
           // every glossary's files (the acronyms' too), or the main glossary's when the .aux names none
@@ -805,8 +816,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
           if (unsafe) pushLog(Buffer.from('\n[spectrum warning] The glossary settings in this document’s .aux file (or its name) hold characters a command line would run, so makeglossaries wasn’t run.\n'));
           // an untrusted compile's helpers are Perl and Lua (and MiKTeX's), which TeX's limits don't reach: none run
           for (const tool of options.untrusted || unsafe ? [] : [indexer, fallback].filter(Boolean)) {
-            const [run, runArgs, runEnv] = await confined(tool, indexArgs(base), outDir, texEnv);
-            ran = await runSpawn(run, runArgs, outDir, pushLog, runEnv).catch(() => null); // not installed
+            ran = await confined(tool, indexArgs(base), outDir).catch(() => null); // not installed
             if (ran?.code === 0 || stopped()) break;
           }
           if (ran?.code !== 0 && !stopped()) {
@@ -816,7 +826,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
         }
         if (!RERUN.test(log) && sameFiles(before, now)) break;
         before = now;
-        pass = await runSpawn(cmd, args, mainDir, pushLog, texEnv, limit);
+        pass = await confined(cmd, args, mainDir, limit);
         log = await passLog();
         // a kept file can break a later pass too: natbib's on the .aux pass 1 wrote from a kept plain .bbl
         retry = keptFailed();
@@ -934,7 +944,7 @@ async function fetchBiber(live, pushLog) {
  * untrusted compile (a Windows preview of an agent's draft) never runs Biber, which is Perl and reads and writes
  * wherever the document says, whatever openin_any and openout_any say.
  */
-async function runBibliography(outDir, base, tex, { bibTool, untrusted } = {}, env, pushLog) {
+async function runBibliography(outDir, base, tex, { bibTool, untrusted } = {}, run, pushLog) {
   // with the \include'd chapters' .aux, where the citations and \bibliography may be
   const aux = await auxWithInputs(outDir, `${base}.aux`);
   // biblatex writes \abx@aux@... commands in .aux; traditional bibtex \citation and \bibdata
@@ -954,7 +964,7 @@ async function runBibliography(outDir, base, tex, { bibTool, untrusted } = {}, e
   // MiKTeX's bibtex asks before installing a missing .bst, as its engines do
   if (WINDOWS && bibCmd === 'bibtex' && /[\\/]miktex[\\/]/i.test((await findExecutable('bibtex')) || '')) bibArgs.unshift('--enable-installer');
   try {
-    const bibliography = await runSpawn(bibCmd, bibArgs, outDir, pushLog, env);
+    const bibliography = await run(bibCmd, bibArgs, outDir);
     // Stop ended it, or came before it started: Biber didn't fail
     if (stopped()) return 0;
     if (useBiber && (bibliography.code !== 0 || bibliography.timedOut)) {
@@ -1057,6 +1067,8 @@ async function keepAux(outDir, store, others) {
 export async function cleanBuild(buildRoot, outDir) {
   // retried: on Windows a virus scanner can still hold a file the engine just wrote
   await fs.rm(outDir, { recursive: true, force: true, maxRetries: 5 });
+  // a LaTeX build's temp folder, beside it
+  await fs.rm(`${outDir}-tmp`, { recursive: true, force: true, maxRetries: 5 });
   await fs.rmdir(buildRoot).catch(() => {}); // only succeeds once no other run is using it
 }
 
