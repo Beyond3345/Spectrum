@@ -1,6 +1,6 @@
 // Self-check for the shared helpers that pick a project's files. Run:
 // npx esbuild apps/frontend/src/editor/shared.check.ts --bundle --platform=node --log-level=warning | node
-import { bibIncludeLine, fixWithAI, inlineImage, keptMainFile, modelSetUp } from './shared';
+import { NO_ANSWER, bibIncludeLine, fixWithAI, withRetries, inlineImage, keptMainFile, modelSetUp } from './shared';
 import type { EditorApi } from './EditorContext';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -40,5 +40,17 @@ const opened: unknown[] = [];
 const noModel = { llm: { main: { endpoint: 'https://api.openai.com/v1' } }, openSettings: (s?: string) => opened.push(s), notify: () => opened.push('toast') } as unknown as EditorApi;
 eq(await fixWithAI(noModel, { task: 'debug_compile', prompt: 'x', label: 'Fix with AI' }), '', 'nothing is asked');
 eq(opened, ['models'], 'Settings opens at Models');
+
+// ─── the editor's first load: a failed or silent request is tried again, then the error is thrown ───
+
+let calls = 0;
+eq(await withRetries(async () => (++calls < 3 ? Promise.reject(new Error('reset')) : 'ok'), { pause: 1 }), 'ok', 'the third try answers');
+eq(calls, 3, 'tried three times');
+calls = 0;
+const silent = await withRetries(() => (++calls, new Promise(() => undefined)), { timeout: 5, pause: 1 }).then(() => 'answered', (err: Error) => err.message);
+eq([silent, calls], [NO_ANSWER, 3], 'a request that never answers ends in an error, not a wait for ever');
+calls = 0;
+eq(await withRetries(async () => (++calls, Promise.reject(new Error('reset'))), { pause: 1, stop: () => true }), undefined, 'a page that has left stops quietly');
+eq(calls, 1, 'and asks no more');
 
 console.log('shared.check: ok');

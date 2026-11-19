@@ -52,7 +52,8 @@ import {
   syncZotero,
   updateProjectSettings,
   writeFile,
-  base64Bytes
+  base64Bytes,
+  UNREACHABLE
 } from '../api/client';
 import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, JyutpingSettings, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import Icon from './Icon';
@@ -142,7 +143,7 @@ import { Tinymist, tinymistCompletions } from '../editor/lsp/tinymist';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, type DocKind } from '../editor/shared';
+import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
@@ -368,6 +369,9 @@ function Editor({ projectId }: { projectId: string }) {
   /** a sync app's conflict copies, each with its original's path */
   const [conflicts, setConflicts] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
+  // why the project couldn't be opened after its tries ('' while it loads or once it has), and Retry's count
+  const [loadFailed, setLoadFailed] = useState('');
+  const [loadTry, setLoadTry] = useState(0);
   /** file contents by path; the open file's entry follows every keystroke */
   const filesRef = useRef(new Map<string, string>());
   /** the hash of each of those files' text on disk as the editor last loaded or saved it, so a save can tell when it changed since */
@@ -2481,9 +2485,12 @@ function Editor({ projectId }: { projectId: string }) {
       setProjectLanguages(res.settings.language?.languages ?? null);
       setJyutping(res.settings.jyutping ?? null);
     }, () => undefined);
+    setLoadFailed('');
     (async () => {
-      const [list, tree] = await Promise.all([listProjects(), refreshTree()]);
-      if (!live) return;
+      // a request that fails or never answers is tried again, then the page says so with Retry, never "Loading…" for ever
+      const both = await withRetries(() => Promise.all([listProjects(), refreshTree()]), { stop: () => !live });
+      if (!live || !both) return;
+      const [list, tree] = both;
       setProjects(list.projects);
       const current = list.projects.find((p) => p.id === projectId);
       if (!current || current.missing) {
@@ -2507,11 +2514,11 @@ function Editor({ projectId }: { projectId: string }) {
       // a wanted file opens instead, below
       const first = tree.items.some((i) => i.path === wanted) ? '' : main || (await smallTextFile(projectId, tree.items));
       if (first) await openFile(first);
-    })().catch((err) => notify(`Couldn’t open the project: ${errorText(err)}`, 'error'));
+    })().catch((err) => live && setLoadFailed(errorText(err) === UNREACHABLE ? `${NO_ANSWER}.` : errorText(err)));
     return () => {
       live = false;
     };
-  }, []);
+  }, [loadTry]);
 
   // the files no editor has open, as TexLab's outline read them: once until the tree or a file changes, rather than
   // after each pause in typing
@@ -3510,6 +3517,15 @@ function Editor({ projectId }: { projectId: string }) {
             </div>
 
             <SyncBanners conflicts={conflicts} onDeleted={onDeleted} />
+
+            {loadFailed && (
+              <div className="review-banner template-banner load-failed" role="alert">
+                <Icon name="exclamationmark.triangle" />
+                <span className="grow">Couldn’t open the project: {loadFailed}</span>
+                <button className="btn small ghost" onClick={() => navigate('/projects')}>Projects</button>
+                <button className="btn small primary" onClick={() => setLoadTry((n) => n + 1)}>Retry</button>
+              </div>
+            )}
 
             {draft && (
               <div className="review-banner template-banner" role="status">
