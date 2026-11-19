@@ -17,6 +17,12 @@ eq(parseOutline('x\n\\section{B}')[0].pos, 2, 'position');
 eq(brief(String.raw`\section{Solving \texorpdfstring{$\mathbf{x}' = A\mathbf{x}$}{x' = Ax}}`), [[1, "Solving x' = Ax", 1]], 'texorpdfstring');
 eq(outlineTitle('\\texorpdfstring{$a$}{a} and \\texorpdfstring {${b}$} {b}'), 'a and b', 'two texorpdfstrings, nested braces');
 eq(outlineTitle(String.raw`Open \texorpdfstring{$a$}`), String.raw`Open \texorpdfstring{$a$}`, 'no plain form');
+// a caption from TexLab as it reads, not its source
+eq(outlineTitle(String.raw`Table 1.1: Parts for the filter in \cref{eq:gain}`), 'Table 1.1: Parts for the filter in …', 'a reference');
+eq(outlineTitle(String.raw`Figure 2: Gain, as in~\eqref{eq:a} and \citet[p.~4]{smith}`), 'Figure 2: Gain, as in … and …', 'an equation and a citation');
+eq(outlineTitle(String.raw`A \textbf{bold \emph{new}} method`), 'A bold new method', 'text styles, nested');
+eq(outlineTitle(String.raw`Bib\TeX{} and $\mathbf{x}$`), String.raw`Bib\TeX{} and $\mathbf{x}$`, 'other commands and maths stay');
+eq(outlineTitle(String.raw`Pe\~na~2`), String.raw`Pe\~na 2`, 'a tie is a space, an accent stays');
 
 // a document's headings across the files it pulls in, in reading order; each file once, a commented-out one never
 const tree = new Map([
