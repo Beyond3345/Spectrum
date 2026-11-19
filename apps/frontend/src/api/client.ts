@@ -1298,7 +1298,17 @@ export type AgentRunResult = {
   unsent?: string[];
   /** in a run's `result` event: which of its turns this is */
   turn?: number;
+  /** what the turn ended with for the user to answer: their next message goes on from it */
+  ask?: AgentAsk;
+  /** the approved plan's steps as the turn left them */
+  plan?: AgentPlanEntry[];
+  /** lines the agent suggests for the project's AGENTS.md */
+  instructions?: string[];
 };
+
+/** A question, a plan to approve, or (ask before each file) the file the agent would change next */
+export type AgentAsk = { kind: 'question'; question: string; options?: string[] } | { kind: 'plan'; steps: string[] } | { kind: 'next'; path: string };
+export type AgentPlanEntry = { content: string; status: string };
 
 /** Why a run ended before its answer: a model request failed, the step limit was reached, the answer stopped at the output limit, or the user stopped it */
 export type Incomplete = 'failed' | 'steps' | 'cut' | 'stopped';
@@ -1335,8 +1345,12 @@ export type AgentTurnRequest = {
   skill?: string;
   drafts?: AgentDraft[];
   compile?: { typstVersion?: string; markdownEngine?: string };
-  /** passed through to the run: the plan card builds on it */
+  /** Plan: the turn only reads, and ends with a plan to approve or a question */
   planFirst?: boolean;
+  /** the approved plan's steps as the thread has them, for the agent to tick */
+  plan?: AgentPlanEntry[];
+  /** the run pauses before each new file it would change */
+  eachFile?: boolean;
 };
 /** Starts a turn; the answer comes at once, and the turn is heard at agentRunEventsUrl. 409 while one is going. */
 export const startAgentTurn = (payload: AgentTurnRequest) => request<{ ok: boolean; run: AgentRunSnapshot }>('/api/agent/runs', json('POST', payload));
@@ -1348,6 +1362,12 @@ export const steerAgentRun = (id: string, text: string) => request<{ ok: boolean
 /** The run of a thread while the backend keeps it (an hour after its last turn), or null */
 export const findAgentRun = (projectId: string, threadId: string) => request<{ ok: boolean; run: AgentRunSnapshot | null }>(`/api/agent/runs?${new URLSearchParams({ projectId, threadId })}`);
 export const agentRunEventsUrl = (id: string, after = 0) => `/api/agent/runs/${id}/events?after=${after}`;
+
+/** The project's AGENTS.md: whether there is one, and whether the user approved it as it is (hash) on this computer */
+export type AgentInstructions = { exists: boolean; approved: boolean; hash?: string; chars?: number; truncated?: boolean };
+export const getAgentInstructions = (projectId: string) => request<{ ok: boolean } & AgentInstructions>(`/api/projects/${projectId}/agent-instructions`);
+/** Approves the file as it was shown (its hash). 409 when it changed since. */
+export const approveAgentInstructions = (projectId: string, hash: string) => request<{ ok: boolean } & AgentInstructions>(`/api/projects/${projectId}/agent-instructions/approve`, json('POST', { hash }));
 
 export function callLLM(payload: {
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];

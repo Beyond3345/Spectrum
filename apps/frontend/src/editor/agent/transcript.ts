@@ -1,5 +1,5 @@
 import { applyPatch, createPatch } from 'diff';
-import type { AgentEvent, AgentRunResult, AgentSaid, AgentStep, AgentUsage, AgentUserRequest, ChatThread, Incomplete, SuggestedTodo } from '../../api/client';
+import type { AgentAsk, AgentEvent, AgentRunResult, AgentSaid, AgentStep, AgentUsage, AgentUserRequest, ChatThread, Incomplete, SuggestedTodo } from '../../api/client';
 
 // A local agent's stored events (agentSessionService.js) as the workspace shows them: messages with their streamed
 // chunks joined, one card per tool call updated in place, the latest plan, commands and options. And what a Spectrum
@@ -39,6 +39,10 @@ export type Item =
   | { type: 'tool'; key: string; call: ToolCall }
   | { type: 'todo'; key: string; todo: SuggestedTodo }
   | { type: 'request'; key: string; request: AgentUserRequest; answered: boolean }
+  /** the Spectrum agent's plan, waiting for the user's approval */
+  | { type: 'plan'; key: string; steps: string[] }
+  /** a line the Spectrum agent suggests for the project's AGENTS.md */
+  | { type: 'instruction'; key: string; text: string }
   | { type: 'notice'; key: string; text: string; error: boolean }
   | { type: 'checkpoint'; key: string; checkpoint: Checkpoint };
 
@@ -185,6 +189,14 @@ export type ThreadMeta = {
   error?: boolean;
   /** the run ended before its answer, and Continue goes on from it */
   resume?: Incomplete;
+  /** what the turn ended with for the user to answer (a question, a plan, the next file); dismissed: closed unanswered */
+  ask?: AgentAsk & { dismissed?: boolean };
+  /** on the user's approval: the plan's steps; on a reply: the steps as that turn left them */
+  plan?: PlanEntry[];
+  /** on the user's approval: the agent stops before each new file it would change */
+  eachFile?: boolean;
+  /** lines the agent suggested for the project's AGENTS.md */
+  instructions?: string[];
 };
 export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) as ThreadMeta;
 
@@ -284,8 +296,57 @@ const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
   load_skill: ['read', 'Load a skill', 'Load the skill'],
   read_skill_file: ['read', 'Read a skill’s file', 'Read the skill file'],
   list_todos: ['read', 'List the to-dos'],
-  suggest_todo: ['other', 'Suggest a to-do', 'Suggest the to-do']
+  suggest_todo: ['other', 'Suggest a to-do', 'Suggest the to-do'],
+  ask_user: ['other', 'Ask you a question'],
+  propose_plan: ['other', 'Propose a plan'],
+  step_done: ['other', 'Tick off a step of the plan'],
+  suggest_instruction: ['other', 'Suggest an instruction for AGENTS.md']
 };
+
+// ─── The Spectrum agent's questions and plans: what a turn ended with, which the user's next message answers ───
+
+/**
+ * A question, or the pause before the next file, as the card local agents' questions use (AgentQuestion) takes it:
+ * the options as buttons with Cancel, or a box to type the answer in.
+ */
+export function askRequest(ask: Exclude<AgentAsk, { kind: 'plan' }>, id: string): AgentUserRequest {
+  if (ask.kind === 'next') return { requestId: id, kind: 'permission', params: { toolCall: { title: `Go on to ${ask.path}? The changes ready so far wait in the tray: review them first if you like.` }, options: [{ optionId: 'go', name: 'Go on' }] } };
+  if (ask.options?.length) return { requestId: id, kind: 'permission', params: { toolCall: { title: ask.question }, options: ask.options.map((o) => ({ optionId: o, name: o })) } };
+  return { requestId: id, kind: 'question', params: { message: ask.question, questions: [{ id: 'answer', question: 'Your answer' }] } };
+}
+
+/** What the user chose on that card, as their next message: null when they closed it, and an error when there is nothing to send. */
+export function askAnswer(ask: AgentAsk, answer: any): string | null {
+  if (answer?.cancelled || answer?.action === 'decline') return null;
+  if (ask.kind === 'next') return `Go on with ${ask.path}.`;
+  const text = String(answer?.optionId ?? answer?.content?.answer ?? '').trim();
+  if (!text) throw new Error('Type an answer first.');
+  return text;
+}
+
+/**
+ * The thread's plan: the steps the user last approved, as the turns since left them, for the plan strip and for the
+ * agent to tick; eachFile while the user asked to see each file's changes before the next and steps are still open.
+ */
+export function planOf(messages: ChatThread['messages']) {
+  let entries: PlanEntry[] = [];
+  let eachFile = false;
+  for (const m of messages) {
+    const meta = metaOf(m);
+    if (meta.plan) {
+      entries = meta.plan;
+      if (m.role === 'user') eachFile = !!meta.eachFile;
+    }
+    // Cancel on “Go on to …?”: the rest runs without stopping
+    if (meta.ask?.kind === 'next' && meta.ask.dismissed) eachFile = false;
+  }
+  const open = entries.some((e) => e.status !== 'completed');
+  return { entries, open, eachFile: eachFile && open };
+}
+
+/** What the agent is told when the user approves a plan: the steps themselves go with the request (the backend lists them). */
+export const planPrompt = (left: string[], changed: boolean) =>
+  [`The plan is approved${changed ? ', as the user changed it' : ''}: carry out its steps in order.`, left.length ? `The user left out, so do not do: ${left.join('; ')}.` : ''].filter(Boolean).join(' ');
 
 /**
  * A Spectrum agent's tool call as a tool card shows it: still going (status 'started', from a run's event) or done,
@@ -306,11 +367,17 @@ export function threadItems(messages: ChatThread['messages']): Item[] {
     const steps = meta.steps || [];
     const says = meta.says || [];
     const said = (j: number) => says.flatMap((s, k): Item[] => ((j < steps.length ? s.before === j : s.before >= j) ? [{ type: s.user ? 'user' : 'assistant', key: `w${i}-${k}`, text: s.text }] : []));
+    // a question or a plan still waits for its answer while it is the thread's last word; after that it reads as text
+    const ask = meta.ask && !meta.ask.dismissed && i === messages.length - 1 ? meta.ask : null;
     return [
       ...steps.flatMap((step, j): Item[] => [...said(j), { type: 'tool', key: `s${i}-${j}`, call: stepCall(step, `${i}-${j}`) }]),
       ...said(steps.length),
-      m.role === 'user' ? { type: 'user', key: `u${i}`, text: m.content } : meta.error ? { type: 'notice', key: `n${i}`, text: m.content, error: true } : { type: 'assistant', key: `a${i}`, text: m.content },
+      m.role === 'user' ? { type: 'user', key: `u${i}`, text: m.content } : meta.error ? { type: 'notice', key: `n${i}`, text: m.content, error: true }
+        : ask?.kind === 'plan' ? { type: 'plan', key: `p${i}`, steps: ask.steps }
+          : ask ? { type: 'request', key: `q${i}`, request: askRequest(ask, `q${i}`), answered: false }
+            : { type: 'assistant', key: `a${i}`, text: m.content },
       ...(meta.todos || []).map((todo, j): Item => ({ type: 'todo', key: `t${i}-${j}`, todo })),
+      ...(meta.instructions || []).map((text, j): Item => ({ type: 'instruction', key: `i${i}-${j}`, text })),
       ...(meta.checkpoints || []).map((checkpoint): Item => ({ type: 'checkpoint', key: `c${i}-${checkpoint.id}`, checkpoint }))
     ];
   });
@@ -339,7 +406,7 @@ export const retryLine = ({ attempt, of, waitMs }: { attempt: number; of: number
  * A turn's events as the transcript shows them while it happens: the same items a finished turn has (threadItems),
  * so nothing moves when it ends. items leave out the turn's own request, which the thread already shows; waiting:
  * what to say in place of “Working…” (a retry's wait); status: the run's; usage: the turn's tokens so far; result:
- * the turn's outcome once it has ended.
+ * the turn's outcome once it has ended; plan: the approved plan's steps once the turn has ticked one.
  */
 export function runView(events: AgentEvent[]) {
   const items: Item[] = [];
@@ -348,6 +415,7 @@ export function runView(events: AgentEvent[]) {
   let status = 'running';
   let usage: AgentUsage | null = null;
   let result: (AgentRunResult & { at: string }) | null = null;
+  let plan: PlanEntry[] | null = null;
   for (const e of events) {
     const d = e.data || {};
     const last = items[items.length - 1];
@@ -355,7 +423,12 @@ export function runView(events: AgentEvent[]) {
       usage = d.total;
       continue;
     }
+    if (e.type === 'plan') {
+      if (Array.isArray(d.entries)) plan = d.entries;
+      continue;
+    }
     if (e.type === 'state') status = d.status;
+    else if (e.type === 'instruction') items.push({ type: 'instruction', key: `ri${e.id}`, text: String(d.text || '') });
     else if (e.type === 'result') result = { ...d, at: e.at };
     else if (e.type === 'retry') {
       // the text of the try given up is dropped: the next try says it again
@@ -382,5 +455,5 @@ export function runView(events: AgentEvent[]) {
   }
   // a turn that ended leaves none of its steps still going
   if (!RUNNING.includes(status)) for (const item of calls.values()) if (item.call.status === 'in_progress') item.call = { ...item.call, status: 'failed' };
-  return { items, waiting, status, usage, result };
+  return { items, waiting, status, usage, result, plan };
 }

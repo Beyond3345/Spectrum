@@ -17,6 +17,7 @@ import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
 import { Markdown, VERSIONS_CHANGED, errorText } from '../shared';
 import type { AgentCommand, Checkpoint, Item, PlanEntry, ToolCall } from './transcript';
+import { INSTRUCTIONS_FILE, hasInstruction } from './instructions';
 
 // The pieces both agent tabs are made of: transcript cards, plan strip, changes tray and review, composer.
 
@@ -281,6 +282,91 @@ function TodoCard({ todo, todos }: { todo: SuggestedTodo; todos: TodosState }) {
   );
 }
 
+/**
+ * The project's AGENTS.md as the Spectrum agent's cards need it: its text (null: there is none), why a line cannot be
+ * added now, and the way to add one.
+ */
+export type Memory = { text: string | null; blocked?: string; add(line: string): Promise<void> };
+
+/** A line the agent suggests for AGENTS.md: added only by this button. */
+function InstructionCard({ text, memory }: { text: string; memory?: Memory }) {
+  const [busy, setBusy] = useState(false);
+  const added = !!memory && hasInstruction(memory.text || '', text);
+  return (
+    <div className="agent-card">
+      <Icon name="text.badge.plus" />
+      <div className="grow">
+        <div className="agent-card-label">Suggested instruction for {INSTRUCTIONS_FILE}</div>
+        <div>{text}</div>
+        {memory?.blocked && !added && <div className="field-hint">{memory.blocked}</div>}
+      </div>
+      {memory && (
+        <button className="btn small" disabled={added || busy || !!memory.blocked} title={`Adds this line to ${INSTRUCTIONS_FILE}, which agents read with every request in this project`} onClick={() => { setBusy(true); void memory.add(text).finally(() => setBusy(false)); }}>
+          {added ? 'Added' : 'Add'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** What the plan card's buttons do: the steps as the user left them and those they took out, and whether the agent stops before each new file. */
+export type PlanActions = { approve(steps: string[], left: string[], eachFile: boolean, changed: boolean): void; keep(): void };
+
+/**
+ * The Spectrum agent's plan, before anything is changed: untick a step to leave it out, or edit the steps as text
+ * (a step a line, so they can be reworded, reordered, added and removed), then approve it or go on planning.
+ */
+export function PlanCard({ steps, actions }: { steps: string[]; actions: PlanActions }) {
+  const [list, setList] = useState(steps);
+  const [off, setOff] = useState<Set<number>>(new Set());
+  const [text, setText] = useState<string | null>(null);
+  const kept = list.filter((_, i) => !off.has(i));
+  const approve = (eachFile: boolean) => actions.approve(kept, list.filter((_, i) => off.has(i)), eachFile, list.join('\n') !== steps.join('\n'));
+  const done = () => {
+    // a step a line; what a list would number or mark is the user's habit, not part of the step
+    setList((text || '').split('\n').map((line) => line.replace(/^\s*(?:\d+[.)]|[-*])\s+/, '').trim().slice(0, 300)).filter(Boolean).slice(0, 24));
+    setOff(new Set());
+    setText(null);
+  };
+  return (
+    <div className="agent-request agent-plan-card">
+      <div className="row">
+        <strong className="grow">Plan</strong>
+        <span className="field-hint">Nothing is changed yet</span>
+        <button className="btn small ghost" onClick={() => (text === null ? setText(list.join('\n')) : done())}>
+          {text === null ? 'Edit as text' : 'Done'}
+        </button>
+      </div>
+      {text === null ? (
+        <ol className="agent-plan-list">
+          {list.map((step, i) => (
+            <li key={i} className={off.has(i) ? 'off' : ''}>
+              <label>
+                <input type="checkbox" checked={!off.has(i)} onChange={() => setOff((old) => { const next = new Set(old); if (!next.delete(i)) next.add(i); return next; })} />
+                <span>{i + 1}. {step}</span>
+              </label>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <textarea className="composer-input" aria-label="The plan’s steps, one a line" rows={Math.min(12, Math.max(4, text.split('\n').length + 1))} value={text} onChange={(e) => setText(e.target.value)} />
+      )}
+      <div className="field-hint">{text === null ? 'Untick a step to leave it out. Nothing reaches your files until you apply it in the review.' : 'One step a line: reword, reorder, add or remove.'}</div>
+      <div className="row">
+        <button className="btn small primary" disabled={!kept.length || text !== null} onClick={() => approve(false)}>
+          Approve and run
+        </button>
+        <button className="btn small" disabled={!kept.length || text !== null} title="The agent stops before each new file it would change, so you can review one file’s changes before it builds on them" onClick={() => approve(true)}>
+          Approve, ask before each file
+        </button>
+        <button className="btn small" title="Say what to change, and the agent plans again" onClick={actions.keep}>
+          Keep planning
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CheckpointRow({ checkpoint }: { checkpoint: Checkpoint }) {
   const api = useEditor();
   const [busy, setBusy] = useState(false);
@@ -319,12 +405,18 @@ export function Transcript({
   items,
   terminals = {},
   todos,
-  onAnswer
+  onAnswer,
+  plan,
+  memory
 }: {
   items: Item[];
   terminals?: Record<string, string>;
   todos: TodosState;
   onAnswer?: (request: AgentUserRequest, answer: unknown) => Promise<void>;
+  /** the Spectrum agent's plan card's buttons */
+  plan?: PlanActions;
+  /** the project's AGENTS.md, for the lines the Spectrum agent suggests */
+  memory?: Memory;
 }) {
   return (
     <>
@@ -356,6 +448,10 @@ export function Transcript({
           ) : (
             <AgentQuestion key={item.key} request={item.request} onAnswer={(answer) => onAnswer(item.request, answer)} />
           )
+        ) : item.type === 'plan' ? (
+          plan ? <PlanCard key={item.key} steps={item.steps} actions={plan} /> : null
+        ) : item.type === 'instruction' ? (
+          <InstructionCard key={item.key} text={item.text} memory={memory} />
         ) : item.type === 'notice' ? (
           <div className={`agent-note ${item.error ? 'error' : ''}`} key={item.key} role={item.error ? 'alert' : undefined}>
             {item.text}
@@ -678,6 +774,7 @@ export function AgentComposer({
   picker,
   placeholder,
   queues = false,
+  extras,
   onSend
 }: {
   /** while busy, a message is still taken (the tab queues it for the agent) and the send button stays on */
@@ -694,6 +791,8 @@ export function AgentComposer({
   draft: Draft | null;
   picker?: ReactNode;
   placeholder: string;
+  /** more chips for the bar, after those for what goes with the message */
+  extras?: ReactNode;
   onSend(text: string, opts: { skill?: string; research?: string; context: Record<ContextKind, boolean> }): void;
 }) {
   const api = useEditor();
@@ -844,6 +943,7 @@ export function AgentComposer({
               </button>
             )
         )}
+        {extras}
         <span className="grow" />
         <button className="composer-send" title={busy && queues ? 'Queue for the agent (↵)' : 'Send (↵)'} aria-label={busy && queues ? 'Queue' : 'Send'} disabled={(busy && !queues) || disabled || (!text.trim() && !skill)} onClick={send}>
           {busy && !queues ? <span className="spinner" /> : <Icon name="arrow.up" />}

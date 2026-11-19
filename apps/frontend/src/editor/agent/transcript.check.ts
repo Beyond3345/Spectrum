@@ -1,7 +1,7 @@
 // Self-check for the local agent transcript. Run:
 // npx esbuild apps/frontend/src/editor/agent/transcript.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/transcript.cjs && node <scratch>/transcript.cjs
 import type { AgentEvent } from '../../api/client';
-import { addEvent, addRunEvent, closeChanges, metaOf, openChanges, project, resumeNote, retryLine, runView, stepCall, storedChanges, threadItems } from './transcript';
+import { addEvent, addRunEvent, askAnswer, askRequest, closeChanges, metaOf, openChanges, planOf, planPrompt, project, resumeNote, retryLine, runView, stepCall, storedChanges, threadItems } from './transcript';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -287,6 +287,62 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
   eq(stored, [{ filePath: 'old.tex', proposed: '', deleted: true, original: 'x' }], 'kept as a deletion');
   void openChanges({ id: 'd', title: '', createdAt: '', updatedAt: '', mode: 'assistant', messages: [{ role: 'assistant', content: '', createdAt: '', meta: { changes: stored } }] }, async () => 'x').then((open) => eq(open.map((c) => [c.filePath, c.deleted]), [['old.tex', true]], 'and offered again as one'));
   eq(resumeNote({ resume: 'stopped' }), 'The user stopped your last run before its answer. Go on from there. Do not redo what is finished.', 'a stopped run');
+}
+
+// a question, a plan and the pause before the next file: the turn's last word, a card while it waits for its answer
+{
+  const user = (content: string, meta?: Record<string, unknown>) => ({ role: 'user' as const, content, createdAt: '', ...(meta && { meta }) });
+  const reply = (content: string, meta?: Record<string, unknown>) => ({ role: 'assistant' as const, content, createdAt: '', ...(meta && { meta }) });
+  const shape = (messages: Parameters<typeof threadItems>[0]) => threadItems(messages).map((i) => [i.type, 'text' in i ? i.text : i.type === 'plan' ? i.steps.join('|') : i.type === 'request' ? `${i.request.kind}:${i.request.params.toolCall?.title || i.request.params.message}:${i.answered}` : '']);
+  const question = { kind: 'question' as const, question: 'Which voice?', options: ['We', 'Passive'] };
+  const asked = [user('Fix the tone'), reply('Which voice?\n- We\n- Passive', { ask: question, steps: [{ tool: 'ask_user', ok: true }] })];
+  eq(shape(asked), [['user', 'Fix the tone'], ['tool', ''], ['request', 'permission:Which voice?:false']], 'a question waits as a card');
+  eq(threadItems(asked)[1].type === 'tool' && (threadItems(asked)[1] as any).call.title, 'Ask you a question', 'its step has words');
+  // answered: the question reads as the agent's text, and the answer is the user's next message
+  eq(shape([...asked, user('We')]).slice(2), [['assistant', 'Which voice?\n- We\n- Passive'], ['user', 'We']], 'answered, it is text');
+  eq(shape([user('x'), reply('Which voice?', { ask: { ...question, dismissed: true } })])[1], ['assistant', 'Which voice?'], 'closed unanswered, it is text');
+  // the card local agents' questions use: options as buttons, or a box to type in
+  eq(askRequest(question, 'q1').params.options, [{ optionId: 'We', name: 'We' }, { optionId: 'Passive', name: 'Passive' }], 'options are buttons');
+  eq(askRequest({ kind: 'question', question: 'Which journal?' }, 'q2'), { requestId: 'q2', kind: 'question', params: { message: 'Which journal?', questions: [{ id: 'answer', question: 'Your answer' }] } }, 'no options: a box');
+  eq([askAnswer(question, { optionId: 'Passive' }), askAnswer(question, { cancelled: true }), askAnswer(question, { action: 'accept', content: { answer: ' Both ' } }), askAnswer(question, { action: 'decline' })], ['Passive', null, 'Both', null], 'what was chosen is the next message');
+  let empty = '';
+  try { askAnswer(question, { action: 'accept', content: {} }); } catch (err) { empty = (err as Error).message; }
+  eq(empty, 'Type an answer first.', 'nothing typed is no answer');
+  const next = { kind: 'next' as const, path: 'method.tex' };
+  eq(askRequest(next, 'q3').params.options, [{ optionId: 'go', name: 'Go on' }], 'the next file: Go on, or Cancel');
+  eq([askAnswer(next, { optionId: 'go' }), askAnswer(next, { cancelled: true })], ['Go on with method.tex.', null], 'Go on names the file');
+
+  // a plan: a card while it waits; approved, the thread's plan, which the turns after tick
+  const plan = { kind: 'plan' as const, steps: ['Add refs', 'Rewrite 3.2', 'Rename the macro'] };
+  const planned = [user('Restructure'), reply('Plan:\n1. Add refs\n2. Rewrite 3.2\n3. Rename the macro', { ask: plan })];
+  eq(shape(planned)[1], ['plan', 'Add refs|Rewrite 3.2|Rename the macro'], 'a plan waits as a card');
+  eq(planOf(planned), { entries: [], open: false, eachFile: false }, 'a plan not approved is no plan yet');
+  const pending = [{ content: 'Add refs', status: 'pending' }, { content: 'Rewrite 3.2', status: 'pending' }];
+  const approved = [...planned, user('Approve, ask before each file', { plan: pending, eachFile: true })];
+  eq(shape(approved)[1], ['assistant', 'Plan:\n1. Add refs\n2. Rewrite 3.2\n3. Rename the macro'], 'approved, the plan reads as text');
+  eq(planOf(approved), { entries: pending, open: true, eachFile: true }, 'the approved steps are the plan');
+  const half = [{ content: 'Add refs', status: 'completed' }, { content: 'Rewrite 3.2', status: 'pending' }];
+  const paused = [...approved, reply('The changes to refs.bib are ready to review. Next: method.tex.', { plan: half, ask: next })];
+  eq(planOf(paused), { entries: half, open: true, eachFile: true }, 'as the last turn left them');
+  eq(shape(paused).slice(-1), [['request', 'permission:Go on to method.tex? The changes ready so far wait in the tray: review them first if you like.:false']], 'the pause before the next file');
+  // Cancel on that card: the rest of the plan runs without stopping
+  eq(planOf([...approved, reply('Next: method.tex.', { plan: half, ask: { ...next, dismissed: true } })]).eachFile, false, 'Cancel ends the pauses');
+  const done = half.map((e) => ({ ...e, status: 'completed' }));
+  eq(planOf([...paused, user('Go on'), reply('Done.', { plan: done })]), { entries: done, open: false, eachFile: false }, 'a finished plan asks for nothing more');
+  // a new approval replaces the plan
+  eq(planOf([...paused, user('Approve and run', { plan: [{ content: 'Other', status: 'pending' }] })]), { entries: [{ content: 'Other', status: 'pending' }], open: true, eachFile: false }, 'the latest approval is the plan');
+  eq(planPrompt([], false), 'The plan is approved: carry out its steps in order.', 'approved as it was');
+  eq(planPrompt(['Rename the macro'], true), 'The plan is approved, as the user changed it: carry out its steps in order. The user left out, so do not do: Rename the macro.', 'approved with a step left out');
+
+  // while the turn happens: a tick is the plan's new state, a suggested line is a card
+  let n = 100;
+  const live = [{ id: ++n, type: 'state', data: { status: 'running', turn: 2 }, at: '' }, { id: ++n, type: 'plan', data: { entries: half }, at: '' }, { id: ++n, type: 'instruction', data: { text: 'Use \\qty for units.' }, at: '' }, { id: ++n, type: 'plan', data: { entries: done }, at: '' }].reduce(addRunEvent, [] as AgentEvent[]);
+  const view = runView(live);
+  eq(view.plan, done, 'the plan as last ticked');
+  eq(view.items.map((i) => [i.type, 'text' in i ? i.text : '']), [['instruction', 'Use \\qty for units.']], 'a suggested instruction');
+  eq(runView([]).plan, null, 'no tick, no plan from the turn');
+  // in the thread, a suggested line stays a card after the reply
+  eq(shape([user('x'), reply('Noted.', { instructions: ['Use \\qty for units.'] })]).slice(1), [['assistant', 'Noted.'], ['instruction', 'Use \\qty for units.']], 'kept with the reply');
 }
 
 console.log('transcript: all checks passed');
