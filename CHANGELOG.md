@@ -2,6 +2,66 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.5.2 (20 November 2026)
+
+### Security
+
+- On a Mac every LaTeX compile now runs in a sandbox. The engine, Biber and BibTeX, makeindex, makeglossaries and whatever they start can write only the compile's own build files, run only the TeX installation's programs and use no network, apart from the built-in Tectonic downloading its packages. A compile also cannot read Spectrum's data folder, the usual key stores such as `~/.ssh`, or key files such as `.env` and `.pem`. Markdown through LaTeX, Jyutping, Compile with page colour and the composer's compiles and symbols are confined the same way
+- Trust this project, a switch in the Compile button's menu, off for every project. A trusted project compiles without the sandbox and with full shell escape, for a document that runs its own programs. The choice is kept on this computer, never in the project, and a copied, moved or renamed project has to be trusted again
+- Every compile now asks for TeX's restricted shell escape on the command line, on Windows too, so a TeX installation set to full shell escape no longer decides it. Full shell escape needs Trust this project
+- When the sandbox or restricted shell escape stops a compile, Logs says what was stopped and where the switch is
+- The app's local server now answers only Spectrum's own windows: each launch has its own secret, so another program or another account on the computer can no longer use it. A window the server refuses says "Spectrum needs to be opened again"
+- The app's pages run only Spectrum's own scripts and fetch only from Spectrum itself
+- Table to chart shows the model's code first and runs it only when you choose Run this code. The code runs in the agents' isolation: its own folder, no network, nothing of yours, a two-minute limit
+- Text from outside (files, logs, search results, abstracts, tool answers, skills) reaches a model marked with its source, as material and never an instruction
+- Agents can no longer read `.netrc`, `.npmrc`, `.pypirc`, SSH keys or keystores in a project: the list the GitHub backup leaves out is now theirs too
+- A Mermaid diagram can no longer turn HTML labels or its own CSS back on
+- An imported .zip or arXiv source leaves out a Git repository inside it, and on Windows a file named like a device (aux.tex) is renamed
+- Restoring a checkpoint never writes into the project's .git or Spectrum's own data
+- Direct editing refuses to start when the checkpoint before it could not hold every file the agent can change
+- Removed an unused route that could copy a template over a project's files
+- Updated fastify, zod, hono, fast-xml-parser and fast-uri to their fixed versions. The build pins Node.js 24.22.3 by checksum, and the Windows workflow pins its actions by commit
+
+### Added
+
+- Deleting in the file tree moves the file or folder to the Bin, with Undo on macOS 15 and later
+- Renaming or moving a file offers to update the `\include`, `\includegraphics`, `#include`, image and Markdown links that name it, after saving a checkpoint
+- A Spectrum agent run that fails part-way keeps its finished steps and its prepared changes, and Continue goes on from them. Continue also follows the 25-step limit and an answer cut off by the output limit
+- Structures: colour and thickness for selected members, loads, dimensions and labels, and colour for supports
+- Liquids and their levels inside the manometers, piezometer, barometer and column of three liquids
+- Form presets: the names a figure draws are yours to change, in a Names fold (the conic's turned axes U and V or u and v, its vertices, centre and foci; a gate's hinge and stop; G, B and M; the basis vectors and eigenvectors; Mohr's circle's X, Y and C)
+- Chinese, Japanese and Korean text in a Markdown document prints in a font Spectrum includes (Noto Serif SC or TC) when the front matter names none, and pdfLaTeX gives way to XeLaTeX for it. Korean, which the included fonts lack, gets one warning naming a Korean font to use
+- Markdown citations come out in APA 7, like the LaTeX and Typst templates, unless the front matter names a csl
+- Insert (+) in Markdown has block maths, a footnote and a comment
+- Settings › Shortcuts lists how to leave the editor by keyboard: Esc, then Tab
+
+### Changed
+
+- Light-mode icon colours in the Spectrum style are a shade darker where Apple's were too faint to read, and New's label is easier to read
+- The assistant, the Spectrum agent, AI autocomplete, Fix with AI, Translate and AI review are told the document's own language: a Typst or Markdown document is no longer called LaTeX. The Spectrum agent's project outline covers Typst and Markdown: files, headings, labels, bibliography, front matter and what does not resolve
+- A busy model provider (429, 500, 502, 503, 504, 529) no longer ends a request: Spectrum waits as long as the provider asks, 20 seconds at most, and tries twice more. A rejected key, a wrong address and a spent quota are still reported at once
+- Conic section names its vertices V₁ and V₂ by default
+- Open Logs when a compile fails moved above the tabs in Settings › Engines, since it applies to every document
+
+### Fixed
+
+- A project made, imported or opened from a folder is no longer taken for one from before 2.1, so its `images/` folder and its documents are left as they are on the first compile. A project from before 2.1 gets a checkpoint before its diagrams and images move
+- The editor tries again when a project is slow to open, then offers Retry instead of staying on Loading…
+- Fix with AI opens Settings › Models when no model is set up
+- An answer cut off by the model's output limit says so, and a cut-off rewrite is no longer offered as a change
+- A connection lost part-way through an answer is tried again and no longer blamed on the endpoint
+- The agents' compile tool gives a Markdown error at its line of the `.md` file and lists its undefined citations
+- Find citations says when its model could not be asked instead of showing a plain search as ranked
+- LaTeX's warnings from a Markdown compile (undefined references, overfull lines, missing characters) reach Logs at the .md line. Missing characters are one warning a font, naming the characters, in Logs and Review
+- The References chat no longer suggests a bibliography line a Markdown document does not need
+- Table to chart reads every row of a table again (a stray backslash broke numbers)
+- Renaming a file no longer doubles its extension when the whole name is typed
+- Insert table with no caption writes Caption. and a label from the header
+- Each project's and folder's ··· button is named after it for screen readers
+- The Outline shows captions without their LaTeX commands
+- Moving figures into folders and switching template write the document through a temporary file
+- The backend's tests can no longer reach the network
+
 ## 2.5.1 (19 November 2026)
 
 ### Security
