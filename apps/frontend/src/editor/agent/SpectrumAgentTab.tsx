@@ -126,6 +126,7 @@ export default function SpectrumAgentTab({
     setEvents([]);
     setStopping(false);
     setRunning(base);
+    runningRef.current = base;
     setAttached({ runId, base });
   };
 
@@ -141,7 +142,7 @@ export default function SpectrumAgentTab({
     if (openThread) open(openThread.id, true).catch((err) => api.notify(`Couldn’t open the chat: ${errorText(err)}`, 'error'));
   }, [openThread?.n]);
 
-  const scroll = useFollow([thread, running, reviewing, hidden]);
+  const scroll = useFollow([thread, running, reviewing, hidden, events, queue.length]);
 
   /** What every turn's request carries: the model, the search connection, the instructions and the open proposals. */
   const turnSettings = (base: ChatThread) => {
