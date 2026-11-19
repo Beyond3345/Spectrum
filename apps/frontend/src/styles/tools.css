@@ -2176,6 +2176,137 @@ textarea.table-latex {
   outline-offset: -2px;
 }
 
+/* a review's changes, each its own block in the diff with its bar of actions */
+.hunk-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hunk {
+  border-block: 1px solid var(--border);
+  margin-block: 2px;
+}
+
+.hunk.focused {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.hunk-bar,
+.hunk-section,
+.hunk-edit,
+.hunk-hint {
+  font: 12px/1.45 var(--font-ui);
+}
+
+.hunk-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px 4px 12px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.hunk.focused .hunk-bar {
+  color: var(--text);
+}
+
+.hunk.overlap .hunk-bar {
+  background: color-mix(in srgb, var(--orange) 10%, var(--bg-elevated));
+}
+
+.hunk-where {
+  font-weight: 600;
+}
+
+.hunk-note {
+  flex: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.hunk-section {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.hunk-section > span + span {
+  flex: none;
+  font-weight: 400;
+}
+
+.hunk-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.hunk-edit textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-editor);
+  color: var(--text);
+  font: 12px/1.6 var(--font-mono);
+}
+
+.hunk-edit .row {
+  align-items: center;
+  gap: 6px;
+}
+
+.hunk-hint {
+  flex: none;
+  padding: 4px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.hunk-hint kbd {
+  margin-left: 8px;
+}
+
+.hunk-hint kbd:first-child,
+.hunk-hint kbd + kbd {
+  margin-left: 0;
+}
+
+/* the editor's review sheet: its Source and PDF switch, and the two PDFs in the layout's place */
+.review-switch {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 8px;
+}
+
+.review-layout.review-pdf {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.review-pdf > .agent-compare {
+  height: 100%;
+  padding-bottom: 0;
+}
+
+.review-file-n {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
 @media (max-width: 800px) {
   .review-layout {
     grid-template-columns: 1fr;
@@ -2883,6 +3014,42 @@ textarea.table-latex {
   padding: 24px;
   color: var(--text-secondary);
   text-align: center;
+}
+
+/* the PDF before and after: side by side, one above the other where the pane is narrow */
+.agent-compare {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+.agent-compare-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.agent-compare-side > .pdf-body,
+.agent-compare-side > .agent-preview-log {
+  flex: 1;
+  min-height: 0;
+}
+
+.agent-compare-label {
+  flex: none;
+  color: var(--text-secondary);
+  font: 600 11px var(--font-ui);
+}
+
+.agent-review:focus,
+.review-layout:focus {
+  outline: none;
 }
 
 .agent-preview-log {

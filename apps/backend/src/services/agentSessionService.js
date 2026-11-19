@@ -17,12 +17,12 @@ import { readProjectSettings } from './projectSettings.js';
 import { openTodos, suggestedTodo } from './agentService.js';
 import { AGENT_DIR, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, isolationAvailable } from './agentSandbox.js';
-import { initialiseWorkspace, workspaceChanges, applyWorkspaceChanges, captureAgentProposal, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
+import { initialiseWorkspace, workspaceChanges, workspaceFiles, applyWorkspaceChanges, captureAgentProposal, fileHash, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
 import { activeSkills, listSkills, loadSkill, SKILL_ID } from './skillService.js';
 import { agentHidden, agentHiddenNameSource, safeJoin } from '../utils/pathUtils.js';
 import { skillText, untrusted } from '../utils/outsideText.js';
-import { writeJsonAtomic } from '../utils/fsUtils.js';
+import { writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 
 const execFileAsync = promisify(execFile);
 const runs = new Map();
@@ -37,7 +37,20 @@ const persist = (r) => {
 };
 // a direct-mode change the user has seen, until the agent changes that file again
 const changeKey = (c) => `${c.path}\0${c.afterHash}`;
-export const pendingChanges = async (r) => (await workspaceChanges(r)).filter((c) => !r.resolved.has(changeKey(c)));
+/**
+ * The changes still to review. In a review session each text change comes with the hash of the project's file as it is
+ * now (currentHash) and, where the user has changed that file since the agent started from it, its text (current, null:
+ * deleted), so the review shows the agent's change against the user's file and a part of it can be applied to it.
+ */
+export const pendingChanges = async (r) => Promise.all((await workspaceChanges(r)).filter((c) => !r.resolved.has(changeKey(c))).map(async (c) => {
+  if (r.mode !== 'review' || c.binary) return c;
+  const bytes = await readCurrent(r.root, c.path).catch(() => undefined);
+  if (bytes === undefined) return c;
+  const text = bytes === null ? null : bytes.toString('utf8');
+  // no longer text: left to applying the file whole, which says so
+  if (bytes && (bytes.includes(0) || !Buffer.from(text).equals(bytes))) return c;
+  return { ...c, currentHash: fileHash(bytes), ...(fileHash(bytes) !== c.beforeHash && { current: text }) };
+}));
 
 const MAX_EVENTS = 1000;
 const MAX_EVENT_BYTES = 4 * 1024 * 1024;
@@ -682,14 +695,66 @@ async function previewTarget(r, { mainFile, engine }) {
   return { main, engine: engine || (await compileChoices(r)).engine };
 }
 
+// one preview at a time for a project: they share a home for TeX's caches, and a review's two share a copy's folder
+const compiling = new Map();
+function inTurn(root, work) {
+  const turn = (compiling.get(root) || Promise.resolve()).then(work);
+  const settled = turn.catch(() => {}).finally(() => { if (compiling.get(root) === settled) compiling.delete(root); });
+  compiling.set(root, settled);
+  return turn;
+}
+// the compiles of a project's own review (no session to stop them with), ended with the app
+const reviewCompiles = new Set();
+
 /**
- * The agent's draft as a PDF: { ok, pdf (base64, or null), log }. It is compiled where it can read nothing but the draft
- * and TeX, into this computer's cache, never into the draft. On macOS inside isolation, the draft read-only; on Windows
- * with TeX told to read only below the draft's folder (MiKTeX's AllowUnsafeInputFiles, TeX Live's openin_any before
- * 2026) and run nothing, with none of the Perl and Lua helpers that ignore those limits (Biber, latexmk, the glossary
- * tools), and with no preview where TeX can't be told: Tectonic, TeX Live 2026 and later, and a MiKTeX whose own
- * settings win over the preview's.
+ * A folder as a PDF: { ok, pdf (base64, or null), log }. It is compiled where it can read nothing but the folder and
+ * TeX, into this computer's cache (under `name`), never into the folder. On macOS inside isolation, the folder
+ * read-only and the project (root) out of reach; on Windows with TeX told to read only below the folder (MiKTeX's
+ * AllowUnsafeInputFiles, TeX Live's openin_any before 2026) and run nothing, with none of the Perl and Lua helpers that
+ * ignore those limits (Biber, latexmk, the glossary tools), and with no preview where TeX can't be told: Tectonic, TeX
+ * Live 2026 and later, and a MiKTeX whose own settings win over the preview's. children: where the compile's process
+ * is kept while it runs, to be stopped from.
  */
+async function compileIsolated({ root, workspace, name, main, engine, choices, children }) {
+  // a fresh folder for each, and a home kept between them for TeX's own caches
+  const out = await cachePath(root, 'agent-preview', name);
+  const home = await cachePath(root, 'agent-preview', 'home');
+  await fs.rm(out, { recursive: true, force: true });
+  await fs.mkdir(out, { recursive: true, mode: 0o700 });
+  await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
+  if (process.platform === 'win32') {
+    // ponytail: Typst's own sandboxing on Windows is unexplored, and Markdown goes through pandoc on either engine
+    if (/\.(typ|md|markdown)$/i.test(main)) return { ok: false, pdf: null, log: 'Preview PDF on Windows supports LaTeX drafts only for now.' };
+    if (engine === 'tectonic') return { ok: false, pdf: null, log: 'Preview PDF needs TeX Live or MiKTeX on Windows.' };
+    if (engine === 'latexmk') return { ok: false, pdf: null, log: 'Preview PDF on Windows doesn’t use latexmk, which runs outside the limits a preview sets. Choose Auto, pdfLaTeX, XeLaTeX or LuaLaTeX for the project, or review the changes as text.' };
+    const tex = await findExecutable('pdflatex');
+    const version = tex ? (await execFileAsync(tex, ['--version'], { timeout: 20000, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout : '';
+    if (!confinableTeX(version)) return { ok: false, pdf: null, log: 'Preview PDF on Windows needs MiKTeX, or TeX Live 2025 or earlier: later TeX Live can’t limit what a compile reads, so the draft isn’t compiled. Review its changes as text.' };
+    if (/MiKTeX/i.test(version) && !(await mikTeXConfined())) return { ok: false, pdf: null, log: 'Spectrum couldn’t confirm that MiKTeX will limit what the compile reads, writes and runs (a setting in MiKTeX’s own configuration may take precedence), so the draft isn’t compiled. Review its changes as text.' };
+    // ponytail: whether MiKTeX's bibtex keeps to the [Core] settings is for the Windows build machine's test to show
+    const result = await compileFolder({ root: workspace, mainFile: main, engine, without: ['tectonic', 'latexmk'], untrusted: true, buildDir: out, env: PREVIEW_TEX_ENV });
+    return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
+  }
+  const { entry, env, reads } = await toolsLaunch();
+  // the Typst version and Markdown engine the compile reads where the tools server reads its context
+  await fs.writeFile(path.join(out, 'context.json'), JSON.stringify(choices));
+  const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', workspace, '--state', out, '--main', main, '--engine', engine], workspace: out, home, cwd: out, runtimePaths: [...reads, workspace], forbiddenRoots: [root], env });
+  children.add(child);
+  let output = '', error = '';
+  child.stdout.on('data', (chunk) => { output += chunk; });
+  child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
+  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
+  child.stdin.end();
+  try { await timeout(done, 10 * 60 * 1000, 'The preview took too long and was stopped.'); } finally { children.delete(child); killAgentProcess(child); }
+  let result;
+  try { result = JSON.parse(output); } catch { return { ok: false, pdf: null, log: error.trim() || 'The preview could not be compiled.' }; }
+  const log = await fs.readFile(path.join(out, 'last.log'), 'utf8').catch(() => result.error || '');
+  // written by isolation: only a file of its own, never a link it left
+  const pdf = result.pdf && (await fs.lstat(result.pdf).catch(() => null))?.isFile() && path.dirname(result.pdf) === out ? (await fs.readFile(result.pdf)).toString('base64') : null;
+  return { ok: !!result.ok, pdf, log };
+}
+
+/** The agent's draft as a PDF, compiled on its own (compileIsolated): { ok, pdf (base64, or null), log }. */
 export async function previewDraft(r, options = {}) {
   if (r.mode !== 'review') throw Object.assign(new Error('A direct session works in the project itself. Compile the project to see it.'), { statusCode: 409 });
   if (r.busy || r.reviewing || busyProject(r)) throw Object.assign(new Error('Wait for the agent to finish before previewing its draft.'), { statusCode: 409 });
@@ -700,44 +765,46 @@ export async function previewDraft(r, options = {}) {
     await refreshDraft(r, (rel) => draftWriter(r, rel)).catch(() => {});
     const { main, engine } = await previewTarget(r, options);
     if (!main) return { ok: false, pdf: null, log: 'The draft has no main document to compile.' };
-    // a fresh folder for each, and a home kept between them for TeX's own caches
-    const out = await cachePath(r.root, 'agent-preview', r.id);
-    const home = await cachePath(r.root, 'agent-preview', 'home');
-    await fs.rm(out, { recursive: true, force: true });
-    await fs.mkdir(out, { recursive: true, mode: 0o700 });
-    await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
-    if (process.platform === 'win32') {
-      // ponytail: Typst's own sandboxing on Windows is unexplored, and Markdown goes through pandoc on either engine
-      if (/\.(typ|md|markdown)$/i.test(main)) return { ok: false, pdf: null, log: 'Preview PDF on Windows supports LaTeX drafts only for now.' };
-      if (engine === 'tectonic') return { ok: false, pdf: null, log: 'Preview PDF needs TeX Live or MiKTeX on Windows.' };
-      if (engine === 'latexmk') return { ok: false, pdf: null, log: 'Preview PDF on Windows doesn’t use latexmk, which runs outside the limits a preview sets. Choose Auto, pdfLaTeX, XeLaTeX or LuaLaTeX for the project, or review the changes as text.' };
-      const tex = await findExecutable('pdflatex');
-      const version = tex ? (await execFileAsync(tex, ['--version'], { timeout: 20000, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout : '';
-      if (!confinableTeX(version)) return { ok: false, pdf: null, log: 'Preview PDF on Windows needs MiKTeX, or TeX Live 2025 or earlier: later TeX Live can’t limit what a compile reads, so the draft isn’t compiled. Review its changes as text.' };
-      if (/MiKTeX/i.test(version) && !(await mikTeXConfined())) return { ok: false, pdf: null, log: 'Spectrum couldn’t confirm that MiKTeX will limit what the compile reads, writes and runs (a setting in MiKTeX’s own configuration may take precedence), so the draft isn’t compiled. Review its changes as text.' };
-      // ponytail: whether MiKTeX's bibtex keeps to the [Core] settings is for the Windows build machine's test to show
-      const result = await compileFolder({ root: r.workspace, mainFile: main, engine, without: ['tectonic', 'latexmk'], untrusted: true, buildDir: out, env: PREVIEW_TEX_ENV });
-      return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
-    }
-    const { entry, env, reads } = await toolsLaunch();
-    // the Typst version and Markdown engine the compile reads where the tools server reads its context
-    await fs.writeFile(path.join(out, 'context.json'), JSON.stringify(await compileChoices(r)));
-    const child = await spawnAgentProcess({ command: process.execPath, args: [entry, '--compile', '--root', r.workspace, '--state', out, '--main', main, '--engine', engine], workspace: out, home, cwd: out, runtimePaths: [...reads, r.workspace], forbiddenRoots: [r.root], env });
     // stopped with the session's other processes
-    r.fileOperations ||= new Set(); r.fileOperations.add(child);
-    let output = '', error = '';
-    child.stdout.on('data', (chunk) => { output += chunk; });
-    child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
-    const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
-    child.stdin.end();
-    try { await timeout(done, 10 * 60 * 1000, 'The preview took too long and was stopped.'); } finally { r.fileOperations.delete(child); killAgentProcess(child); }
-    let result;
-    try { result = JSON.parse(output); } catch { return { ok: false, pdf: null, log: error.trim() || 'The preview could not be compiled.' }; }
-    const log = await fs.readFile(path.join(out, 'last.log'), 'utf8').catch(() => result.error || '');
-    // written by isolation: only a file of its own, never a link it left
-    const pdf = result.pdf && (await fs.lstat(result.pdf).catch(() => null))?.isFile() && path.dirname(result.pdf) === out ? (await fs.readFile(result.pdf)).toString('base64') : null;
-    return { ok: !!result.ok, pdf, log };
+    r.fileOperations ||= new Set();
+    return await inTurn(r.root, async () => compileIsolated({ root: r.root, workspace: r.workspace, name: r.id, main, engine, choices: await compileChoices(r), children: r.fileOperations }));
   } finally { r.reviewing = false; }
+}
+
+/**
+ * The project as a PDF with `files` laid over it ([{ path, content }], content null: without that file): what proposed
+ * changes would give once applied, or with no files the project as it is, for the page before beside the page after.
+ * A copy of the project is compiled as an agent's draft is (compileIsolated); the project itself is only read.
+ * which: 'before' or 'after', so one doesn't clear the other's folder. compile: the app's defaults, as a new session takes.
+ * ponytail: a fresh copy for every preview; keep one and bring it up to date if large projects make that slow.
+ */
+export async function previewProposal(projectId, { files = [], which = 'after', mainFile, engine, compile } = {}) {
+  const root = await getProjectRoot(projectId);
+  if (engine != null && !SUPPORTED_ENGINES.includes(engine)) throw Object.assign(new Error('Unsupported engine.'), { statusCode: 400 });
+  if (!Array.isArray(files) || files.some((f) => typeof f?.path !== 'string' || (f.content !== null && typeof f.content !== 'string'))) throw Object.assign(new Error('Each file needs a path and its text.'), { statusCode: 400 });
+  if (!(await isolationAvailable())) return { ok: false, pdf: null, log: 'The preview is compiled in Spectrum’s isolation, which isn’t available on this computer.' };
+  const name = which === 'before' ? 'review-before' : 'review-after';
+  const work = path.join(await cachePath(root, 'agent-preview', `${name}-copy`), 'work');
+  return inTurn(root, async () => {
+    await fs.rm(work, { recursive: true, force: true });
+    await fs.mkdir(work, { recursive: true, mode: 0o700 });
+    try {
+      // the same reader, with the same limits, that makes an agent's copy
+      for (const [rel, bytes] of Object.entries(await workspaceFiles(root))) await writeFileAtomic(safeJoin(work, rel), bytes);
+      for (const { path: rel, content } of files) {
+        if (agentHidden(rel)) continue;
+        if (content === null) await fs.rm(safeJoin(work, rel), { force: true });
+        else await writeFileAtomic(safeJoin(work, rel), content);
+      }
+      const workspace = await fs.realpath(work);
+      const own = (await readProjectSettings(root)).compile || {};
+      const app = appCompile(compile);
+      const main = mainFile || (await readMeta(root).catch(() => ({}))).mainFile || await detectMainFile(workspace).catch(() => null);
+      if (!main) return { ok: false, pdf: null, log: 'The project has no main document to compile.' };
+      safeJoin(workspace, main);
+      return await compileIsolated({ root, workspace, name, main, engine: engine || own.engine || 'auto', choices: { engine: own.engine || 'auto', typstVersion: own.typstVersion || app.typstVersion, markdownEngine: own.markdownEngine || app.markdownEngine }, children: reviewCompiles });
+    } finally { await fs.rm(work, { recursive: true, force: true }).catch(() => {}); }
+  });
 }
 
 const TEXT_URI = 'spectrum:';
@@ -989,13 +1056,35 @@ export async function setAgentOption(r, configId, value) {
  * Apply or reject changes, by path. Review mode: an applied file's new contents become its baseline, and a rejected one
  * goes back to the user's file in the agent's copy too; the agent hears of both on its next turn. Direct mode's changes
  * are already in the project, so either only puts them away.
+ * One text file settled in part (review mode): { action: 'part', path, expected, current, content?, original, proposed }.
+ * The user applied some of the change's separate parts, perhaps edited, rejected some, or chose between their own lines
+ * and the agent's. content (null: no file), when given, is what the project's file becomes, written only while that
+ * file still has the hash `current` the review showed it with; proposed is what the agent's copy then holds, and
+ * original what the rest is measured from (the two are the same once nothing is left). The agent is told.
  */
 export async function reviewAgentChanges(r, body) {
   if (r.busy || r.reviewing || busyProject(r)) throw new Error('Wait for the agent to finish before reviewing changes.');
-  if (!['apply', 'reject'].includes(body.action)) throw new Error('Choose apply or reject.');
+  if (!['apply', 'reject', 'part'].includes(body.action)) throw new Error('Choose apply or reject.');
   r.reviewing = true;
   try {
     const changes = await pendingChanges(r);
+    if (body.action === 'part') {
+      const rel = body.path;
+      const change = changes.find((c) => c.path === rel);
+      if (r.mode !== 'review' || !change || change.binary) throw new Error('Unknown change path.');
+      if (body.expected !== change.afterHash) throw new Error(`“${rel}” changed after the review opened. Refresh and review it again.`);
+      const bytes = (text) => { if (text !== null && typeof text !== 'string') throw new Error('Choose the text to keep.'); return text === null ? null : Buffer.from(text); };
+      const [original, proposed] = [bytes(body.original), bytes(body.proposed)];
+      const wrote = body.content !== undefined;
+      if (wrote) await mutateProjectRoot(r.root, () => applyWorkspaceChanges(r, [rel], { [rel]: change.afterHash }, { [rel]: { bytes: bytes(body.content), current: body.current ?? null } }));
+      await rebaseChange(r, rel, proposed, draftWriter(r, rel), original);
+      // said once for a file however many of its parts are settled one by one
+      const left = fileHash(original) !== fileHash(proposed);
+      const note = `The user ${wrote ? 'applied' : 'rejected'} part of your changes to “${rel}”${wrote ? ', with their own choices and edits' : ''}. Your copy of it now holds ${left ? 'what they kept and what still waits for their review' : 'the file as it is in their project'}. Re-read it before changing it again.`;
+      if (!r.notes.includes(note)) r.notes.push(note);
+      await persist(r);
+      return pendingChanges(r);
+    }
     if (!Array.isArray(body.paths) || !body.paths.length || body.paths.some((rel) => !changes.some((c) => c.path === rel))) throw new Error('Unknown change path.');
     const draft = (rel) => draftWriter(r, rel);
     if (r.mode !== 'review') {
@@ -1038,5 +1127,6 @@ export function subscribeAgent(r, fn) { r.listeners.add(fn); return () => r.list
  * closed.
  */
 export async function shutdownAgents() {
+  for (const child of reviewCompiles) killAgentProcess(child);
   await Promise.allSettled([...runs.values()].filter((r) => r.busy || r.child || r.fileOperations?.size).map((r) => (r.busy || r.fileOperations?.size || r.status === 'ready' ? stopAgentRun(r) : (disconnect(r), r.stopChain))));
 }

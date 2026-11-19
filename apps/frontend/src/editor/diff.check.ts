@@ -18,7 +18,7 @@ const lines = (n: number, edit: (i: number) => string | undefined = () => undefi
 eq(shape(buildDiffRows('one\ntwo\nthree\n', 'one\n2\n3\nextra\nthree\n')), ['context 1|1', 'changed 2|2', 'added -|3', 'added -|4', 'context 3|5'], 'more new lines than old');
 eq(shape(buildDiffRows('a\nb\nc\nd\n', 'a\nX\nd\n')), ['context 1|1', 'changed 2|2', 'removed 3|-', 'context 4|3'], 'more old lines than new');
 eq(shape(buildDiffRows('', 'new\n')), ['added -|1'], 'a new file');
-eq(rowsOf(buildDiffRows('a\nb\n', 'a\nc\n'))[1], { id: '2:2', type: 'changed', left: 'b', leftNo: 2, right: 'c', rightNo: 2 }, 'a one-letter line rewritten is tinted whole');
+eq(rowsOf(buildDiffRows('a\nb\n', 'a\nc\n'))[1], { id: '2:2', type: 'changed', left: 'b', leftNo: 2, right: 'c', rightNo: 2, hunk: 0 }, 'a one-letter line rewritten is tinted whole');
 // a line added above an edited one: the edit pairs with the line it came from
 const above = buildDiffRows('Intro.\nThe results show a clear trend in the data.\nEnd.\n', 'Intro.\nWe ran three experiments.\nThe results show a clear upward trend in the data.\nEnd.\n');
 eq(shape(above), ['context 1|1', 'added -|2', 'changed 2|3', 'context 3|4'], 'a line added above an edit');

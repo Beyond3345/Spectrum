@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { base64Bytes, listSkills, restoreVersion } from '../../api/client';
+import { listSkills, restoreVersion } from '../../api/client';
 import type { AgentUserRequest, Skill, SuggestedTodo, TodoLink } from '../../api/client';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
@@ -8,7 +8,10 @@ import { TAG_COLOURS } from '../../app/appearance';
 import type { TagColour } from '../../app/settings';
 import { confirmDialog } from '../../app/Dialogs';
 import SplitDiffView, { DiffCount, countChanges } from '../SplitDiffView';
-import PdfPreview from '../PdfPreview';
+import HunkList, { PdfCompare, reviewPdfs } from '../HunkReview';
+import type { Pdf, ReviewKeys } from '../HunkReview';
+import { countOf as hunkCount, renames, review, settle, target } from '../reviewHunks';
+import type { Choice } from '../reviewHunks';
 import { keptAsideNote } from '../tools/VersionsTab';
 import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
@@ -408,8 +411,18 @@ export function PlanStrip({ entries, todos }: { entries: PlanEntry[]; todos: Tod
 
 // ─── Changes ───
 
-/** A file the agent changed, as both tabs' trays hold it; afterHash, a local agent's, tells one version of it from another */
-export type TrayChange = { path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; original: string; proposed: string; size: number; afterHash?: string | null };
+/**
+ * A file the agent changed, as both tabs' trays hold it; afterHash, a local agent's, tells one version of it from
+ * another. current and currentHash, a local agent's in an isolated session: the project's file as it is now where the
+ * user changed it since the agent started from it, and that file's hash either way.
+ */
+export type TrayChange = { path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; original: string; proposed: string; size: number; afterHash?: string | null; current?: string; currentHash?: string | null };
+
+/**
+ * One file's change settled in part (reviewHunks' settle): content, when given, is written over the file, which was
+ * `mine` when the user chose; original and proposed are what is left to review, the same once nothing is.
+ */
+export type TrayPart = { content?: string; original: string; proposed: string; mine: string };
 
 const countOf = (c: TrayChange) => (c.binary ? { added: 0, removed: 0 } : countChanges(c.original, c.proposed));
 
@@ -431,7 +444,7 @@ export function ChangesTray({ changes, direct, onOpen }: { changes: TrayChange[]
   const { total } = useCounts(changes);
   if (!changes.length) return null;
   return (
-    <button className="agent-tray" onClick={onOpen} title={direct ? 'What the agent changed in your project' : 'Review the agent’s changes'}>
+    <button className="agent-tray" onClick={onOpen} title={direct ? 'What the agent changed in your project' : 'Review the agent’s changes, one change at a time'}>
       <Icon name="plus.forwardslash.minus" />
       <span>
         {plural(changes.length, 'file')}
@@ -444,48 +457,11 @@ export function ChangesTray({ changes, direct, onOpen }: { changes: TrayChange[]
   );
 }
 
-function Preview({ load }: { load(): Promise<{ pdf: string | null; log: string }> }) {
-  const [state, setState] = useState<{ url?: string; log?: string; error?: string } | null>(null);
-  const [asked, setAsked] = useState(0);
-  useEffect(() => {
-    let live = true;
-    let url = '';
-    setState(null);
-    load().then(
-      (res) => {
-        if (!live) return;
-        if (res.pdf) url = URL.createObjectURL(new Blob([base64Bytes(res.pdf)], { type: 'application/pdf' }));
-        setState(url ? { url } : { log: res.log || 'No PDF was made.' });
-      },
-      (err) => live && setState({ error: errorText(err) })
-    );
-    return () => {
-      live = false;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [asked]);
-  const none = () => undefined;
-  if (!state) return <div className="agent-empty"><span className="spinner" /> Compiling the agent’s copy…</div>;
-  if (!state.url)
-    return (
-      <div className="agent-preview-log">
-        <div className="row">
-          <span className="grow">{state.error ? `Couldn’t make the preview: ${state.error}` : 'The agent’s copy didn’t compile.'}</span>
-          <button className="btn small" onClick={() => setAsked((n) => n + 1)}>Try again</button>
-        </div>
-        {state.log && <pre className="agent-output">{clip(state.log)}</pre>}
-      </div>
-    );
-  return (
-    <div className="pdf-body">
-      <PdfPreview url={state.url} pageKey="agent-preview" zoom="width" spread={false} annotateMode={false} annotations={[]} onAddAnnotation={none} onDoubleClick={none} onPageMenu={none} onLoad={none} onScale={none} onZoom={none} onPage={none} onSection={none} onFileLink={none} />
-    </div>
-  );
-}
-
 /**
- * The tray opened in the pane: the files on the left of a narrow list, the chosen one's diff below, Apply and Reject
- * per file and for all, and (for a local agent's copy) the PDF that copy compiles to.
+ * The tray opened in the pane: the files in a narrow list, the chosen one's changes below, each with its own Apply,
+ * Reject and Edit (HunkList), Apply and Reject per file and for all, and the PDF before and after. A change is shown
+ * against the file as it is now, so the user's own edits since stay, and where they overlap the agent's both versions
+ * are offered. onPart settles one file in part; without it the files can only be taken whole.
  */
 export function ReviewView({
   changes,
@@ -493,6 +469,7 @@ export function ReviewView({
   direct,
   onApply,
   onReject,
+  onPart,
   onClose,
   preview
 }: {
@@ -502,16 +479,41 @@ export function ReviewView({
   direct?: boolean;
   onApply(list: TrayChange[]): Promise<void>;
   onReject(list: TrayChange[]): Promise<void>;
+  onPart?(file: TrayChange, part: TrayPart): Promise<void>;
   onClose(): void;
-  preview?: () => Promise<{ pdf: string | null; log: string }>;
+  /** a local agent's copy as a PDF; without it the project is compiled with the changes laid over a copy */
+  preview?: () => Promise<Pdf>;
 }) {
+  const api = useEditor();
   const [selected, setSelected] = useState('');
   const [showPdf, setShowPdf] = useState(false);
+  const [working, setWorking] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const { each, total } = useCounts(changes);
+  const keys: ReviewKeys = useRef(null);
+  const waiting = busy || working;
+
+  // the Spectrum agent's changes come without the file as it is now: the editor's text of each, read again as the open one changes
+  const unread = direct ? [] : changes.filter((c) => c.currentHash === undefined && !c.binary && c.kind === 'modified');
+  const [own, setOwn] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let live = true;
+    Promise.all(unread.map(async (c) => [c.path, await api.ensureFileContent(c.path).catch(() => c.original)] as const)).then((list) => live && setOwn(Object.fromEntries(list)));
+    return () => {
+      live = false;
+    };
+  }, [changes, unread.some((c) => c.path === api.activePath) ? api.editorValue : '']);
+  const mineOf = (c: TrayChange) => c.current ?? own[c.path] ?? c.original;
+
+  const reviews = useMemo(() => new Map(changes.filter((c) => !c.binary).map((c) => [c.path, review(c.original, mineOf(c), c.proposed)])), [changes, own]);
+  const moved = useMemo(() => renames(changes), [changes]);
+  const { each, total } = useMemo(() => {
+    const each = new Map(changes.map((c) => [c.path, hunkCount(reviews.get(c.path)?.hunks || [])]));
+    const all = [...each.values()];
+    return { each, total: { added: all.reduce((n, c) => n + c.added, 0), removed: all.reduce((n, c) => n + c.removed, 0) } };
+  }, [reviews]);
   const file = changes.find((c) => c.path === selected) || changes[0];
   // what the preview was compiled from: a change applied or rejected, or another turn's draft, compiles it again
-  const version = changes.map((c) => `${c.path}\0${c.afterHash ?? `${c.size}\0${c.proposed}`}`).join('\n');
+  const version = changes.map((c) => `${c.path}\0${c.afterHash ?? `${c.size}\0${c.proposed}`}\0${c.currentHash ?? mineOf(c).length}`).join('\n');
   // back to the conversation, with the focus in the message box rather than on a button that went
   const close = () => {
     const tab = ref.current?.closest('.agent-tab');
@@ -520,10 +522,57 @@ export function ReviewView({
   };
   useEffect(() => {
     if (!changes.length) close();
-  }, [changes.length]);
+    // a button that went with its change leaves the focus nowhere: the keys go on working
+    else if (document.activeElement === document.body) ref.current?.focus({ preventScroll: true });
+  }, [changes]);
   if (!file) return null;
+
+  const run = async (work: () => Promise<unknown>) => {
+    setWorking(true);
+    try {
+      await work();
+    } finally {
+      setWorking(false);
+    }
+  };
+  /** One file's choice: the file whole where that is the same thing, else the text the choice comes to. */
+  const choose = async (c: TrayChange, choice: Choice) => {
+    const r = reviews.get(c.path);
+    if (!r || !onPart) return;
+    const mine = mineOf(c);
+    const whole = !choice.reject?.length && !choice.lines?.size && (choice.apply?.length ?? 0) === r.hunks.length && (!r.eol || choice.eol === 'apply');
+    // every change as the agent made it, to the file it started from: the proposal itself, byte for byte
+    if (whole && mine === c.original) return onApply([c]);
+    const part = settle(r, choice);
+    if (part.content === undefined && part.original === part.proposed) return onReject([c]);
+    // the file as written, at once: until it is read again the applied changes would show as the user's own
+    if (c.currentHash === undefined && part.content !== undefined) setOwn((old) => ({ ...old, [c.path]: part.content! }));
+    return onPart(c, { ...part, mine });
+  };
+  /** Files applied whole; where the user edited one since, its changes that don't overlap theirs, the rest left to choose. */
+  const applyFiles = (list: TrayChange[]) =>
+    run(async () => {
+      const whole = list.filter((c) => !onPart || !reviews.get(c.path) || mineOf(c) === c.original);
+      if (whole.length) await onApply(whole);
+      let overlaps = 0;
+      for (const c of list.filter((c) => !whole.includes(c))) {
+        const r = reviews.get(c.path)!;
+        const clean = r.hunks.filter((h) => !h.base);
+        overlaps += r.hunks.length - clean.length;
+        if (clean.length || r.eol) await choose(c, { apply: clean, ...(r.eol && { eol: 'apply' }) });
+      }
+      if (overlaps) api.notify(`${plural(overlaps, 'change')} overlap${overlaps === 1 ? 's' : ''} your own edits. Choose for each.`);
+    });
+  const step = (direction: 1 | -1) => {
+    const next = changes[changes.indexOf(file) + direction];
+    if (next) setSelected(next.path);
+  };
+  const pdfs = reviewPdfs(api, () => changes.flatMap((c) => (c.binary ? [] : [{ path: c.path, content: c.kind === 'deleted' ? null : target(reviews.get(c.path)!) }])));
+  const r = reviews.get(file.path);
+  const overlaps = r?.hunks.filter((h) => h.base).length || 0;
+
   return (
-    <div className="agent-review" ref={ref}>
+    <div className="agent-review" ref={ref} tabIndex={-1} onKeyDown={(e) => !showPdf && keys.current?.(e)}>
       <div className="agent-review-bar">
         <button className="icon-btn" title="Back to the conversation" aria-label="Back" onClick={close}>
           <Icon name="chevron.left" />
@@ -533,51 +582,67 @@ export function ReviewView({
           {direct ? ' changed' : ','} <DiffCount {...total} />
         </span>
         <span className="grow" />
-        {preview && (
-          <button className={`btn small ${showPdf ? 'open' : ''}`} aria-pressed={showPdf} onClick={() => setShowPdf((v) => !v)}>
-            <Icon name="doc.richtext" /> Preview PDF
-          </button>
+        {!direct && (
+          <div className="segmented small" role="tablist" aria-label="What the review shows">
+            <button role="tab" aria-selected={!showPdf} className={`segment ${showPdf ? '' : 'active'}`} onClick={() => setShowPdf(false)}>Source</button>
+            <button role="tab" aria-selected={showPdf} className={`segment ${showPdf ? 'active' : ''}`} onClick={() => setShowPdf(true)}>PDF before and after</button>
+          </div>
         )}
         {!direct && (
           <>
-            <button className="btn small" disabled={busy} onClick={() => void onReject(changes)}>Reject all</button>
-            <button className="btn small primary" disabled={busy} onClick={() => void onApply(changes)}>
-              {busy && <span className="spinner" />} Apply all
+            <button className="btn small" disabled={waiting} onClick={() => void run(() => onReject(changes))}>Reject all</button>
+            <button className="btn small primary" disabled={waiting} onClick={() => void applyFiles(changes)}>
+              {waiting && <span className="spinner" />} Apply all
             </button>
           </>
         )}
       </div>
-      {showPdf && preview ? (
-        <Preview key={version} load={preview} />
+      {showPdf && !direct ? (
+        <PdfCompare version={version} before={pdfs.before} after={preview || pdfs.after} />
       ) : (
         <>
           <div className="agent-review-files">
-            {changes.map((c) => (
-              <button key={c.path} className={`review-file ${c.path === file.path ? 'active' : ''}`} onClick={() => setSelected(c.path)}>
-                <Icon name={c.kind === 'deleted' ? 'trash' : 'doc.text'} />
-                <span className="review-file-name" title={c.path}>{c.path}</span>
-                {c.kind !== 'modified' && <span className="badge">{c.kind === 'created' ? 'New' : 'Deleted'}</span>}
-                <DiffCount {...each.get(c.path)!} />
-              </button>
-            ))}
+            {changes.map((c) => {
+              const n = reviews.get(c.path)?.hunks.length;
+              return (
+                <button key={c.path} className={`review-file ${c.path === file.path ? 'active' : ''}`} onClick={() => setSelected(c.path)}>
+                  <Icon name={c.kind === 'deleted' ? 'trash' : 'doc.text'} />
+                  <span className="review-file-name" title={c.path}>{c.path}</span>
+                  {moved.has(c.path) ? <span className="badge" title={`The text of ${moved.get(c.path)}, which the agent deleted`}>Moved</span> : c.kind !== 'modified' && <span className="badge">{c.kind === 'created' ? 'New' : 'Deleted'}</span>}
+                  {!direct && !!n && n > 1 && <span className="review-file-n">{n} changes</span>}
+                  <DiffCount {...each.get(c.path)!} />
+                </button>
+              );
+            })}
           </div>
           <div className="review-diff">
             <div className="review-diff-bar">
               <span className="review-diff-path">{file.path}</span>
+              {overlaps > 0 && <span className="badge warning" title="You changed some of the same lines while the agent worked. Choose for each: your lines, the agent’s, both, or your own edit.">{plural(overlaps, 'overlap')}</span>}
               <span className="grow" />
               {!direct && (
                 <>
-                  <button className="btn small" disabled={busy} onClick={() => void onReject([file])}>Reject</button>
-                  <button className="btn small" disabled={busy} onClick={() => void onApply([file])}>Apply</button>
+                  <button className="btn small" disabled={waiting} onClick={() => void run(() => onReject([file]))}>Reject</button>
+                  <button className="btn small" disabled={waiting} onClick={() => void applyFiles([file])}>Apply</button>
                 </>
               )}
             </div>
-            {file.binary ? (
+            {!r ? (
               <div className="agent-empty">
                 Binary file · {(file.size / 1024).toFixed(1)} KB. Its bytes are kept as they are when applied.
               </div>
             ) : (
-              <SplitDiffView original={file.original} proposed={file.proposed} leftLabel={direct ? 'Before the agent' : 'Your file'} rightLabel="Agent’s version" />
+              <HunkList
+                key={file.path}
+                path={file.path}
+                review={r}
+                leftLabel={direct ? 'Before the agent' : 'Your file'}
+                rightLabel="Agent’s version"
+                busy={waiting}
+                keys={keys}
+                onChoice={direct || !onPart ? undefined : (choice) => void run(() => choose(file, choice))}
+                onPast={step}
+              />
             )}
           </div>
         </>
