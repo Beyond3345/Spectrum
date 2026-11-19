@@ -16,7 +16,7 @@ import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, uniqueName, withMerge } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge } from '../floats';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -128,6 +128,37 @@ function PlacementField({ value, onChange, span, onSpan, kind }: { value: string
         </span>
       </label>
     </div>
+  );
+}
+
+/**
+ * Typst's placement, kept in the same letters as LaTeX's (so a choice carries over between documents): in the text, the
+ * top or bottom of the page or column, or either; and across both columns, scope: "parent".
+ */
+function TypstPlacementField({ value, onChange, span, onSpan }: { value: string; onChange: (value: string) => void; span: boolean; onSpan: (span: boolean) => void }) {
+  const where = typstPlacement(value).replace(', placement: ', '');
+  const shown = where === 'auto' ? 'tb' : where === 'top' ? 't' : where === 'bottom' ? 'b' : span ? 'tb' : 'h';
+  return (
+    <>
+      <Segmented
+        label="Placement"
+        value={shown}
+        options={[
+          ['h', 'In the text', 'Where it is in the text, as Typst places a figure unless told otherwise'],
+          ['t', 'Top', 'placement: top, at the top of the page or column'],
+          ['b', 'Bottom', 'placement: bottom, at the bottom of the page or column'],
+          ['tb', 'Top or bottom', 'placement: auto, whichever is nearer']
+        ]}
+        onChange={onChange}
+      />
+      <label className="checkbox-row">
+        <input type="checkbox" checked={span} onChange={(e) => onSpan(e.target.checked)} />
+        <span>
+          Span both columns
+          <span className="field-hint">For two-column documents: scope: "parent" runs it across both columns, at the top or bottom of the page.</span>
+        </span>
+      </label>
+    </>
   );
 }
 
@@ -577,7 +608,7 @@ function InsertFigure() {
       } else {
         // an automatic label follows the name the file was saved under
         const figure = { path: saved[0], width: widthOf(prefs), caption, label: label ?? figureLabel(saved[0]), size };
-        text = docKindNow === 'typst' ? figureTypst(figure) : docKindNow === 'markdown' ? figureMarkdown(figure) : figureLatex({ ...figure, ...placement });
+        text = docKindNow === 'typst' ? figureTypst({ ...figure, ...placement }) : docKindNow === 'markdown' ? figureMarkdown(figure) : figureLatex({ ...figure, ...placement });
       }
       const added =
         docKindNow === 'latex' ? await ensurePackages(() => apiRef.current, [...wanted, ...(placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [])]) : { text: '', warn: false };
@@ -873,6 +904,7 @@ function InsertFigure() {
           {kind !== 'typst' && kind !== 'markdown' && (
             <PlacementField kind="figure" value={prefs.placement} onChange={(placement) => set({ placement })} span={prefs.span} onSpan={(span) => set({ span })} />
           )}
+          {kind === 'typst' && <TypstPlacementField value={prefs.placement} onChange={(placement) => set({ placement })} span={prefs.span} onSpan={(span) => set({ span })} />}
           <button className="btn primary full" onClick={insert} disabled={!!busy || !docOpen}>
             {busy === 'inserting' ? <span className="spinner" /> : <Icon name="plus" />} Insert figure
           </button>
@@ -1048,7 +1080,7 @@ function InsertDiagram() {
           a.notify('A Typst diagram goes into Typst documents only.', 'error');
           return;
         }
-        insertBlock(a, figureTypstInclude({ path: diagram.path, caption, label: captionLabel }));
+        insertBlock(a, figureTypstInclude({ path: diagram.path, caption, label: captionLabel, placement: prefs.placement, span: prefs.span }));
         a.notify(`Inserted ${diagram.path} as a figure.`, 'success');
       } else if (target === 'typst') {
         if (!tikz) {
@@ -1058,7 +1090,7 @@ function InsertDiagram() {
             a.notify('Export the diagram as a PDF or PNG in the composer first.', 'error');
             return;
           }
-          insertBlock(a, figureTypst({ path: source, width: fraction ?? widthOf(prefs), caption, label: captionLabel }));
+          insertBlock(a, figureTypst({ path: source, width: fraction ?? widthOf(prefs), caption, label: captionLabel, placement: prefs.placement, span: prefs.span }));
           a.notify(`Inserted ${source} as a figure.`, 'success');
         } else {
           // a TikZ picture goes in as the PDF the composer's preview made, from Typst 0.14 (the project's pin, else the
@@ -1074,7 +1106,7 @@ function InsertDiagram() {
             a.notify('Compile the diagram in the composer first, so its PDF is there.', 'error');
             return;
           }
-          insertBlock(a, figureTypst({ path: pdf, width: fraction ?? widthOf(prefs), caption, label: captionLabel }));
+          insertBlock(a, figureTypst({ path: pdf, width: fraction ?? widthOf(prefs), caption, label: captionLabel, placement: prefs.placement, span: prefs.span }));
           a.notify(`Inserted ${pdf} as a figure.`, 'success');
         }
       } else if (target === 'markdown') {
@@ -1204,7 +1236,8 @@ function InsertDiagram() {
               <label htmlFor={`${id}-custom`}>% of the line width</label>
             </div>
           )}
-          {!typst && (
+          {kind === 'typst' && <TypstPlacementField value={prefs.placement} onChange={(placement) => setPrefs({ ...prefs, placement })} span={prefs.span} onSpan={(span) => setPrefs({ ...prefs, span })} />}
+          {!typst && kind !== 'typst' && kind !== 'markdown' && (
             <PlacementField
               kind="figure"
               value={prefs.placement}
@@ -1305,8 +1338,8 @@ function InsertTable() {
     escape,
     merges: fitted,
     partRules: fitPartRules(partRules, cells.length, cols),
-    breaks: latex && breaks,
-    notes: latex && withNotes && !long ? notes : ''
+    breaks: kind !== 'markdown' && breaks,
+    notes: kind !== 'markdown' && withNotes && !long ? notes : ''
   };
   const edges = tableEdges(cells.length, cols, header);
   const rules = tableRules(model, cols);
@@ -1343,7 +1376,7 @@ function InsertTable() {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     e.preventDefault();
     // with line breaks on, Shift-Return puts a \\ in the cell
-    if (e.shiftKey && breaks && latex) {
+    if (e.shiftKey && breaks && kind !== 'markdown') {
       const input = e.currentTarget;
       const [from, to] = [input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length];
       setCell(r, c, `${input.value.slice(0, from)} \\\\ ${input.value.slice(to)}`.replace(/ {2,}/g, ' '));
@@ -1619,27 +1652,29 @@ function InsertTable() {
         <input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} />
         Header row
       </label>
-      {latex && (
+      {kind !== 'markdown' && (
         <label className="checkbox-row">
           <input type="checkbox" checked={breaks} onChange={(e) => setBreaks(e.target.checked)} />
           <span>
             Line breaks in cells
-            <span className="field-hint">Type \\ in a cell, or press Shift-{IS_WINDOWS ? 'Enter' : 'Return'}, to start a new line in it. Uses the makecell package, which is added.</span>
+            <span className="field-hint">
+              Type \\ in a cell, or press Shift-{IS_WINDOWS ? 'Enter' : 'Return'}, to start a new line in it. {latex ? 'Uses the makecell package, which is added.' : 'Typst writes it as its line break, \\.'}
+            </span>
           </span>
         </label>
       )}
-      {latex && (
+      {kind !== 'markdown' && (
         <label className="checkbox-row">
           <input type="checkbox" checked={withNotes} disabled={long} onChange={(e) => setWithNotes(e.target.checked)} />
           <span>
             Notes under the table
             <span className="field-hint">
-              {long ? 'xltabular tables can’t take notes.' : 'Uses the threeparttable package, which is added, so the notes are as wide as the table.'}
+              {long ? 'xltabular tables can’t take notes.' : latex ? 'Uses the threeparttable package, which is added, so the notes are as wide as the table.' : 'Set in smaller text under the table, inside its figure.'}
             </span>
           </span>
         </label>
       )}
-      {latex && withNotes && !long && (
+      {kind !== 'markdown' && withNotes && !long && (
         <div className="field">
           <label htmlFor={`${id}-notes`}>Notes</label>
           <textarea
@@ -1678,6 +1713,7 @@ function InsertTable() {
       {float && (
         <>
           {latex && !long && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
+          {kind === 'typst' && <TypstPlacementField value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
           <div className="field">
             <label htmlFor={`${id}-caption`}>Caption</label>
             <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Caption, shown above the table" />
