@@ -19,7 +19,6 @@ eq(keptMainFile('main.tex', ['refs.bib', 'figures/a.pdf']), '', 'no document lef
 
 eq(bibIncludeLine('main.tex', 'refs.bib'), '\\bibliography{refs}', 'LaTeX');
 eq(bibIncludeLine('main.typ', 'refs.bib'), '#bibliography("refs.bib")', 'Typst');
-eq(bibIncludeLine('notes.md', 'refs.bib'), 'bibliography: refs.bib', 'Markdown front matter');
 
 // ─── a reply's images: only ones the reply carries, never an address that would be fetched ───
 

@@ -3,3 +3,4 @@
 native/** -text
 dictionaries/** -text
 templates/** -text
+apps/backend/src/data/csl/** -text

@@ -8,7 +8,7 @@ import { MenuButton } from '../app/Menu';
 import { effortOptions, modelOf, presetOf, searchConfigFor, updateSettings, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
-import { Markdown, VISION_HINTS, VISION_MODES, bibIncludeLine, citationText, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
+import { Markdown, VISION_HINTS, VISION_MODES, bibIncludeLine, citationText, docKind, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
 import { ZOTERO_CITE } from './zotero';
 import type { VisionMode } from './shared';
 import { chatMessage, isEditChat, useChatThread } from './chatThread';
@@ -415,7 +415,12 @@ export default function Composer({
         ))}
         {cited && !refs.bibIncluded && (
           <div className="composer-hint">
-            {refs.bibFile} isn’t included in {api.mainFile || 'the main file'} yet — add <code>{bibIncludeLine(api.mainFile, refs.bibFile)}</code>
+            {docKind(api.mainFile) === 'markdown' ? (
+              // a front matter that names a bibliography gets pandoc no other .bib, and a second bibliography: line is an error
+              <>{refs.bibFile} isn’t in the front matter’s bibliography list in {api.mainFile} yet — add it to that list, as in <code>bibliography: [refs.bib, {refs.bibFile}]</code></>
+            ) : (
+              <>{refs.bibFile} isn’t included in {api.mainFile || 'the main file'} yet — add <code>{bibIncludeLine(api.mainFile, refs.bibFile)}</code></>
+            )}
           </div>
         )}
       </div>

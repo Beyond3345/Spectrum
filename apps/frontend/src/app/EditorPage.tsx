@@ -288,7 +288,10 @@ const SNIPPETS: (Snippet | FloatCard | null)[] = [
   { label: 'List', icon: 'list.bullet', text: '- item', select: 'item', block: true, kinds: MARKDOWN },
   { label: 'Link', icon: 'link', text: '[text](url)', select: 'text', kinds: MARKDOWN },
   { label: 'Maths', icon: 'function', text: '$x$', select: 'x', kinds: MARKDOWN },
+  { label: 'Block maths', icon: 'function', text: '$$\nx\n$$', select: 'x', block: true, kinds: MARKDOWN },
   { label: 'Citation', icon: 'quote.opening', text: '[@key]', select: 'key', kinds: MARKDOWN },
+  { label: 'Footnote', icon: 'note.text', text: '^[Footnote text]', select: 'Footnote text', kinds: MARKDOWN },
+  { label: 'Comment', icon: 'text.bubble', text: '<!-- comment -->', select: 'comment', kinds: MARKDOWN },
   { label: 'Code block', icon: 'chevron.left.forwardslash.chevron.right', text: '```\ncode\n```', select: 'code', block: true, kinds: MARKDOWN }
 ];
 // id: the running compile's, for its live output, which markdown (a Markdown document's) chooses by its own switch
