@@ -86,7 +86,8 @@ export type TableModel = {
   markup?: boolean;
 };
 
-export type FigureTextOptions = { path: string; width: number; caption: string; label: string; size?: FigureSize; markup?: boolean };
+/** placement and span: Typst's, from the panel's LaTeX letters (typstPlacement) */
+export type FigureTextOptions = { path: string; width: number; caption: string; label: string; size?: FigureSize; markup?: boolean; placement?: string; span?: boolean };
 
 export function widthArg(fraction: number): string;
 export function placementOf(letters: string, span?: boolean): string;
@@ -109,7 +110,9 @@ export function tableLatex(m: TableModel): string;
 export function typstMarkup(text: string): string;
 export function figureTypst(o: FigureTextOptions): string;
 export function figureSetTypst(f: FigureSet): string;
-export function figureTypstInclude(o: { path: string; caption: string; label: string; markup?: boolean }): string;
+export function figureTypstInclude(o: { path: string; caption: string; label: string; markup?: boolean; placement?: string; span?: boolean }): string;
+/** ", placement: top" and the like for a #figure, from LaTeX's placement letters; span: across both columns */
+export function typstPlacement(letters?: string, span?: boolean): string;
 export function tableTypst(m: TableModel): string;
 export function figureMarkdown(o: FigureTextOptions): string;
 export function tableMarkdown(m: TableModel): string;

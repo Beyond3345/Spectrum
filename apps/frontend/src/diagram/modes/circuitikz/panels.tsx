@@ -14,7 +14,7 @@ import { flip, remove, rotate } from './edit';
 import { plusAtStart, sideName } from './labels';
 import { CATALOGUE, PARTS, asCircuit, railParts, locator, pathFrame, variantKey, wirePath, withLaterSets } from './model';
 import type { Annotation, CircuitModel, Element, FontSize, Mark, NodePart, PathPart, Pole, Pt, Route, Wire } from './model';
-import { setSelection, setTool, shapeOfNow, tidy, useCircuitUi } from './store';
+import { placeFromKeyboard, setSelection, setTool, shapeOfNow, tidy, useCircuitUi } from './store';
 import { UnitsSwitch } from '../../controls';
 import { setFor } from '../../sets';
 import { useSymbols } from './symbols';
@@ -101,7 +101,8 @@ export function CircuitRail({ onPick, tool, sets: chosen = [] }: { onPick(tool: 
                       className={`ckt-rail-part ${ui.tool === value ? 'active' : ''}`}
                       aria-pressed={ui.tool === value}
                       title={part.kind === 'path' ? `${part.label}: click to place, or drag to set its length` : `${part.label}: click to place`}
-                      onClick={() => pick(ui.tool === value ? 'select' : value)}
+                      // a press of Enter or Space (detail 0) places it at once, near the middle of the view
+                      onClick={(e) => (e.detail === 0 ? placeFromKeyboard(part.id) : pick(ui.tool === value ? 'select' : value))}
                     >
                       <span className="ckt-rail-thumb">
                         {/* circuitikz's open draws nothing, so its thumbnail is what it marks */}

@@ -369,6 +369,44 @@ has(typstFound, 'privacy', 'error', /^This line holds what looks like a GitHub t
 // a to-do in a chapter the Typst document includes is found, as one in a LaTeX \input is
 const typstChapters = runPreflight(input({ doc: 'main.typ', log: 'Engine: Typst', files: [{ path: 'main.typ', text: '#include "chapters/intro.typ"\n' }, { path: 'chapters/intro.typ', text: '= Intro\n// TODO: thank the lab\n' }] }));
 has(typstChapters, 'privacy', 'info', /^TODO comment: .thank the lab.$/, 'chapters/intro.typ:2');
+// a Markdown document's References and assets, at its .md lines: citations with no entry, entries never cited,
+// images missing and links to no file; not what is in code or a URL
+const REPORT_MD = [
+  '---',
+  'title: A report',
+  'bibliography: refs.bib',
+  '---',
+  '# Intro',
+  'As shown [@smith20; see @ghost99, p. 3], and @jones19 says so (@fig:plot).',
+  '![A plot](figures/plot.png){#fig:plot}',
+  '![Gone](figures/gone.png)',
+  'See [the notes](notes.md#part) and [the data](data/missing.csv), [a site](https://example.com) and [above](#intro).',
+  '```',
+  'print("@notacite and ![x](nothere.png)")',
+  '```',
+  'Mail me at someone@example.com.'
+].join('\n');
+const mdBib = (key: string, line: number, file = 'refs.bib'): BibRecord => ({ file, line, key, type: 'misc', fields: ['title'] });
+const mdFound = runPreflight(
+  input({
+    doc: 'report.md',
+    files: [{ path: 'report.md', text: REPORT_MD }, { path: 'notes.md', text: '' }, { path: 'figures/plot.png' }, { path: 'refs.bib', text: '' }, { path: 'other.bib', text: '' }],
+    bib: [mdBib('smith20', 1), mdBib('jones19', 5), mdBib('unused2018', 9), mdBib('elsewhere', 1, 'other.bib')]
+  })
+);
+eq(
+  brief(mdFound, 'references'),
+  [
+    ['error', 'Can’t find the image “figures/gone.png”', 'report.md:8'],
+    ['warning', 'No bibliography entry has the key “ghost99”', 'report.md:6'],
+    ['warning', 'The link to “data/missing.csv” goes to no file in the project', 'report.md:9'],
+    ['info', '1 entry in refs.bib is never cited: unused2018', 'refs.bib:9']
+  ],
+  'Markdown references and assets'
+);
+none(runPreflight(input({ doc: 'report.md', files: [{ path: 'report.md', text: '---\nnocite: |\n  @*\n---\nText [@smith20].\n' }], bib: [mdBib('smith20', 1), mdBib('other', 3)] })), 'references', /never cited/);
+has(runPreflight(input({ doc: 'main.typ', files: [{ path: 'main.typ', text: '= A' }] })), 'references', 'info', /don’t apply to Typst documents/);
+
 eq(['main.typ', 'notes.markdown', 'refs.bib', 'style.sty', 'figures/a.png'].map(isSource), [true, true, true, true, false], 'the source, which Review reads first and watches for edits');
 
 // a document with no title (a CV, a letter) needs no abstract; a thesis's \chapter*{Abstract} is one; notes get a note

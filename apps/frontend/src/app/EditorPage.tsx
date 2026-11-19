@@ -178,6 +178,8 @@ const PART_OF_MAIN = /^[^%\n]*\\documentclass\s*(?:\[[^\]]*\]\s*)?\{(?:subfiles|
 const DOCUMENT_CLASS = /^[^%\n]*\\documentclass/m;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const MAX_TABS = 6;
+// autocomplete given up by typing asks again once the keys have rested this long (ms)
+const SUGGEST_PAUSE = 600;
 const timeFormat = new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit' });
 const engineLabel = (engine: string) => COMPILE_ENGINES.find(([value]) => value === engine)?.[1] || engine;
 
@@ -1578,8 +1580,30 @@ function Editor({ projectId }: { projectId: string }) {
     setGhostPos({ left, top });
   };
 
+  // the autocomplete request that is out, and the timer that asks again once typing pauses after one was given up
+  const suggestAbort = useRef<AbortController | null>(null);
+  const suggestAgain = useRef(0);
+  /** Stops the autocomplete request that is out, if any (the server stops its model call); again: typing goes on, so ask anew at a pause */
+  function stopSuggest(again = false) {
+    const waiting = suggestAgain.current !== 0;
+    window.clearTimeout(suggestAgain.current);
+    suggestAgain.current = 0;
+    const out = suggestAbort.current;
+    suggestAbort.current = null;
+    out?.abort();
+    if (out) setSuggesting(false);
+    if (again && (out || waiting)) {
+      suggestAgain.current = window.setTimeout(() => {
+        suggestAgain.current = 0;
+        actions.current.suggest();
+      }, SUGGEST_PAUSE);
+    }
+    return Boolean(out || waiting);
+  }
+
   function clearGhost() {
-    if (ghostRef.current.pos == null) return false;
+    const stopped = stopSuggest();
+    if (ghostRef.current.pos == null) return stopped;
     ghostRef.current = { text: '', pos: null };
     setGhostText('');
     setGhostPos(null);
@@ -1590,8 +1614,11 @@ function Editor({ projectId }: { projectId: string }) {
   const suggest = async () => {
     const view = viewRef.current;
     const path = activeRef.current;
-    if (!view || !path || suggesting) return;
+    if (!view || !path) return;
+    // a new ⌥/ replaces the request that is out
     clearGhost();
+    const abort = new AbortController();
+    suggestAbort.current = abort;
     const pos = view.state.selection.main.head;
     const doc = view.state.doc.toString();
     // the heading the cursor is under, as each language writes one, and LaTeX's open environment
@@ -1614,7 +1641,7 @@ function Editor({ projectId }: { projectId: string }) {
         activePath: path,
         compileLog,
         llmConfig: llm.quick
-      });
+      }, abort.signal);
       // a failed request explains itself in `reply`; that's not text to insert
       if (!res.ok) throw new Error(res.reply || 'The request failed.');
       const text = (res.suggestion || res.reply || '').trim();
@@ -1625,10 +1652,14 @@ function Editor({ projectId }: { projectId: string }) {
       view.dispatch({ effects: setGhost.of({ pos, text }) });
       placeGhost(pos);
     } catch (err) {
-      notify(`Autocomplete failed: ${errorText(err)}`, 'error');
+      if (!abort.signal.aborted) notify(`Autocomplete failed: ${errorText(err)}`, 'error');
     } finally {
-      setSuggesting(false);
-      if (!ghostRef.current.text) clearGhost();
+      // given up for a newer one, that one is in charge now
+      if (suggestAbort.current === abort) {
+        suggestAbort.current = null;
+        setSuggesting(false);
+        if (!ghostRef.current.text) clearGhost();
+      }
     }
   };
 
@@ -2369,7 +2400,9 @@ function Editor({ projectId }: { projectId: string }) {
         const { from, to } = update.state.selection.main;
         // typing shows in the page at a pause; a selection made or moved on its own straight away
         showText(value, [from, to], update.docChanged);
-        // typing or moving away drops a pending suggestion (accepting one doesn't)
+        // typing or moving away drops a pending suggestion (accepting one doesn't), and gives up the request that is
+        // out; typing asks again at a pause
+        if (!acceptingRef.current) stopSuggest(update.transactions.some((tr) => tr.isUserEvent('input') || tr.isUserEvent('delete')));
         if (ghostRef.current.pos != null && !acceptingRef.current) {
           ghostRef.current = { text: '', pos: null };
           setGhostText('');

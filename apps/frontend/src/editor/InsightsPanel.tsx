@@ -5,14 +5,15 @@ import type { ProjectStats } from '../api/client';
 import Icon from '../app/Icon';
 import Tabs from '../app/Tabs';
 import { useEditor } from './EditorContext';
-import { headingNumbers, inReading, metadataText, scanInsights, texlabNotes, withNumbers } from './insights';
+import { headingNumbers, inReading, markdownWords, metadataText, scanInsights, texlabNotes, withNumbers } from './insights';
 import type { InsightRow, Insights } from './insights';
 import { scanProject } from './latexEnvs';
 import { scanTodos } from './todos';
 import { errorText } from './shared';
 
 type Tab = 'overview' | 'headings' | 'figures' | 'tables' | 'equations' | 'labels' | 'citations' | 'todos';
-type Scan = Insights & { todos: ReturnType<typeof scanTodos> };
+/** words: a Markdown document's, counted in its source */
+type Scan = Insights & { todos: ReturnType<typeof scanTodos>; words?: ReturnType<typeof markdownWords> };
 type Notes = ReturnType<typeof texlabNotes>;
 
 const TABS: [Tab, string][] = [
@@ -78,7 +79,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
         const files = await Promise.all(paths.map(async (path) => ({ path, text: await read(path).catch(() => '') })));
         const todos = scanTodos(files);
         if (live) {
-          setScan({ ...scanInsights(files, doc), todos });
+          setScan({ ...scanInsights(files, doc), todos, ...(markdown && { words: markdownWords(files[0]?.text ?? '') }) });
           setNotes(null);
         }
         return;
@@ -101,7 +102,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
   // word counts, numbers and pages: again after each compile
   useEffect(() => {
     if (!active || !doc) return;
-    // ponytail: Markdown gets no word counts or page numbers, since pandoc's generated LaTeX is not the document
+    // Markdown's words are counted in its source with the scan; no page numbers, since pandoc's generated LaTeX is not the document
     if (/\.(md|markdown)$/i.test(doc)) {
       setStats(null);
       setBusy(false);
@@ -240,6 +241,27 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
                 </div>
               )}
             </>
+          ) : scan.words ? (
+            <>
+              <h3 className="form-section-title">Words</h3>
+              <div className="stat-grid">
+                {(
+                  [
+                    ['Words', scan.words.words],
+                    ['Words in text', scan.words.wordsInText],
+                    ['Words in headings', scan.words.wordsInHeaders],
+                    ['Inline maths', scan.words.mathInline],
+                    ['Displayed maths', scan.words.mathDisplay]
+                  ] as [string, number][]
+                ).map(([label, value]) => (
+                  <div key={label} className="stat-card">
+                    <div className="stat-label">{label}</div>
+                    <div className="stat-value">{num(value)}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="tool-footnote">Counted in {doc}: the prose alone, without the front matter, code, maths and citations.</div>
+            </>
           ) : typstWords ? (
             <>
               <h3 className="form-section-title">Words</h3>
@@ -255,7 +277,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
             </>
           ) : (
             <div className="tool-footnote">
-              {/\.typ$/i.test(doc) ? 'Typst documents get a word count from Tinymist (Settings › Engines › Typst) once it has compiled them.' : 'Word counts come from texcount, so they are for LaTeX documents.'}
+              Typst documents get a word count from Tinymist (Settings › Engines › Typst) once it has compiled them.
             </div>
           )}
           <div className="tool-page-head">

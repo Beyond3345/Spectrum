@@ -21,7 +21,7 @@ test('review sessions keep iterating on the draft; apply and reject rebase it; c
   process.env.SPECTRUM_PROJECTS_DIR = path.join(dir, 'projects');
   const { createProject } = await import('../src/services/projectService.js');
   const { saveAgentConfig } = await import('../src/services/agentProfiles.js');
-  const { newAgentRun, getAgentRun, promptAgent, readContext, reviewAgentChanges, pendingChanges, shutdownAgents } = await import('../src/services/agentSessionService.js');
+  const { newAgentRun, getAgentRun, promptAgent, readContext, reviewAgentChanges, pendingChanges, shutdownAgents, closeAgentRun } = await import('../src/services/agentSessionService.js');
   const { APP_VERSION } = await import('../src/config/constants.js');
   const turn = async (run, prompt, options) => { await promptAgent(run, prompt, options); await run.task; assert.equal(run.status, 'completed', JSON.stringify(run.events.filter((e) => ['state', 'notice'].includes(e.type)))); };
   const requests = async (run) => (await fs.readFile(path.join(run.home, 'acp-log.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
@@ -64,7 +64,12 @@ test('review sessions keep iterating on the draft; apply and reject rebase it; c
     assert.equal(message[0].data.content.text, Array.from({ length: 30 }, (_, i) => `piece-${i} `).join(''));
     assert.equal(message[0].id - message[0].first, 29);
 
-    // the next prompt goes on from the draft, with the pending change still unresolved
+    // the agent waits for the next turn; once the workspace leaves the session it stops, and the next prompt starts it
+    // again, going on from the draft, with the pending change still unresolved
+    assert.ok(run.child, 'kept after its turn');
+    closeAgentRun(run);
+    assert.equal(run.child, null);
+    assert.equal(run.status, 'completed');
     await turn(run, 'draft two');
     assert.equal((await pendingChanges(run))[0].proposed, 'original\nagent line 1\nagent line 2\n');
     const log = await requests(run);

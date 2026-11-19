@@ -8,7 +8,7 @@
     "test": "node --import ./test/no-network.mjs --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "2.0.2",
+    "@agentclientprotocol/sdk": "2.8.0",
     "@fastify/multipart": "^10.1.3",
     "@fastify/static": "^10.1.6",
     "@langchain/core": "^1.2.17",

@@ -412,8 +412,20 @@ export const typstText = (text, markup = false) =>
           .join('')
       );
 
-const typstFloat = (body, caption, label, markup) =>
-  '#figure(' + body + (caption.trim() ? ', caption: [' + typstText(caption, markup) + ']' : '') + ')' + (label.trim() ? ' <' + label.trim() + '>' : '');
+/**
+ * Typst's placement for the Floats panel's LaTeX letters: t the top, b the bottom, both or p either (auto), and h, H
+ * or none in the text, where Typst leaves a figure. span: across both columns, scope: "parent", which only floats, so
+ * auto when in the text was chosen.
+ */
+export function typstPlacement(letters = '', span = false) {
+  const [t, b, p] = ['t', 'b', 'p'].map((letter) => letters.includes(letter));
+  const where = letters.includes('H') ? '' : (t && b) || p ? 'auto' : t ? 'top' : b ? 'bottom' : '';
+  if (span) return ', placement: ' + (where || 'auto') + ', scope: "parent"';
+  return where ? ', placement: ' + where : '';
+}
+
+const typstFloat = (body, caption, label, markup, place = '') =>
+  '#figure(' + body + (caption.trim() ? ', caption: [' + typstText(caption, markup) + ']' : '') + place + ')' + (label.trim() ? ' <' + label.trim() + '>' : '');
 
 // a project file's path from Typst's root, the project's folder, so a chapter in a subfolder finds it too
 const typstPath = (path) => JSON.stringify('/' + path.replace(/^\/+/, ''));
@@ -438,7 +450,7 @@ function typstImage(path, size, fraction = 1) {
 }
 
 /** A Typst figure: #figure(image("/path", width: 80%), caption: [caption]) <label>. */
-export const figureTypst = (o) => typstFloat(typstImage(o.path, o.size, o.width), o.caption, o.label, o.markup);
+export const figureTypst = (o) => typstFloat(typstImage(o.path, o.size, o.width), o.caption, o.label, o.markup, typstPlacement(o.placement, o.span));
 
 /**
  * Several images in a Typst grid. Sub-figures are the house #subfigure from docs/TYPST_STYLE.md, each with its own label,
@@ -452,11 +464,11 @@ export function figureSetTypst(f) {
   const labelled = (func) =>
     f.panels.map((panel) => '[#' + func + '(' + typstImage(panel.path, f.size) + ', caption: [' + typstText(panel.caption, f.markup) + '])' + (panel.label.trim() ? ' <' + panel.label.trim() + '>' : '') + ']');
   if (f.labels === 'separate') return '#' + grid(labelled('figure'));
-  return typstFloat(grid(f.labels === 'sub' ? labelled('subfigure') : f.panels.map((panel) => typstImage(panel.path, f.size))), f.caption, f.label, f.markup);
+  return typstFloat(grid(f.labels === 'sub' ? labelled('subfigure') : f.panels.map((panel) => typstImage(panel.path, f.size))), f.caption, f.label, f.markup, typstPlacement(f.placement, f.span));
 }
 
 /** A Typst diagram file included as a figure: #figure(include "/diagrams/x.typ", caption: [caption]) <label>. */
-export const figureTypstInclude = (o) => typstFloat('include ' + typstPath(o.path), o.caption, o.label, o.markup);
+export const figureTypstInclude = (o) => typstFloat('include ' + typstPath(o.path), o.caption, o.label, o.markup, typstPlacement(o.placement, o.span));
 
 const TYPST_ALIGN = { l: 'left', c: 'center', r: 'right', S: 'right' };
 
@@ -472,7 +484,7 @@ export function tableTypst(m) {
   const cell = (r, c) => {
     const merge = mergeAt(merges, r, c);
     if (merge && (r !== merge.r || c !== merge.c)) return null;
-    const content = '[' + typstText(m.cells[r][c] ?? '', m.markup) + ']';
+    const content = '[' + typstCell(m.cells[r][c] ?? '', m) + ']';
     if (!merge) return content;
     const spans = [...(merge.cols > 1 ? ['colspan: ' + merge.cols] : []), ...(merge.rows > 1 ? ['rowspan: ' + merge.rows] : [])];
     return 'table.cell(' + spans.join(', ') + ')' + content;
@@ -511,7 +523,20 @@ export function tableTypst(m) {
     );
   for (let r = header; r < rows; r += 1) if (row(r)) parts.push(row(r));
   const table = 'table(' + parts.join(', ') + ')';
-  return m.float ? typstFloat(table, m.caption, m.label, m.markup) : '#' + table;
+  // notes go under the table, inside the figure with it, a lettered one with its letter raised as \tnote{a} is in a cell
+  // ponytail: the notes are as wide as the column, not the table as threeparttable's are; a box the table's width if wanted
+  const notes = m.markup ? [] : tableNotes(m.notes);
+  const noted = notes.length ? '#block(width: 100%, align(left, text(size: 0.85em)[' + notes.map((n) => (n.mark ? '#super[' + typstMarkup(n.mark) + '] ' : '') + typstText(n.text)).join(' \\ ') + ']))' : '';
+  if (!m.float) return '#' + table + (noted ? '\n' + noted : '');
+  return typstFloat(noted ? '[#' + table + '\n' + noted + ']' : table, m.caption, m.label, m.markup, typstPlacement(m.placement, m.span));
+}
+
+/** A cell's Typst text: a \tnote{a} its note's raised letter, and with line breaks on, each \\ Typst's line break. */
+function typstCell(text, m) {
+  if (m.markup) return typstText(text, true);
+  // typstText doubles each backslash: \tnote{a} is \\tnote{a} by then, and \\ four of them
+  const cell = typstText(text).replace(/\\\\tnote\{([^{}]*)\}/g, '#super[$1]');
+  return m.breaks ? cell.replace(/\s*\\\\\\\\\s*/g, ' \\ ') : cell;
 }
 
 /** A Markdown image with its label and width: ![caption](path){#label width=80%}. */

@@ -995,7 +995,10 @@ export interface AiFinding {
   anchored: boolean;
 }
 
-/** score out of 10, confidence out of 5; files: those the model read */
+/** A run of lines one part of a long document's review reads */
+export type ReviewRun = { path: string; from: number; to: number };
+
+/** score out of 10, confidence out of 5; files: those the model read; part and plan: which part this was, of the runs each part reads */
 export interface AiReview {
   summary: string;
   strengths: string[];
@@ -1004,11 +1007,16 @@ export interface AiReview {
   findings: AiFinding[];
   limits: string[];
   files: string[];
+  part: number;
+  plan: ReviewRun[][];
 }
 
-/** The AI review of doc, told what Preflight found. Read-only; aborting signal stops the model call. */
+/**
+ * The AI review of doc, or of one part of it (from 0) when plan has more than one, told what Preflight found and the
+ * summary of the parts before. Read-only; aborting signal stops the model call.
+ */
 export function runAiReview(
-  payload: { projectId: string; doc: string; activePath: string; findings: Finding[]; llmConfig?: Partial<LLMConfig>; reasoningEffort?: ReasoningEffort },
+  payload: { projectId: string; doc: string; findings: Finding[]; llmConfig?: Partial<LLMConfig>; reasoningEffort?: ReasoningEffort; part?: number; summary?: string },
   signal?: AbortSignal
 ) {
   return request<({ ok: true } & AiReview) | { ok: false; error: string; stopped?: boolean }>('/api/review', { ...json('POST', payload), signal });
@@ -1263,8 +1271,8 @@ export function runAgent(payload: {
   verify?: boolean;
   /** tools mode: the Typst version and Markdown engine this computer compiles with, for the agent's own compile */
   compile?: { typstVersion?: string; markdownEngine?: string };
-}) {
-  return request<AgentRunResult & { suggestion: string }>('/api/agent/run', json('POST', payload));
+}, signal?: AbortSignal) {
+  return request<AgentRunResult & { suggestion: string }>('/api/agent/run', { ...json('POST', payload), signal });
 }
 
 /** A proposal still open in a thread, which a run goes on from */
@@ -2015,6 +2023,8 @@ export const createLocalAgentSession = (projectId: string, agentId: string, mode
 /** persona: left out keeps the session's; another one starts a new agent session that hears the conversation so far */
 export const sendLocalAgentPrompt = (id: string, prompt: string, options: { context?: AgentPromptContext; persona?: AgentPersona | null } = {}) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/prompt`, json('POST', { prompt, ...options }));
 export const stopLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/stop`, json('POST', {}));
+/** The workspace left the session: its agent, if waiting between turns, stops. */
+export const closeLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/close`, json('POST', {}));
 export const answerLocalAgent = (id: string, requestId: string, answer: unknown) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/answer`, json('POST', { requestId, answer }));
 export const setLocalAgentOption = (id: string, configId: string, value: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/option`, json('POST', { configId, value }));
 export const getLocalAgentChanges = (id: string) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/changes`);

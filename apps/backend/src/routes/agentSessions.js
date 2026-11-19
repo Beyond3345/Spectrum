@@ -1,5 +1,5 @@
 import { listAgents, saveAgentConfig, importAgentLogin } from '../services/agentProfiles.js';
-import { changeAdapter, testAgent, getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
+import { changeAdapter, closeAgentRun, testAgent, getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
 import { agentRecoveries, recoverAgentApply } from '../services/agentWorkspace.js';
 import { mutateProjectRoot } from '../services/projectService.js';
 
@@ -31,6 +31,8 @@ export function registerAgentSessionRoutes(fastify) {
     const run = await getAgentRun(req.params.id);
     return promptAgent(run, req.body?.prompt, { context: await readContext(run, req.body?.context), persona: req.body?.persona });
   });
+  // the workspace left the session: an agent waiting between its turns stops, and its status stays
+  fastify.post('/api/agent-sessions/:id/close', async (req) => { closeAgentRun(await getAgentRun(req.params.id)); return { ok: true }; });
   fastify.post('/api/agent-sessions/:id/stop', async (req) => { await stopAgentRun(await getAgentRun(req.params.id)); return { ok: true }; });
   fastify.post('/api/agent-sessions/:id/answer', async (req) => { answerAgentRequest(await getAgentRun(req.params.id), req.body?.requestId, req.body?.answer); return { ok: true }; });
   fastify.post('/api/agent-sessions/:id/option', async (req) => ({ ok: true, ...(await setAgentOption(await getAgentRun(req.params.id), req.body?.configId, req.body?.value)) }));

@@ -163,7 +163,10 @@ export function registerAgentRoutes(fastify) {
       selection ? '' : `Full Content:\n${auto ? content : untrusted(activePath || 'current file', content)}`
     ].filter(Boolean).join('\n\n');
 
+    // autocomplete given up in the editor (typing on, the cursor moved, Esc) closes the request: the model call stops
+    // too, as every call of this route does when its request closes (cancel, above)
     const result = await callOpenAICompatible({
+      signal: cancel.signal,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user }
