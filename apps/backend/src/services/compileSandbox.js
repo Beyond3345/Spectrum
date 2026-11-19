@@ -134,10 +134,12 @@ export async function compileSandbox({ build, tmp, searchPath = process.env.PATH
   const fonts = texmfVar && path.join(texmfVar, 'fonts');
   for (const made of [...caches, ...(fonts ? [fonts] : [])]) await fs.mkdir(made, { recursive: true }).catch(() => {});
   const writable = await Promise.all([build, tmp, ...caches, ...(fonts ? [fonts] : [])].map(real));
+  // Tectonic's own cache of the packages it downloads (and where older versions kept it), or where the user keeps it;
+  // made here, as a confined Tectonic can't make the folders above it
   if (tectonic) {
-    const bundles = path.join(home, 'Library', 'Caches', 'Tectonic');
-    await fs.mkdir(bundles, { recursive: true }).catch(() => {});
-    writable.push(bundles);
+    const bundles = process.env.TECTONIC_CACHE_DIR ? [process.env.TECTONIC_CACHE_DIR] : ['TectonicProject.Tectonic', 'Tectonic'].map((name) => path.join(home, 'Library', 'Caches', name));
+    await fs.mkdir(bundles[0], { recursive: true }).catch(() => {});
+    writable.push(...(await Promise.all(bundles.map(real))));
   }
   const subpaths = (list) => list.map((p) => `(subpath ${q(p)})`).join(' ');
   const own = [];
