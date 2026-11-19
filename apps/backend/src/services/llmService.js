@@ -111,12 +111,55 @@ export async function listLiveModels(preset, endpoint) {
   };
 }
 
+const spentQuota = (text) => /quota|billing|credit|balance/i.test(text);
+
+// A busy provider: the same request a little later usually works, so it is sent again, twice at most. A rejected key
+// (401, 403), a wrong address (404) and a spent quota are never sent again: waiting mends none of them.
+const BUSY = [429, 500, 502, 503, 504, 529];
+const MAX_RETRIES = 2;
+// the longest one wait; a provider that asks for longer is not waited for
+const MAX_WAIT_MS = 20000;
+const BACKOFF_MS = [1000, 3000];
+
+/** How long a reply asks to be left alone, in ms, from Retry-After (seconds or a date) or OpenAI's retry-after-ms; null when it doesn't say. */
+export function retryAfterMs(headers, now = Date.now()) {
+  const ms = Number(headers.get('retry-after-ms'));
+  if (headers.get('retry-after-ms') && Number.isFinite(ms)) return Math.max(0, ms);
+  const value = headers.get('retry-after');
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? null : Math.max(0, date - now);
+}
+
+/** Whether a failed reply is worth sending again: a busy status the provider hasn't marked final, and not a spent quota. */
+function busy(res, text) {
+  if (!BUSY.includes(res.status) || res.headers.get('x-should-retry') === 'false') return false;
+  // a 429 that names a wait is a rate limit whatever its words; one that names quota or credit and no wait is spent
+  return res.status !== 429 || res.headers.get('retry-after') !== null || res.headers.get('retry-after-ms') !== null || !spentQuota(text);
+}
+
+/** Waits ms, or until the signal aborts. */
+const pause = (ms, signal) => new Promise((resolve) => {
+  if (!ms || signal?.aborted) return resolve();
+  const done = () => {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', done);
+    resolve();
+  };
+  const timer = setTimeout(done, ms);
+  signal?.addEventListener('abort', done, { once: true });
+});
+
+const about = (ms) => (ms < 90000 ? `${Math.ceil(ms / 1000)} seconds` : `${Math.ceil(ms / 60000)} minutes`);
+
 /** A provider's non-2xx answer as one plain sentence, never the raw body. */
 export function providerError(status, text) {
   if (status === 401 || status === 403) return 'The API key was rejected. Check it in Settings › Models.';
   if (status === 404) return 'The endpoint or model wasn’t found. Check Settings › Models.';
   // a 429 is also how providers say the account has run out, which waiting never mends
-  if (status === 429) return /quota|billing|credit|balance/i.test(text) ? 'The provider says this account has no quota or credit left. Check your plan and billing with the provider.' : 'The provider is limiting requests. Try again shortly.';
+  if (status === 429) return spentQuota(text) ? 'The provider says this account has no quota or credit left. Check your plan and billing with the provider.' : 'The provider is limiting requests. Try again shortly.';
   let detail = '';
   try {
     // Gemini wraps the error in an array
@@ -260,8 +303,11 @@ const ADAPTERS = {
  * For the presets in providers.js the level is mapped to that provider's fields and temperature is left
  * to the provider; any other endpoint gets reasoning_effort for an explicit level only.
  * provider: a preset id, otherwise it's worked out from the endpoint's host. signal: aborting it stops the request.
+ * A busy provider (429, 500, 502, 503, 504, 529) or a reply that broke off part-way is tried again, `retries` times at
+ * most (twice unless told), after the wait the provider names or 1 s then 3 s; the result's `retries` says how many
+ * it took. An answer that stopped at the output limit comes back with `truncated: true`.
  */
-export async function chatCompletion({ messages, model, endpoint, apiKey, tools, temperature = 0.2, reasoningEffort, provider: providerId, signal }) {
+export async function chatCompletion({ messages, model, endpoint, apiKey, tools, temperature = 0.2, reasoningEffort, provider: providerId, signal, retries: maxRetries = MAX_RETRIES }) {
   const resolved = resolveLLMConfig({ endpoint, apiKey, model });
   if (missingKey(resolved)) {
     return { ok: false, error: NO_API_KEY };
@@ -278,19 +324,47 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
     temperature: provider ? undefined : temperature,
     extra: provider ? effortFields(provider, known, reasoningEffort) : LEVELS.includes(reasoningEffort) ? { reasoning_effort: reasoningEffort } : {}
   };
+  let host = 'the model provider';
+  try {
+    host = new URL(url).host;
+  } catch {
+    // keep the generic name
+  }
+  const stopped = { ok: false, error: 'Stopped.', stopped: true };
+  const tooSlow = { ok: false, error: `${host} took too long to answer. Try again.` };
   let res;
   let text;
-  try {
-    // Each retry drops one parameter the provider rejected, so this ends after at most three calls.
-    for (;;) {
+  let retries = 0;
+  // asked to wait longer than Spectrum will: said in the error instead
+  let longWait = null;
+  // Sent again when the provider rejected a parameter (one is dropped each time, so three calls at most) or was busy.
+  for (;;) {
+    try {
       res = await fetch(adapter.url(url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(key && adapter.headers(key)) },
         body: JSON.stringify(adapter.body({ model: resolved.model, messages, tools, ...options })),
         signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS)
       });
+    } catch (err) {
+      if (signal?.aborted) return stopped;
+      if (err.name === 'TimeoutError') return tooSlow;
+      return { ok: false, error: provider?.local ? `Couldn’t reach Ollama at ${host}. ${NO_OLLAMA}` : `Couldn’t reach ${host}. Check the endpoint in Settings › Models.` };
+    }
+    try {
       text = await res.text();
-      if (res.status !== 400) break;
+    } catch (err) {
+      if (signal?.aborted) return stopped;
+      if (err.name === 'TimeoutError') return tooSlow;
+      // the provider answered and the reply broke off: the address is right, so this is worth another try
+      if (retries < maxRetries) {
+        await pause(BACKOFF_MS[retries++] ?? BACKOFF_MS.at(-1), signal);
+        if (signal?.aborted) return stopped;
+        continue;
+      }
+      return { ok: false, error: `The connection to ${host} was lost part-way through the answer${retries ? `, ${retries + 1} times running` : ''}. Try again.` };
+    }
+    if (res.status === 400) {
       // Models without reasoning controls reject them.
       if (Object.keys(options.extra).length && /reasoning|thinking|effort/i.test(text)) {
         options.extra = {};
@@ -301,32 +375,24 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
         options.temperature = undefined;
         continue;
       }
+    }
+    if (!busy(res, text) || retries >= maxRetries) break;
+    const asked = retryAfterMs(res.headers);
+    if (asked !== null && asked > MAX_WAIT_MS) {
+      longWait = asked;
       break;
     }
-  } catch (err) {
-    if (signal?.aborted) return { ok: false, error: 'Stopped.', stopped: true };
-    let host = 'the model provider';
-    try {
-      host = new URL(url).host;
-    } catch {
-      // keep the generic name
-    }
-    return {
-      ok: false,
-      error: err.name === 'TimeoutError'
-        ? `${host} took too long to answer. Try again.`
-        : provider?.local
-          ? `Couldn’t reach Ollama at ${host}. ${NO_OLLAMA}`
-          : `Couldn’t reach ${host}. Check the endpoint in Settings › Models.`
-    };
+    await pause(asked ?? BACKOFF_MS[retries] ?? BACKOFF_MS.at(-1), signal);
+    if (signal?.aborted) return stopped;
+    retries += 1;
   }
   if (!res.ok) {
     // the local app has no key: a 401 is a :cloud model while it's signed out of ollama.com
     if (provider?.local && res.status === 401) return { ok: false, error: 'Ollama needs you to sign in to use its cloud models. Sign in from the Ollama app, or run ollama signin.' };
     // a provider or proxy that repeats the key in its message: the message is shown, and saved with the chat
     // (a real key is long; a short stand-in would be found inside ordinary words)
-    const said = providerError(res.status, text);
-    return { ok: false, error: resolved.apiKey?.length >= 8 ? said.split(resolved.apiKey).join('[API key]') : said, status: res.status };
+    const said = longWait !== null ? `The provider is limiting requests and asks for a wait of about ${about(longWait)}. Try again then.` : `${providerError(res.status, text)}${retries ? ` Spectrum tried ${retries + 1} times.` : ''}`;
+    return { ok: false, error: resolved.apiKey?.length >= 8 ? said.split(resolved.apiKey).join('[API key]') : said, status: res.status, ...(retries && { retries }) };
   }
   let data = null;
   try {
@@ -348,7 +414,8 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   }
   // tokens as the provider counted them: Chat Completions' prompt and completion, the Messages and Responses APIs' input and output
   const usage = data.usage && { input: data.usage.prompt_tokens ?? data.usage.input_tokens ?? 0, output: data.usage.completion_tokens ?? data.usage.output_tokens ?? 0 };
-  return { ok: true, message: { ...message, content }, ...(usage && { usage }) };
+  // a text answer that stopped at the output limit is still an answer: the caller says it was cut off
+  return { ok: true, message: { ...message, content }, ...(truncated && { truncated: true }), ...(usage && { usage }), ...(retries && { retries }) };
 }
 
 // Some providers return content as an array of parts.
@@ -359,10 +426,10 @@ function flattenContent(content) {
   return content || '';
 }
 
-export async function callOpenAICompatible({ messages, model, endpoint, apiKey, reasoningEffort, provider }) {
-  const result = await chatCompletion({ messages, model, endpoint, apiKey, reasoningEffort, provider });
+export async function callOpenAICompatible({ messages, model, endpoint, apiKey, reasoningEffort, provider, signal, retries }) {
+  const result = await chatCompletion({ messages, model, endpoint, apiKey, reasoningEffort, provider, signal, retries });
   if (!result.ok) return result;
-  return { ok: true, content: result.message.content };
+  return { ok: true, content: result.message.content, ...(result.truncated && { truncated: true }) };
 }
 
 /** Search requires provider-returned sources, not a model's claim that it browsed. */
