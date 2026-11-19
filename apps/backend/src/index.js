@@ -50,7 +50,7 @@ import { migrateToV2 } from './services/mirrorService.js';
 import { killAllChildren } from './services/compileService.js';
 import { warmUpTectonic } from './services/tectonicWarmUp.js';
 import { offlineMessage, placeOf } from './services/syncService.js';
-import { isLocalRequest } from './utils/authUtils.js';
+import { hasSession, isLocalRequest, openSession, readSessionSecret } from './utils/authUtils.js';
 
 const fastify = Fastify({ logger: true, bodyLimit: 50 * 1024 * 1024 });
 
@@ -62,17 +62,30 @@ await fastify.register(multipart, {
   }
 });
 
+// The desktop app's secret for this launch ('' in dev, npm start and the tests): see the request hook below
+const SESSION_SECRET = await readSessionSecret().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});
+
 // Single-user, local-only: nothing off this machine (or relayed through a proxy) may use the
 // server. Every request is checked, however its path is spelt: the router decodes '/%61pi/…'
 // to an /api route. Browsers mark requests another site makes (<img>, links, forms) as
 // cross-site, and those of a page on another port of this computer as same-site, which no API
-// route accepts, since those carry no Origin header to check.
+// route accepts, since those carry no Origin header to check. In the desktop app the API also answers only its own
+// windows, which carry the launch's secret in a cookie: not another program or another account on this computer.
 fastify.addHook('onRequest', async (req, reply) => {
-  const crossSiteApi = req.routeOptions?.url?.startsWith('/api') && ['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']);
+  const api = req.routeOptions?.url?.startsWith('/api');
+  const crossSiteApi = api && ['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']);
   if (crossSiteApi || !isLocalRequest(req)) {
     return reply.code(403).send({ ok: false, error: 'Spectrum only accepts requests from this computer.' });
   }
+  if (SESSION_SECRET && api && !hasSession(req, SESSION_SECRET)) {
+    return reply.code(403).send({ ok: false, code: 'session', error: 'Spectrum only answers its own windows. If this is Spectrum’s window, quit Spectrum and open it again.' });
+  }
 });
+// where the shell points a window first; never logged, since the address holds the secret
+if (SESSION_SECRET) fastify.get('/session', { logLevel: 'silent' }, (req, reply) => openSession(req, reply, SESSION_SECRET));
 
 // The app's pages draw images only from the app itself (its own files, data: and blob:), so nothing a reply, a
 // search result or a document puts on a page is fetched from elsewhere, taking the project's text with it.
