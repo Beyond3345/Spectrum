@@ -89,7 +89,7 @@ A part is either a two-terminal part, which sits on a wire between two points, o
 
 A click without a drag puts a two-terminal part 2~cm long, to the right of where you clicked, and Voltage between two points 2~cm long downwards with its + at the top. The new part is selected and named with the next free number of its letter, such as $R_1$, $R_2$, while the tool stays picked so you can place another. Press #key("Esc") or click #ui[Select] to stop.
 
-Parts can also be placed from the keyboard. With a part in the rail focused, #key("Return") or #key("Space") places it at once at the free spot nearest the middle of the view, at least 1~cm from the parts already there, selected, and a screen reader hears where it went, such as "Resistor R1 placed at (0, 0) cm". Moving a part with the arrow keys and stepping through parts and pins with #key("Tab") are not there yet.
+Parts can also be placed from the keyboard. With a part in the rail focused, #key("Return") or #key("Space") places it at once at the free spot nearest the middle of the view, at least 1~cm from the parts already there, selected, and a screen reader hears where it went, such as "Resistor R1 placed at (0, 0) cm".
 
 Everything snaps to the grid, whose steps are 0.25~cm, and to any pin within about 12 pixels. A placed part with one pin, such as a ground, a supply or a terminal, snaps by that pin. A part with many pins, such as a transistor or an op amp, snaps by whichever pin is nearest, and a pin that lands on another part's pin takes hold of it. A two-terminal part's end placed on a placed part's pin holds that pin too, so a resistor dragged from a ground follows the ground.
 
