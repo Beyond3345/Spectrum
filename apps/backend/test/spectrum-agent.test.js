@@ -93,7 +93,12 @@ const SECRETS = [
   ['read_file', { path: 'figs/config' }],
   ['list_files', { dir: 'figs' }],
   ['propose_patch', { path: 'figs/config', content: 'x' }],
-  ['read_file', { path: 'main.tex' }]
+  ['read_file', { path: 'main.tex' }],
+  // the key and credential files the GitHub backup leaves out, by the same list
+  ['read_file', { path: 'keys/id_rsa' }],
+  ['read_file', { path: '.netrc' }],
+  ['read_file', { path: 'keys/Store.P12' }],
+  ['propose_patch', { path: '.npmrc', content: '//registry.npmjs.org/:_authToken=x' }]
 ];
 let mock;
 let base;
@@ -207,13 +212,14 @@ test('the Spectrum agent can’t read, list or propose .env files, keys, or git�
   } });
   await write(path.join(p.path, '.spectrum', 'chats', 'c.json'), '{"secret":true}');
   await write(path.join(p.path, 'keys', 'id.key'), 'private too');
+  for (const file of ['keys/id_rsa', '.netrc', 'keys/Store.P12']) await write(path.join(p.path, file), 'private as well');
   await fs.symlink('.env', path.join(p.path, 'notes.tex'));
   await fs.symlink('.git', path.join(p.path, 'figs'));
   calls.length = 0;
   const { status, json } = await run({ task: 'polish', prompt: 'go', mode: 'tools', projectId: p.id, llmConfig: llmConfig('secrets') });
   assert.equal(status, 200, json.error);
   const outputs = results(calls.at(-1));
-  for (const i of [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) assert.equal(outputs[i], 'Error: This path is not available to the agent.', JSON.stringify(SECRETS[i]));
+  for (const i of [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19]) assert.equal(outputs[i], 'Error: This path is not available to the agent.', JSON.stringify(SECRETS[i]));
   // a link's name shows, as a file; what it reaches doesn't
   assert.deepEqual(JSON.parse(outputs[4]).files.sort(), ['figs', 'main.tex', 'notes.tex', 'sub/part.tex']);
   assert.equal(outputs[15], 'text\n');
@@ -365,8 +371,8 @@ test('every prompt names the document’s own language and its conventions, neve
     assert.match(outline, /Bibliography: refs\.bib/);
     assert.match(outline, /- Introduction \(main\.\w+:\d+\)/);
     assert.match(outline, /  - Data \(/);
-    assert.match(outline, /Cited keys: known, nobody/);
-    assert.match(outline, /Cited but not in the bibliography: nobody \(main\.\w+:\d+\)/);
+    // Typst's and Markdown's @key may be a label's: one that resolves to nothing is not called a citation
+    assert.match(outline, kind === 'latex' ? /Cited keys: known, nobody\nCited but not in the bibliography: nobody \(main\.tex:4\)/ : /Cited keys: known\n@keys that are neither a label nor in the bibliography: nobody \(main\.\w+:\d+\)/);
     assert.match(user(requests.polish), /<untrusted source="project outline">/);
     assert.doesNotMatch(user(requests.autocomplete), /untrusted/);
     if (kind === 'latex') {

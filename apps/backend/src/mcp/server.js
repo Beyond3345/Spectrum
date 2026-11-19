@@ -8,6 +8,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { APP_VERSION } from '../config/constants.js';
 import * as tools from './tools.js';
+import { DATA_RULE, SKILL_RULE, skillText, untrusted } from '../utils/outsideText.js';
 
 const arg = (name) => {
   const i = process.argv.indexOf(name);
@@ -28,14 +29,16 @@ if (process.argv.includes('--compile')) {
   process.exit(0);
 }
 
-const server = new McpServer({ name: 'spectrum', version: APP_VERSION });
-// every answer as JSON text; a failure as the tool's error, for the agent to read
+const server = new McpServer({ name: 'spectrum', version: APP_VERSION }, { instructions: `Spectrum’s tools for the document in your working copy. ${DATA_RULE} ${SKILL_RULE}` });
+// every answer as JSON text inside a marker naming the tool it came from (a skill's as a skill): what a paper's
+// abstract, a .bib field or a log says is never the user speaking; a failure as the tool's error, for the agent to read
 const tool = (name, description, inputSchema, run) => server.registerTool(name, { description, inputSchema }, async (input) => {
   try {
     const result = await run(input || {});
-    return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }] };
+    const text = typeof result === 'string' ? result : JSON.stringify(result);
+    return { content: [{ type: 'text', text: name === 'load_skill' ? skillText(input?.id, text) : untrusted(name, text) }] };
   } catch (err) {
-    return { isError: true, content: [{ type: 'text', text: err.message }] };
+    return { isError: true, content: [{ type: 'text', text: untrusted(name, err.message) }] };
   }
 });
 

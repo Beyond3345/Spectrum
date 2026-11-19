@@ -37,7 +37,8 @@ export default function CitationAssistant() {
       setQueries(res.queries || []);
       setPapers(res.papers || []);
       setPicked(Object.fromEntries((res.papers || []).map((_, i) => [i, true])));
-      if (!res.papers?.length) setStatus('No suitable papers found.');
+      // a model that failed is said above the results it left unranked
+      setStatus([res.note, !res.papers?.length && 'No suitable papers found.'].filter(Boolean).join(' '));
     } catch (err) {
       setStatus(`Search failed: ${errorText(err)}`);
     } finally {

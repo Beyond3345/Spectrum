@@ -1550,7 +1550,8 @@ export interface CitationSuggestion extends SearchResult {
 }
 
 export function suggestCitations(payload: { text: string; maxResults?: number; llmConfig?: Partial<LLMConfig>; searchConfig?: SearchConfig }) {
-  return request<{ ok: boolean; queries?: string[]; papers?: CitationSuggestion[]; error?: string }>(
+  // note: the model was asked and failed, so the papers are a plain search of the passage, unranked
+  return request<{ ok: boolean; queries?: string[]; papers?: CitationSuggestion[]; note?: string; error?: string }>(
     '/api/citations/suggest',
     json('POST', payload)
   );

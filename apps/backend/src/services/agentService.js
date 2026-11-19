@@ -101,6 +101,9 @@ export async function projectContext(projectRoot, mainFile) {
   const depth = (h) => (typeof h.level === 'number' ? h.level - 1 : Math.max(0, HEADING_DEPTH.indexOf(h.level)));
   const top = Math.min(...map.outline.map(depth));
   const at = (x) => `${x.key} (${x.file}:${x.line})`;
+  // Typst's and Markdown's @key is a label's or a citation's: one that is neither cannot be called a citation
+  const latex = map.language === 'LaTeX';
+  const cited = latex ? map.citedKeys : map.citedKeys.filter((key) => !map.unresolvedCites.some((c) => c.key === key));
   const text = [
     `Main file: ${map.mainFile} (${map.language})`,
     `Files: ${some(map.files.map((f) => f.file), 60).join(', ')}`,
@@ -108,8 +111,8 @@ export async function projectContext(projectRoot, mainFile) {
     map.frontMatter ? `Front matter: ${Object.entries(map.frontMatter).map(([k, v]) => `${k}: ${v}`).join('; ')}` : '',
     map.outline.length ? `Outline:\n${some(map.outline.map((h) => `${'  '.repeat(depth(h) - top)}- ${h.title.slice(0, 100) || '(untitled)'} (${h.file}:${h.line})`), 80).join('\n')}` : '',
     map.labels.length ? `Labels: ${some(map.labels.map((l) => l.label), 60).join(', ')}` : '',
-    map.citedKeys.length ? `Cited keys: ${some(map.citedKeys, 60).join(', ')}` : '',
-    map.unresolvedCites.length ? `Cited but not in the bibliography: ${some(map.unresolvedCites.map(at), 20).join(', ')}` : '',
+    cited.length ? `Cited keys: ${some(cited, 60).join(', ')}` : '',
+    map.unresolvedCites.length ? `${latex ? 'Cited but not in the bibliography' : '@keys that are neither a label nor in the bibliography'}: ${some(map.unresolvedCites.map(at), 20).join(', ')}` : '',
     map.unresolvedRefs.length ? `Referred to but never defined: ${some(map.unresolvedRefs.map(at), 20).join(', ')}` : ''
   ].filter(Boolean).join('\n');
   return { mainFile: map.mainFile, text };

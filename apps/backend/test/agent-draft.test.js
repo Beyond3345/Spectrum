@@ -126,7 +126,7 @@ test('review sessions keep iterating on the draft; apply and reject rebase it; c
     await turn(plain, 'answer', { context: await readContext(plain, { selection: 'plain' }) });
     const first = (await requests(plain)).filter((q) => q.method === 'session/prompt').at(-1).params.prompt;
     assert.match(first[0].text, /persona “Critic”[\s\S]*Be blunt/);
-    assert.deepEqual(first[1], { type: 'text', text: 'Selected text:\nplain' });
+    assert.deepEqual(first[1], { type: 'text', text: 'Selected text:\n<untrusted source="Selected text">\nplain\n</untrusted>' });
     assert.ok(!(await requests(plain)).find((q) => q.method === 'session/new').params.systemPrompt);
     await turn(plain, 'answer again');
     assert.doesNotMatch((await requests(plain)).filter((q) => q.method === 'session/prompt').at(-1).params.prompt[0].text, /Be blunt/, 'a loaded session keeps it');
