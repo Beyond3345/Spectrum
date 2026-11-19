@@ -11,7 +11,7 @@ import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { HIDDEN_ENTRIES, inPool, listFilesRecursive, writeFileAtomic } from '../utils/fsUtils.js';
 import { looksLikeConflictCopy } from '../utils/conflictCopies.js';
-import { safeJoinLink } from '../utils/pathUtils.js';
+import { SECRET_NAME, safeJoinLink } from '../utils/pathUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { isDocumentFile } from '../utils/texUtils.js';
 import { isText } from './versionService.js';
@@ -68,8 +68,9 @@ const CHAT = /^\.spectrum\/chats\/[^/]+\.json$/;
 const RESEARCH = /^\.spectrum\/research\/[^/]+\.json$/;
 // the name a pull gives GitHub's text that didn't merge, which unlike a sync app's copy is committed
 const OWN_COPY = 'GitHub’s conflicted copy';
-// a .env file, a private key or a keystore (a .key file only when it holds a PEM key: Keynote's decks are .key too)
-const SECRET = /^(?:\.env(?:\..*)?|\.netrc|\.npmrc|\.pypirc|id_(?:rsa|dsa|ecdsa|ed25519)|.+\.(?:pem|p12|pfx|keystore|jks|ppk))$/i;
+// a .env file, a private key or a keystore, by the list agents are kept from too (a .key file only when it holds a PEM
+// key: Keynote's decks are .key too)
+const SECRET = SECRET_NAME;
 // TeX's build files, for the project's own .gitignore (Spectrum keeps its own outside the project); .bbl stays, as arXiv takes it
 const GITIGNORE = `# TeX's build files
 *.aux

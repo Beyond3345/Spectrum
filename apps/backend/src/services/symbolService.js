@@ -8,7 +8,7 @@ import os from 'os';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { DATA_DIR } from '../config/constants.js';
-import { SYMBOL_SETS, picDefinition, setOfPic, shapeDefinitions } from '../data/symbolSets.js';
+import { FLUID_KEYS, KEYED_PICS, SYMBOL_SETS, picDefinition, setOfPic, shapeDefinitions } from '../data/symbolSets.js';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 import { PATH_KEY, findExecutable, runSpawn, texPath, unwrap } from './compileService.js';
 import { compileSandbox } from './compileSandbox.js';
@@ -83,6 +83,7 @@ function symbolsTex(parts, options) {
   const libraries = [...new Set(sets.flatMap((set) => set.libraries))];
   const environment = packages.includes('circuitikz') ? 'circuitikz' : 'tikzpicture';
   const picture = environment === 'circuitikz' ? `\\begin{circuitikz}[${options}]` : '\\begin{tikzpicture}';
+  const keyed = parts.some((part) => part.kind === 'pic' && part.options?.length && KEYED_PICS[part.tikz]);
   const lines = parts.map((part, i) => {
     const n = i + 1;
     const keys = [part.tikz, ...(part.options || [])].join(', ');
@@ -102,7 +103,9 @@ function symbolsTex(parts, options) {
     ...packages.map((name) => `\\usepackage{${name}}`),
     ...(libraries.length ? [`\\usetikzlibrary{${libraries.join(',')}}`] : []),
     ...PREAMBLE.slice(1),
-    ...sets.flatMap((set) => Object.entries(set.pics).map(([key, body]) => picDefinition(key, body))),
+    // a manometer with a liquid or a level set: its keyed body, which draws the plain ones the same
+    ...(keyed ? [FLUID_KEYS] : []),
+    ...sets.flatMap((set) => Object.entries(set.pics).map(([key, body]) => picDefinition(key, keyed && KEYED_PICS[key] ? KEYED_PICS[key] : body))),
     // Spectrum's own circuitikz shapes the parts use
     ...(environment === 'circuitikz' ? shapeDefinitions(parts.filter((part) => part.kind !== 'pic').map((part) => [part.tikz, ...(part.options || [])].join(', '))) : []),
     '\\begin{document}',

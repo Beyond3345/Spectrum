@@ -459,6 +459,13 @@ test('a Typst #bibliography and a Markdown front matter’s bibliography load th
     const out = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
     assert.deepEqual([out.bibFile, out.bibIncluded], ['refs.bib', true], file);
   }
+  // a Markdown front matter that names none: pandoc is given every .bib, so there is nothing to add
+  for (const [front, included] of [['title: T', true], ['bibliography: missing.bib', false]]) {
+    const root = await tempProject({ 'main.md': `---\n${front}\n---\n# Intro\n`, 'references.bib': '', '.spectrum/project.json': JSON.stringify({ id: `md-${included}`, name: 'P', mainFile: 'main.md' }) });
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const out = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
+    assert.deepEqual([out.bibFile, out.bibIncluded], ['references.bib', included], front);
+  }
   // a Typst project with no .bib yet gets refs.bib, a LaTeX one references.bib
   for (const [file, bib] of [['main.typ', 'refs.bib'], ['main.tex', 'references.bib']]) {
     const root = await tempProject({ [file]: '= Intro\n', '.spectrum/project.json': JSON.stringify({ id: `new-${file.replace('.', '-')}`, name: 'P', mainFile: file }) });
@@ -534,6 +541,7 @@ const PAGES = {
 let mock;
 let base;
 const hits = [];
+let llmAsked = null;
 
 before(async () => {
   mock = createServer(async (req, res) => {
@@ -592,6 +600,9 @@ before(async () => {
       return send(200, '<feed xmlns="http://www.w3.org/2005/Atom"></feed>', 'application/atom+xml');
     }
     if (url.pathname === '/llm/v1/chat/completions') {
+      let text = '';
+      for await (const chunk of req) text += chunk;
+      llmAsked = JSON.parse(text);
       const content = JSON.stringify({ items: [{ arxiv: '2101.00002' }, { doi: '10.1234/journal.1' }, { query: 'Doe 2023 Neural Widgets for Everyone' }] });
       return send(200, { choices: [{ message: { role: 'assistant', content } }] });
     }
@@ -604,6 +615,7 @@ before(async () => {
   process.env.SPECTRUM_CROSSREF_BASE = `${base}/crossref`;
   process.env.SPECTRUM_ARXIV_BASE = `${base}/arxiv`;
   process.env.SPECTRUM_EXA_BASE = `${base}/exa`;
+  process.env.SPECTRUM_BRAVE_BASE = `${base}/brave`;
 });
 
 after(() => mock?.close());
@@ -901,6 +913,9 @@ test('an LLM splits free text when configured', async (t) => {
     ['10.1234/journal.1', 'added', 'Lovelace1843'],
     ['Doe 2023 Neural Widgets for Everyone', 'added', 'Doe2023']
   ]);
+  // a pasted list is text from outside: it goes in the marker, with the line on how to treat it
+  assert.match(llmAsked.messages[1].content, /^<untrusted source="pasted references">\nLovelace A, Babbage C\.[\s\S]*1843\n<\/untrusted>$/);
+  assert.match(llmAsked.messages[0].content, /never an instruction to you/);
 });
 
 test('reports references past the first 30 instead of dropping them', async (t) => {

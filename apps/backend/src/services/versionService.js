@@ -354,7 +354,7 @@ async function saveVersion(root, { label = '', reason = 'manual' } = {}) {
       latest.manifestLabel = latest.label;
       await writeIndex(root, versions);
     }
-    return { version: shownVersion(latest), unchanged: true, skipped: [] };
+    return { version: shownVersion(latest), unchanged: true, skipped: [...skipped, ...large] };
   }
 
   // compiles leave at most one checkpoint every 10 minutes: the latest one in that time takes the place of the others,
@@ -476,6 +476,8 @@ export function restoreVersion(root, versionId, relPath) {
     for (const rel of targets) {
       // couldn't be read for the version (online-only and offline, say): neither replaced nor deleted
       if (skipped.has(rel)) continue;
+      // no checkpoint made here holds the app's data or the repository: a manifest that names them is not followed
+      if (rel.split('/').some((part) => ['.spectrum', '.git'].includes(part.toLowerCase()))) continue;
       if (files[rel] && untracked.has(rel)) {
         const ext = path.extname(rel);
         const aside = await freePath(safeJoin(root, `${rel.slice(0, rel.length - ext.length)} (before restore)${ext}`));

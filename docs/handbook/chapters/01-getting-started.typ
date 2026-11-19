@@ -106,6 +106,8 @@ The New project window asks for the following,
 - #ui[From arXiv…] asks for an arXiv ID and makes a project from the paper's source and
 - #ui[Open existing folder…] opens a folder that already holds LaTeX, Typst or Markdown files as a project, in place, without copying it. The folder stays where it is, and Spectrum works on it there.
 
+A Git repository inside a `.zip` file or an arXiv source is left out, so the new project starts without a history and without a link to a repository on GitHub. A folder opened in place keeps its repository.
+
 The file list of every project follows changes made outside Spectrum, so a file added, removed or renamed in Finder or by another editor shows up straight away. If a project's folder is moved in Finder, the project is marked as missing, and #ui[Locate…] in its menu points it at the new location.
 
 #shots(("figures/01-getting-started/import-menu.png", "figures/01-getting-started/project-menu.png"), [The Import menu, left, and a project's menu, right, which opens from its #dots button or with a right-click.], columns: (1.3fr, 1fr)) <fig-start-import>
@@ -243,7 +245,7 @@ Settings are saved as they are changed, so there is no Save button. A few sectio
 
 === Colour style
 
-The colour style decides how much colour the application itself uses. Spectrum, the default, gives each symbol its own colour from Apple's system colours, so every icon in a list stands out from its neighbours (@fig-start-colour-style). Specifically, the icons of the editor's toolbar, the sidebars, the projects page and the sections of Settings are each a different colour, and the tab and the view that are chosen take their icon's colour. GitHub and Zotero keep their own colours, black and red. The diagram chooser's categories and cards, each composer's chip and the headings of its tools take the colour of that composer's chapter in this handbook.
+The colour style decides how much colour the application itself uses. Spectrum, the default, gives each symbol its own colour from Apple's system colours, so every icon in a list stands out from its neighbours (@fig-start-colour-style). In light mode the paler ones, such as orange, green, mint, teal and cyan, are a shade darker than Apple's, so that each icon stands out from the background at 3:1 or more, as the accessibility guidelines ask. Specifically, the icons of the editor's toolbar, the sidebars, the projects page and the sections of Settings are each a different colour, and the tab and the view that are chosen take their icon's colour. GitHub and Zotero keep their own colours, black and red. The diagram chooser's categories and cards, each composer's chip and the headings of its tools take the colour of that composer's chapter in this handbook.
 
 Simple keeps to grey and the accent colour, as Spectrum looked before version 2.5. Either way the labels, icons and selection marks stay the same, so nothing is shown by colour alone, and errors, warnings and success keep their red, orange and green. The colour style goes to your other computers with the rest of the appearance.
 

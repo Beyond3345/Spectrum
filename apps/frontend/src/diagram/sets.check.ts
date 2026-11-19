@@ -1,6 +1,7 @@
 // Self-check for symbol sets as data, the export rules and the clash table. Run:
 // npx esbuild apps/frontend/src/diagram/sets.check.ts --bundle --platform=node --log-level=warning | node
-import { SYMBOL_SETS } from '../../../backend/src/data/symbolSets.js';
+import { FLUID_KEYS, FLUID_LEVELS, FLUID_TINTS, KEYED_PICS, SYMBOL_SETS } from '../../../backend/src/data/symbolSets.js';
+import { MATERIALS } from './modes/circuitikz/annotate';
 import { circuitCode } from './modes/circuitikz/code';
 import { CATALOGUE, findJunctions, placeholderShape, railParts, usesSetsOf25, withLaterSets } from './modes/circuitikz/model';
 import type { CircuitModel } from './modes/circuitikz/model';
@@ -149,6 +150,31 @@ eq(clashesWith({ packages: ['tikz'], libraries: [] }, project(['stanli', 'quanti
 eq(clashesWith({ packages: ['tikz-cd', 'amssymb'], libraries: [] }, project(['quantikz'])).map((c) => c.message), ['quantikz restyles every tikz-cd diagram, this one included.'], 'quantikz meets tikz-cd');
 eq(clashesWith({ packages: ['circuitikz', 'siunitx'], libraries: [] }, project(['chronology'])).length, 1, 'chronology meets siunitx');
 eq(clashesWith({ packages: ['circuitikz'], libraries: [] }, project(['chronology'])).length, 0, 'but not without siunitx');
+
+// ─── the liquids in the manometers ───
+{
+  const fluid = SYMBOL_SETS['spx-fluid'].pics;
+  eq(Object.entries(FLUID_TINTS).map(([name, tint]) => [name, tint === MATERIALS[name as 'water'][1]]), [['water', true], ['oil', true], ['mercury', true]], 'the liquids in Annotate’s tints');
+  for (const [pic, body] of Object.entries(KEYED_PICS)) {
+    const { liquids, levels } = FLUID_LEVELS[pic];
+    // the same pins as the plain pic, so wires and joints stay where they were
+    eq(body.slice(body.indexOf('\\coordinate')), fluid[pic].slice(fluid[pic].indexOf('\\coordinate')), `${pic}: its pins`);
+    eq(levels.every(([, , start, min, max]) => min <= start && start <= max), true, `${pic}: each level starts in its range`);
+    eq([liquids.length >= 1, (body.match(/\\path\[spx\/fluid\/\\spxi+\]/g) ?? []).length >= liquids.length], [true, true], `${pic}: a fill for each liquid`);
+    eq(body.indexOf('\\path') < body.indexOf('line width=0.8pt'), true, `${pic}: the liquid behind the walls`);
+    eq(levels.every(([key, , start]) => FLUID_KEYS.includes(`${pic}/${key}/.initial=${start}`)), true, `${pic}: its levels declared at their starting values`);
+  }
+  eq(/#|\\usetikzlibrary|pattern/.test(FLUID_KEYS + Object.values(KEYED_PICS).join('')), false, 'TikZ’s core only, and nothing a macro argument would break');
+  const at = (type: string, options?: string[]): CircuitModel => ({ elements: [{ id: 'e1', kind: 'node', type, at: { x: 0, y: 0 }, ...(options && { options }) }, { id: 'e2', kind: 'node', type: 'fluid-tank', at: { x: 16, y: 0 } }], junctions: [] });
+  const plain = circuitCode(at('fluid-manometer'), {}).body.split('\n');
+  eq([plain.includes(`\\tikzset{spx/fluid/manometer/.pic={${fluid['spx/fluid/manometer']}}}`), plain.some((l) => l.includes('/.initial')), plain.includes('\\pic at (0,0) {spx/fluid/manometer};')], [true, false, true], 'a manometer with nothing set: the plain pic, as before');
+  const options = ['spx/fluid/liquid=mercury', 'spx/fluid/manometer/left=0.1', 'spx/fluid/manometer/right=0.3'];
+  const filled = circuitCode(at('fluid-manometer', options), {}).body.split('\n');
+  eq(filled.slice(2, 6), [FLUID_KEYS, `\\tikzset{spx/fluid/tank/.pic={${fluid['spx/fluid/tank']}}}`, `\\tikzset{spx/fluid/manometer/.pic={${KEYED_PICS['spx/fluid/manometer']}}}`, `\\pic[${options.join(', ')}] at (0,0) {spx/fluid/manometer};`], 'with a liquid: the keys once, its keyed body, the tank’s plain one, and the options on the pic');
+  eq(symbolRequest({ type: 'fluid-manometer', options }).options, [...options].sort(), 'the canvas asks TeX for the part with its liquid');
+  // a drawing with a liquid is version 5, as any with the 2.5 sets is
+  eq(usesSetsOf25(at('fluid-manometer', options)), true, 'version 5');
+}
 
 // physics's own \qty: Insert writes \SI, so the figure needn't go in as an image
 eq(clashesWith({ packages: ['tikz', 'siunitx'], libraries: [] }, project(['physics'])), [{ with: 'physics', message: 'physics has its own \\qty, so Insert writes the figure’s values with siunitx’s \\SI instead.', fixed: true }], 'physics meets siunitx');

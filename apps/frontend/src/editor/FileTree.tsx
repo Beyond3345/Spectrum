@@ -1,13 +1,14 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
-import { ApiError, createFolder, deleteFile, renamePath, revealProject, updateFileOrder, uploadFiles, writeFile } from '../api/client';
+import { ApiError, createFolder, deleteFile, renamePath, restoreFile, revealProject, updateFileOrder, uploadFiles, writeFile } from '../api/client';
 import type { FileItem, FileOrderMap } from '../api/client';
 import Icon from '../app/Icon';
 import { ContextMenu } from '../app/Menu';
 import type { MenuItems } from '../app/Menu';
 import { confirmDialog } from '../app/Dialogs';
 import { IS_DESKTOP } from '../app/desktop';
-import { FILE_MANAGER } from '../app/platform';
+import { BIN, FILE_MANAGER } from '../app/platform';
+import { toast } from '../app/Toast';
 import { errorText } from './shared';
 
 type TreeNode = { name: string; path: string; type: 'file' | 'dir'; children: TreeNode[] };
@@ -99,7 +100,7 @@ const FileTree = forwardRef<
     conflicts?: Record<string, string>;
     onOpen(path: string): void;
     onRefresh(): Promise<void>;
-    /** saves the open file, so a pending autosave can't land on top of an upload */
+    /** saves the open file, so a pending autosave can't land on top of an upload, and the Bin gets its latest text */
     beforeUpload(): Promise<void>;
     /** project paths an upload wrote (some may have replaced files that are open or cached) */
     onUploaded(paths: string[]): Promise<void>;
@@ -224,7 +225,8 @@ const FileTree = forwardRef<
   const commit = async () => {
     const edit = inlineRef.current;
     if (!edit || busy.current) return;
-    const value = edit.value.trim().replace(/^\/+|\/+$/g, '');
+    // the rename box selects the name without its extension, so typing the whole name gave intro.tex.tex
+    const value = edit.value.trim().replace(/^\/+|\/+$/g, '').replace(/(\.[^./]+)\1$/i, '$1');
     if (!value || (edit.kind === 'rename' && value === nameOf(edit.path))) {
       setInline(null);
       return;
@@ -260,20 +262,53 @@ const FileTree = forwardRef<
     }
   };
 
+  /** To the Bin, with Undo while the toast shows; where there's no Bin, gone for good once the user says so. */
   const remove = async (path: string) => {
+    const name = nameOf(path);
     const isDir = full.nodes.get(path)?.type === 'dir';
     const ok = await confirmDialog({
-      title: `Delete “${nameOf(path)}”?`,
-      message: isDir ? 'The folder and everything in it will be deleted. This can’t be undone.' : 'This can’t be undone.',
-      confirmLabel: 'Delete',
+      title: `Move “${name}” to the ${BIN}?`,
+      message: isDir ? `The folder and everything in it will be moved to the ${BIN}.` : `You can put it back from the ${BIN}.`,
+      confirmLabel: `Move to ${BIN}`,
       destructive: true
     });
     if (!ok) return;
-    const res = await deleteFile(projectId, path);
+    // the open file's latest text goes with it
+    await props.beforeUpload();
+    let res = await deleteFile(projectId, path, { bin: true });
+    if (!res.ok && res.noBin) {
+      const sure = await confirmDialog({
+        title: `Delete “${name}” for good?`,
+        message: `It couldn’t be moved to the ${BIN} (${res.error || 'unknown error'}). Deleting it can’t be undone.`,
+        confirmLabel: 'Delete',
+        destructive: true
+      });
+      if (!sure) return;
+      res = await deleteFile(projectId, path);
+    }
     if (!res.ok) throw new Error(res.error || 'Delete failed.');
     onDeleted(path);
     setSelected('');
     await onRefresh();
+    const undo = res.undo;
+    // the main file, or the folder it was in: it is main again when it comes back
+    const wasMain = mainFile && (mainFile === path || mainFile.startsWith(`${path}/`)) ? mainFile : '';
+    if (!res.bin) notify(`Deleted “${name}”`);
+    else
+      toast(`Moved “${name}” to the ${BIN}`, {
+        action: undo
+          ? {
+              label: 'Undo',
+              onClick: () =>
+                run(async () => {
+                  const back = await restoreFile(projectId, undo);
+                  if (!back.ok) throw new Error(back.error || 'Undo failed.');
+                  await onRefresh();
+                  if (wasMain) props.onSetMain(wasMain);
+                }, `Couldn’t put “${name}” back`)
+            }
+          : undefined
+      });
   };
 
   const setAll = (open: boolean) =>
@@ -293,7 +328,7 @@ const FileTree = forwardRef<
       !!path && isDocument(path) && { label: 'Set as main file', icon: 'checkmark.seal', disabled: path === mainFile, onSelect: () => props.onSetMain(path) },
       !!path && { label: 'Rename…', icon: 'pencil', onSelect: () => setInline({ kind: 'rename', path, value: nameOf(path) }) },
       IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => run(() => revealProject(projectId, path || undefined), `Couldn’t show it in ${FILE_MANAGER}`) },
-      !!path && { label: 'Delete…', icon: 'trash', destructive: true, onSelect: () => run(() => remove(path), 'Couldn’t delete') },
+      !!path && { label: `Move to ${BIN}…`, icon: 'trash', destructive: true, onSelect: () => run(() => remove(path), `Couldn’t move it to the ${BIN}`) },
       !!path && { separator: true },
       { label: 'Expand all', icon: 'chevron.down', onSelect: () => setAll(true) },
       { label: 'Collapse all', icon: 'chevron.right', onSelect: () => setAll(false) },

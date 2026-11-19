@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { chatCompletion, listLiveModels } from '../src/services/llmService.js';
+import { chatCompletion, listLiveModels, retryAfterMs } from '../src/services/llmService.js';
 import { PROVIDERS, effortFor, ollamaModel, providerFor } from '../src/services/providers.js';
 
 // A fake provider: records each request and answers with whatever the test queued.
@@ -19,8 +19,14 @@ before(async () => {
     req.on('end', () => {
       seen.push({ path: req.url, headers: req.headers, body: body ? JSON.parse(body) : null });
       const show = req.url === '/api/show' && shows[JSON.parse(body).model];
-      const [status, reply] = req.url === '/api/show' ? (show ? [200, show] : [404, { error: 'not found' }]) : replies.shift() || [200, {}];
-      res.writeHead(status, { 'Content-Type': 'application/json' });
+      const [status, reply, headers] = req.url === '/api/show' ? (show ? [200, show] : [404, { error: 'not found' }]) : replies.shift() || [200, {}];
+      // 'cut': the headers and half a body, then the connection closes
+      if (status === 'cut') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.write('{"choices":[{"message":{"role":"assistant","content":"This reply stops half');
+        return setTimeout(() => res.destroy(), 20);
+      }
+      res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
       res.end(JSON.stringify(reply));
     });
   });
@@ -189,8 +195,120 @@ test('errors read the same across providers', async () => {
 test('a spent quota is not worded as a rate limit', async () => {
   replies.push([429, { error: { message: 'You exceeded your current quota, please check your plan and billing details.', code: 'insufficient_quota' } }]);
   assert.match((await call(undefined, { model: 'm' })).error, /no quota or credit left/);
+  // a spent quota is never sent again
+  assert.equal(seen.length, 1);
   replies.push([429, { error: { message: 'Rate limit reached for requests', type: 'rate_limit_error' } }]);
-  assert.equal((await call(undefined, { model: 'm' })).error, 'The provider is limiting requests. Try again shortly.');
+  assert.equal((await call(undefined, { model: 'm', retries: 0 })).error, 'The provider is limiting requests. Try again shortly.');
+});
+
+const NOW = [['retry-after', '0']];
+const busyReply = (status, headers = NOW) => [status, { error: { message: 'Overloaded', type: 'overloaded_error' } }, Object.fromEntries(headers)];
+
+test('a busy provider is tried again on every request format, after the wait it names', async () => {
+  const good = {
+    anthropic: [200, { content: [{ type: 'text', text: 'Hello' }], stop_reason: 'end_turn' }],
+    openai: [200, { output: [{ type: 'message', content: [{ type: 'output_text', text: 'Hello' }] }], status: 'completed' }],
+    deepseek: chatReply('Hello')
+  };
+  for (const [provider, model, status] of [['anthropic', 'claude-opus-5-5', 529], ['openai', 'gpt-6-sol', 429], ['deepseek', 'deepseek-flash', 503]]) {
+    replies.push(busyReply(status), busyReply(500), good[provider]);
+    const res = await call(provider, { model });
+    assert.equal(res.ok, true, provider);
+    assert.equal(res.message.content, 'Hello');
+    assert.equal(res.retries, 2);
+    assert.equal(seen.length, 3);
+    // the same request each time
+    assert.deepEqual(seen[2].body, seen[0].body);
+  }
+  // with no wait named: 1 s before the second try
+  replies.push([500, { error: { message: 'Server error' } }], chatReply('Hello'));
+  const started = Date.now();
+  assert.equal((await call(undefined, { model: 'm' })).ok, true);
+  assert.ok(Date.now() - started >= 900, 'backs off a second');
+});
+
+test('a provider still busy after three tries says so, and what cannot be mended by waiting is sent once', async () => {
+  replies.push(busyReply(529), busyReply(529), busyReply(529));
+  const still = await call('anthropic', { model: 'claude-opus-5-5' });
+  assert.equal(still.ok, false);
+  assert.match(still.error, /HTTP 529\): Overloaded\. Spectrum tried 3 times\./);
+  assert.equal(seen.length, 3);
+
+  for (const [reply, wording] of [
+    [[401, { error: { message: 'Incorrect API key' } }], /API key was rejected/],
+    [[403, { error: { message: 'Forbidden' } }], /API key was rejected/],
+    [[404, { error: { message: 'No such model' } }], /wasn’t found/],
+    [[429, { error: { message: 'You exceeded your current quota', code: 'insufficient_quota' } }], /no quota or credit left/],
+    // the provider says not to
+    [[503, { error: { message: 'Down for the day' } }, { 'x-should-retry': 'false' }], /HTTP 503/],
+    // asked to wait longer than Spectrum will
+    [[429, { error: { message: 'Rate limit reached' } }, { 'retry-after': '120' }], /asks for a wait of about 2 minutes/]
+  ]) {
+    replies.push(reply, chatReply('never asked for'));
+    const res = await call(undefined, { model: 'm' });
+    assert.equal(res.ok, false);
+    assert.match(res.error, wording);
+    assert.doesNotMatch(res.error, /tried/);
+    assert.equal(seen.length, 1, wording.source);
+    replies.length = 0;
+  }
+
+  // a caller that must be quick asks for no second try
+  replies.push(busyReply(529), chatReply('never asked for'));
+  assert.equal((await call(undefined, { model: 'm', retries: 0 })).ok, false);
+  assert.equal(seen.length, 1);
+  replies.length = 0;
+});
+
+test('a wait for a busy provider ends when the request is stopped', async () => {
+  replies.push([429, { error: { message: 'Rate limit reached' } }, { 'retry-after': '15' }], chatReply('never asked for'));
+  const abort = new AbortController();
+  setTimeout(() => abort.abort(), 50);
+  const started = Date.now();
+  const res = await call(undefined, { model: 'm', signal: abort.signal });
+  assert.equal(res.stopped, true);
+  assert.ok(Date.now() - started < 2000);
+  assert.equal(seen.length, 1);
+  replies.length = 0;
+});
+
+test('Retry-After is read as seconds, as a date and as OpenAI’s milliseconds', () => {
+  const h = (entries) => new Headers(entries);
+  assert.equal(retryAfterMs(h({ 'retry-after': '2' })), 2000);
+  assert.equal(retryAfterMs(h({ 'retry-after': '1.5' })), 1500);
+  assert.equal(retryAfterMs(h({ 'retry-after-ms': '250', 'retry-after': '9' })), 250);
+  assert.equal(retryAfterMs(h({ 'retry-after': 'Wed, 21 Oct 2026 07:28:10 GMT' }), Date.parse('Wed, 21 Oct 2026 07:28:00 GMT')), 10000);
+  assert.equal(retryAfterMs(h({ 'retry-after': 'soon' })), null);
+  assert.equal(retryAfterMs(h({})), null);
+});
+
+test('a connection lost part-way through the answer is tried again, and never worded as a wrong address', async () => {
+  replies.push(['cut'], chatReply('Whole this time'));
+  const res = await call(undefined, { model: 'm' });
+  assert.equal(res.message.content, 'Whole this time');
+  assert.equal(res.retries, 1);
+
+  replies.push(['cut']);
+  const lost = await call(undefined, { model: 'm', retries: 0 });
+  assert.equal(lost.ok, false);
+  assert.match(lost.error, /^The connection to 127\.0\.0\.1:\d+ was lost part-way through the answer\. Try again\.$/);
+
+  // nothing listening is still the address to check
+  const none = await chatCompletion({ apiKey: 'k', endpoint: 'http://127.0.0.1:9/v1/chat/completions', model: 'm', messages: [{ role: 'user', content: 'Hi' }] });
+  assert.match(none.error, /Couldn’t reach 127\.0\.0\.1:9\. Check the endpoint/);
+});
+
+test('an answer that stopped at the output limit says so on every request format', async () => {
+  replies.push([200, { choices: [{ finish_reason: 'length', message: { role: 'assistant', content: 'Half a sent' } }] }]);
+  const chat = await call(undefined, { model: 'm' });
+  assert.deepEqual([chat.ok, chat.truncated, chat.message.content], [true, true, 'Half a sent']);
+  replies.push([200, { content: [{ type: 'text', text: 'Half a sent' }], stop_reason: 'max_tokens' }]);
+  assert.equal((await call('anthropic', { model: 'claude-opus-5-5' })).truncated, true);
+  replies.push([200, { output: [{ type: 'message', content: [{ type: 'output_text', text: 'Half a sent' }] }], status: 'incomplete' }]);
+  assert.equal((await call('openai', { model: 'gpt-6-sol' })).truncated, true);
+  // a whole answer carries no mark
+  replies.push(chatReply('All of it.'));
+  assert.equal('truncated' in (await call(undefined, { model: 'm' })), false);
 });
 
 test('a refusal on the Chat Completions format is the answer', async () => {

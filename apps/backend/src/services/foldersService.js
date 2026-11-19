@@ -87,7 +87,9 @@ export async function moveToNewFolders(root) {
       if (text === null) continue;
       const next = rules.reduce((t, [re, to]) => t.replace(re, to), text);
       if (next === text) continue;
-      await writeFileAtomic(inProject(root, doc), next);
+      // through a temp file, so a crash leaves the document whole; a link (to a file in the project) keeps its target
+      const abs = inProject(root, doc);
+      await writeFileAtomic(await fs.realpath(abs).catch(() => abs), next);
       rewrote.push(doc);
     }
     await updateMeta(root, (meta) => ({ ...meta, layout: LAYOUT }));

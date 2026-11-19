@@ -173,11 +173,14 @@ async function isDiagram(root, relPath) {
   }
 }
 
+/** Moves a folder or file to the system Bin: where it went, when that is known (macOS 15 and later). */
 export async function moveToBin(folder) {
   // the tests' stand-in for the Bin, so they never fill the user's
   if (process.env.SPECTRUM_TEST_BIN_DIR) {
     await ensureDir(process.env.SPECTRUM_TEST_BIN_DIR);
-    return renameOver(folder, path.join(process.env.SPECTRUM_TEST_BIN_DIR, `${crypto.randomUUID()} ${path.basename(folder)}`));
+    const to = path.join(process.env.SPECTRUM_TEST_BIN_DIR, `${crypto.randomUUID()} ${path.basename(folder)}`);
+    await renameOver(folder, to);
+    return to;
   }
   if (process.platform === 'win32') {
     // The path goes in through the environment, so nothing in it is read as PowerShell. A drive
@@ -205,12 +208,18 @@ export async function moveToBin(folder) {
     return;
   }
   try {
-    await execFileAsync('/usr/bin/trash', [folder]);
+    // -v: # Moved "<from>" to "<to>"
+    const { stdout, stderr } = await execFileAsync('/usr/bin/trash', ['-v', folder]);
+    return `${stdout}\n${stderr}`.match(/Moved ".*" to "(.*)"\s*$/m)?.[1];
   } catch {
     const quoted = folder.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     await execFileAsync('osascript', ['-e', `tell application "Finder" to delete POSIX file "${quoted}"`]);
   }
 }
+
+/** What the file tree moved to the Bin, by undo key: { root, rel, to, at }, for as long as its toast offers Undo and more. */
+const binned = new Map();
+const UNDO_MS = 10 * 60 * 1000;
 
 export function registerProjectRoutes(fastify) {
   // the open editors' folder watches, ended first when the server closes, so quitting doesn't wait for them
@@ -823,21 +832,13 @@ export function registerProjectRoutes(fastify) {
         const merged = preserveDocumentMetadata(withBiblatexResources(mergeTemplateBody(templateTex, extractDocumentBody(currentTex)), bibliographyFiles(currentTex)), currentTex);
         // The merged document goes back into the project's own main file, whatever the template calls its main file.
         const changedFiles = await copyTemplateIntoProject(templateRoot, root, templateMain);
-        await fs.writeFile(currentMainPath, merged, 'utf8');
+        await writeFileAtomic(await fs.realpath(currentMainPath).catch(() => currentMainPath), merged);
         await touchProject(root).catch(() => {});
         return { ok: true, mainFile, changedFiles: [...new Set([...changedFiles, mainFile])] };
       } catch (err) {
         return { ok: false, error: `Couldn’t switch the template: ${err.message}` };
       }
     });
-  });
-
-  fastify.post('/api/projects/:id/template', async (req) => {
-    const { template } = req.body || {};
-    const root = await getProjectRoot(req.params.id);
-    if (!template) return { ok: false };
-    await mutateProjectRoot(root, () => copyDir(templatePath(template), root));
-    return { ok: true };
   });
 
   fastify.post('/api/projects/:id/folder', async (req) => {
@@ -878,21 +879,62 @@ export function registerProjectRoutes(fastify) {
     });
   });
 
+  // bin=1 (the file tree): to the system Bin, or { ok: false, noBin } for the user to decide; without it, gone for good.
+  // A link goes for good either way: only the link is lost. undo: a key that puts it back (/file/restore), when the Bin
+  // said where it went.
   fastify.delete('/api/projects/:id/file', async (req) => {
-    const { path: filePath } = req.query || {};
+    const { path: filePath, bin } = req.query || {};
     if (!filePath) return { ok: false, error: 'Missing file path.' };
     const root = await getProjectRoot(req.params.id);
     return mutateProjectRoot(root, async () => {
       const abs = editablePath(root, filePath, safeJoinLink);
+      let stat;
       try {
-        await fs.lstat(abs);
+        stat = await fs.lstat(abs);
       } catch (err) {
         if (err.code === 'ENOENT') return { ok: false, error: 'File not found.' };
         throw err;
       }
-      await fs.rm(abs, { recursive: true, force: true });
+      let undo;
+      if (bin === '1' && !stat.isSymbolicLink()) {
+        if (!['darwin', 'win32'].includes(process.platform)) return { ok: false, noBin: true, error: 'Moving to the Bin is only supported on macOS and Windows.' };
+        try {
+          const to = await moveToBin(abs);
+          // the Bin's tools can report success and leave it where it was
+          if (await fs.lstat(abs).then(() => true, () => false)) throw new Error('It is still in the project.');
+          if (to) {
+            undo = crypto.randomUUID();
+            binned.set(undo, { root, rel: String(filePath), to, at: Date.now() });
+          }
+        } catch (err) {
+          return { ok: false, noBin: true, error: err.message };
+        }
+      } else {
+        await fs.rm(abs, { recursive: true, force: true });
+      }
       await touchProject(root).catch(() => {});
-      return { ok: true };
+      return { ok: true, bin: bin === '1' && !stat.isSymbolicLink(), ...(undo && { undo }) };
+    });
+  });
+
+  // Undo, from the toast: the file or folder comes back from the Bin to where it was, unless something took its place
+  fastify.post('/api/projects/:id/file/restore', async (req) => {
+    const root = await getProjectRoot(req.params.id);
+    for (const [key, item] of binned) if (Date.now() - item.at > UNDO_MS) binned.delete(key);
+    const item = binned.get(String(req.body?.undo || ''));
+    if (!item || item.root !== root) return { ok: false, error: 'It can no longer be put back from here. Put it back from the Bin.' };
+    return mutateProjectRoot(root, async () => {
+      const abs = editablePath(root, item.rel, safeJoinLink);
+      if (await fs.lstat(abs).then(() => true, () => false)) return { ok: false, error: `Something called “${path.basename(abs)}” is there now.` };
+      await ensureDir(path.dirname(abs));
+      try {
+        await fs.rename(item.to, abs);
+      } catch {
+        return { ok: false, error: 'It couldn’t be moved back. Put it back from the Bin.' };
+      }
+      binned.delete(String(req.body.undo));
+      await touchProject(root).catch(() => {});
+      return { ok: true, path: item.rel };
     });
   });
 }

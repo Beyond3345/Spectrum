@@ -10,11 +10,12 @@ import type { PendingChange } from '../EditorContext';
 import type { TodosState } from '../TodosList';
 import { chatMessage, useChatThread } from '../chatThread';
 import { resolveInstructions } from '../personas';
-import { CHATS_CHANGED, buildProjectContext, errorText, patchesToChanges, relativeTime } from '../shared';
+import { untrusted } from '../../../../backend/src/utils/outsideText.js';
+import { CHATS_CHANGED, errorText, patchesToChanges, relativeTime } from '../shared';
 import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
 import type { ContextKind, Draft, TaskRequest, TrayChange } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
-import { closeChanges, metaOf, openChanges, stepCall, storedChanges } from './transcript';
+import { RESUME_HINT, closeChanges, metaOf, openChanges, resumeNote, stepCall, storedChanges } from './transcript';
 import type { Checkpoint, Item, ThreadMeta as Meta } from './transcript';
 
 
@@ -124,11 +125,14 @@ export default function SpectrumAgentTab({
     setRunning(base);
     try {
       let prompt = text || 'Follow the skill’s instructions for this project.';
+      // after a run that ended before its answer, this one is told where that one got to
+      const before = base.messages[base.messages.length - 2];
+      const note = before ? resumeNote(metaOf(before)) : '';
+      if (note) prompt += `\n\n[Earlier run] ${note}`;
+      // to-dos and a research session's papers are text from outside, marked as such; the backend adds the project's outline
       const list = context.todos ? openTodos(todos) : [];
-      if (list.length) prompt += `\n\n[Open to-dos]\n${list.map((t) => `- ${t.text}`).join('\n')}`;
-      if (research) prompt += `\n\n[Research session]\n${sessionContext((await getResearch(a.projectId, research)).session)}`;
-      const outline = await buildProjectContext(a);
-      if (outline) prompt += `\n\n[Project Context]\n${outline}`;
+      if (list.length) prompt += `\n\n[Open to-dos]\n${untrusted('open to-dos', list.map((t) => `- ${t.text}`).join('\n'))}`;
+      if (research) prompt += `\n\n[Research session]\n${untrusted('research session', sessionContext((await getResearch(a.projectId, research)).session))}`;
       const history = base.messages
         .slice(0, -1)
         .filter((m) => m.content && !metaOf(m).error)
@@ -154,22 +158,26 @@ export default function SpectrumAgentTab({
         drafts: threadRef.current?.id === base.id ? tray.map((c) => ({ path: c.filePath, original: c.original, proposed: c.proposed })) : []
       });
       if (runRef.current !== run) return;
-      // the backend words AI failures as a reply; shown as errors, kept out of the history
-      if (!res.ok) throw new Error(res.reply || 'The AI request failed.');
+      // a run that failed part-way still hands back the steps it finished and the changes it prepared: they are kept
+      // and shown, with the failure under them, and Continue goes on from there
       const changes = (await patchesToChanges(latest.current, res.patches || [], 'Spectrum agent')).filter((c) => c.original !== c.proposed);
       const meta: Meta = {
         ...(changes.length && { changes: storedChanges(changes) }),
         ...(res.todos?.length && { todos: res.todos }),
-        ...(res.steps?.length && { steps: res.steps })
+        ...(res.steps?.length && { steps: res.steps }),
+        // the backend words AI failures as a reply; shown as errors, kept out of the history
+        ...(!res.ok && { error: true }),
+        ...((res.incomplete || !res.ok) && { resume: res.incomplete || 'failed' })
       };
       // each file's new proposal goes on from the thread's open one, from the same base, which it closes in the same
       // save as the reply: a reply too large to save leaves the open one as it was
-      const reply = chatMessage('assistant', res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.'), Object.keys(meta).length ? meta : undefined);
+      const said = res.ok ? res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.') : `Request failed: ${res.reply || 'The AI request failed.'}`;
+      const reply = chatMessage('assistant', said, Object.keys(meta).length ? meta : undefined);
       update(base, (chat) => ({ ...chat, messages: [...closeChanges(chat.messages, changes.map((c) => c.filePath), 'superseded').messages, reply] }));
       if (threadRef.current?.id !== base.id) latest.current.notify(`Reply added to “${base.title}”`);
       if (changes.length && threadRef.current?.id === base.id) setTray((old) => [...old.filter((o) => !changes.some((c) => c.filePath === o.filePath)), ...changes]);
     } catch (err) {
-      if (runRef.current === run) append(base, chatMessage('assistant', `Request failed: ${errorText(err)}`, { error: true }));
+      if (runRef.current === run) append(base, chatMessage('assistant', `Request failed: ${errorText(err)}`, { error: true, resume: 'failed' }));
     } finally {
       if (runRef.current === run) setRunning(null);
     }
@@ -250,6 +258,13 @@ export default function SpectrumAgentTab({
 
   const trayChanges = useMemo(() => tray.map(trayOf), [tray]);
   const here = running && running.id === thread?.id;
+  // the thread's last run ended before its answer: Continue goes on from what it had done
+  const lastMeta = thread?.messages.length ? metaOf(thread.messages[thread.messages.length - 1]) : null;
+  const resume = !running && lastMeta?.resume;
+  // nothing done before a failed request: there is nothing to continue from, only the request to send again
+  const again = resume === 'failed' && !lastMeta?.steps?.length && !lastMeta?.changes?.length;
+  // the thread's earlier messages, the changes still open and a note of the finished steps go with it
+  const retry = () => void send(again ? 'Try again' : 'Continue', { context: { file: true, selection: false, log: false, todos: false } });
   return (
     <div className="agent-tab" hidden={hidden}>
       <div className="agent-bar">
@@ -299,6 +314,14 @@ export default function SpectrumAgentTab({
             />
           )}
           <Transcript items={items} todos={todos} />
+          {resume && (
+            <div className="composer-hint row">
+              <span className="grow">{again ? 'Nothing was changed.' : RESUME_HINT[resume]}</span>
+              <button className="btn small" onClick={retry}>
+                {again ? 'Try again' : 'Continue'}
+              </button>
+            </div>
+          )}
           {here && (
             <div className="composer-msg assistant composer-thinking">
               <span className="spinner" /> Working…

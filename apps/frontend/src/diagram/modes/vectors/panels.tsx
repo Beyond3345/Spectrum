@@ -248,7 +248,7 @@ const STYLED = 'As in Style';
 const ColourInput = (props: { label: string; value?: string; fallback: string; onChange(colour?: string): void }) => <ColourField {...props} swatches={COLOURS} />;
 
 /** A thickness: a TikZ name, a width in pt, or the fallback. */
-function ThicknessField({ label = 'Thickness', value, fallback, onChange }: { label?: string; value?: Thickness; fallback: string; onChange(width?: Thickness): void }) {
+export function ThicknessField({ label = 'Thickness', value, fallback, onChange }: { label?: string; value?: Thickness; fallback: string; onChange(width?: Thickness): void }) {
   const options: [string, string][] = [['', fallback], ...WIDTHS.map((w): [string, string] => [w, capital(w)]), ['pt', 'In pt']];
   return (
     <Field label={label}>

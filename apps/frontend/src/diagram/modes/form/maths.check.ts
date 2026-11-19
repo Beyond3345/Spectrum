@@ -63,7 +63,7 @@ const central = (q: Conic, k: 'circle' | 'ellipse' | 'hyperbola', what: string) 
     'axes turned by $\\theta = 45^\\circ$, where $\\cot 2\\theta = \\frac{A - C}{B}$',
     '$7(u + 1.414)^2 + 3(v - 1.414)^2 = 21$',
     '$\\frac{(u + 1.414)^2}{3} + \\frac{(v - 1.414)^2}{7} = 1$',
-    'centre $(-2, 0)$, $a = 2.646$, $b = 1.732$, $c = 2$, $e = 0.7559$'
+    'centre $C(-2, 0)$, $a = 2.646$, $b = 1.732$, $c = 2$, $e = 0.7559$'
   ], 'the working, as the notes complete the squares');
   // every point of the curve the picture samples satisfies the equation
   const f = (p: Pt) => 5 * p.x * p.x + 4 * p.x * p.y + 5 * p.y * p.y + 20 * p.x + 8 * p.y - 1;
@@ -94,7 +94,7 @@ const central = (q: Conic, k: 'circle' | 'ellipse' | 'hyperbola', what: string) 
   const a = central(of(1, 0, 1, -8, 2, -19), 'circle', 'T1(a)');
   at(a.centre, 4, -1, 'T1(a) centre');
   close(a.a, 6, 'T1(a) radius');
-  eq(conicWorking(a), ['Circle: $B^2 - 4AC = -4 < 0$', '$(x - 4)^2 + (y + 1)^2 = 36$', 'centre $(4, -1)$, radius $6$'], 'T1(a) working');
+  eq(conicWorking(a), ['Circle: $B^2 - 4AC = -4 < 0$', '$(x - 4)^2 + (y + 1)^2 = 36$', 'centre $C(4, -1)$, radius $6$'], 'T1(a) working');
   // (b) x² + 2y² − 4x + 3y − 15 = 0: (x − 2)² + 2(y + 3/4)² = 161/8; centre (2, −3/4), a ≈ 4.49, b ≈ 3.17,
   // c = √161/4, foci ≈ (5.17, −0.75) and (−1.17, −0.75)
   const b = central(of(1, 0, 2, -4, 3, -15), 'ellipse', 'T1(b)');
@@ -122,7 +122,7 @@ const central = (q: Conic, k: 'circle' | 'ellipse' | 'hyperbola', what: string) 
   at(d.axis, 0, -1, 'T1(d) opens downwards');
   at(d.focus, 2, 11 / 12, 'T1(d) focus');
   at(d.foot, 2, 29 / 12, 'T1(d) directrix y = 29/12');
-  eq(conicWorking(d), ['Parabola: $B^2 - 4AC = 0$', '$(x - 2)^2 = -3(y - 1.667)$', 'vertex $(2, 1.667)$, $4a = 3$, $a = 0.75$, focus $(2, 0.9167)$', 'directrix $y = 2.417$, $e = 1$'], 'T1(d) working');
+  eq(conicWorking(d), ['Parabola: $B^2 - 4AC = 0$', '$(x - 2)^2 = -3(y - 1.667)$', 'vertex $V(2, 1.667)$, $4a = 3$, $a = 0.75$, focus $F(2, 0.9167)$', 'directrix $y = 2.417$, $e = 1$'], 'T1(d) working');
 }
 
 // ─── Tutorial 1, the second “Classifying four conics” ───
@@ -151,7 +151,7 @@ const central = (q: Conic, k: 'circle' | 'ellipse' | 'hyperbola', what: string) 
   const d = kind(of(0, 0, 1, -1, 1, -1), 'parabola', 'T1b(d)');
   at(d.vertex, -1.25, -0.5, 'T1b(d) vertex');
   at(d.focus, -1, -0.5, 'T1b(d) focus');
-  eq(conicWorking(d).slice(1), ['$(y + 0.5)^2 = (x + 1.25)$', 'vertex $(-1.25, -0.5)$, $4a = 1$, $a = 0.25$, focus $(-1, -0.5)$', 'directrix $x = -1.5$, $e = 1$'], 'T1b(d) working');
+  eq(conicWorking(d).slice(1), ['$(y + 0.5)^2 = (x + 1.25)$', 'vertex $V(-1.25, -0.5)$, $4a = 1$, $a = 0.25$, focus $F(-1, -0.5)$', 'directrix $x = -1.5$, $e = 1$'], 'T1b(d) working');
 }
 
 // ─── Practice 1: the parabola and the ellipse ───
@@ -217,8 +217,8 @@ const central = (q: Conic, k: 'circle' | 'ellipse' | 'hyperbola', what: string) 
   eq(h.foci.map((f) => round(f.x, 3)), [-1.803, 1.803], 'its foci');
   eq(asymptotes(h).map((d) => round((d.y / d.x) * 4.8, 9)).sort(), [-3.2, 3.2], 'its asymptotes');
   // given by its own numbers, there was no discriminant to read and no square to complete
-  eq(conicWorking(h, true), ['Hyperbola: $\\frac{x^2}{2.25} - \\frac{y^2}{1} = 1$', 'centre $(0, 0)$, $a = 1.5$, $b = 1$, $c = 1.803$, $e = 1.202$', 'asymptotes $y = 0.6667x$ and $y = -0.6667x$'], 'its working');
-  eq(conicWorking(p, true), ['Parabola: $y^2 = 4x$', 'vertex $(0, 0)$, $4a = 4$, $a = 1$, focus $(1, 0)$', 'directrix $x = -1$, $e = 1$'], 'y² = 4x working');
+  eq(conicWorking(h, true), ['Hyperbola: $\\frac{x^2}{2.25} - \\frac{y^2}{1} = 1$', 'centre $C(0, 0)$, $a = 1.5$, $b = 1$, $c = 1.803$, $e = 1.202$', 'asymptotes $y = 0.6667x$ and $y = -0.6667x$'], 'its working');
+  eq(conicWorking(p, true), ['Parabola: $y^2 = 4x$', 'vertex $V(0, 0)$, $4a = 4$, $a = 1$, focus $F(1, 0)$', 'directrix $x = -1$, $e = 1$'], 'y² = 4x working');
   // each parabola opens the way it says, each hyperbola along its axis
   eq((['right', 'left', 'up', 'down'] as const).map((opens) => kind(conic(standardConic({ ...own, kind: 'parabola', opens })), 'parabola', opens).axis).map((d) => [round(d.x, 9), round(d.y, 9)]), [[1, 0], [-1, 0], [0, 1], [0, -1]], 'opens');
   at(central(conic(standardConic({ ...own, kind: 'hyperbola', axis: 'y' })), 'hyperbola', 'axis y').axis, 0, 1, 'a hyperbola opening up and down');
@@ -307,17 +307,20 @@ const g = (A: number, B: number, C: number, D: number, E: number, F: number, mor
   eq(body.includes('\\draw[very thick, teal, rotate around={135:(3.5,3.5)}] (3.5,3.5) ellipse [x radius=3.341, y radius=2.187];'), true, 'the ellipse, thick and teal, turned to its axes');
   eq((body.match(/\\draw\[red, line width=0.8pt\]/g) ?? []).length, 2, 'two foci as red crosses');
   eq((body.match(/\\draw\[->, dashed\]/g) ?? []).length, 2, 'the turned axes dashed');
-  eq(['{$U$}', '{$V$}', '{$C$}', '{$F_1$}', '{$A$}'].every((name) => body.includes(name)), true, 'named');
-  eq(body.includes('% centre (-2, 0), a = 2.646, b = 1.732, c = 2, e = 0.7559'), true, 'the working in the code’s comments');
+  eq(['{$u$}', '{$v$}', '{$C$}', '{$F_1$}', '{$F_2$}', '{$V_1$}', '{$V_2$}'].filter((name) => !body.includes(name)), [], 'named: the turned axes as the working names them, the centre, foci and vertices');
+  // not A and B, the letters of B² − 4AC in the working under it; not U and V, beside a vertex V
+  eq(body.match(/\{\$[ABUV]\$\}/g), null, 'no point named A, B, U or V');
+  eq(body.includes('% centre C(-2, 0), a = 2.646, b = 1.732, c = 2, e = 0.7559'), true, 'the working in the code’s comments');
   const hidden = conicDrawing({ ...CONIC.values, foci: false, vertices: false, axes: false, ticks: false, results: false }).code.body;
-  eq([/red/.test(hidden), /dashed/.test(hidden), /\$[AB]\$/.test(hidden), /foreach/.test(hidden), /align=center/.test(hidden)], [false, false, false, false, false], 'each can be hidden');
+  eq([/red/.test(hidden), /dashed/.test(hidden), /\$V_/.test(hidden), /foreach/.test(hidden), /align=center/.test(hidden)], [false, false, false, false, false], 'each can be hidden');
   const hyperbola = conicDrawing(g(1, 0, -2, -4, 3, 1)).code.body;
   eq([(hyperbola.match(/\\draw\[dashed, gray\]/g) ?? []).length, (hyperbola.match(/cosh/g) ?? []).length], [2, 2], 'a hyperbola’s asymptotes dashed grey, and both branches');
   eq(/dashed, gray/.test(conicDrawing(g(1, 0, -2, -4, 3, 1, { asymptotes: false })).code.body), false, 'asymptotes hidden');
   const parabola = conicDrawing(g(1, 0, 0, -4, 3, -1)).code.body;
-  eq([(parabola.match(/\\draw\[dashed, gray\]/g) ?? []).length, parabola.includes('{directrix}'), parabola.includes('{vertex}'), parabola.includes('{$F$}')], [1, true, true, true], 'a parabola’s directrix dashed grey, its vertex and focus');
+  eq([(parabola.match(/\\draw\[dashed, gray\]/g) ?? []).length, parabola.includes('{directrix}'), parabola.includes('{$V$}'), parabola.includes('{$F$}')], [1, true, true, true], 'a parabola’s directrix dashed grey, its vertex and focus');
   eq(/dashed, gray/.test(conicDrawing(g(1, 0, 0, -4, 3, -1, { directrix: false })).code.body), false, 'directrix hidden');
-  eq(conicDrawing(g(1, 0, 0, -4, 3, -1, { coordinates: true })).code.body.includes('{$F(2, 0.9167)$}'), true, 'coordinates beside the names');
+  eq(['{$F(2, 0.9167)$}', '{$V(2, 1.667)$}'].filter((name) => !conicDrawing(g(1, 0, 0, -4, 3, -1, { coordinates: true })).code.body.includes(name)), [], 'coordinates beside the names');
+  eq(['{$V_1(0.6307, 0.75)$}', '{$V_2(3.369, 0.75)$}', '{$C(2, 0.75)$}'].filter((name) => !conicDrawing(g(1, 0, -2, -4, 3, 1, { coordinates: true })).code.body.includes(name)), [], 'a hyperbola’s vertices V₁ and V₂ with theirs');
   eq(conicDrawing(g(1, 0, 1, 0, 0, 1, { results: false })).code.body.includes('{No real points}'), true, 'no real points: the figure says so');
   eq(conicDrawing(g(1, 0, 1, -8, 2, -19, { title: '50% (a) circle' })).code.body.includes('{50\\% (a) circle}'), true, 'a % in the title escaped');
   // a conic far from the origin keeps its size, with the axes along the view's edges

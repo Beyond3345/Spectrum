@@ -1,5 +1,5 @@
 import { applyPatch, createPatch } from 'diff';
-import type { AgentEvent, AgentStep, AgentUserRequest, ChatThread, SuggestedTodo } from '../../api/client';
+import type { AgentEvent, AgentStep, AgentUserRequest, ChatThread, Incomplete, SuggestedTodo } from '../../api/client';
 
 // A local agent's stored events (agentSessionService.js) as the workspace shows them: messages with their streamed
 // chunks joined, one card per tool call updated in place, the latest plan, commands and options. And what a Spectrum
@@ -175,8 +175,32 @@ export type ThreadMeta = {
   checkpoints?: Checkpoint[];
   steps?: AgentStep[];
   error?: boolean;
+  /** the run ended before its answer, and Continue goes on from it */
+  resume?: Incomplete;
 };
 export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) as ThreadMeta;
+
+/** What the thread says under a run that ended before its answer, beside Continue. */
+export const RESUME_HINT: Record<Incomplete, string> = {
+  failed: 'The run stopped at a failed request. What it had done is kept.',
+  steps: 'The agent stopped at its limit of 25 steps.',
+  cut: 'The answer was cut off by the model’s output limit.'
+};
+
+/**
+ * What the next run is told of one that ended before its answer, so it goes on from there and does not start again:
+ * why it ended, the steps it had finished and that its changes are still open. '' after a finished run.
+ */
+export function resumeNote(meta: ThreadMeta) {
+  if (!meta.resume) return '';
+  const steps = (meta.steps || []).filter((s) => s.ok).map((s) => [s.tool, s.about].filter(Boolean).join(' '));
+  return [
+    { failed: 'Your last run stopped before its answer, at a request to the model that failed.', steps: 'Your last run stopped at its limit of 25 steps, before its answer.', cut: 'Your last answer was cut off by the output limit: go on from where it stops, without repeating it.' }[meta.resume],
+    steps.length ? `Steps it had finished: ${steps.slice(-40).join('; ')}.` : '',
+    meta.changes?.length ? `The changes it prepared (${meta.changes.map((c) => c.filePath).join(', ')}) are still open: read_file shows each file with them, and a new change builds on them.` : '',
+    meta.resume === 'cut' ? '' : 'Go on from there. Do not redo what is finished.'
+  ].filter(Boolean).join(' ');
+}
 
 /**
  * A turn's changes as a thread keeps them: a large file's base as the patch from the proposal back to it, a few bytes

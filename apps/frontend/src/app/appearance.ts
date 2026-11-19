@@ -13,25 +13,38 @@ const AREAS = Object.entries(PALETTE) as [Area, (typeof PALETTE)[Area]][];
  * The Spectrum style's icons: each symbol in one of Apple's system colours (light, dark), as peBands colours its
  * pages, so every icon in a list stands out from its neighbours; GitHub and Zotero in their own brand colours. An
  * element takes one with the class hue-<name>, which sets the same tokens as an area.
+ *
+ * Light mode: Apple's colour, or where that is under 3:1 (WCAG 1.4.11) on a surface an icon sits on (white, the
+ * window's grey, a hover or chosen row, its own chosen tint: ICON_SURFACES), the same colour mixed towards black just
+ * far enough to reach 3:1, which keeps its hue. Apple's own in the comment. Dark mode is Apple's throughout.
  */
 export const ICON_COLOURS = {
-  red: ['#ff3b30', '#ff453a'],
-  orange: ['#ff9500', '#ff9f0a'],
-  yellow: ['#ffcc00', '#ffd60a'],
-  green: ['#34c759', '#30d158'],
-  mint: ['#00c7be', '#63e6e2'],
-  teal: ['#30b0c7', '#40c8e0'],
-  cyan: ['#32ade6', '#64d2ff'],
+  red: ['#ee372d', '#ff453a'], // #ff3b30
+  orange: ['#bd6f00', '#ff9f0a'], // #ff9500
+  yellow: ['#9e7e00', '#ffd60a'], // #ffcc00
+  green: ['#279442', '#30d158'], // #34c759
+  mint: ['#00908a', '#63e6e2'], // #00c7be
+  teal: ['#268da0', '#40c8e0'], // #30b0c7
+  cyan: ['#288ab8', '#64d2ff'], // #32ade6
   blue: ['#007aff', '#0a84ff'],
   indigo: ['#5856d6', '#5e5ce6'],
   purple: ['#af52de', '#bf5af2'],
-  pink: ['#ff2d55', '#ff375f'],
-  brown: ['#a2845e', '#ac8e68'],
-  gray: ['#8e8e93', '#98989d'],
+  pink: ['#f12a50', '#ff375f'], // #ff2d55
+  brown: ['#9b7e5a', '#ac8e68'], // #a2845e
+  gray: ['#828287', '#98989d'], // #8e8e93
   github: ['#1f2328', '#f0f6fc'],
   zotero: ['#cc2936', '#e5484d']
 } as const;
 export type IconColour = keyof typeof ICON_COLOURS;
+
+/**
+ * The light surfaces an icon sits on: the panel, the window's grey, a button's grey, a hover or chosen row; and its own
+ * chosen tint (spectrum.css: 16% of the colour on the grey). Dark mode's: the editor bar, the window and the panel.
+ */
+export const ICON_SURFACES = {
+  light: (colour: string) => ['#ffffff', '#f7f7f8', '#efefef', '#ececec', mixHex('#f7f7f8', colour, 0.16)],
+  dark: ['#0f0f0f', '#181818', '#212121']
+};
 
 /** macOS-like accents that read on light and dark surfaces alike */
 export const ACCENTS: [Accent, string, string][] = [
@@ -86,6 +99,12 @@ export function accentColour(settings: Pick<AppSettings, 'accent' | 'accentCusto
 
 const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 
+/** '#rrggbb' a share t of the way from a to b, in sRGB as color-mix(in srgb) does */
+export function mixHex(a: string, b: string, t: number) {
+  const [from, to] = [channels(a), channels(b)];
+  return `#${from.map((v, i) => Math.round(v + (to[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
+}
+
 /** WCAG relative luminance of '#rrggbb', 0 (black) to 1 (white) */
 function luminance(hex: string) {
   const [r, g, b] = channels(hex).map((v) => {
@@ -116,9 +135,8 @@ export function accentText(hex: string) {
 export function accentInk(hex: string, dark: boolean, on?: string) {
   // the lightest surface accent text sits on in each mode: white, and the dark sheets and menus
   const [surface, towards] = dark ? [on ?? '#2a2a2a', '#ffffff'] : [on ?? '#ffffff', '#000000'];
-  const [from, to] = [channels(hex), channels(towards)];
   for (let t = 0; t < 1; t += 0.02) {
-    const ink = `#${from.map((v, i) => Math.round(v + (to[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
+    const ink = mixHex(hex, towards, t);
     if (contrast(ink, surface) >= 4.5) return ink;
   }
   return towards;
@@ -161,6 +179,8 @@ export function paletteCss() {
       )
       .join('\n');
   return [
+    // New's fill in both modes: Apple's blue darkened until its white label reads at 4.5:1
+    `:root${on} { --new-fill: ${accentInk(ICON_COLOURS.blue[0], false)}; }`,
     `:root { --spectrum-ink: linear-gradient(90deg, ${hues.map(([, c]) => c.light).join(', ')}); --spectrum-band: linear-gradient(90deg, ${hues.map(([, c]) => c.band).join(', ')}); --spectrum-wheel: conic-gradient(${hues.map(([, c], i) => `${c.band} ${(i * 360) / hues.length}deg ${((i + 1) * 360) / hues.length}deg`).join(', ')}); }`,
     rules(false, `:root${on}`),
     rules(true, `:root${on}[data-theme='dark']`),

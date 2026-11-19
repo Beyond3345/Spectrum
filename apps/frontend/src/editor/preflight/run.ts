@@ -334,18 +334,23 @@ export function runPreflight(input: PreflightInput): Finding[] {
       add({ group, severity: 'warning', message: `The PDF shows ?? for ${what} the last compile couldn’t resolve: ${listed(keys)}`, ...(shown >= 0 && { page: shown + 1 }) });
     }
     if (rerun) add({ group, severity: 'warning', message: 'The last compile still needed another pass, so references or the contents may be out of date. Compile again.' });
-    const glyphs = new Map<string, { char: string; font: string; n: number }>();
+    // one card a font, naming the characters it lacks (Chinese in Latin Modern is dozens of them)
+    const glyphs = new Map<string, Set<string>>();
     const destinations = new Set<string>();
     for (const line of lastPass(input.log)) {
       const glyph = /^Missing character: There is no (.+?) in font (.+?)!/.exec(line);
-      const known = glyph && glyphs.get(glyph[0]);
-      if (known) known.n += 1;
-      else if (glyph) glyphs.set(glyph[0], { char: glyph[1], font: glyph[2], n: 1 });
+      if (glyph) {
+        // [lmroman10-regular]:mapping=…, NotoSerifSC-Regular.otf/OT:…, or a path in brackets: the font's file or name
+        const font = glyph[2].replace(/^\[([^\]]*)\].*$/, '$1').replace(/\/(?:OT|AAT|GR|ICU)?:.*$/, '').split(/[\\/]/).pop()!;
+        glyphs.set(font, (glyphs.get(font) ?? new Set()).add(glyph[1]));
+      }
       const dest = /destination with the same identifier \((?:name\{)?([^)}]*)\}?\)/.exec(line);
       if (dest) destinations.add(dest[1]);
     }
-    for (const { char, font, n } of glyphs.values()) {
-      add({ group, severity: 'warning', message: `The font ${font.replace(/^\[|\].*$/g, '')} has no ${char}, so it’s missing from the PDF${n > 1 ? ` (${n} times)` : ''}`, fixable: true });
+    for (const [font, set] of glyphs) {
+      // one character with its code, several by themselves: 漢 (U+6F22), or 漢, 字 and 本
+      const chars = [...set].map((char) => (set.size > 1 ? char.replace(/ \(U\+[0-9A-F]+\)$/, '') : char));
+      add({ group, severity: 'warning', message: `The font ${font} has no ${listed(chars, 12)}, so ${chars.length > 1 ? 'they’re' : 'it’s'} missing from the PDF`, fixable: true });
     }
     for (const id of destinations) add({ group, severity: 'warning', message: `Two places in the PDF share the link target ${id}, so a link may go to the wrong one`, fixable: true });
   }

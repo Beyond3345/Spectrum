@@ -83,6 +83,8 @@ function startMockLLM() {
         if (payload.model === 'plain' && payload.reasoning_effort !== undefined) {
           return reply({ error: { message: 'Unrecognized request argument supplied: reasoning_effort' } }, 400);
         }
+        // a chart's code that, were it run, would leave a mark
+        if (payload.model === 'plotter') return reply({ role: 'assistant', content: `\`\`\`python\nopen(${JSON.stringify(path.join(tmp, 'plot-code-ran'))}, 'w').write('ran')\nplt.bar([1, 2], [3, 4])\n\`\`\`` });
         const toolResults = payload.messages.filter((m) => m.role === 'tool').length;
         if (payload.tools && toolResults === 0) {
           return reply({ role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: '{"path":"main.tex"}' } }] });
@@ -143,7 +145,9 @@ async function startServer() {
       SPECTRUM_FRONTEND_DIST: frontendDist,
       SPECTRUM_LLM_API_KEY: '',
       SPECTRUM_MINERU_TOKEN: '',
-      SPECTRUM_ARXIV_BASE: `http://127.0.0.1:${mockPort}/arxiv`
+      SPECTRUM_ARXIV_BASE: `http://127.0.0.1:${mockPort}/arxiv`,
+      // the Bin's stand-in, unless the opt-in test below is to use the real one
+      ...(process.env.SPECTRUM_TEST_BIN !== '1' && { SPECTRUM_TEST_BIN_DIR: path.join(tmp, 'Bin') })
     },
     stdio: 'ignore'
   });
@@ -463,6 +467,39 @@ test('moves a project to the Bin', { skip: binSkip }, async () => {
   assert.ok(res.ok, res.error);
   assert.ok(!existsSync(p.path));
   assert.ok(!(await listIds()).includes(p.id));
+});
+
+test('the file tree moves a file or folder to the Bin, and Undo puts it back', { skip: process.env.SPECTRUM_TEST_BIN === '1' && 'uses the Bin’s stand-in' }, async () => {
+  const p = await newProject('Bin');
+  await writeFile(p.id, 'chapters/one.tex', 'one');
+  await writeFile(p.id, 'notes.md', 'my notes');
+  const del = async (rel, bin = true) => (await api(`/api/projects/${p.id}/file?path=${encodeURIComponent(rel)}${bin ? '&bin=1' : ''}`, { method: 'DELETE' })).json;
+  const restore = async (undo) => (await api(`/api/projects/${p.id}/file/restore`, { method: 'POST', body: { undo } })).json;
+
+  const file = await del('notes.md');
+  assert.ok(file.ok && file.bin && file.undo, JSON.stringify(file));
+  assert.ok(!existsSync(path.join(p.path, 'notes.md')));
+  assert.equal((await fs.readdir(path.join(tmp, 'Bin'))).filter((n) => n.endsWith(' notes.md')).length, 1);
+  assert.ok((await restore(file.undo)).ok);
+  assert.equal(await readFile(p.id, 'notes.md'), 'my notes');
+  assert.equal((await restore(file.undo)).ok, false, 'once only');
+
+  // a folder, and Undo never writes over what took its place
+  const folder = await del('chapters');
+  assert.ok(folder.ok && folder.bin);
+  assert.ok(!existsSync(path.join(p.path, 'chapters')));
+  await writeFile(p.id, 'chapters/new.tex', 'new');
+  assert.equal((await restore(folder.undo)).ok, false);
+  assert.equal(await readFile(p.id, 'chapters/new.tex'), 'new');
+
+  // a link goes, not what it points to; and without bin=1 a file goes for good
+  await fs.symlink('notes.md', path.join(p.path, 'alias.md'));
+  const link = await del('alias.md');
+  assert.ok(link.ok && !link.bin && !link.undo);
+  assert.equal(await readFile(p.id, 'notes.md'), 'my notes');
+  const gone = await del('notes.md', false);
+  assert.ok(gone.ok && !gone.bin);
+  assert.equal((await restore('nonsense')).ok, false);
 });
 
 test('renames, tags, archives, sets the main file and duplicates', async () => {
@@ -933,6 +970,46 @@ test('image → LaTeX never replaces a project image and only keeps figures', as
   assert.ok(!existsSync(path.join(p.path, 'assets', 'plots')));
 });
 
+test('Table to chart returns the model’s code to be shown, and runs nothing', async () => {
+  const p = await newProject('Chart');
+  const tableLatex = '\\begin{tabular}{lr}\nA & 3 \\\\\nB & 5 \\\\\n\\end{tabular}';
+  const res = (await api('/api/plot/from-table', { method: 'POST', body: { projectId: p.id, tableLatex, chartType: 'bar', llmConfig: llmConfig('plotter') } })).json;
+  assert.ok(res.ok, res.error);
+  assert.match(res.code, /^open\(.*\)\.write\('ran'\)\nplt\.bar/);
+  assert.ok(!existsSync(path.join(tmp, 'plot-code-ran')));
+  assert.ok(!existsSync(path.join(p.path, 'assets')));
+  // what went wrong goes back to the model with the code, for code that works
+  await api('/api/plot/from-table', { method: 'POST', body: { projectId: p.id, tableLatex, error: 'NameError: x', code: 'plt.bar(x)', llmConfig: llmConfig('plotter') } });
+  assert.match(mockCalls.at(-1).messages[1].content, /runtime_error:\nNameError: x\nprevious_code:\nplt\.bar\(x\)/);
+  assert.equal((await api('/api/plot/run', { method: 'POST', body: { projectId: p.id, tableLatex, code: '  ' } })).json.ok, false);
+});
+
+const plotSkip = !['darwin', 'win32'].includes(process.platform) ? 'macOS and Windows only'
+  : (() => {
+    try {
+      execFileSync(process.env.SPECTRUM_PYTHON || (process.env.CONDA_PREFIX ? path.join(process.env.CONDA_PREFIX, WINDOWS ? 'python.exe' : 'bin/python') : WINDOWS ? 'python' : 'python3'), ['-c', 'import matplotlib'], { stdio: 'ignore' });
+      return false;
+    } catch {
+      return 'no Python with matplotlib';
+    }
+  })();
+test('Run this code saves the chart in assets/plots, never over a file there', { skip: plotSkip }, async () => {
+  const p = await newProject('Chart run');
+  const tableLatex = '\\begin{tabular}{lr}\nA & 3 \\\\\nB & 5 \\\\\n\\end{tabular}';
+  await writeFile(p.id, 'assets/plots/scores.png', 'mine');
+  const run = (body) => api('/api/plot/run', { method: 'POST', body: { projectId: p.id, tableLatex, ...body } });
+  const res = (await run({ code: 'plt.bar([r[0] for r in rows], [float(r[1]) for r in rows])', filename: 'scores.png' })).json;
+  assert.ok(res.ok, res.error);
+  assert.equal(res.assetPath, 'assets/plots/scores-2.png');
+  assert.equal(await readFile(p.id, 'assets/plots/scores.png'), 'mine');
+  assert.equal((await fs.readFile(path.join(p.path, res.assetPath))).subarray(1, 4).toString(), 'PNG');
+  const pdf = (await run({ code: 'plt.bar([1], [1])', filename: 'scores.pdf' })).json;
+  assert.equal(pdf.assetPath, 'assets/plots/scores.pdf');
+  const failed = (await run({ code: 'plt.bar(nope)', filename: 'bad.png' })).json;
+  assert.match(failed.error, /^Line 1: NameError/);
+  assert.ok(!existsSync(path.join(p.path, 'assets/plots/bad.png')));
+});
+
 test('create and rename never replace another file, in any letter case', async () => {
   const p = await newProject('No clobber');
   await writeFile(p.id, 'References.bib', '@misc{mine}\n');
@@ -1241,6 +1318,54 @@ test('restore moves aside files versions never captured instead of overwriting t
   assert.equal((await fs.stat(path.join(p.path, 'data (before restore).csv'))).size, big.length);
 });
 
+test('restore follows a checkpoint only to the project’s own files', async () => {
+  const p = await newProject('Restore stays in');
+  const versions = `/api/projects/${p.id}/versions`;
+  await writeFile(p.id, 'main.tex', 'v1');
+  const { id } = (await api(versions, { method: 'POST', body: {} })).json.version;
+  // a checkpoint as another computer or an imported folder might bring it, naming the repository and the app's data
+  const manifestFile = path.join(p.path, '.spectrum', 'history', 'manifests', `${id}.json`);
+  const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+  const sha = manifest.files['main.tex'];
+  Object.assign(manifest.files, { '.git/config': sha, '.GIT/hooks/pre-commit': sha, '.spectrum/project.json': sha, 'sub/.Spectrum/x': sha });
+  await fs.writeFile(manifestFile, JSON.stringify(manifest));
+  const meta = await fs.readFile(path.join(p.path, '.spectrum', 'project.json'), 'utf8');
+  await writeFile(p.id, 'main.tex', 'v2');
+
+  assert.ok((await api(`${versions}/${id}/restore`, { method: 'POST', body: {} })).json.ok);
+  assert.equal(await fs.readFile(path.join(p.path, 'main.tex'), 'utf8'), 'v1');
+  assert.equal(existsSync(path.join(p.path, '.git')), false);
+  assert.equal(existsSync(path.join(p.path, 'sub')), false);
+  assert.equal(JSON.parse(await fs.readFile(path.join(p.path, '.spectrum', 'project.json'), 'utf8')).id, JSON.parse(meta).id);
+});
+
+test('an imported archive brings no repository, and on Windows no device name', async (t) => {
+  const { sanitizeUploadPath } = await import('../src/utils/pathUtils.js');
+  assert.equal(sanitizeUploadPath('figs/aux.tex', 'win32'), 'figs/_aux.tex');
+  assert.equal(sanitizeUploadPath('CON/nul/Com1.txt', 'win32'), '_CON/_nul/_Com1.txt');
+  assert.equal(sanitizeUploadPath('console.tex/auxiliary/com10.txt', 'win32'), 'console.tex/auxiliary/com10.txt');
+  assert.equal(sanitizeUploadPath('figs/aux.tex', 'darwin'), 'figs/aux.tex');
+
+  if (!canZip) return t.skip('zip not installed');
+  const src = path.join(tmp, 'with-repo');
+  await fs.mkdir(path.join(src, '.git'), { recursive: true });
+  await fs.mkdir(path.join(src, 'sub', '.GIT'), { recursive: true });
+  await fs.writeFile(path.join(src, '.git', 'config'), '[remote "origin"]\n\turl = https://example.invalid/other.git\n');
+  await fs.writeFile(path.join(src, 'sub', '.GIT', 'config'), 'x');
+  await fs.writeFile(path.join(src, 'sub', 'notes.tex'), 'notes');
+  await fs.writeFile(path.join(src, 'main.tex'), '\\documentclass{article}\\begin{document}x\\end{document}');
+  const zipPath = path.join(tmp, 'with-repo.zip');
+  zip(src, zipPath, '.');
+  const form = new FormData();
+  form.append('zip', new Blob([await fs.readFile(zipPath)]), 'with-repo.zip');
+  const res = await (await fetch(`${base}/api/projects/import-zip`, { method: 'POST', body: form })).json();
+  assert.ok(res.ok, res.error);
+  assert.equal(existsSync(path.join(res.project.path, 'main.tex')), true);
+  assert.equal(existsSync(path.join(res.project.path, 'sub', 'notes.tex')), true);
+  assert.equal(existsSync(path.join(res.project.path, '.git')), false);
+  assert.equal(existsSync(path.join(res.project.path, 'sub', '.GIT')), false);
+});
+
 test('restore writes over a read-only file, keeping it read-only', async () => {
   const p = await newProject('Read-only');
   const file = path.join(p.path, 'main.tex');
@@ -1292,6 +1417,9 @@ test('quick template switch keeps the user\'s own files', async () => {
   assert.equal(await readFile(p.id, 'main.tex'), 'unrelated notes');
   assert.match(await readFile(p.id, 'paper.tex'), /^\\documentclass\[11pt\]\{article\}[\s\S]*My body/);
   assert.ok(!res.changedFiles.includes('references.bib'));
+  // and nothing copies a template over the project without these checks
+  assert.equal((await api(`/api/projects/${p.id}/template`, { method: 'POST', body: { template: 'simple-document' } })).status, 404);
+  assert.equal(await readFile(p.id, 'main.tex'), 'unrelated notes');
 });
 
 test('quick template switch refuses a Typst template for a LaTeX document', async () => {
@@ -1703,7 +1831,8 @@ test('model errors are plain sentences', async () => {
     body: { task: 'chat', prompt: 'hi', mode: 'direct', interaction: 'chat', llmConfig: config }
   });
   assert.equal((await chat(llmConfig('denied'))).json.reply, 'The API key was rejected. Check it in Settings › Models.');
-  assert.equal((await chat(llmConfig('broken'))).json.reply, 'The model provider returned an error (HTTP 500): boom.');
+  // a server error is tried again before it is reported
+  assert.equal((await chat(llmConfig('broken'))).json.reply, 'The model provider returned an error (HTTP 500): boom. Spectrum tried 3 times.');
   // a provider that repeats the key: never shown, or saved with the chat
   assert.equal((await chat({ ...llmConfig('echo'), apiKey: 'sk-test-canary' })).json.reply, 'The model provider returned an error (HTTP 400): Incorrect API key provided: Bearer [API key].');
   assert.equal((await chat({})).json.reply, 'No AI model is set up yet. Add an endpoint, model and API key in Settings › Models.');
@@ -1747,13 +1876,26 @@ test('a project’s file opened as a page can run no script on the app’s addre
   }
 });
 
-test('the app’s pages draw images only from the app itself', async () => {
+test('the app’s pages run only the app’s own scripts and draw and fetch only from the app itself', async () => {
   for (const page of ['/', '/editor/some-project']) {
     const res = await fetch(`${base}${page}`);
     assert.match(res.headers.get('content-type'), /^text\/html/);
-    assert.equal(res.headers.get('content-security-policy'), "img-src 'self' data: blob:");
+    const policy = Object.fromEntries(res.headers.get('content-security-policy').split('; ').map((part) => [part.split(' ')[0], part.split(' ').slice(1).join(' ')]));
+    assert.equal(policy['default-src'], "'self'");
+    assert.equal(policy['script-src'], "'self'", 'no inline script, no eval, no other host');
+    assert.equal(policy['img-src'], "'self' data: blob:");
+    assert.equal(policy['connect-src'], `'self' blob: ipc:${WINDOWS ? ' http://ipc.localhost' : ''}`);
+    assert.equal(policy['base-uri'], "'none'");
+    assert.equal(policy['form-action'], "'none'");
+    assert.equal(policy['frame-ancestors'], "'none'");
+    for (const sources of Object.values(policy)) assert.doesNotMatch(sources, /unsafe-eval|https?:\/\/(?!ipc\.localhost)|\*/);
+    assert.deepEqual(Object.keys(policy).filter((name) => policy[name].includes("'unsafe-inline'")), ['style-src']);
   }
   assert.equal((await fetch(`${base}/api/health`)).headers.get('content-security-policy'), null);
+  // which the page keeps to: its one early script is a file of the app's, not inline
+  const html = await fs.readFile(path.join(here, '..', '..', 'frontend', 'index.html'), 'utf8');
+  for (const [tag] of html.matchAll(/<script\b[^>]*>/g)) assert.match(tag, /\ssrc="\/[^"]+"/, tag);
+  assert.doesNotMatch(html, /\son\w+=|javascript:/i);
 });
 
 test('file routes do not follow links out of the project', async () => {

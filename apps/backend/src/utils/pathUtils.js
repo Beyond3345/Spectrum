@@ -44,16 +44,34 @@ export function safeJoin(root, targetPath) {
   return resolved;
 }
 
+// What a secret file is called: one list, for what the GitHub backup leaves out, what an agent's copy of the project
+// holds and what an agent's tools may read. An .env file, a file of credentials, a private key or a keystore.
+const SECRET_NAMES = ['.netrc', '.npmrc', '.pypirc', 'id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519'];
+const SECRET_EXTENSIONS = ['pem', 'p12', 'pfx', 'keystore', 'jks', 'ppk'];
 /**
- * Whether a file or folder name is one no agent may read or write: Spectrum's, git's or Claude's folders, an .env file
- * or a key, also as a file system that ignores case takes it (APFS folds 'ſ' to 's' and the Kelvin sign to 'k'), and
- * on Windows an NTFS stream, a short 8.3 name or a name Windows trims, which may each be one of those. Self-contained,
- * as the isolated workspace reader runs it too.
+ * The list as the body of a pattern for one file name, lower case, with no anchors or flags: a RegExp is made of it
+ * here, and the sandbox profile and the skills copier write it into their own. extra: more extensions.
+ */
+export const secretNamePattern = (extra = []) => `\\.env(\\..*)?|${SECRET_NAMES.map((n) => n.replace(/\./g, '\\.')).join('|')}|.*\\.(${[...SECRET_EXTENSIONS, ...extra].join('|')})`;
+/** A file the GitHub backup leaves out by its name. */
+export const SECRET_NAME = new RegExp(`^(?:${secretNamePattern()})$`, 'i');
+// an agent is also kept from every .key file (the backup takes one unless it holds a PEM key: Keynote's decks are .key too)
+export const AGENT_SECRET_EXTENSIONS = ['key'];
+const AGENT_SECRET = new RegExp(`^(?:${secretNamePattern(AGENT_SECRET_EXTENSIONS)})$`);
+
+/**
+ * Whether a file or folder name is one no agent may read or write: Spectrum's, git's or Claude's folders, or a secret
+ * file by the list above, also as a file system that ignores case takes it (APFS folds 'ſ' to 's' and the Kelvin sign
+ * to 'k'), and on Windows an NTFS stream, a short 8.3 name or a name Windows trims, which may each be one of those. It
+ * reads nothing but AGENT_SECRET from outside itself, so agentHiddenNameSource can hand it to the isolated workspace
+ * reader whole.
  */
 export function agentHiddenName(p) {
-  return [p.toLowerCase(), p.toUpperCase().toLowerCase()].some((n) => ['.spectrum', '.git', '.claude'].includes(n) || /^\.env(?:\.|$)|\.(pem|key)$/.test(n))
+  return [p.toLowerCase(), p.toUpperCase().toLowerCase()].some((n) => ['.spectrum', '.git', '.claude'].includes(n) || AGENT_SECRET.test(n))
     || (process.platform === 'win32' && (p.includes(':') || /~\d+(\.|$)/.test(p) || /[. ]$/.test(p)));
 }
+/** agentHiddenName as source text that stands alone, for a script run in another process. */
+export const agentHiddenNameSource = `(() => { const AGENT_SECRET = ${AGENT_SECRET}; return ${agentHiddenName}; })()`;
 /** Whether a relative path is one no agent may read or write: any of its names agentHiddenName's. */
 export const agentHidden = (rel) => String(rel).split(/[\\/]/).some(agentHiddenName);
 
@@ -85,11 +103,12 @@ export function safeJoinLink(root, targetPath) {
   return resolved;
 }
 
-export function sanitizeUploadPath(filename) {
+export function sanitizeUploadPath(filename, platform = process.platform) {
   if (!filename) return '';
   const normalized = filename.replace(/\\/g, '/').replace(/^\/+/, '');
-  // NTFS can't hold <>:"|?* (a ':' would make a hidden stream) or a trailing dot or space
-  const fit = (part) => (process.platform === 'win32' ? part.replace(/[<>:"|?*]/g, '_').replace(/[. ]+$/, '') : part);
+  // NTFS can't hold <>:"|?* (a ':' would make a hidden stream) or a trailing dot or space, and CON, AUX and the like
+  // are devices there whatever their extension
+  const fit = (part) => (platform === 'win32' ? part.replace(/[<>:"|?*]/g, '_').replace(/[. ]+$/, '').replace(/^(con|prn|aux|nul|com\d|lpt\d)(?=\.|$)/i, '_$1') : part);
   const parts = normalized.split('/').map(fit).filter((part) => part && part !== '.' && part !== '..');
   return parts.join('/');
 }

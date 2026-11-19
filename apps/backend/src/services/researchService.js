@@ -11,6 +11,7 @@ import { listFilesRecursive, readJson, writeJsonAtomic } from '../utils/fsUtils.
 import { safeJoin } from '../utils/pathUtils.js';
 import { STOPWORDS, searchArxiv } from './arxivService.js';
 import { callOpenAICompatible } from './llmService.js';
+import { DATA_RULE, untrusted } from '../utils/outsideText.js';
 import { appPath, httpError, mutateProjectRoot } from './projectService.js';
 import {
   baseKey, buildBibIndex, cleanDoi, crossrefBase, decodeEntities, detectInput, findDuplicate, get, getPage, normaliseTitle,
@@ -343,7 +344,8 @@ const TRIAGE_PROMPT = [
   'Judge each paper from its title, venue and abstract.',
   'For each, write one sentence on what it offers for the question, suggest keep or drop, and give it a theme of two to four words.',
   'Suggest drop for papers that are off the question; give papers that belong together the same theme, worded the same way.',
-  'Return JSON only: {"results":[{"index":0,"why":"…","suggest":"keep","theme":"…"}]}.'
+  'Return JSON only: {"results":[{"index":0,"why":"…","suggest":"keep","theme":"…"}]}.',
+  DATA_RULE
 ].join(' ');
 
 /** id → { why, suggest, theme } for up to 60 results, from one model call. */
@@ -353,7 +355,8 @@ async function triageResults(question, results, llmConfig) {
     ...llmConfig,
     messages: [
       { role: 'system', content: TRIAGE_PROMPT },
-      { role: 'user', content: JSON.stringify({ question, papers: batch.map((r, index) => ({ index, title: r.title, year: r.year, venue: r.venue, abstract: r.abstract?.slice(0, 500) })) }) }
+      // titles and abstracts come from the sources searched
+      { role: 'user', content: `Question: ${question}\n\n${untrusted('search results', JSON.stringify({ papers: batch.map((r, index) => ({ index, title: r.title, year: r.year, venue: r.venue, abstract: r.abstract?.slice(0, 500) })) }))}` }
     ]
   });
   if (!reply.ok) throw new Error(reply.error || 'The model didn’t answer.');

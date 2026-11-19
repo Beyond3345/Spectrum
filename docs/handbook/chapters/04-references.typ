@@ -23,7 +23,7 @@ The References chat is the assistant panel (#key("⌘", "L")) in its #ui[Referen
 
 The citation key is the first author's surname followed by the year, such as `Vaswani2017`. Accents are removed and name particles are joined, so "van der Waals" becomes `VanderWaals`, and a key already used for another paper gets a letter (`Smith2020a`). A paper whose DOI or arXiv ID is already in a `.bib` of the project is reported as #ui[Already there] with its existing key and is not added again. Unknown dates and authors are left empty rather than guessed.
 
-Each result is a card with its status, key, title, authors and year, the BibTeX that was written (folded under #ui[BibTeX]) and #ui[Insert citation] (@fig-references-card). When the `.bib` is not yet loaded by the main file, the card says so and gives the line to add, which is `#bibliography("refs.bib")` in Typst, `bibliography: refs.bib` in the front matter of Markdown and `\bibliography{references}` in LaTeX.
+Each result is a card with its status, key, title, authors and year, the BibTeX that was written (folded under #ui[BibTeX]) and #ui[Insert citation] (@fig-references-card). When the `.bib` is not yet loaded by the main file, the card says so and gives the line to add, which is `#bibliography("refs.bib")` in Typst and `\bibliography{references}` in LaTeX. A Markdown document whose front matter names no `bibliography` is given every `.bib` in the project, so it needs no line, while one that names a list is asked to add the file to that list, since a second `bibliography:` line is an error.
 
 #shot("figures/04-references/references-card.png", [A reference added in a Typst project, shown again from the chat's history. The hint at the foot gives the Typst line that loads `refs.bib`.], width: 85%) <fig-references-card>
 
@@ -32,6 +32,8 @@ With #ui[Insert `\cite` at the cursor after adding a reference] on, in #menu[Set
 === Citing
 
 A citation is written in the form the document needs. In a LaTeX document Spectrum reads the main file and uses `\parencite` when it loads biblatex, `\citep` when it loads natbib and `\cite` otherwise. A Typst document gets `@key`, and a Markdown document `[@key]`.
+
+The LaTeX and Typst templates cite in APA 7th edition, and so does a Markdown document. Since pandoc formats a Markdown document's citations itself, Spectrum gives it the APA 7 style of the Citation Style Language project, a separate file under the Creative Commons Attribution-ShareAlike 3.0 licence, which #menu[Settings][System][Licences] shows. A document that needs another style names its own style file in the front matter, such as `csl: ieee.csl`, and that file is used instead.
 
 #menu[Insert][Citation], under #ui[+] in the editor's toolbar, puts `\cite{key}` at the cursor with `key` selected. Typing over it, or anywhere inside a citation command, lists the matching keys of the project's `.bib` files with their author and year (@fig-references-completion). #key("Enter") or #key("Tab") picks one. With Zotero open, items of your library also appear below the project's keys after three letters (@sec-references-zotero).
 

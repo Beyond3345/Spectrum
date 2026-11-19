@@ -1478,6 +1478,13 @@ function EnginesPane() {
 
   return (
     <>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.openLogsOnFail} onChange={(e) => update({ openLogsOnFail: e.target.checked })} />
+        <span>
+          Open Logs when a compile fails
+          <span className="field-hint">Tools › Logs opens in the PDF’s place. For LaTeX, Typst and Markdown alike. Auto compile leaves it closed.</span>
+        </span>
+      </label>
       <Tabs value={tab} onChange={setTab} items={[{ value: 'latex', label: 'LaTeX' }, { value: 'typst', label: 'Typst' }, { value: 'markdown', label: 'Markdown' }]} />
       {error && <div className="field-hint error">{error}</div>}
       {tab === 'latex' && (
@@ -1636,13 +1643,6 @@ function EnginesPane() {
           </button>
         </div>
       )}
-      <label className="checkbox-row">
-        <input type="checkbox" role="switch" checked={settings.openLogsOnFail} onChange={(e) => update({ openLogsOnFail: e.target.checked })} />
-        <span>
-          Open Logs when a compile fails
-          <span className="field-hint">Tools › Logs opens in the PDF’s place. Auto compile leaves it closed.</span>
-        </span>
-      </label>
         </>
       )}
 

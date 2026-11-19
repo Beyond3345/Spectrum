@@ -1,6 +1,7 @@
 import { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
 export { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
 import { withoutComments } from '../../../backend/src/latex/text.js';
+import { docKind } from '../../../backend/src/utils/docLanguage.js';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { runAgent } from '../api/client';
@@ -10,6 +11,28 @@ import type { EditorApi, PendingChange } from './EditorContext';
 // Small helpers shared by the composer and the Tools tabs.
 
 export const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+export const NO_ANSWER = 'Spectrum’s server didn’t answer';
+
+/**
+ * run(), tried again after a pause when it fails or gives no answer within `timeout` ms, `tries` times in all; the last
+ * failure is thrown. stop(): true once the result is no longer wanted (the page left), which ends the tries quietly.
+ */
+export async function withRetries<T>(run: () => Promise<T>, { tries = 3, timeout = 15000, pause = 1000, stop = (): boolean => false } = {}): Promise<T | undefined> {
+  for (let attempt = 1; ; attempt++) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([run(), new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(NO_ANSWER)), timeout)))]);
+    } catch (err) {
+      if (stop()) return undefined;
+      if (attempt >= tries) throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+    await new Promise((resolve) => setTimeout(resolve, pause * attempt));
+    if (stop()) return undefined;
+  }
+}
 
 export function citationCommand(source: string) {
   const text = withoutComments(source);
@@ -172,16 +195,14 @@ export const parseJsonReply = <T,>(text: string) => {
 
 export const isTex = (path: string) => path.toLowerCase().endsWith('.tex');
 
-export type DocKind = 'latex' | 'typst' | 'markdown';
+export type { DocKind } from '../../../backend/src/utils/docLanguage.js';
 /** The kind of document a file is, by its extension; null for anything else (.bib, images). */
-export const docKind = (path: string): DocKind | null =>
-  /\.(tex|ltx)$/i.test(path) ? 'latex' : /\.typ$/i.test(path) ? 'typst' : /\.(md|markdown)$/i.test(path) ? 'markdown' : null;
+export { docKind } from '../../../backend/src/utils/docLanguage.js';
 export const isDocument = (path: string) => docKind(path) !== null;
 /** The line that includes bibFile in a main file of its kind, for the hint shown when it is not included yet. */
 export const bibIncludeLine = (mainFile: string, bibFile: string) => {
   const kind = docKind(mainFile);
   if (kind === 'typst') return `#bibliography("${bibFile}")`;
-  if (kind === 'markdown') return `bibliography: ${bibFile}`;
   return `\\bibliography{${bibFile.replace(/\.bib$/i, '')}}`;
 };
 /** A file of a document's own source: a document, or a LaTeX package, class or .bib file it reads. */
@@ -209,47 +230,6 @@ export function figureSnippet(filePath: string) {
   ].join('\n');
 }
 
-const parentPath = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
-
-/** File list + section outline of the document, starting at the main file and following \input/\include. */
-export async function buildProjectContext(api: Pick<EditorApi, 'mainFile' | 'activePath' | 'ensureFileContent'>) {
-  const root = api.mainFile || api.activePath;
-  if (!root) return '';
-  const visited = new Set<string>();
-  const queue = [root];
-  const summaries: string[] = [];
-  while (queue.length) {
-    const current = queue.shift()!;
-    if (visited.has(current)) continue;
-    visited.add(current);
-    if (!isTex(current)) continue;
-    let content = '';
-    try {
-      content = await api.ensureFileContent(current);
-    } catch {
-      continue;
-    }
-    const headings: string[] = [];
-    const includes: string[] = [];
-    for (const line of content.split(/\r?\n/)) {
-      const clean = withoutComments(line);
-      for (const m of clean.matchAll(/\\+(section|subsection|subsubsection)\*?\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)) {
-        const level = m[1] === 'section' ? 0 : m[1] === 'subsection' ? 1 : 2;
-        if (headings.length < 12) headings.push(`${'  '.repeat(level)}- ${m[2].trim() || '(untitled)'}`);
-      }
-      for (const m of clean.matchAll(/\\(?:input|include)\s*\{([^}]+)\}/g)) includes.push(m[1].trim());
-    }
-    summaries.push(`File: ${current}\n${headings.join('\n')}`);
-    const base = parentPath(current);
-    for (const raw of includes) {
-      const target = raw.replace(/^\//, '').replace(/(\.tex)?$/, '.tex');
-      const resolved = base ? `${base}/${target}` : target;
-      if (!visited.has(resolved)) queue.push(resolved);
-    }
-  }
-  return `Project files: ${[...visited].join(', ')}\nOutline:\n${summaries.join('\n')}`;
-}
-
 /**
  * Agent patches → reviewable changes. The "before" side is the file as the agent read it (the backend
  * sends it as `original`), so edits made since then are rebased, not reverted, when the change is accepted.
@@ -266,11 +246,24 @@ export async function patchesToChanges(api: Pick<EditorApi, 'ensureFileContent'>
 }
 
 /**
+ * Whether a model can answer: a key, or a local server on plain http that takes none (llmService.js missingKey).
+ * ponytail: a key only in the backend's .env (SPECTRUM_LLM_API_KEY, a developer's setup) is not seen here.
+ */
+export const modelSetUp = (llm: { apiKey?: string; endpoint?: string }) => Boolean(llm.apiKey) || /^http:\/\//i.test(llm.endpoint || '');
+
+/** Fix with AI's tooltip: with no model set up it opens Settings › Models instead */
+export const fixTitle = (api: Pick<EditorApi, 'llm'>) => (modelSetUp(api.llm.main) ? undefined : 'No AI model is set up yet: opens Settings › Models');
+
+/**
  * Fix with AI, as the Logs and Review tabs offer it: one tools run asked for a patch, which opens as reviewable changes
  * named `label`. file: where the problem is (the open file otherwise); withLog: the compile log goes along. Says how it
  * went itself and returns the AI's reply ('' when the request failed).
  */
 export async function fixWithAI(api: EditorApi, { task, prompt, selection = '', file, label, withLog = true }: { task: string; prompt: string; selection?: string; file?: string; label: string; withLog?: boolean }) {
+  if (!modelSetUp(api.llm.main)) {
+    api.openSettings('models');
+    return '';
+  }
   try {
     const res = await runAgent({
       task,

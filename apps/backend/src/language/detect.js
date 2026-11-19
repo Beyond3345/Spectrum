@@ -54,7 +54,8 @@ const SIMPLIFIED_ONLY = new Set([...ST].filter(([from, to]) => !to.includes(from
 const TRADITIONAL_ONLY = new Set(table('TSCharacters').filter(([from, to]) => !to.includes(from)).map(([from]) => from));
 export const OPENCC_COUNTS = { simplifiedOnly: SIMPLIFIED_ONLY.size, traditionalOnly: TRADITIONAL_ONLY.size };
 
-function chineseForms(text) {
+/** How many characters of the text are Simplified only and Traditional only. */
+export function chineseForms(text) {
   let simplified = 0, traditional = 0;
   for (const ch of text) {
     if (SIMPLIFIED_ONLY.has(ch)) simplified += 1;

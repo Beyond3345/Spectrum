@@ -1,4 +1,5 @@
 // References chat: DOI / arXiv / link / title → BibTeX appended to the project's .bib.
+import { DATA_RULE, untrusted } from '../utils/outsideText.js';
 import { promises as fs } from 'fs';
 import { lookup as dnsLookup } from 'dns/promises';
 import net from 'net';
@@ -106,9 +107,10 @@ async function splitWithLLM(text, llmConfig) {
     messages: [
       {
         role: 'system',
-        content: 'Split the text into separate bibliographic references. For each reference give its DOI if one appears, else its arXiv id, else a URL, else a short search query (the title, plus the first author surname if known). Return JSON only: {"items":[{"doi":"","arxiv":"","url":"","query":""}]}'
+        content: 'Split the text into separate bibliographic references. For each reference give its DOI if one appears, else its arXiv id, else a URL, else a short search query (the title, plus the first author surname if known). Return JSON only: {"items":[{"doi":"","arxiv":"","url":"","query":""}]} ' + DATA_RULE
       },
-      { role: 'user', content: text.slice(0, 20_000) }
+      // a pasted reference list is often copied out of a PDF or a web page
+      { role: 'user', content: untrusted('pasted references', text.slice(0, 20_000)) }
     ]
   });
   const res = await Promise.race([call, new Promise((r) => setTimeout(r, LLM_TIMEOUT_MS, null).unref())]);
@@ -1146,6 +1148,8 @@ async function bibContext(projectRoot, bibFile) {
   return {
     sources,
     target,
+    // loaded, or a Markdown main file whose front matter names no bibliography, which pandoc is given every .bib for
+    included: texIncludesBib(sources, target) || (/\.(?:md|markdown)$/i.test(mainFile || '') && !sources.some((source) => [parseFrontMatter(source).meta.bibliography].flat().some(Boolean))),
     // a .bib no document loads yet goes with what the documents use
     biblatex: BIBLATEX.test(bibliographySources || withoutComments(sources.join('\n'))),
     legacyUrls,
@@ -1164,7 +1168,7 @@ function afterAdd(projectRoot, out) {
 /** items: detectInput's { kind, … }. Looks each up and appends the new ones to the target .bib, duplicates caught. */
 export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
   return afterAdd(projectRoot, await withBibLock(async () => {
-    const { sources, target, legacyUrls, index, taken } = await bibContext(projectRoot, bibFile);
+    const { target, included, legacyUrls, index, taken } = await bibContext(projectRoot, bibFile);
     const outcomes = await mapPool(items, 4, (item) => lookup(item, index, searchConfig));
 
     const results = [];
@@ -1193,7 +1197,7 @@ export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
       index.push({ ...id, key, file: target, displayTitle: cleanText(first(record.title)) });
       results.push({ input, status: 'added', key, bibtex, bibFile: target, ...summaryOf(record) });
     }
-    return { results, bibFile: target, bibIncluded: texIncludesBib(sources, target) };
+    return { results, bibFile: target, bibIncluded: included };
   }));
 }
 
@@ -1208,7 +1212,7 @@ const VALID_KEY = /^[^,\s{}()"=#%~\\]+$/;
 export async function appendEntries(projectRoot, bibFile, make) {
   return afterAdd(projectRoot, await withBibLock(async () => {
     const context = await bibContext(projectRoot, bibFile);
-    const { sources, target, index, taken } = context;
+    const { target, included, index, taken } = context;
     const results = [];
     for (const { input, bibtex, key: wanted, error } of await make(context)) {
       const [entry] = error ? [] : parseBibEntries(bibtex);
@@ -1235,7 +1239,7 @@ export async function appendEntries(projectRoot, bibFile, make) {
       index.push({ ...id, key });
       results.push({ input, status: 'added', key, bibtex: text, bibFile: target, title: id.displayTitle || undefined, year: id.year || undefined, doi: id.doi || undefined });
     }
-    return { results, bibFile: target, bibIncluded: texIncludesBib(sources, target) };
+    return { results, bibFile: target, bibIncluded: included };
   }));
 }
 

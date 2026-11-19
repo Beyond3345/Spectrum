@@ -54,7 +54,8 @@ import {
   syncZotero,
   updateProjectSettings,
   writeFile,
-  base64Bytes
+  base64Bytes,
+  UNREACHABLE
 } from '../api/client';
 import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, JyutpingSettings, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import Icon from './Icon';
@@ -66,6 +67,7 @@ import type { Section as SettingsSection } from './SettingsSheet';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
+import { referenceEdits } from '../editor/references';
 import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
 import ConvertSheet from './ConvertSheet';
 import JyutpingSheet from './JyutpingSheet';
@@ -144,9 +146,10 @@ import { Tinymist, tinymistCompletions } from '../editor/lsp/tinymist';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, type DocKind } from '../editor/shared';
+import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
+import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
 import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
 
@@ -289,7 +292,10 @@ const SNIPPETS: (Snippet | FloatCard | null)[] = [
   { label: 'List', icon: 'list.bullet', text: '- item', select: 'item', block: true, kinds: MARKDOWN },
   { label: 'Link', icon: 'link', text: '[text](url)', select: 'text', kinds: MARKDOWN },
   { label: 'Maths', icon: 'function', text: '$x$', select: 'x', kinds: MARKDOWN },
+  { label: 'Block maths', icon: 'function', text: '$$\nx\n$$', select: 'x', block: true, kinds: MARKDOWN },
   { label: 'Citation', icon: 'quote.opening', text: '[@key]', select: 'key', kinds: MARKDOWN },
+  { label: 'Footnote', icon: 'note.text', text: '^[Footnote text]', select: 'Footnote text', kinds: MARKDOWN },
+  { label: 'Comment', icon: 'text.bubble', text: '<!-- comment -->', select: 'comment', kinds: MARKDOWN },
   { label: 'Code block', icon: 'chevron.left.forwardslash.chevron.right', text: '```\ncode\n```', select: 'code', block: true, kinds: MARKDOWN }
 ];
 // id: the running compile's, for its live output, which markdown (a Markdown document's) chooses by its own switch
@@ -370,6 +376,9 @@ function Editor({ projectId }: { projectId: string }) {
   /** a sync app's conflict copies, each with its original's path */
   const [conflicts, setConflicts] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
+  // why the project couldn't be opened after its tries ('' while it loads or once it has), and Retry's count
+  const [loadFailed, setLoadFailed] = useState('');
+  const [loadTry, setLoadTry] = useState(0);
   /** file contents by path; the open file's entry follows every keystroke */
   const filesRef = useRef(new Map<string, string>());
   /** the hash of each of those files' text on disk as the editor last loaded or saved it, so a save can tell when it changed since */
@@ -1047,6 +1056,41 @@ function Editor({ projectId }: { projectId: string }) {
     setShownDoc(remap);
     shownRef.current = remap(shownRef.current);
     setCompiledDoc(remap);
+    updateReferences(from, to, [...fileSet].map(remap)).catch((err) => notify(`Couldn’t update the references: ${errorText(err)}`, 'error'));
+  };
+
+  /**
+   * After a rename or move: offers to rewrite the \include, \includegraphics, #include, image() and Markdown links that
+   * named the old path (references.ts), listing each change, with a checkpoint first; all or none. Nothing names it:
+   * nothing is asked.
+   */
+  const updateReferences = async (from: string, to: string, paths: string[]) => {
+    const sources = paths.filter((p) => /\.(tex|ltx|typ|md|markdown)$/i.test(p) && !heldRef.current.has(p));
+    const texts = new Map(await Promise.all(sources.map(async (p) => [p, await readText(p).catch(() => '')] as const)));
+    const plan = referenceEdits(texts, from, to, new Set(paths));
+    if (!plan.length) return;
+    const count = plan.reduce((n, p) => n + p.changes.length, 0);
+    const ok = await confirmDialog({
+      title: `Update ${plural(count, 'reference')} to “${nameOf(to)}”?`,
+      message: `${plan.map((p) => `${p.path}: ${p.changes.join(', ')}`).join('\n')}\n\nA “Before updating references” checkpoint is saved first.`,
+      confirmLabel: 'Update',
+      cancelLabel: 'Leave them'
+    });
+    if (!ok) return;
+    const { version } = await createVersion('manual', `Before updating references to ${to}`);
+    const written: typeof plan = [];
+    try {
+      for (const p of plan) {
+        if ((await readText(p.path)) !== p.before) throw new Error(`${nameOf(p.path)} changed meanwhile.`);
+        await writeProjectFile(p.path, p.after);
+        written.push(p);
+      }
+    } catch (err) {
+      const stuck: string[] = [];
+      for (const p of written.reverse()) await writeProjectFile(p.path, p.before).catch(() => stuck.push(p.path));
+      throw new Error(`${errorText(err)}${stuck.length ? ` ${stuck.join(', ')} couldn’t be put back; checkpoint ${version?.number} has them as they were.` : ' Nothing was changed.'}`);
+    }
+    notify(`Updated ${plural(count, 'reference')} in ${plural(plan.length, 'file')}`, 'success');
   };
 
   const onDeleted = (path: string) => {
@@ -1536,24 +1580,19 @@ function Editor({ projectId }: { projectId: string }) {
     clearGhost();
     const pos = view.state.selection.main.head;
     const doc = view.state.doc.toString();
-    const heading = nearestHeading(doc, pos);
-    const env = currentEnvironment(doc.slice(0, pos));
+    // the heading the cursor is under, as each language writes one, and LaTeX's open environment
+    const language = docLanguage(path, mainFile);
+    const before = doc.slice(0, pos);
+    const outline = language.kind === 'typst' ? parseTypstOutline(before) : language.kind === 'markdown' ? parseMarkdownOutline(before) : null;
+    const heading = outline ? outline[outline.length - 1] : nearestHeading(doc, pos);
+    const env = language.kind === 'latex' ? currentEnvironment(before) : '';
     ghostRef.current = { text: '', pos };
     setSuggesting(true);
     placeGhost(pos);
     try {
       const res = await runAgent({
         task: 'autocomplete',
-        prompt: [
-          'You are a LaTeX writing assistant.',
-          'Continue after <CURSOR> with a coherent next block (1-2 paragraphs or a full environment).',
-          heading ? `Current section: ${heading.title}.` : '',
-          env ? `You are inside the ${env} environment.` : '',
-          'Preserve style and formatting.',
-          'Return only the continuation text, no commentary.'
-        ]
-          .filter(Boolean)
-          .join(' '),
+        prompt: autocompletePrompt(language, { heading: heading?.title, environment: env }),
         selection: '',
         content: `${doc.slice(Math.max(0, pos - 4000), pos)}<CURSOR>${doc.slice(pos, pos + 400)}`,
         mode: 'direct',
@@ -2382,7 +2421,7 @@ function Editor({ projectId }: { projectId: string }) {
       scopeGutter,
       EditorView.lineWrapping,
       // a screen reader names the text box; the open file is the selected tab above it
-      EditorView.contentAttributes.of({ 'aria-label': 'Source' }),
+      EditorView.contentAttributes.of({ 'aria-label': 'Source', 'aria-describedby': 'source-leave-hint' }),
       editorTheme,
       ghostField,
       jumpHighlight,
@@ -2506,9 +2545,12 @@ function Editor({ projectId }: { projectId: string }) {
       setProjectLanguages(res.settings.language?.languages ?? null);
       setJyutping(res.settings.jyutping ?? null);
     }, () => undefined);
+    setLoadFailed('');
     (async () => {
-      const [list, tree] = await Promise.all([listProjects(), refreshTree()]);
-      if (!live) return;
+      // a request that fails or never answers is tried again, then the page says so with Retry, never "Loading…" for ever
+      const both = await withRetries(() => Promise.all([listProjects(), refreshTree()]), { stop: () => !live });
+      if (!live || !both) return;
+      const [list, tree] = both;
       setProjects(list.projects);
       const current = list.projects.find((p) => p.id === projectId);
       if (!current || current.missing) {
@@ -2532,11 +2574,11 @@ function Editor({ projectId }: { projectId: string }) {
       // a wanted file opens instead, below
       const first = tree.items.some((i) => i.path === wanted) ? '' : main || (await smallTextFile(projectId, tree.items));
       if (first) await openFile(first);
-    })().catch((err) => notify(`Couldn’t open the project: ${errorText(err)}`, 'error'));
+    })().catch((err) => live && setLoadFailed(errorText(err) === UNREACHABLE ? `${NO_ANSWER}.` : errorText(err)));
     return () => {
       live = false;
     };
-  }, []);
+  }, [loadTry]);
 
   // the files no editor has open, as TexLab's outline read them: once until the tree or a file changes, rather than
   // after each pause in typing
@@ -2910,6 +2952,7 @@ function Editor({ projectId }: { projectId: string }) {
     settings: { ...settings, reasoningEffort: effectiveEffort(settings, providers) },
     llm,
     notify,
+    openSettings: (section) => setSettingsOpen(section ?? true),
     insertAtCursor: (text, opts) => {
       const done = insertAtCursor(text, opts);
       return done && viewRef.current ? viewRef.current.state.doc.lineAt(done.from + done.insert.length).number : null;
@@ -3538,6 +3581,15 @@ function Editor({ projectId }: { projectId: string }) {
 
             <SyncBanners conflicts={conflicts} onDeleted={onDeleted} />
 
+            {loadFailed && (
+              <div className="review-banner template-banner load-failed" role="alert">
+                <Icon name="exclamationmark.triangle" />
+                <span className="grow">Couldn’t open the project: {loadFailed}</span>
+                <button className="btn small ghost" onClick={() => navigate('/projects')}>Projects</button>
+                <button className="btn small primary" onClick={() => setLoadTry((n) => n + 1)}>Retry</button>
+              </div>
+            )}
+
             {draft && (
               <div className="review-banner template-banner" role="status">
                 <Icon name="square.and.pencil" />
@@ -3593,6 +3645,7 @@ function Editor({ projectId }: { projectId: string }) {
             )}
 
             <div className="editor-area" ref={areaRef}>
+              <span id="source-leave-hint" className="sr-only">Tab indents. To move focus out of the editor, press Escape, then Tab.</span>
               <div className="editor-host" ref={hostRef} style={{ '--editor-font-size': `${settings.editorFontSize}px` } as CSSProperties} />
               {!activePath && loaded && (
                 <div className="editor-empty">

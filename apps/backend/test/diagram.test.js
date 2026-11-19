@@ -131,6 +131,18 @@ test('symbols: a set’s pictures draw beside circuitikz’s parts, their pins r
   assert.ok(alone.body.ok && !alone.body.log, alone.body.error || alone.body.log);
 });
 
+test('symbols: a manometer with a liquid and its levels draws, beside one with none, with the same pins', { skip: needsTex }, async () => {
+  const { body } = await symbols([
+    { id: 'plain', tikz: 'spx/fluid/manometer', kind: 'pic', pins: ['left', 'right'] },
+    { id: 'mercury', tikz: 'spx/fluid/manometer', kind: 'pic', options: ['spx/fluid/liquid=mercury', 'spx/fluid/manometer/left=0.1', 'spx/fluid/manometer/right=0.3'], pins: ['left', 'right'] },
+    { id: 'column', tikz: 'spx/fluid/column', kind: 'pic', options: ['spx/fluid/liquid=oil', 'spx/fluid/liquid 2=water', 'spx/fluid/liquid 3=mercury'], pins: ['top'] }
+  ], 'not a circuitikz key');
+  assert.ok(body.ok, body.error || body.log);
+  assert.equal(body.log, undefined, 'every part drew');
+  assert.deepEqual(body.pages[1].pins, body.pages[0].pins);
+  assert.deepEqual([body.pages[1].width, body.pages[1].height], [body.pages[0].width, body.pages[0].height]);
+});
+
 test('symbols: the cache key holds the engine, the sets’ versions and circuitikz’s date, never just the request', { skip: needsTex }, async () => {
   const { SYMBOL_SETS } = await import('../src/data/symbolSets.js');
   const cache = path.join(dataDir, 'cache', 'symbols');

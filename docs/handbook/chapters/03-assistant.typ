@@ -79,6 +79,10 @@ The assistant is a panel that floats at the bottom of the editor. It is opened w
 
 In #ui[Assistant] mode the panel opens on "How can I help with your paper?" (@fig-assistant-empty). A question typed in the box and sent with #key("Enter") goes to the main model with the open file, the selection and the compile log. #key("⇧", "Enter") starts a new line instead. The answer comes back in the panel and never changes your files. Work across several files of the project belongs to the agent workspace instead (@sec-assistant-workspace).
 
+The model is told which language the open file is written in, LaTeX, Typst or Markdown, with that language's conventions, so an answer about a `.typ` file is written in Typst and not in LaTeX. This applies to every request in this chapter.
+
+A provider that is busy does not end a request. When it answers that it is overloaded or limiting requests, Spectrum waits and sends the request again, twice at most. It waits for as long as the provider asks, up to 20 seconds, or else for one second and then three. A rejected key, a wrong address and an account with no credit left are not sent again, since waiting does not mend them, and the message says which it was. When an answer stops at the model's output limit, the panel says "The answer was cut off by the model's output limit." under it, and #ui[Continue] asks the model to go on from where it stopped.
+
 #shot("figures/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The bar at the bottom holds the image menu (+), the persona and the reasoning effort.], width: 85%) <fig-assistant-empty>
 
 The bar under the message box holds three controls,
@@ -106,7 +110,7 @@ The actions are,
 - #ui[Restructure], which reorders it and
 - #ui[Translate], a menu of English, Chinese, Japanese, Korean, French, German and Spanish, with a #ui[Scope] of the selection, the current file or the whole project (@fig-assistant-translate).
 
-Anything typed in the box before pressing an action goes with it as a note, for example "keep it under 80 words". Translating the whole project asks the model for changes to every `.tex` file, and every other action changes only the open file.
+Anything typed in the box before pressing an action goes with it as a note, for example "keep it under 80 words". Translating the whole project asks the model for changes to every document of the project, its `.tex`, `.typ` or `.md` files, and every other action changes only the open file. Each action asks the model to keep the markup of the document's own language. If a translation of the whole project fails part of the way, the changes made before the failure are kept for review. A rewrite that was cut off by the output limit is not offered as a change, since half a rewrite would replace the whole selection.
 
 #shot("figures/03-assistant/translate-menu.png", [The #ui[Translate] menu. The scope at its foot decides whether the selection, the file or the whole project is translated.], width: 60%) <fig-assistant-translate>
 
@@ -148,7 +152,7 @@ AI autocomplete writes a suggestion at the cursor with the quick model. It is as
 - #ui[Word] (#key("→")), which keeps the next word only and
 - #ui[Dismiss] (#key("Esc")), which removes it.
 
-Autocomplete is told the nearest heading and the environment the cursor is in. It never uses the default instructions or a persona, and its key can be changed in #menu[Settings][Shortcuts].
+Autocomplete is told the document's language, the nearest heading and, in a LaTeX file, the environment the cursor is in. It never uses the default instructions or a persona, and its key can be changed in #menu[Settings][Shortcuts]. Because it has to be quick, it asks a busy provider once only.
 
 == Personas and skills <sec-assistant-personas>
 
@@ -220,8 +224,8 @@ A new conversation opens on "What would you like to do today?" with five task bu
     columns: (auto, 1fr),
     align: left,
     table.header[Task][What it asks for],
-    [#ui[Literature sweep]], [The most relevant papers on the project's topic, with a line on each and which are already in the `.bib`, with the `paper-lookup` skill],
-    [#ui[Related work]], [A related-work section grouped by theme that cites only keys in the `.bib`, with `spectrum-related-work`],
+    [#ui[Literature sweep]], [The most relevant papers on the project's topic, with a line on each and which are already in the project's bibliography, with the `paper-lookup` skill],
+    [#ui[Related work]], [A related-work section grouped by theme that cites only keys in the bibliography, with `spectrum-related-work`],
     [#ui[Citation audit]], [A check of every citation for undefined, unused or duplicated keys and wrong details, with `citation-management`],
     [#ui[Manuscript review]], [A referee's reading with major and minor concerns, with `peer-review` and the #ui[Critical reviewer] persona, changing no files],
     [#ui[Verify claims]], [Whether each claim in the open file is supported by its source, with `spectrum-verify-claims`, changing no text],
@@ -238,6 +242,22 @@ The chips under the message box decide what goes with a message: the open file, 
 The header holds the session history (the clock), the #ui[Isolated] or #ui[Direct] badge, the agent's model and mode options, the persona picker and #ui[Stop]. The transcript shows the messages, the agent's thinking folded away, a card for each tool call that updates as it runs, questions and permission requests in line and a #ui[Restore] row for each Before AI changes checkpoint. The agent's plan stays at the top, and #ui[Save open steps as to-dos] adds its open steps to the to-do list (@ch-writing).
 
 The Spectrum agent works for up to 25 steps. It can read the project, search the literature, read and suggest to-dos and load skills, and its threads are saved with the project's chats but listed only in the workspace. A to-do it suggests appears as a card with #ui[Add] and is only saved once added.
+
+With each message the agent is given the document's language and an outline of the project as it is saved, which is the same for LaTeX, Typst and Markdown: the main file, the files it reads (`\input`, `#include` and `#import`), the bibliography files, a Markdown front matter, the headings with their file and line, the labels, the keys cited and the references and citations that do not resolve. While the language's own skill (`spectrum-latex`, `spectrum-typst` or `spectrum-markdown`) is on, the agent is pointed to it for fixing a compile.
+
+Everything the agent reads that you did not type, such as a file, a compile log, a search result, a paper's abstract or a tool's answer, reaches the model marked with where it came from, and the model is told that such text is material to work on and never an instruction. A sentence planted in a web page or a PDF therefore cannot pass for your request. A skill is marked as a skill, a method to follow that cannot change the agent's rules.
+
+=== When a run does not finish
+
+A run can end before its answer in three ways, and in each the work done so far is kept (@fig-assistant-continue).
+
+- A request to the model fails. Spectrum first tries a busy provider again as described in @sec-assistant-panel. If the request still fails, the thread shows the steps that were finished, the failure under them and the changes prepared so far in the tray, where they can be reviewed and applied as usual.
+- The agent reaches its limit of 25 steps.
+- The answer is cut off by the model's output limit.
+
+#ui[Continue] under the thread starts a new run that is told which steps were finished and builds on the changes still open, so it goes on and does not start again. When nothing had been done before a failure, the button is #ui[Try again].
+
+#shot("figures/03-assistant/agent-continue.png", [A run that failed on its third step. The two finished steps and the prepared change are kept, and #ui[Continue] goes on from them.], width: 65%) <fig-assistant-continue>
 
 === Changes from an agent
 
@@ -276,9 +296,11 @@ The menu at the left of the #ui[Local agents] header chooses how an agent may to
 
 #shot("figures/03-assistant/isolated-direct.png", [The #ui[Isolated] and #ui[Direct] menu of the #ui[Local agents] tab.], width: 40%) <fig-assistant-isolated>
 
+In either mode, and for the Spectrum agent too, some files of a project are kept from every agent: Spectrum's own `.spectrum` folder, `.git`, `.claude`, and the files that look like secrets by their names. These are `.env` files, `.netrc`, `.npmrc` and `.pypirc`, private keys such as `id_rsa`, and files ending in `.pem`, `.key`, `.p12`, `.pfx`, `.keystore`, `.jks` or `.ppk`. It is the same list that the GitHub backup leaves out (@ch-references), so a file that is not uploaded is not shown to an agent either.
+
 An isolated agent keeps working on its copy while changes wait, so you can go on prompting and apply or reject each file when you like. An applied file becomes the agent's new starting point, and a rejected one is put back to your version in the agent's copy, which the agent is told with its next task. The isolated agent can reach public HTTPS and DNS but not local services, so local models and MCP servers set up outside Spectrum are not available to it. A project with symbolic links, files over 50 MB, or more than 500 MB or 10,000 files is refused rather than copied incompletely.
 
-On macOS, a local agent also gets Spectrum's tools from a small server it starts inside its isolation: `compile`, `get_log`, `project_map`, `bib_entries`, `bib_search`, `literature_search`, `fetch_bibtex`, `list_todos`, `suggest_todo` and `load_skill`. Local agents on Windows get no Spectrum tools yet, as #menu[Settings][Agents] says there. Keys, working copies, session mappings and transcripts stay on this computer.
+On macOS, a local agent also gets Spectrum's tools from a small server it starts inside its isolation: `compile`, `get_log`, `project_map`, `bib_entries`, `bib_search`, `literature_search`, `fetch_bibtex`, `list_todos`, `suggest_todo` and `load_skill`. For a Markdown document, `compile` and `get_log` give each error at its line of the `.md` file, as the Logs tab does, and not at a line of the file pandoc generated. Each tool's answer reaches the agent marked with the tool it came from, as text to read and not an instruction. Local agents on Windows get no Spectrum tools yet, as #menu[Settings][Agents] says there. Keys, working copies, session mappings and transcripts stay on this computer.
 
 == Review <sec-assistant-review>
 
@@ -301,7 +323,7 @@ Review checks the document that #ui[Compile] builds before it goes anywhere. It 
   caption: [The groups of checks in Review. A Typst or Markdown document runs Compile and layout and Privacy and blind review, and Accessibility and Submission readiness run for LaTeX only.],
 ) <tab-assistant-review>
 
-The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes). A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
+The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes). Until a model is set up, it opens #menu[Settings][Models] instead. A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
 
 #shot("figures/03-assistant/review-results.png", [Review of the lab report. The never-cited `Knuth1984` entry is a note under References and assets, with its line in `references.bib`, and the untagged PDF is an Accessibility warning.], width: 60%) <fig-assistant-review-results>
 
@@ -335,7 +357,7 @@ Each question is kept as a session in the project's `.spectrum/research` folder,
 
 The tab has four further tools, each of which needs a model,
 
-- #ui[Find citations for selection], which finds up to five papers that support the selected passage and, with #ui[Add to .bib and cite], adds the ticked ones and cites them after the selection,
+- #ui[Find citations for selection], which finds up to five papers that support the selected passage and, with #ui[Add to .bib and cite], adds the ticked ones and cites them after the selection (when the model cannot be reached, the results are a plain search of the passage's words and a line above them says why),
 - #ui[Deep research], which opens the agent workspace with a task that searches further, follows references and writes notes and a reading list,
 - #ui[Draft related work], which opens the workspace with a task that cites only keys already in the `.bib` and
 - #ui[Verify claims], which opens the workspace with the Critical reviewer persona to check each claim in the open file against its sources without changing the text.

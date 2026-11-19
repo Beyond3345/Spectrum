@@ -56,7 +56,17 @@ export function outlineTitle(title: string) {
     title = title.slice(0, m.index) + plain + title.slice(end);
     re.lastIndex = m.index + plain.length;
   }
-  return title;
+  // a caption as it reads: a reference or citation as …, a text style as its text
+  // ponytail: … rather than the number; the last compile's .aux would give it
+  const command = /\\(ref|eqref|cref|Cref|autoref|pageref|nameref|cite[a-z]*|[a-z]*cite|textbf|textit|emph|texttt|textsc|textsf|textrm|textup|underline|mbox)\*?\s*(?:\[[^\]]*\]\s*)*\{/g;
+  for (let m = command.exec(title); m; m = command.exec(title)) {
+    const arg = bracedGroup(title, command.lastIndex);
+    if (arg === null) break;
+    const shown = /ref$|cite/.test(m[1]) ? '…' : arg;
+    title = title.slice(0, m.index) + shown + title.slice(command.lastIndex + arg.length + 1);
+    command.lastIndex = m.index;
+  }
+  return title.replace(/(?<!\\)~/g, ' ');
 }
 
 export function parseOutline(text: string): OutlineItem[] {

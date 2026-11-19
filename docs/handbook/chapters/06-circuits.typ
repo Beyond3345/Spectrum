@@ -113,7 +113,7 @@ A wire joins pins and grid points with straight segments. It holds on to the pin
 + Click #ui[Wire] at the top of the parts list, or press #key("W") while the pointer is over the drawing
 + Click where the wire starts, on a pin or on a grid point
 + Click at each corner
-+ Click a pin to end the wire there, or double-click, or press #key("Return") to end it at the last point
++ Click a pin to end the wire there, or double-click, or press #key("Enter") to end it at the last point
 
 Pressing #key("W") picks the tool only while the pointer is over the drawing, so the key still types W in the search and the inspector. The key can be changed in #menu[Settings][Diagram composer], as @ch-composer explains. While a wire is being drawn, it shows as a dashed line from its last point to the pointer.
 
@@ -235,7 +235,7 @@ Annotate, at the end of the parts list, draws over a drawing without ever joinin
 
 === Lines, arrows, rectangles, ellipses and crosses
 
-#ui[Line or arrow] draws through the points you click, so it can turn corners like a resistance arrow. Click each point, then double-click or press #key("Return"). A new line has an arrowhead at its end. #ui[Rectangle] and #ui[Ellipse] are drawn by dragging from one corner to the other, and a click without a drag draws one 2~cm across and 1.5~cm high. #ui[Cross] puts down a cross with a click, to mark a cut wire or a shorted capacitor.
+#ui[Line or arrow] draws through the points you click, so it can turn corners like a resistance arrow. Click each point, then double-click or press #key("Enter"). A new line has an arrowhead at its end. #ui[Rectangle] and #ui[Ellipse] are drawn by dragging from one corner to the other, and a click without a drag draws one 2~cm across and 1.5~cm high. #ui[Cross] puts down a cross with a click, to mark a cut wire or a shorted capacitor.
 
 Every annotation takes its look in the inspector,
 
@@ -260,12 +260,12 @@ A preset puts down a styled group with its label in one click, which you then mo
 
 Spectrum 2.5 added the drawing tools of the fluid mechanics and construction materials courses to Annotate. #ui[Dimension], #ui[Point] and #ui[Leader] are in every drawing. The rest are in a drawing with the Fluid mechanics set, and #ui[Liquid or solid] and #ui[Hatched boundary] in one with Construction materials too. They are,
 
-- #ui[Liquid or solid], which draws a closed shape a corner at a time. Click each corner, then the first corner again, or press #key("Return") to close it. A new shape is water,
+- #ui[Liquid or solid], which draws a closed shape a corner at a time. Click each corner, then the first corner again, or press #key("Enter") to close it. A new shape is water,
 - #ui[Hatched boundary], a wall, the ground or a fixed plate of any length, drawn a point at a time like a line. The hatching is on the right of the way it was drawn, so under a line drawn to the right, and #ui[Hatching on the other side] moves it,
 - #ui[Dimension], drawn by dragging from one end to the other, or 2~cm long with a click. Drag its third handle to move its line out, with extension lines back to the ends. #ui[Measures] chooses along the line between its ends, across or up and down, and its text sits beside the line or in a gap in it,
 - #ui[Free surface], the ▽ mark standing on the point you click,
 - #ui[Point], a dot or a cross with a letter on any side of it, and the presets #ui[Centroid C], #ui[Centre of pressure CP], #ui[Centre of gravity G], #ui[Centre of buoyancy B] and #ui[Metacentre M], and
-- #ui[Leader], words with a line to the point they name. Click where the words go, then the point, then double-click or press #key("Return").
+- #ui[Leader], words with a line to the point they name. Click where the words go, then the point, then double-click or press #key("Enter").
 
 A dimension's text and a point's letter are maths unless they have a space or their own `$…$`, so `h_c` prints as $h_c$ while `2 m` prints as words. A leader's words are TeX as typed.
 
@@ -306,6 +306,32 @@ A pipe is 2~cm long, so a longer run is several pipes in a row, and the fittings
 
 A set's part is written as a TikZ `\pic`, and the picture declares every pic it uses at its start with `\tikzset{…/.pic={…}}`, only those it uses. Hence the document needs no package or file for them, and a drawing included with `\includestandalone` takes its declarations along. A drawing that uses the Fluid mechanics or Construction materials sets, or Annotate's 2.5 tools, is a file version 5 drawing, which Spectrum 2.4 and earlier open as code.
 
+=== Liquids in the manometers <sec-circuits-liquids>
+
+The U-tube, differential, inverted and inclined manometers, the piezometer, the barometer and the column of three liquids hold their liquids themselves, since a fill drawn with Annotate snaps to the grid and cannot sit inside a tube 0.25~cm wide. Select one, and its inspector has a field for each liquid, with #ui[None], #ui[Water], #ui[Oil] or #ui[Mercury], and a level for each limb (@fig-circuits-liquids). A liquid is drawn in Annotate's tint for it, behind the walls, as the slides draw it. A circuit drawing has no #ui[Look] to follow, so the liquids are tints only.
+
+#figure(
+  table(
+    columns: (auto, 1fr, 1fr),
+    align: (left, left, left),
+    table.header[Part][Liquids][Levels, to start with],
+    [U-tube manometer], [Liquid], [left limb −0.25, right limb 0.5],
+    [Differential manometer], [in the bend, above it on the left, above it on the right], [left limb −0.25, right limb 0.5],
+    [Inverted U-tube manometer], [in the bend, below it on the left, below it on the right], [left limb 0.25, right limb −0.5],
+    [Inclined manometer], [Liquid], [reservoir 0.125, sloping tube 0.5],
+    [Column of three liquids], [top, middle and bottom], [free surface 1, interfaces 0.25 and −0.5],
+    [Piezometer], [Liquid], [level 1],
+    [Barometer], [Liquid], [dish 0.15, tube 1.25],
+  ),
+  caption: [The parts that hold liquids, with their starting levels in centimetres.],
+) <tab-circuits-liquids>
+
+A level is a height in centimetres above the point the part is placed by, the same measure as its walls, so a tick of 0.25 is one grid step. The starting levels are where the plain part draws its level marks, a believable reading, and a level mark always follows its level. Type a level and press #key("Enter"), or leave the box, and the canvas draws the part again. A level is kept within its limb. In the inclined manometer the surface in the sloping tube is level, so its level is a height too, and the liquid reaches up the tube to it.
+
+#shot("figures/06-circuits/inspector-liquids.png", [The liquids and levels of the differential manometer of @fig-circuits-manometer.], width: 26%) <fig-circuits-liquids>
+
+A part with a liquid or a level set writes them as options of its pic, such as `\pic[spx/fluid/liquid=mercury, spx/fluid/manometer/left=0.1] at (0,0) {spx/fluid/manometer};`, and the picture declares the keys once, before the pics. A part with none set is written as before. A drawing with a set's parts is file version 5 already, so Spectrum 2.4 and earlier open it as code. Spectrum 2.5 opens a drawing with liquids but draws the parts without them.
+
 === Sets in a circuit
 
 A drawing lists only its own kinds and sets (@sec-circuits-kinds), while General drawing has them all. To add another to a drawing, turn on #menu[Settings][Diagram composer][Symbols from other packages]. A #ui[Symbol sets…] button then shows below the parts list. It lists the three kinds of circuit and the sets by subject, each with what it loads into the document: circuitikz for the kinds of circuit, and TikZ only for all of Spectrum's own sets. Tick the ones to add and click #ui[Use these sets], and their groups join the parts list for that drawing, such as logic gates beside a transistor stage or mechanical supports beside a mass, spring and damper. Untick one to take it away again. The drawing's own kind and any set whose parts it uses read #ui[In use in this drawing] and stay. With the switch off, the button is hidden and a drawing lists only what it has.
@@ -317,30 +343,31 @@ A drawing lists only its own kinds and sets (@sec-circuits-kinds), while General
 @fig-circuits-manometer measures the pressure difference between two closed tanks, A of water and B of oil, with a mercury manometer between them. It was drawn in a few minutes as follows.
 
 + Start a #ui[General drawing] from #menu[Others][General drawing]
-+ Place a #ui[Differential manometer] from Tanks and manometers
++ Place a #ui[Differential manometer] from Tanks and manometers, and set its #ui[Liquid in the bend] to #ui[Mercury], #ui[Liquid above, left] to #ui[Water] and #ui[Liquid above, right] to #ui[Oil]
 + Place a #ui[Closed tank] on each side, so that each tank's side pin snaps onto the end of the manometer's side tube
 + Drag a #ui[Rectangle] over tank A from its bottom corner to the level line, set its #ui[Fill] to #ui[Water] and untick #ui[Outline]. Do the same with oil for tank B
 + Place #ui[Point] in each tank and type the letters A and B
-+ Draw a #ui[Dimension] between the two mercury levels, set #ui[Measures] to #ui[Up and down], type `h` and drag its third handle out between the tubes
++ Draw a #ui[Dimension] between the two mercury levels, set #ui[Measures] to #ui[Up and down], type `h` and drag its third handle out beside the right tube
 + Name the three liquids with #ui[Leader], the mercury's pointing to the bend
 + Click #ui[Compile] to check the preview
 
 #figure(
   grid(columns: (60%, 34%), gutter: 12pt, align: horizon, frame("figures/06-circuits/differential-manometer.png"), frame("figures/06-circuits/differential-manometer-pdf.png")),
-  caption: [A differential manometer between two tanks, on the canvas and compiled. The liquids in the tanks are fills behind the parts, so the tank walls stay on top.],
+  caption: [A differential manometer between two tanks, on the canvas and compiled. The liquids in the tanks are fills behind the parts, so the tank walls stay on top, and the manometer holds its own.],
 ) <fig-circuits-manometer>
 
-#note[A fill's corners snap to the grid, 0.25~cm, while the manometers' tubes are 0.25~cm wide and their walls lie between grid lines. Hence a liquid or solid cannot be drawn exactly inside a tube, and the manometer's liquids are named with leaders and shown by its level marks.]
+#note[A fill's corners snap to the grid, 0.25~cm, while the manometers' tubes are 0.25~cm wide and their walls lie between grid lines. Hence a fill cannot be drawn inside a tube, and the manometer's liquids are its own (@sec-circuits-liquids).]
 
-The picture this writes is ordinary TikZ inside the circuitikz environment. Its first lines declare the two pics it uses (shortened here), and the fills come before the parts so they sit behind,
+The picture this writes is ordinary TikZ inside the circuitikz environment. Its first lines declare the liquids' keys and the two pics it uses (shortened here), and the fills come before the parts so they sit behind,
 
 ```latex
+\tikzset{spx/fluid/none/.style={}, spx/fluid/water/.style={fill=blue!12}, ...}
 \tikzset{spx/fluid/tank-closed/.pic={\draw[line width=0.8pt] (-1.5,-1) rectangle (1.5,1); ...}}
 \tikzset{spx/fluid/manometer-differential/.pic={...}}
 \path[fill=blue!12] (-4.25,0) rectangle (-1.25,1.25);
 \path[fill=orange!30] (1.25,0) rectangle (4.25,1.25);
 \pic at (-2.75,1) {spx/fluid/tank-closed};
-\pic at (0,0) {spx/fluid/manometer-differential};
+\pic[spx/fluid/liquid=mercury, spx/fluid/liquid 2=water, spx/fluid/liquid 3=oil] at (0,0) {spx/fluid/manometer-differential};
 \pic at (2.75,1) {spx/fluid/tank-closed};
 ```
 

@@ -7,9 +7,11 @@ import { mathsPackages, num, tikzColour } from '../shared';
 import { VIEWS, buildScene, readStyle } from './draw';
 import { DIAGRAM_LOOKS, changedLooks } from './looks';
 import type { Fill, Ink, Item, Scene } from './draw';
+import type { Thickness } from './model';
 import { asStructure } from './model';
 import { solve } from './solve';
 import { picDefinition, picName } from './symbols';
+import { colourOption, widthOption } from '../vectors/code';
 
 const INKS: Record<Ink, string> = {
   member: 'line width=1.2pt',
@@ -34,21 +36,29 @@ function fillOptions(fill: Fill, looks: DiagramLooks) {
 
 const at = (p: { x: number; y: number }) => `(${num(p.x)},${num(p.y)})`;
 
+/**
+ * a line's own colour and thickness, after its ink's so they win; nothing when it has none, so the code is as before.
+ * draw=, not the bare colour, which would fill a load's band with it too.
+ */
+const ownOptions = (item: { colour?: string; width?: Thickness }) => [colourOption(item.colour, 'draw'), widthOption(item.width)];
+const bracket = (options: (string | false | undefined)[]) => {
+  const kept = options.filter(Boolean);
+  return kept.length ? `[${kept.join(', ')}]` : '';
+};
+
 function itemTikz(item: Item): string {
   switch (item.t) {
-    case 'line': {
-      const options = [`struct ${item.ink}`, item.fill && `struct ${item.fill} fill`, item.arrow].filter(Boolean).join(', ');
-      return `\\draw[${options}] ${item.pts.map(at).join(' -- ')}${item.closed ? ' -- cycle' : ''};`;
-    }
+    case 'line':
+      return `\\draw${bracket([`struct ${item.ink}`, item.fill && `struct ${item.fill} fill`, item.arrow, ...ownOptions(item)])} ${item.pts.map(at).join(' -- ')}${item.closed ? ' -- cycle' : ''};`;
     case 'arc': {
       const t = (item.from * Math.PI) / 180;
       const start = { x: item.c.x + item.r * Math.cos(t), y: item.c.y + item.r * Math.sin(t) };
-      return `\\draw[struct ${item.ink}, ->] ${at(start)} arc[start angle=${num(item.from)}, end angle=${num(item.to)}, radius=${num(item.r)}];`;
+      return `\\draw${bracket([`struct ${item.ink}`, '->', ...ownOptions(item)])} ${at(start)} arc[start angle=${num(item.from)}, end angle=${num(item.to)}, radius=${num(item.r)}];`;
     }
     case 'pic':
-      return `\\pic${item.rotate ? `[rotate=${num(item.rotate)}]` : ''} at ${at(item.at)} {${picName(item.name)}};`;
+      return `\\pic${bracket([!!item.rotate && `rotate=${num(item.rotate)}`, colourOption(item.colour)])} at ${at(item.at)} {${picName(item.name)}};`;
     case 'text':
-      return `\\node${item.anchor === 'center' ? '' : `[anchor=${item.anchor}]`} at ${at(item.at)} {${item.tex}};`;
+      return `\\node${bracket([item.anchor !== 'center' && `anchor=${item.anchor}`, colourOption(item.colour)])} at ${at(item.at)} {${item.tex}};`;
     case 'dot':
       return `\\draw[${item.open ? 'fill=white' : 'fill'}] ${at(item.at)} circle (${num(item.r)});`;
   }

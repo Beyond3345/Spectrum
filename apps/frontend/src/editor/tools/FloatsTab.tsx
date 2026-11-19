@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
-import { blobUrl, getFile, getProjectSettings, getProjectTree, plotFromTable, uploadFiles, visionToLatex, writeFile } from '../../api/client';
+import { blobUrl, getFile, getProjectSettings, getProjectTree, plotFromTable, runPlotCode, uploadFiles, visionToLatex, writeFile } from '../../api/client';
 import Choice from '../../app/Segmented';
 import Icon from '../../app/Icon';
 import { effectiveCompile, loadSettings } from '../../app/settings';
@@ -16,7 +16,7 @@ import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tablePackages, tableRules, tableTypst, uniqueName, withMerge } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, uniqueName, withMerge } from '../floats';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -1300,8 +1300,8 @@ function InsertTable() {
     float,
     placement,
     span: span && !long,
-    caption,
-    label: label ?? tableLabel(caption),
+    caption: tableTitle(caption, cells).caption,
+    label: label ?? tableTitle(caption, cells).label,
     escape,
     merges: fitted,
     partRules: fitPartRules(partRules, cells.length, cols),
@@ -1680,11 +1680,11 @@ function InsertTable() {
           {latex && !long && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
           <div className="field">
             <label htmlFor={`${id}-caption`}>Caption</label>
-            <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Leave empty to write it later" />
+            <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Caption, shown above the table" />
           </div>
           <div className="field">
             <label htmlFor={`${id}-label`}>Label</label>
-            <input id={`${id}-label`} className="input" value={label ?? tableLabel(caption)} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
+            <input id={`${id}-label`} className="input" value={label ?? tableTitle(caption, cells).label} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
           </div>
         </>
       )}
@@ -1925,42 +1925,68 @@ function TableToChart() {
   const [title, setTitle] = useState('');
   const [filename, setFilename] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [retries, setRetries] = useState(2);
   const [autoInsert, setAutoInsert] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'' | 'write' | 'run'>('');
   const [status, setStatus] = useState('');
+  // the model's code, the table it was written for, and the last run's error, for code that works
+  const [code, setCode] = useState('');
+  const [source, setSource] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [failed, setFailed] = useState('');
   const [asset, setAsset] = useState<{ path: string; at: number } | null>(null);
   const table = api.selectionText;
   const hasTable = table.includes('\\begin{tabular') || table.includes('\\begin{table');
 
-  const generate = async () => {
-    if (!hasTable) {
+  /** Asks the model for the code, which is shown and never run until Run this code. again: with the last run's error. */
+  const write = async (again = false) => {
+    const tableLatex = again ? source : table;
+    if (!again && !hasTable) {
       setStatus('Select a LaTeX table (tabular) in the editor first.');
       return;
     }
-    setBusy(true);
+    setBusy('write');
     setStatus('');
     try {
       const res = await plotFromTable({
         projectId: api.projectId,
-        tableLatex: table,
+        tableLatex,
         chartType: type,
-        title: title.trim() || undefined,
         prompt: prompt.trim() || undefined,
-        filename: filename.trim() || undefined,
-        retries,
+        ...(again && { error: failed, code }),
         llmConfig: api.llm.main
       });
-      if (!res.ok || !res.assetPath) throw new Error(res.error || 'The chart couldn’t be made.');
+      if (!res.ok || !res.code) throw new Error(res.error || 'The model wrote no code.');
+      setCode(res.code);
+      setSource(tableLatex);
+      setEditing(false);
+      setFailed('');
+      setStatus('Read the code, then choose Run this code.');
+    } catch (err) {
+      setStatus(`Couldn’t write the code: ${errorText(err)}`);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const run = async () => {
+    setBusy('run');
+    setStatus('');
+    try {
+      const res = await runPlotCode({ projectId: api.projectId, tableLatex: source, code, title: title.trim() || undefined, filename: filename.trim() || undefined });
+      if (!res.ok || !res.assetPath) {
+        setFailed(res.error || 'The chart couldn’t be made.');
+        return;
+      }
+      setFailed('');
       setAsset({ path: res.assetPath, at: Date.now() });
       setStatus(`Chart saved to ${res.assetPath}.`);
       await api.refreshTree();
       // after the selected table, not over it
       if (autoInsert) api.insertAtCursor(figureSnippet(res.assetPath), { block: true, afterSelection: true });
     } catch (err) {
-      setStatus(`Couldn’t make the chart: ${errorText(err)}`);
+      setFailed(errorText(err));
     } finally {
-      setBusy(false);
+      setBusy('');
     }
   };
 
@@ -1969,7 +1995,9 @@ function TableToChart() {
       <div className="tool-card-title">
         <Icon name="chart.bar.xaxis" /> Table → chart
       </div>
-      <div className="tool-card-desc">Plots the table selected in the editor with matplotlib/seaborn and saves the image in the project.</div>
+      <div className="tool-card-desc">
+        The model writes matplotlib code to plot the table selected in the editor. Read it, then run it: it runs on its own, without your files or the network, and the image is saved in the project.
+      </div>
       <div className="field">
         <label id="plot-type">Chart type</label>
         <Select
@@ -1989,7 +2017,7 @@ function TableToChart() {
       </div>
       <div className="field">
         <label htmlFor="plot-filename">File name (optional)</label>
-        <input id="plot-filename" className="input" value={filename} onChange={(e) => setFilename(e.target.value)} placeholder="plot.png" />
+        <input id="plot-filename" className="input" value={filename} onChange={(e) => setFilename(e.target.value)} placeholder="plot.png or plot.pdf" />
       </div>
       <div className="field">
         <label htmlFor="plot-prompt">Extra instructions (optional)</label>
@@ -2002,26 +2030,38 @@ function TableToChart() {
           placeholder="e.g. highlight Method A, add a legend, label the y-axis Accuracy"
         />
       </div>
-      <div className="row spread">
-        <label htmlFor="plot-retries">Retries if the plot code fails</label>
-        <input
-          id="plot-retries"
-          className="input number"
-          type="number"
-          min={0}
-          max={5}
-          value={retries}
-          onChange={(e) => setRetries(Math.max(0, Math.min(5, Number(e.target.value) || 0)))}
-        />
-      </div>
       <label className="checkbox-row">
         <input type="checkbox" checked={autoInsert} onChange={(e) => setAutoInsert(e.target.checked)} />
         Insert a figure after the table
       </label>
-      <button className="btn primary full" onClick={generate} disabled={busy}>
-        {busy ? <span className="spinner" /> : <Icon name="chart.bar.xaxis" />} Make chart
+      <button className={`btn full${code ? '' : ' primary'}`} onClick={() => write()} disabled={!!busy}>
+        {busy === 'write' ? <span className="spinner" /> : <Icon name="chart.bar.xaxis" />} {code ? 'Write the code again' : 'Write the code'}
       </button>
-      {!hasTable && <div className="field-hint">Select a table in the editor to plot it.</div>}
+      {!hasTable && !code && <div className="field-hint">Select a table in the editor to plot it.</div>}
+      {code && (
+        <div className="field">
+          <div className="row spread">
+            <label htmlFor="plot-code">Code to run</label>
+            <button className="btn small ghost" onClick={() => setEditing(!editing)} aria-pressed={editing}>
+              {editing ? 'Done' : 'Edit'}
+            </button>
+          </div>
+          <textarea id="plot-code" className="input mono" rows={10} value={code} readOnly={!editing} spellCheck={false} wrap="off" onChange={(e) => setCode(e.target.value)} />
+          <button className="btn primary full" onClick={run} disabled={!!busy || !code.trim()}>
+            {busy === 'run' ? <span className="spinner" /> : <Icon name="play.fill" />} Run this code
+          </button>
+        </div>
+      )}
+      {failed && (
+        <div className="field">
+          <div className="field-hint error" role="alert">
+            {failed}
+          </div>
+          <button className="btn small" onClick={() => write(true)} disabled={!!busy}>
+            Write it again with this error
+          </button>
+        </div>
+      )}
       <div className="field-hint" role="status">
         {status}
       </div>

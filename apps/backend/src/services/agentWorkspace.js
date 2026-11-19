@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import readline from 'node:readline';
 import { spawnAgentProcess, killAgentProcess } from './agentSandbox.js';
-import { agentHidden, agentHiddenName, safeJoin } from '../utils/pathUtils.js';
+import { agentHidden, agentHiddenNameSource, safeJoin } from '../utils/pathUtils.js';
 import { HIDDEN_ENTRIES, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { createVersion } from './versionService.js';
@@ -54,7 +54,7 @@ export async function workspaceFiles(root) {
   let child, timer;
   try {
     const excluded = [...HIDDEN_ENTRIES, 'node_modules', '.claude', '.DS_Store'].map((name) => name.toLowerCase());
-    const script = `(${collectWorkspace.toString()})(process.argv[1], ${JSON.stringify(excluded)}, ${agentHiddenName.toString()}, ${MAX_FILE}, ${MAX_PROJECT}, ${MAX_FILES}).catch(e=>{console.error(e.message);process.exitCode=1;})`;
+    const script = `(${collectWorkspace.toString()})(process.argv[1], ${JSON.stringify(excluded)}, ${agentHiddenNameSource}, ${MAX_FILE}, ${MAX_PROJECT}, ${MAX_FILES}).catch(e=>{console.error(e.message);process.exitCode=1;})`;
     child = await spawnAgentProcess({ command: process.execPath, args: ['-e', script, root], workspace: root, home });
     let error = '', timedOut = false;
     child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
@@ -85,8 +85,10 @@ export async function initialiseWorkspace(root, runDir, mode) {
   }
   await writeJsonAtomic(path.join(runDir, 'baseline.json'), Object.fromEntries(Object.entries(files).map(([rel, bytes]) => [rel, fileHash(bytes)])));
   if (mode === 'direct') {
-    const version = await createVersion(root, { reason: 'before-ai', label: 'Before agent direct editing' });
-    if (version.version?.skipped?.length) throw new Error('The complete project could not be backed up. Direct editing was not started.');
+    const { skipped } = await createVersion(root, { reason: 'before-ai', label: 'Before agent direct editing' });
+    // what the checkpoint couldn't hold and the agent could still change (it never reaches agentHidden files)
+    const exposed = skipped.filter((rel) => !agentHidden(rel));
+    if (exposed.length) throw new Error(`The complete project could not be backed up: ${exposed.slice(0, 3).join(', ')}${exposed.length > 3 ? ' and others' : ''} couldn’t be read or are over 50 MB. Direct editing was not started: choose Isolated, or fix those files.`);
   }
   return fs.realpath(workspace);
 }

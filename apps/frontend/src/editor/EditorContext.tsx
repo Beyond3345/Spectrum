@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { CompileOptions, CompileResult, LLMConfig, TexlabDiagnostic, VersionMeta, VersionReason } from '../api/client';
 import type { AppSettings } from '../app/settings';
+import type { Section as SettingsSection } from '../app/SettingsSheet';
 import type { TypstWords } from './lsp/tinymist';
 
 export interface PendingChange {
@@ -50,6 +51,8 @@ export interface EditorApi {
   settings: AppSettings;
   llm: { main: Partial<LLMConfig>; search: Partial<LLMConfig>; vision: Partial<LLMConfig>; quick: Partial<LLMConfig> };
   notify(message: string, tone?: 'info' | 'success' | 'error'): void;
+  /** opens Settings, at a section when one is named */
+  openSettings(section?: SettingsSection): void;
   /**
    * block: put the text on its own lines. afterSelection: insert after the selection instead of replacing it (used for \cite).
    * focus: move focus to the editor (default true). placedOnly: insert only where the user has put the cursor, inside the

@@ -1,10 +1,11 @@
+import { docLanguage, fixPrompt } from '../../../../backend/src/utils/docLanguage.js';
 import { useEffect, useState } from 'react';
 import Icon from '../../app/Icon';
 import { getGenerated, installBiber, installPandoc, installTypst } from '../../api/client';
 import { loadSettings, updateSettings } from '../../app/settings';
 import { useEditor } from '../EditorContext';
 import type { CompileError } from '../EditorContext';
-import { ENGINES_CHANGED, Markdown, docKind, errorText, fixWithAI } from '../shared';
+import { ENGINES_CHANGED, Markdown, docKind, errorText, fixTitle, fixWithAI } from '../shared';
 
 export default function LogsTab() {
   const api = useEditor();
@@ -78,7 +79,7 @@ export default function LogsTab() {
     const where = error ? [error.file, error.line && `line ${error.line}`].filter(Boolean).join(', ') : '';
     // "Fix all" goes after the errors; the warnings only when the build has none
     const prompt = error
-      ? `Fix this LaTeX ${error.severity}: ${error.message}${where ? ` (${where})` : ''}. Propose a patch that can be applied.`
+      ? fixPrompt(docLanguage(error.file, api.compiledDoc, api.mainFile), { severity: error.severity, message: error.message, where })
       : errorCount
         ? 'Diagnose the errors in the compile log and fix them. Ignore warnings. Propose patches that can be applied.'
         : 'Fix the warnings in the compile log (overfull/underfull boxes, undefined references and citations). Propose patches that can be applied.';
@@ -102,7 +103,7 @@ export default function LogsTab() {
           </span>
         )}
         {compileErrors.length > 0 && (
-          <button className="btn small" disabled={busy !== null} onClick={() => fix('all')}>
+          <button className="btn small" disabled={busy !== null} title={fixTitle(api)} onClick={() => fix('all')}>
             {busy === 'all' ? <span className="spinner" /> : <Icon name="sparkles" />} Fix all with AI
           </button>
         )}
@@ -179,7 +180,7 @@ export default function LogsTab() {
                     <span className="log-location">line {error.line}</span>
                   ))}
               </div>
-              <button className="btn small" disabled={busy !== null} onClick={() => fix(idx, error)}>
+              <button className="btn small" disabled={busy !== null} title={fixTitle(api)} onClick={() => fix(idx, error)}>
                 {busy === idx && <span className="spinner" />} Fix with AI
               </button>
             </div>

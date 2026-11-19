@@ -115,6 +115,25 @@ export class ApiError extends Error {
 /** What a request says when Spectrum's own server can't be reached (it restarts, or the computer is busy). */
 export const UNREACHABLE = 'Spectrum’s server didn’t answer, so nothing was sent. Your text is kept here: try again in a moment.';
 
+/** What a window of the desktop app says when the server no longer takes it for one of its own (the backend's /session). */
+export const SESSION_LOST = 'This window has lost its connection to Spectrum. Quit Spectrum and open it again.';
+
+/** Over the whole window, once: every request would be refused the same way, so the app behind it is of no use. */
+function showSessionLost() {
+  if (document.getElementById('session-lost')) return;
+  const notice = document.createElement('div');
+  notice.id = 'session-lost';
+  notice.className = 'empty-state';
+  notice.setAttribute('role', 'alert');
+  for (const [className, text] of [['empty-title', 'Spectrum needs to be opened again'], ['empty-text', SESSION_LOST]]) {
+    const line = document.createElement('div');
+    line.className = className;
+    line.textContent = text;
+    notice.append(line);
+  }
+  document.body.append(notice);
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...((options?.headers as Record<string, string>) || {}) };
   if (options?.body && typeof options.body === 'string') {
@@ -133,6 +152,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
       message = (data as { error?: string }).error || message;
     } catch {
       // plain text error
+    }
+    if (res.status === 403 && (data as { code?: string }).code === 'session') {
+      showSessionLost();
+      message = SESSION_LOST;
     }
     throw new ApiError(message || `Request failed (${res.status})`, res.status, data);
   }
@@ -367,9 +390,15 @@ export function renamePath(id: string, from: string, to: string) {
   return request<{ ok: boolean; unmoved?: number }>(`/api/projects/${id}/rename`, json('POST', { from, to }));
 }
 
-export function deleteFile(id: string, filePath: string) {
-  const qs = new URLSearchParams({ path: filePath }).toString();
-  return request<{ ok: boolean; error?: string }>(`/api/projects/${id}/file?${qs}`, { method: 'DELETE' });
+/** bin: to the system Bin, or { ok: false, noBin } when it can't go there; otherwise gone for good. undo: restoreFile's key. */
+export function deleteFile(id: string, filePath: string, { bin = false } = {}) {
+  const qs = new URLSearchParams({ path: filePath, ...(bin && { bin: '1' }) }).toString();
+  return request<{ ok: boolean; error?: string; bin?: boolean; noBin?: boolean; undo?: string }>(`/api/projects/${id}/file?${qs}`, { method: 'DELETE' });
+}
+
+/** Puts back what deleteFile moved to the Bin, from the key it gave. */
+export function restoreFile(id: string, undo: string) {
+  return request<{ ok: boolean; error?: string; path?: string }>(`/api/projects/${id}/file/restore`, json('POST', { undo }));
 }
 
 export function updateFileOrder(id: string, folder: string, order: string[]) {
@@ -1230,9 +1259,12 @@ export function runAgent(payload: {
   drafts?: { path: string; original: string; proposed: string }[];
 }) {
   // tools mode: changes lists its patches as local agents' changes tray does, todos the to-dos it suggests and steps
-  // its tool calls
-  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; changes?: AgentChange[]; todos?: SuggestedTodo[]; steps?: AgentStep[] }>('/api/agent/run', json('POST', payload));
+  // its tool calls; incomplete: why a run ended before its answer, with what it had prepared returned all the same
+  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; changes?: AgentChange[]; todos?: SuggestedTodo[]; steps?: AgentStep[]; incomplete?: Incomplete }>('/api/agent/run', json('POST', payload));
 }
+
+/** Why a run ended before its answer: a model request failed, the step limit was reached, or the answer stopped at the output limit */
+export type Incomplete = 'failed' | 'steps' | 'cut';
 
 /** One of the Spectrum agent's tool calls: the tool, what it was about (a path, a query, an id) and whether it worked */
 export type AgentStep = { tool: string; about?: string; ok: boolean };
@@ -1406,17 +1438,22 @@ export async function visionToLatex(payload: {
   return request<{ ok: boolean; latex?: string; assetPath?: string; error?: string }>('/api/vision/latex', { method: 'POST', body: form });
 }
 
+/** The model's code for a chart of the table, to show: nothing runs. error and code: the last run's, for code that works. */
 export function plotFromTable(payload: {
   projectId: string;
   tableLatex: string;
   chartType: string;
-  title?: string;
   prompt?: string;
-  filename?: string;
-  retries?: number;
+  error?: string;
+  code?: string;
   llmConfig?: Partial<LLMConfig>;
 }) {
-  return request<{ ok: boolean; assetPath?: string; error?: string }>('/api/plot/from-table', json('POST', payload));
+  return request<{ ok: boolean; code?: string; error?: string }>('/api/plot/from-table', json('POST', payload));
+}
+
+/** Runs a chart's code the user has read, in isolation, and saves the chart in assets/plots. */
+export function runPlotCode(payload: { projectId: string; tableLatex: string; code: string; title?: string; filename?: string }) {
+  return request<{ ok: boolean; assetPath?: string; error?: string }>('/api/plot/run', json('POST', payload));
 }
 
 // ─── Research ───
@@ -1559,7 +1596,8 @@ export interface CitationSuggestion extends SearchResult {
 }
 
 export function suggestCitations(payload: { text: string; maxResults?: number; llmConfig?: Partial<LLMConfig>; searchConfig?: SearchConfig }) {
-  return request<{ ok: boolean; queries?: string[]; papers?: CitationSuggestion[]; error?: string }>(
+  // note: the model was asked and failed, so the papers are a plain search of the passage, unranked
+  return request<{ ok: boolean; queries?: string[]; papers?: CitationSuggestion[]; note?: string; error?: string }>(
     '/api/citations/suggest',
     json('POST', payload)
   );
