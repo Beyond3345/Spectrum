@@ -244,7 +244,7 @@ export async function newAgentRun({ projectId, agentId, mode = 'review', persona
     r.workspace = await initialiseWorkspace(root, dir, mode);
     r.home = await agentHome(agentId);
     state(r, 'starting');
-    r.ready = connect(r).then(() => { r.busy = false; state(r, 'ready'); }).catch((err) => { r.busy = false; state(r, r.cancelled ? 'interrupted' : 'failed', [err.message, r.diagnostic].filter(Boolean).join('\n')); disconnect(r); throw err; });
+    r.ready = connect(r).then(() => { r.busy = false; state(r, 'ready'); idle(r); }).catch((err) => { r.busy = false; state(r, r.cancelled ? 'interrupted' : 'failed', [err.message, r.diagnostic].filter(Boolean).join('\n')); disconnect(r); throw err; });
     void r.ready.catch(() => {});
     return metadata(r);
   } catch (err) { runs.delete(id); throw err; }
@@ -300,6 +300,7 @@ async function connect(r) {
   await tests.get(r.agentId)?.catch(() => {});
   if (installing.has(r.agentId)) throw new Error(`${profile.name}’s adapter is being changed. Try again when it finishes.`);
   r.processOptions = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] });
+  r.limits = limitsOf(r.processOptions, await skillsKey(r));
   await syncAgentSkills(r).catch((err) => emit(r, 'notice', { message: `The project’s skills weren’t copied for the agent: ${err.message}` }));
   const tools = await toolsServer(r).catch((err) => { emit(r, 'notice', { message: `Spectrum’s tools aren’t available to the agent this turn: ${err.message}` }); return null; });
   if (tools) r.processOptions.runtimePaths = [...r.processOptions.runtimePaths, ...tools.reads];
@@ -316,6 +317,8 @@ async function connect(r) {
     if (r.child !== ownedChild) return;
     r.connection?.close();
     r.connectionAbort.abort(new Error(`Agent exited (${signal || code}).`));
+    // one kept between turns that stopped: the next turn starts it again
+    if (r.kept && !r.busy) return disconnect(r);
     if (!r.cancelled && r.status !== 'closed') { state(r, 'failed', `Agent exited (${signal || code}). ${redact(stderr)}`); }
   });
   // while a session opens, its updates may come before its id does
@@ -427,9 +430,12 @@ const hide = (text, secrets = []) => secrets.reduce((value, key) => value.replac
 // Tests now, by agent; they run one at a time across all agents
 const tests = new Map();
 let testQueue = Promise.resolve();
-const turnRunning = (id) => [...runs.values()].some((r) => r.agentId === id && (r.busy || r.child));
+/** Refuses while the agent is at work; one idle between turns stops, and the promise is its stopping. */
 const inUse = (id) => {
-  if (tests.has(id) || installing.has(id) || turnRunning(id)) throw Object.assign(new Error(`${profileFor(id).name} is in use. Try again when it finishes.`), { statusCode: 409 });
+  if (tests.has(id) || installing.has(id) || [...runs.values()].some((r) => r.agentId === id && r.busy)) throw Object.assign(new Error(`${profileFor(id).name} is in use. Try again when it finishes.`), { statusCode: 409 });
+  const idle = [...runs.values()].filter((r) => r.agentId === id && r.child);
+  for (const r of idle) disconnect(r);
+  return Promise.all(idle.map((r) => r.stopChain)).catch(() => {});
 };
 
 /**
@@ -440,8 +446,8 @@ const inUse = (id) => {
 export function testAgent(id, { limit = 30000 } = {}) {
   const profile = profileFor(id);
   if (profile.unavailable) throw Object.assign(new Error(profile.unavailable), { statusCode: 400 });
-  inUse(id);
-  const run = testQueue.then(() => runTest(profile, limit));
+  const quiet = inUse(id);
+  const run = testQueue.then(() => quiet).then(() => runTest(profile, limit));
   testQueue = run.catch(() => {});
   const done = run.finally(() => tests.delete(id));
   tests.set(id, done);
@@ -500,7 +506,7 @@ async function runTest(profile, limit) {
 
 /** Installs or removes an agent's adapter, never while a Test or session of that agent runs. */
 export async function changeAdapter(id, action, options) {
-  inUse(id);
+  await inUse(id);
   await (action === 'remove' ? removeAdapter(id) : installAdapter(id, options));
   return agentEntry(id);
 }
@@ -579,7 +585,7 @@ async function syncAgentSkills(r) {
   child.stdout.resume();
   const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(error.trim().split('\n').at(-1) || 'Spectrum couldn’t copy the skills.'))); });
   child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify({ skills, folders: SKILL_FOLDERS, mark: SKILL_MARK, onlyAdd }));
-  try { await timeout(done, 30000, 'Copying the skills took too long.'); }
+  try { await timeout(done, 30000, 'Copying the skills took too long.'); r.skillsAdded = onlyAdd; }
   finally { killAgentProcess(child); }
 }
 
@@ -606,17 +612,26 @@ export async function toolsLaunch() {
   const env = { SPECTRUM_DATA_DIR: DATA_DIR, ...Object.fromEntries([['SPECTRUM_TYPST', process.env.SPECTRUM_TYPST], ['SPECTRUM_TECTONIC', process.env.SPECTRUM_TECTONIC]].filter(([, value]) => value)) };
   return { entry, env, reads: (await Promise.all(reads.map(async (p) => (await fs.stat(p).catch(() => null)) && p))).filter(Boolean) };
 }
+/** What the tools server reads for each call (the main file, the compile choices, the open to-dos), when it changed. */
+async function writeToolsContext(r) {
+  const meta = await readMeta(r.root).catch(() => ({}));
+  const context = JSON.stringify({
+    mainFile: meta.mainFile || await detectMainFile(r.root).catch(() => null),
+    ...(await compileChoices(r)),
+    todos: await openTodos(r.root)
+  });
+  if (context === r.toolsContext) return;
+  // written by isolation, as the home is the agent's
+  await agentFile(r, 'write', path.join(toolsState(r), 'context.json'), context);
+  r.toolsContext = context;
+}
 async function toolsServer(r) {
   if (process.platform !== 'darwin') return null;
   const { entry, env, reads } = await toolsLaunch();
   const state = toolsState(r);
-  const meta = await readMeta(r.root).catch(() => ({}));
-  // written by isolation, as the home is the agent's
-  await agentFile(r, 'write', path.join(state, 'context.json'), JSON.stringify({
-    mainFile: meta.mainFile || await detectMainFile(r.root).catch(() => null),
-    ...(await compileChoices(r)),
-    todos: await openTodos(r.root)
-  }));
+  // written at each start, and on a later turn when it changed
+  r.toolsContext = undefined;
+  await writeToolsContext(r);
   return {
     reads,
     server: { name: 'spectrum', command: process.execPath, args: [entry, '--root', r.workspace, '--state', state], env: [
@@ -789,7 +804,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
   // refused while the project is being moved
   await getProjectRoot(r.projectId);
   if (r.busy || r.reviewing || busyProject(r)) throw new Error('An agent is already working on this project.');
-  r.busy = true; r.cancelled = false;
+  r.busy = true; r.cancelled = false; r.kept = false;
+  clearTimeout(r.idleTimer);
   if (persona !== undefined && !samePersona(persona, r.persona)) {
     r.persona = persona;
     r.forceNew = true;
@@ -819,6 +835,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       }
       if (r.cancelled) throw new Error('Task cancelled.');
       if (r.forceNew) disconnect(r);
+      // the agent kept from the last turn goes on, unless it has stopped or would now start otherwise
+      if (r.connection && !(await keptAgentFits(r))) disconnect(r);
       if (!r.connection || r.connection.signal.aborted) await connect(r);
       if (r.cancelled) throw new Error('Task cancelled.');
       const earlier = r.freshSession && r.events.filter((e) => e.id < asked.id && (e.type === 'user' || (e.type === 'update' && e.data.sessionUpdate === 'agent_message_chunk'))).map((e) => e.data.text || e.data.content?.text || '').join('\n').slice(-12000);
@@ -848,7 +866,12 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
     finally {
       for (const [id, pending] of r.pending) { pending.reject(new Error('The task ended.')); emit(r, 'answered', { requestId: id }); }
       r.pending.clear();
-      disconnect(r);
+      // A review session's agent that finished its turn is kept for the next (r-agentic-08), waiting for a prompt; its
+      // terminals and file helpers stop. Anything it left running writes only in its copy, which is compared again
+      // after every turn and checked by hash on Apply, so a late write still reaches the tray. A direct session's agent
+      // stops, as before: what it left running would write in the project itself, outside any turn's checkpoint.
+      const keep = r.mode === 'review' && outcome?.[0] === 'completed' && r.child?.exitCode === null && r.child.signalCode === null;
+      disconnect(r, keep);
       // the event names the changes, whose texts the client asks for, so the stored events keep the transcript under
       // their cap however large the files
       try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: (await pendingChanges(r)).map(({ original, proposed, ...c }) => c) }); }
@@ -861,6 +884,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       // the turn's end is told once its changes are in and the next prompt can be taken
       r.busy = false;
       state(r, ...outcome);
+      if (keep && r.child) idle(r);
       await persist(r);
     }
   })();
@@ -868,12 +892,18 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
   return { ok: true };
 }
 
-function disconnect(r) {
-  r.connectionAbort?.abort(new Error('The agent disconnected.'));
-  r.connection?.close();
-  r.connection = null;
-  const child = r.child;
-  r.child = null;
+/** Stops the session's terminals and file helpers, and its agent unless keepAgent. */
+function disconnect(r, keepAgent = false) {
+  let child = null;
+  if (!keepAgent) {
+    clearTimeout(r.idleTimer);
+    r.kept = false;
+    r.connectionAbort?.abort(new Error('The agent disconnected.'));
+    r.connection?.close();
+    r.connection = null;
+    child = r.child;
+    r.child = null;
+  }
   const children = [child, ...[...r.terminals.values()].map((t) => t.child), ...r.fileOperations || []].filter(Boolean);
   const closed = children.map((owned) => {
     if (!owned.pid || owned.exitCode !== null || owned.signalCode !== null) return Promise.resolve();
@@ -885,6 +915,42 @@ function disconnect(r) {
   void r.stopChain.catch(() => {});
   r.terminals.clear();
   r.fileOperations?.clear();
+}
+
+// An agent connected and waiting (kept from its last turn, started for a new session or a settings change) stops after
+// IDLE, when more than KEPT wait, when its session closes in the workspace, or when Spectrum quits
+const IDLE = 5 * 60 * 1000;
+const KEPT = 3;
+function idle(r) {
+  clearTimeout(r.idleTimer);
+  r.kept = true;
+  r.idleSince = Date.now();
+  r.idleTimer = setTimeout(() => r.reviewing ? idle(r) : closeAgentRun(r), IDLE);
+  r.idleTimer.unref?.();
+  const waiting = [...runs.values()].filter((o) => o.kept && o.child && !o.busy && !o.reviewing).sort((a, b) => a.idleSince - b.idleSince);
+  for (const o of waiting.slice(0, Math.max(0, waiting.length - KEPT))) disconnect(o);
+}
+/** Stops the session's agent if it is waiting between turns; its status stays. */
+export function closeAgentRun(r) {
+  if (r.child && !r.busy && !r.reviewing) disconnect(r);
+}
+// what isolation an agent starts in and the skills it is given, less what each start makes anew (OpenCode's port and
+// password)
+const limitsOf = ({ internalPort, secrets, args, env, ...rest }, skills) => JSON.stringify({ ...rest, args: internalPort ? args.slice(0, -4) : args, env: { ...env, OPENCODE_SERVER_PASSWORD: undefined }, skills });
+const skillsKey = async (r) => (await activeSkills(r.root).catch(() => [])).map((s) => `${s.id} ${s.stamp}`).join('\n');
+/**
+ * Whether the agent connected now can take the next turn: it still runs, and would start now with the same program,
+ * arguments, key, folders and skills (a changed setup or adapter, or a skill turned on or off, starts it again).
+ * The tools server's context is brought up to date.
+ */
+async function keptAgentFits(r) {
+  if (r.child?.exitCode !== null || r.child.signalCode !== null || r.connection.signal.aborted || installing.has(r.agentId)) return false;
+  const options = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] }).catch(() => null);
+  if (!options || limitsOf(options, await skillsKey(r)) !== r.limits) return false;
+  // skills only added while another project's session used the home: the ones off here go once it no longer does
+  if (r.skillsAdded) await syncAgentSkills(r).catch(() => {});
+  if (r.toolsContext !== undefined) await writeToolsContext(r).catch((err) => emit(r, 'notice', { message: `Spectrum’s tools may have an old view of the project this turn: ${err.message}` }));
+  return true;
 }
 export async function stopAgentRun(r) {
   r.cancelled = true;
@@ -904,15 +970,20 @@ export async function stopAgentRun(r) {
 export async function setAgentOption(r, configId, value) {
   if (r.moved) throw Object.assign(new Error(MOVED), { statusCode: 409 });
   if (r.busy || r.reviewing || busyProject(r)) throw new Error('Wait for the task to finish before changing its settings.');
-  r.busy = true; r.cancelled = false;
+  r.busy = true; r.cancelled = false; r.kept = false;
+  clearTimeout(r.idleTimer);
   try {
     if (r.ready) await r.ready.catch(() => {});
+    if (r.connection && !(await keptAgentFits(r))) disconnect(r);
     if (!r.connection || r.connection.signal.aborted) await connect(r);
     const result = await timeout(configId === '__mode'
       ? r.peer.request('session/set_mode', { sessionId: r.remoteId, modeId: value })
       : r.peer.request('session/set_config_option', { sessionId: r.remoteId, configId, value }), 30000, 'The agent did not change its settings.', r.connectionAbort.signal);
     emit(r, 'session', result); return result;
-  } finally { r.busy = false; }
+  } finally {
+    r.busy = false;
+    if (r.child) idle(r);
+  }
 }
 /**
  * Apply or reject changes, by path. Review mode: an applied file's new contents become its baseline, and a rejected one
@@ -963,7 +1034,8 @@ export function runSnapshot(r) { return { ...metadata(r), pending: [...r.pending
 export function subscribeAgent(r, fn) { r.listeners.add(fn); return () => r.listeners.delete(fn); }
 /**
  * Stops the sessions with something running (a turn, a preview, an agent starting or never prompted), leaving the rest
- * as they were: a finished session's agent, still connected by a model or mode change, is only closed.
+ * as they were: a finished session's agent, kept for its next turn or connected by a model or mode change, is only
+ * closed.
  */
 export async function shutdownAgents() {
   await Promise.allSettled([...runs.values()].filter((r) => r.busy || r.child || r.fileOperations?.size).map((r) => (r.busy || r.fileOperations?.size || r.status === 'ready' ? stopAgentRun(r) : (disconnect(r), r.stopChain))));

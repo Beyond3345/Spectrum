@@ -64,9 +64,13 @@ const setup = () => (ready ??= (async () => {
     const res = await app.inject({ method: 'POST', url: `/api/projects/${projectId}/relocate`, payload: { path: folder } });
     return { status: res.statusCode, json: res.json() };
   };
-  after(async () => { await s.shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); });
-  return { ...s, open, turn, lastPrompt, sending, stored, copy, reopen, relocate };
+  const cleanup = async () => { await s.shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); };
+  return { ...s, cleanup, open, turn, lastPrompt, sending, stored, copy, reopen, relocate };
 })());
+
+// once every test is done: an after() called inside the first test's setup would run when that test ends, and the
+// agents the others keep waiting would hold the run open
+after(async () => { if (ready) await (await ready).cleanup(); });
 
 test('a long streamed message keeps the turn’s start, and a huge one keeps its head and tail, not pushing out the turns before it', { skip, timeout: 120000 }, async () => {
   const { open, turn, stored, listAgentRuns } = await setup();
@@ -116,6 +120,71 @@ test('the agent’s usage reaches the session’s events, which the transcript d
     { turn: { totalTokens: 1500, inputTokens: 1200, outputTokens: 300 } }
   ]);
   assert.ok(!run.events.some((e) => e.data?.sessionUpdate === 'usage_update'), 'once, as usage');
+});
+
+// r-agentic-08, A-15: a review session's agent waits between turns instead of starting again for each
+test('a finished turn’s agent is kept for the next, and starts again when it stopped, its setup changed or the turn failed', { skip, timeout: 120000 }, async () => {
+  const { open, turn, closeAgentRun, testAgent, stored } = await setup();
+  const { saveAgentConfig } = await import('../src/services/agentProfiles.js');
+  const { run } = await open({ 'main.tex': 'original\n' });
+  const log = async () => (await fs.readFile(path.join(run.home, 'acp-log.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l).method);
+  const starts = async () => (await log()).filter((m) => m === 'initialize').length;
+  await turn(run, 'draft one');
+  const pid = run.child.pid;
+  const before = await starts();
+  await turn(run, 'draft two');
+  await turn(run, 'hello');
+  assert.equal(run.child.pid, pid, 'one process for three turns');
+  assert.equal(await starts(), before, 'never initialised again');
+  assert.equal(run.events.filter((e) => e.type === 'initialized').length, 1);
+
+  // a kept agent that stops between turns leaves the session as it was; the next turn starts it again
+  process.kill(run.child.pid, 'SIGKILL');
+  for (const end = Date.now() + 5000; run.child; await new Promise((r) => setTimeout(r, 20))) if (Date.now() > end) throw new Error('The exit went unnoticed.');
+  assert.equal(run.status, 'completed');
+  await turn(run, 'hello');
+  assert.notEqual(run.child.pid, pid);
+
+  // a changed setup (here its arguments) starts it again, isolated as the setup now says
+  const kept = run.child.pid;
+  await saveAgentConfig('qoder', { command: process.execPath, args: [fixture, '--embedded'], runtimePaths: [path.dirname(fixture)] });
+  await turn(run, 'hello');
+  assert.notEqual(run.child.pid, kept);
+  assert.ok(run.processOptions.args.includes('--embedded'));
+
+  // a turn that failed doesn't keep its agent, nor does one that was stopped
+  await turn(run, 'please-fail', 'failed');
+  assert.equal(run.child, null);
+
+  // Test waits for no idle agent: the kept one stops for it
+  await turn(run, 'hello');
+  assert.ok(run.child);
+  await testAgent('qoder');
+  assert.equal(run.child, null);
+  assert.equal(run.status, 'completed');
+
+  // closing the session in the workspace stops it, and its status and time stay
+  await turn(run, 'hello');
+  await run.saveChain;
+  const was = await stored(run);
+  closeAgentRun(run);
+  assert.equal(run.child, null);
+  assert.deepEqual(await stored(run), was);
+});
+
+test('at most three agents wait between turns, and a direct session’s agent stops after each turn', { skip, timeout: 120000 }, async () => {
+  const { open, turn } = await setup();
+  const kept = [];
+  for (let i = 0; i < 4; i++) {
+    const { run } = await open({ 'main.tex': 'original\n' });
+    await turn(run, 'hello');
+    kept.push(run);
+  }
+  assert.deepEqual(kept.map((r) => !!r.child), [false, true, true, true], 'the one waiting longest stops');
+  assert.equal(kept[0].status, 'completed');
+  const { run: direct } = await open({ 'main.tex': 'original\n' }, { mode: 'direct' });
+  await turn(direct, 'hello');
+  assert.equal(direct.child, null);
 });
 
 test('a turn’s changes are stored by name, without their text, so a large file sheds none of the transcript', { skip, timeout: 120000 }, async () => {
@@ -321,9 +390,10 @@ test('a prompt is kept from the start of its turn, so Stop before the agent star
 });
 
 test('a session its agent can no longer load goes on in a new one, which hears the conversation so far', { skip, timeout: 120000 }, async () => {
-  const { open, turn, lastPrompt } = await setup();
+  const { open, turn, lastPrompt, closeAgentRun } = await setup();
   const { run } = await open({ 'main.tex': 'original\n' }, { args: ['--lose-sessions'] });
   await turn(run, 'hello');
+  closeAgentRun(run);
   await turn(run, 'again');
   assert.match(await lastPrompt(run), /Previous conversation \(a new agent session was required\):\nhello\n[\s\S]*\n\nagain$/);
   assert.doesNotMatch(await lastPrompt(run), /hello[\s\S]*again[\s\S]*again/, 'the prompt goes once');
