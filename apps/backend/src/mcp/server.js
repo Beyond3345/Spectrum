@@ -39,7 +39,7 @@ const tool = (name, description, inputSchema, run) => server.registerTool(name, 
   }
 });
 
-tool('compile', 'Compile the project in your working copy with its LaTeX engine. Returns whether it built, each error as file:line, the undefined citations and references, and where the PDF is. Nothing is written into the working copy. Input: { main?, engine? } (engine: auto, pdflatex, xelatex, lualatex, latexmk or tectonic).',
+tool('compile', 'Compile the project in your working copy: a LaTeX document with its engine, a Typst document with Typst, a Markdown document through pandoc. Returns whether it built, each error as file:line, the undefined citations and references, and where the PDF is. Nothing is written into the working copy. Input: { main?, engine? } (engine, for LaTeX only: auto, pdflatex, xelatex, lualatex, latexmk or tectonic).',
   { main: z.string().optional(), engine: z.enum(['auto', 'pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic']).optional() }, (input) => tools.compile(root, state, input));
 tool('get_log', 'The last compile\'s errors as file:line, its undefined citations and references, and the end of its log.', {}, () => tools.getLog(state));
 tool('project_map', 'The document\'s main file and engine, the files it includes, its outline and labels, and the references and citations that do not resolve. LaTeX, Typst (= headings, <label>, @key, #include) and Markdown (# headings, {#id}, @key) documents; a Typst or Markdown heading\'s level is its depth.', {}, () => tools.projectMap(root, state));
