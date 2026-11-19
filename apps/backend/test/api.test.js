@@ -1292,6 +1292,9 @@ test('quick template switch keeps the user\'s own files', async () => {
   assert.equal(await readFile(p.id, 'main.tex'), 'unrelated notes');
   assert.match(await readFile(p.id, 'paper.tex'), /^\\documentclass\[11pt\]\{article\}[\s\S]*My body/);
   assert.ok(!res.changedFiles.includes('references.bib'));
+  // and nothing copies a template over the project without these checks
+  assert.equal((await api(`/api/projects/${p.id}/template`, { method: 'POST', body: { template: 'simple-document' } })).status, 404);
+  assert.equal(await readFile(p.id, 'main.tex'), 'unrelated notes');
 });
 
 test('quick template switch refuses a Typst template for a LaTeX document', async () => {

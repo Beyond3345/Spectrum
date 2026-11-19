@@ -832,14 +832,6 @@ export function registerProjectRoutes(fastify) {
     });
   });
 
-  fastify.post('/api/projects/:id/template', async (req) => {
-    const { template } = req.body || {};
-    const root = await getProjectRoot(req.params.id);
-    if (!template) return { ok: false };
-    await mutateProjectRoot(root, () => copyDir(templatePath(template), root));
-    return { ok: true };
-  });
-
   fastify.post('/api/projects/:id/folder', async (req) => {
     const { path: folderPath } = req.body || {};
     if (!folderPath) return { ok: false };
