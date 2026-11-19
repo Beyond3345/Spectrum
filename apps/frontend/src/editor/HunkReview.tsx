@@ -119,7 +119,7 @@ export default function HunkList({
           ((i, rows) => {
             const h = r.hunks[i];
             return (
-              <div key={`${h.start}:${h.end}`} className={`hunk ${i === at ? 'focused' : ''} ${h.base ? 'overlap' : ''}`} data-hunk={i} onMouseDown={() => setFocus(i)}>
+              <div key={`hunk-${h.start}:${h.end}`} className={`hunk ${i === at ? 'focused' : ''} ${h.base ? 'overlap' : ''}`} data-hunk={i} onMouseDown={() => setFocus(i)}>
                 {sectioned && titles[i] !== titles[i - 1] && (
                   <div className="hunk-section">
                     <span className="truncate">{titles[i] || 'Before the first heading'}</span>
