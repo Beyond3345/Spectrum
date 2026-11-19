@@ -9,6 +9,8 @@ export interface PendingChange {
   original: string;
   proposed: string;
   source?: string;
+  /** on a change accepted in part: the proposal that stays in review once `proposed` is written */
+  rest?: string;
 }
 
 export interface CompileError {

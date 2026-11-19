@@ -1918,6 +1918,8 @@ export interface AgentPromptContext { activePath?: string; selection?: string; l
 export interface AgentChange {
   path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; beforeHash: string | null;
   afterHash: string | null; size: number; original?: string; proposed?: string;
+  /** an isolated session's text change: the hash of the project's file as it is now, and its text (null: deleted) where the user changed it since the agent started from it */
+  currentHash?: string | null; current?: string | null;
 }
 export interface AgentUserRequest { requestId: string; kind: string; params: any }
 export interface LocalAgentSession {
@@ -1953,6 +1955,18 @@ export const previewLocalAgentDraft = (id: string, options: { mainFile?: string;
   return request<{ ok: boolean; pdf: string | null; log: string }>(`/api/agent-sessions/${id}/preview${query ? `?${query}` : ''}`);
 };
 export const reviewLocalAgentChanges = (id: string, action: 'apply' | 'reject', changes: AgentChange[]) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action, paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])) }));
+/**
+ * One file's change settled in part: content (null: no file), when given, is written to the project while its file still
+ * has the hash `current`; original and proposed (null: no file) are what is left to review, which the agent's copy then holds.
+ */
+export const settleLocalAgentChange = (id: string, change: AgentChange, part: { content?: string | null; original: string | null; proposed: string | null }) =>
+  request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action: 'part', path: change.path, expected: change.afterHash, current: change.currentHash ?? null, ...part }));
+/**
+ * The project compiled on a copy, in isolation: as it is (which: 'before'), or with files laid over it (content null:
+ * without that file), for the PDF before and after the changes in a review. compile: the app's defaults, as a new session takes.
+ */
+export const previewReview = (projectId: string, body: { which: 'before' | 'after'; files: { path: string; content: string | null }[]; compile?: { typstVersion?: string; markdownEngine?: string } }) =>
+  request<{ ok: boolean; pdf: string | null; log: string }>(`/api/projects/${projectId}/review-preview`, json('POST', body));
 
 // ─── Skills ───
 /**

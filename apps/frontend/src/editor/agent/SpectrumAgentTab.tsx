@@ -13,7 +13,7 @@ import { resolveInstructions } from '../personas';
 import { untrusted } from '../../../../backend/src/utils/outsideText.js';
 import { CHATS_CHANGED, errorText, patchesToChanges, relativeTime } from '../shared';
 import { AgentComposer, ChangesTray, PersonaPicker, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
-import type { ContextKind, Draft, TaskRequest, TrayChange } from './parts';
+import type { ContextKind, Draft, TaskRequest, TrayChange, TrayPart } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
 import { RESUME_HINT, closeChanges, metaOf, openChanges, resumeNote, stepCall, storedChanges } from './transcript';
 import type { Checkpoint, Item, ThreadMeta as Meta } from './transcript';
@@ -227,6 +227,42 @@ export default function SpectrumAgentTab({
     }
   };
 
+  /**
+   * One file's proposal settled in part in the review (some of its changes applied, perhaps edited, or rejected): what
+   * was applied is written through the same path as a whole file, and what is left stays open in the tray and the thread.
+   */
+  const settlePart = async (file: TrayChange, part: TrayPart) => {
+    const owner = threadRef.current;
+    const change = tray.find((c) => c.filePath === file.path);
+    if (!owner || !change) return;
+    setApplying(true);
+    try {
+      let saved: Checkpoint | undefined;
+      if (part.content !== undefined) {
+        const { applied, checkpoint } = await latest.current.applyChanges([{ ...change, original: part.mine, proposed: part.content }]);
+        // the file is no longer what the review showed (applyChanges said so): the review reads it again
+        if (!applied.length) return setTray((old) => [...old]);
+        if (checkpoint) saved = { id: checkpoint.id, number: checkpoint.number, label: checkpoint.label, createdAt: checkpoint.createdAt };
+      }
+      const left = { ...change, original: part.original, proposed: part.proposed };
+      const open = left.original !== left.proposed;
+      setTray((old) => old.flatMap((c) => (c !== change ? [c] : open ? [left] : [])));
+      if (!open) return void mark(owner, [file.path], part.content !== undefined ? 'applied' : 'rejected', saved);
+      update(owner, (chat) => ({
+        ...chat,
+        messages: chat.messages.map((m) => {
+          const meta = metaOf(m);
+          if (!meta.changes?.some((c) => !c.status && c.filePath === file.path)) return m;
+          return { ...m, meta: { ...meta, changes: meta.changes.map((c) => (!c.status && c.filePath === file.path ? storedChanges([left])[0] : c)), ...(saved && { checkpoints: [...(meta.checkpoints || []), saved] }) } };
+        })
+      }));
+    } catch (err) {
+      latest.current.notify(`Couldn’t apply the change: ${errorText(err)}`, 'error');
+    } finally {
+      setApplying(false);
+    }
+  };
+
   const items = useMemo(
     () =>
       (thread?.messages || []).flatMap((m, i): Item[] => {
@@ -302,7 +338,7 @@ export default function SpectrumAgentTab({
       </div>
 
       {reviewing ? (
-        <ReviewView changes={trayChanges} busy={applying} onApply={(list) => resolve('apply', list)} onReject={(list) => resolve('reject', list)} onClose={() => setReviewing(false)} />
+        <ReviewView changes={trayChanges} busy={applying} onApply={(list) => resolve('apply', list)} onReject={(list) => resolve('reject', list)} onPart={settlePart} onClose={() => setReviewing(false)} />
       ) : (
         <div className="agent-scroll" ref={scroll.ref} onScroll={scroll.onScroll} role="log">
           {!items.length && (

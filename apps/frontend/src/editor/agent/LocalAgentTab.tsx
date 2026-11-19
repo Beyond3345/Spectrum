@@ -3,6 +3,7 @@ import {
   answerLocalAgent,
   createLocalAgentSession,
   getLocalAgentChanges,
+  settleLocalAgentChange,
   getLocalAgentSession,
   listLocalAgentSessions,
   listLocalAgents,
@@ -26,7 +27,7 @@ import type { TodosState } from '../TodosList';
 import { resolveInstructions } from '../personas';
 import { AGENTS_CHANGED, VERSIONS_CHANGED, errorText, relativeTime } from '../shared';
 import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, readStored as read, taskPersona, useFollow, useSkills, writeStored as write } from './parts';
-import type { ContextKind, Draft, TaskRequest, TrayChange } from './parts';
+import type { ContextKind, Draft, TaskRequest, TrayChange, TrayPart } from './parts';
 import { RUNNING, addEvent, project } from './transcript';
 import AgentLogo from './AgentLogo';
 import { chosenAgent, shownAgents } from './agents';
@@ -291,7 +292,39 @@ export default function LocalAgentTab({
     }
   };
 
-  const tray = useMemo(() => changes.map((c): TrayChange => ({ path: c.path, kind: c.kind, binary: c.binary, original: c.original ?? '', proposed: c.proposed ?? '', size: c.size, afterHash: c.afterHash })), [changes]);
+  /** One file's change settled in part in the review: the text the user chose is written, and what is left stays in the tray. */
+  const settlePart = async (file: TrayChange, part: TrayPart) => {
+    const change = changes.find((c) => c.path === file.path);
+    if (!session || !change) return;
+    setWorking(true);
+    setError('');
+    try {
+      await latest.current.prepareAgent();
+      // where the change makes or removes the file, no text is no file
+      const none = (text: string) => (change.kind !== 'modified' && !text ? null : text);
+      const r = await settleLocalAgentChange(session.id, change, { ...(part.content !== undefined && { content: none(part.content) }), original: none(part.original), proposed: none(part.proposed) });
+      setChanges(r.changes);
+      if (part.content !== undefined) {
+        await latest.current.reloadProject();
+        window.dispatchEvent(new Event(VERSIONS_CHANGED));
+        await loadCheckpoints();
+      }
+    } catch (err) {
+      fail(err);
+      // the file or the proposal is no longer what the review showed: it shows them as they are
+      getLocalAgentChanges(session.id).then((r) => setChanges(r.changes), () => undefined);
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  // the review shows each change against the project's file as it is, the open file saved first
+  const openReview = () => {
+    setReviewing(true);
+    if (session?.mode === 'review') latest.current.prepareAgent().then(() => getLocalAgentChanges(session.id)).then((r) => setChanges(r.changes), () => undefined);
+  };
+
+  const tray = useMemo(() => changes.map((c): TrayChange => ({ path: c.path, kind: c.kind, binary: c.binary, original: c.original ?? '', proposed: c.proposed ?? '', size: c.size, afterHash: c.afterHash, currentHash: c.currentHash, ...('current' in c && { current: c.current ?? '' }) })), [changes]);
   const ready = !!current?.setUp && current.supported;
   const empty = !session || !view.items.length;
   const usable = shownAgents(agents, session?.agentId);
@@ -378,6 +411,7 @@ export default function LocalAgentTab({
           direct={session?.mode === 'direct'}
           onApply={(list) => resolve('apply', list)}
           onReject={(list) => resolve('reject', list)}
+          onPart={settlePart}
           onClose={() => setReviewing(false)}
           preview={session?.mode === 'review' ? () => latest.current.prepareAgent().then(() => previewLocalAgentDraft(session.id)) : undefined}
         />
@@ -431,7 +465,7 @@ export default function LocalAgentTab({
             {error}
           </div>
         )}
-        {!reviewing && <ChangesTray changes={tray} direct={session?.mode === 'direct'} onOpen={() => setReviewing(true)} />}
+        {!reviewing && <ChangesTray changes={tray} direct={session?.mode === 'direct'} onOpen={openReview} />}
         {!session && mode === 'direct' && <p className="field-hint">The agent can change your project straight away. A checkpoint is saved before each task.</p>}
         <AgentComposer
           busy={running}

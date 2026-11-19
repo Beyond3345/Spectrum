@@ -1453,7 +1453,13 @@ function Editor({ projectId }: { projectId: string }) {
     if (!ready.length) return { applied: [], stale, checkpoint: null };
     const { version } = await createVersion('before-ai');
     for (const change of ready) await writeProjectFile(change.filePath, change.proposed);
-    setPending((prev) => prev.filter((p) => !ready.some((c) => c.filePath === p.filePath)));
+    // one accepted in part stays, as what is left of it against the file as written
+    setPending((prev) =>
+      prev.flatMap((p) => {
+        const done = ready.find((c) => c.filePath === p.filePath);
+        return !done ? [p] : done.rest !== undefined && done.rest !== done.proposed ? [{ ...p, original: done.proposed, proposed: done.rest }] : [];
+      })
+    );
     notify(ready.length === 1 ? `Applied the changes to ${nameOf(ready[0].filePath)}` : `Applied changes to ${ready.length} files`, 'success');
     return { applied: ready, stale, checkpoint: version };
   };
@@ -4151,6 +4157,7 @@ function Editor({ projectId }: { projectId: string }) {
           changes={pending}
           onAccept={acceptChanges}
           onReject={(list) => setPending((prev) => prev.filter((p) => !list.some((c) => c.filePath === p.filePath)))}
+          onRevise={(change) => replacePending([change])}
           onClose={() => setReviewOpen(false)}
         />
       )}
