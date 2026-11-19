@@ -63,6 +63,18 @@ has(compiled(PDFLATEX_TWO_PASSES, { failed: true }), 'compile', 'error', /^The l
 has(compiled(PDFLATEX_DESTINATIONS), 'compile', 'warning', /^Two places in the PDF share the link target page\.1/);
 has(compiled(XELATEX_GLYPH), 'compile', 'warning', /^The font lmroman10-regular has no 漢 \(U\+6F22\), so it’s missing from the PDF$/);
 none(compiled(XELATEX_GLYPH), 'compile', /link target/);
+// several characters a font lacks are one card naming them, a card a font
+const MANY_GLYPHS = [
+  'This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex)',
+  ...['本 (U+672C)', '報 (U+5831)', '本 (U+672C)'].map((c) => `Missing character: There is no ${c} in font [lmroman10-regular]:mapping=tex-text;!`),
+  'Missing character: There is no 한 (U+D55C) in font NotoSerifSC-Regular.otf/OT:script=hani;language=dflt;!',
+  'Transcript written on glyph.log.'
+].join('\n');
+const glyphCards = compiled(MANY_GLYPHS).filter((f) => / has no /.test(f.message));
+eq(glyphCards.map((f) => f.message), [
+  'The font lmroman10-regular has no 本 and 報, so they’re missing from the PDF',
+  'The font NotoSerifSC-Regular.otf has no 한 (U+D55C), so it’s missing from the PDF'
+], 'missing glyphs grouped by font');
 
 // ─── the source: a small paper with something wrong in each group ───
 
