@@ -287,7 +287,7 @@ The transcript also folds away the agent's thinking, shows questions and permiss
 
 === Stopping and steering
 
-#ui[Stop], in the header while the agent works, ends the request to the model and the step that is running at once, a compile included, and what the agent had done is kept. A message sent while the agent works waits above the message box as #ui[Queued], since the box says "Enter queues it while the agent works". #ui[Steer now] hands it to the agent between two steps, and otherwise it is sent as the next request when the answer has come. A message still waiting after #ui[Stop] stays there with #ui[Send] and #ui[Remove]. Closing the workspace does not stop the agent, and a page opened or reloaded while it works shows the run where it is, with the messages that were waiting.
+#ui[Stop], in the header while the agent works, ends the request to the model and the step that is running at once, a compile included, and what the agent had done is kept. A message sent while the agent works waits above the message box as #ui[Queued], as the box itself says ("Enter queues it while the agent works"). #ui[Steer now] hands it to the agent between two steps, and otherwise it is sent as the next request when the answer has come. A message still waiting after #ui[Stop] stays there with #ui[Send] and #ui[Remove]. Closing the workspace does not stop the agent, and a page opened or reloaded while it works shows the run where it is, with the messages that were waiting.
 
 === Planning first and questions <sec-assistant-plan>
 
