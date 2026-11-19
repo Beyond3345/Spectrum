@@ -15,6 +15,8 @@ interface Ui {
   ctikz: string;
   /** the style's voltage direction, so the inspector knows which way a voltage's + and − go */
   voltageDir?: string;
+  /** a part asked for from the keyboard (Enter on it in the rail), for the canvas to place; n tells one ask from the next */
+  place?: { type: string; n: number };
 }
 
 let ui: Ui = { tool: 'select', selection: [], ctikz: 'american' };
@@ -38,6 +40,8 @@ export const setCtikz = (ctikz: string) => {
 export const setVoltageDir = (voltageDir: string | undefined) => {
   if (voltageDir !== ui.voltageDir) set({ voltageDir });
 };
+/** Enter or Space on a part in the rail: the canvas places it near the middle of the view, selected. */
+export const placeFromKeyboard = (type: string) => set({ place: { type, n: (ui.place?.n ?? 0) + 1 } });
 export const getUi = () => ui;
 
 export function useCircuitUi() {

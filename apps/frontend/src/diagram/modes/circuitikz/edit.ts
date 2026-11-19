@@ -31,6 +31,25 @@ export function newNodePart(model: CircuitModel, type: string, at: Pt): NodePart
   return { id: newId(model), kind: 'node', type, at, ...(letter ? { name: nextName(model, letter) } : null) };
 }
 
+/**
+ * Where a part placed from the keyboard goes: the point of a 0.5 cm grid (two steps) nearest centre whose points,
+ * given by ends(at), keep gap grid steps (1 cm) from every point taken (pins, wire points and points along parts).
+ * ponytail: points, not outlines, so a wide symbol may still touch its neighbour; its outline if that matters
+ */
+/** Points every 2 grid steps from a to b, both ends included: a two-terminal part's line, for freeSpot. */
+export function along(a: Pt, b: Pt): Pt[] {
+  const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 2));
+  return Array.from({ length: n + 1 }, (_, i) => ({ x: a.x + ((b.x - a.x) * i) / n, y: a.y + ((b.y - a.y) * i) / n }));
+}
+
+export function freeSpot(centre: Pt, ends: (at: Pt) => Pt[], taken: Pt[], gap = 4, reach = 40): Pt {
+  const base = { x: Math.round(centre.x / 2) * 2, y: Math.round(centre.y / 2) * 2 };
+  const spots: Pt[] = [];
+  for (let dx = -reach; dx <= reach; dx += 2) for (let dy = -reach; dy <= reach; dy += 2) spots.push({ x: base.x + dx, y: base.y + dy });
+  spots.sort((p, q) => Math.hypot(p.x - centre.x, p.y - centre.y) - Math.hypot(q.x - centre.x, q.y - centre.y));
+  return spots.find((at) => ends(at).every((e) => taken.every((p) => Math.hypot(p.x - e.x, p.y - e.y) >= gap))) ?? base;
+}
+
 /** Ends of the elements in `ids` that sit on parts outside `ids` become plain points, where they are now. */
 export function detach(model: CircuitModel, ids: Set<string>, shapeOf: ShapeOf): CircuitModel {
   const { pos } = locator(model, shapeOf);
