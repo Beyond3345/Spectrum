@@ -459,6 +459,13 @@ test('a Typst #bibliography and a Markdown front matter’s bibliography load th
     const out = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
     assert.deepEqual([out.bibFile, out.bibIncluded], ['refs.bib', true], file);
   }
+  // a Markdown front matter that names none: pandoc is given every .bib, so there is nothing to add
+  for (const [front, included] of [['title: T', true], ['bibliography: missing.bib', false]]) {
+    const root = await tempProject({ 'main.md': `---\n${front}\n---\n# Intro\n`, 'references.bib': '', '.spectrum/project.json': JSON.stringify({ id: `md-${included}`, name: 'P', mainFile: 'main.md' }) });
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const out = await resolveReferences({ projectRoot: root, input: '10.1234/journal.5' });
+    assert.deepEqual([out.bibFile, out.bibIncluded], ['references.bib', included], front);
+  }
   // a Typst project with no .bib yet gets refs.bib, a LaTeX one references.bib
   for (const [file, bib] of [['main.typ', 'refs.bib'], ['main.tex', 'references.bib']]) {
     const root = await tempProject({ [file]: '= Intro\n', '.spectrum/project.json': JSON.stringify({ id: `new-${file.replace('.', '-')}`, name: 'P', mainFile: file }) });
