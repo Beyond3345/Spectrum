@@ -823,7 +823,7 @@ export function registerProjectRoutes(fastify) {
         const merged = preserveDocumentMetadata(withBiblatexResources(mergeTemplateBody(templateTex, extractDocumentBody(currentTex)), bibliographyFiles(currentTex)), currentTex);
         // The merged document goes back into the project's own main file, whatever the template calls its main file.
         const changedFiles = await copyTemplateIntoProject(templateRoot, root, templateMain);
-        await fs.writeFile(currentMainPath, merged, 'utf8');
+        await writeFileAtomic(await fs.realpath(currentMainPath).catch(() => currentMainPath), merged);
         await touchProject(root).catch(() => {});
         return { ok: true, mainFile, changedFiles: [...new Set([...changedFiles, mainFile])] };
       } catch (err) {

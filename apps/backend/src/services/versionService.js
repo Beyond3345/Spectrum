@@ -476,6 +476,8 @@ export function restoreVersion(root, versionId, relPath) {
     for (const rel of targets) {
       // couldn't be read for the version (online-only and offline, say): neither replaced nor deleted
       if (skipped.has(rel)) continue;
+      // no checkpoint made here holds the app's data or the repository: a manifest that names them is not followed
+      if (rel.split('/').some((part) => ['.spectrum', '.git'].includes(part.toLowerCase()))) continue;
       if (files[rel] && untracked.has(rel)) {
         const ext = path.extname(rel);
         const aside = await freePath(safeJoin(root, `${rel.slice(0, rel.length - ext.length)} (before restore)${ext}`));

@@ -85,11 +85,12 @@ export function safeJoinLink(root, targetPath) {
   return resolved;
 }
 
-export function sanitizeUploadPath(filename) {
+export function sanitizeUploadPath(filename, platform = process.platform) {
   if (!filename) return '';
   const normalized = filename.replace(/\\/g, '/').replace(/^\/+/, '');
-  // NTFS can't hold <>:"|?* (a ':' would make a hidden stream) or a trailing dot or space
-  const fit = (part) => (process.platform === 'win32' ? part.replace(/[<>:"|?*]/g, '_').replace(/[. ]+$/, '') : part);
+  // NTFS can't hold <>:"|?* (a ':' would make a hidden stream) or a trailing dot or space, and CON, AUX and the like
+  // are devices there whatever their extension
+  const fit = (part) => (platform === 'win32' ? part.replace(/[<>:"|?*]/g, '_').replace(/[. ]+$/, '').replace(/^(con|prn|aux|nul|com\d|lpt\d)(?=\.|$)/i, '_$1') : part);
   const parts = normalized.split('/').map(fit).filter((part) => part && part !== '.' && part !== '..');
   return parts.join('/');
 }

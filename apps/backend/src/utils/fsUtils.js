@@ -196,8 +196,9 @@ export async function writeNewFile(abs, data) {
   }
 }
 
-// App data and Finder/Explorer litter never come out of an imported archive (any letter case: APFS and NTFS ignore it).
-const ARCHIVE_SKIP = new Set(['.spectrum', '__macosx', '.ds_store', 'thumbs.db', 'desktop.ini', '.snapshots', '.compile']);
+// App data and Finder/Explorer litter never come out of an imported archive (any letter case: APFS and NTFS ignore it),
+// nor does a repository: its config would say where a later backup to GitHub pushes.
+const ARCHIVE_SKIP = new Set(['.spectrum', '.git', '__macosx', '.ds_store', 'thumbs.db', 'desktop.ini', '.snapshots', '.compile']);
 export const skipInArchive = (relPath) => relPath.split('/').some((part) => ARCHIVE_SKIP.has(part.toLowerCase()));
 
 /** Extract a zip stream into root (path-traversal safe), then unwrap a single top-level folder. */
