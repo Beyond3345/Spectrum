@@ -4,7 +4,7 @@ description: Edit and fix a Markdown project in Spectrum, which pandoc turns int
 license: MIT
 compatibility: Works with the Spectrum agent and with local agents. The compile and get_log tools come from Spectrum's tools server (local agents on macOS); without them, read the compile log the user sent or ask them to compile.
 metadata:
-  version: "1.0"
+  version: "1.1"
   skill-author: Spectrum
 ---
 
@@ -14,14 +14,14 @@ A Markdown project in Spectrum has a main `.md` file (usually `main.md`), `.bib`
 
 ## Find your way around first
 
-1. Read the YAML front matter at the top, between the `---` lines: `title`, `author`, `date`, `abstract`, `bibliography` and `csl`. When there is no `bibliography`, Spectrum gives pandoc every `.bib` in the project.
+1. Read the YAML front matter at the top, between the `---` lines: `title`, `author`, `date`, `abstract`, `bibliography` and `csl`. When there is no `bibliography`, Spectrum gives pandoc every `.bib` in the project; when there is one, list every `.bib` the document needs there (`bibliography: [refs.bib, more.bib]`), never a second `bibliography:` line. Citations come out in APA 7 unless `csl` names another style.
 2. Note the PDF engine (LaTeX or Typst) from the compile menu or the log's first lines. Raw LaTeX in the text works only with the LaTeX engine; keep to plain Markdown so both work.
 3. Images are found relative to the `.md` file's folder.
 
 ## The compile loop
 
 1. Compile (`compile`, or ask the user to compile and send the log).
-2. pandoc's own errors give a line and column in the `.md` (a broken front matter is the usual one). Errors from the second step are traced back to the `.md` line by their text; when one is not, look at the generated source (Logs › Show generated LaTeX) to see what pandoc made of the passage.
+2. pandoc's own errors give a line and column in the `.md` (a broken front matter is the usual one). Errors and warnings from the second step are traced back to the `.md` line by their text; when one has no line, find the passage by the words in its message, or ask the user to look at Logs › Show generated LaTeX, which you cannot open.
 3. Fix the first error with the smallest change, then compile again. Stop after five rounds without progress and explain what is left.
 
 ## Reading common problems
@@ -33,11 +33,12 @@ A Markdown project in Spectrum has a main `.md` file (usually `main.md`), `.bib`
 | An image is missing | a wrong path, or an SVG without rsvg-convert installed | correct the path, or use a PNG or PDF |
 | `Undefined control sequence` in the log | raw LaTeX in the Markdown, or a character pandoc passed through | replace it with Markdown, or escape the character |
 | Maths does not appear | a space after the opening `$` or before the closing one | write `$x^2$`, with no inner spaces at the ends |
+| A warning that a font has no letters for some characters | Korean, which the Chinese fonts Spectrum ships do not have, or a `mainfont` without them | name a font that has them in the front matter, such as `CJKmainfont: Apple SD Gothic Neo` |
 
 ## Rules for changes
 
 - Citations are `[@key]`, several as `[@a; @b]`, with a page as `[@key, p. 4]`. A citation in the running text is `@key`.
-- Figures are `![Caption](figures/plot.png){#fig:plot width=80%}`. Tables are pipe tables, with `Table: Caption {#tbl:x}` on the line after.
+- Figures are `![Caption](figures/plot.png){#fig:plot width=80%}`. Tables are pipe tables, with `Table: Caption` on the line before or after. Do not add `{#tbl:x}` to a table caption: pandoc before 3.8.2 prints it as part of the caption.
 - Headings are `#` to `####`. Keep the document's own heading levels and its blank lines between blocks.
 - Inline maths is `$...$` and display maths `$$...$$`.
 - Change only what the task needs. Do not reflow paragraphs or rewrite the front matter.
