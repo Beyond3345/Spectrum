@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { docLanguage, translatePrompt } from '../../../backend/src/utils/docLanguage.js';
 import { addReference, getChat, resolveReferences, runAgent, visionToLatex } from '../api/client';
 import type { ChatMessage, ChatMode, ChatThread, ReferenceResult } from '../api/client';
 import Icon from '../app/Icon';
@@ -7,7 +8,7 @@ import { MenuButton } from '../app/Menu';
 import { effortOptions, modelOf, presetOf, searchConfigFor, updateSettings, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
-import { Markdown, VISION_HINTS, VISION_MODES, bibIncludeLine, buildProjectContext, citationText, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
+import { Markdown, VISION_HINTS, VISION_MODES, bibIncludeLine, citationText, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
 import { ZOTERO_CITE } from './zotero';
 import type { VisionMode } from './shared';
 import { chatMessage, isEditChat, useChatThread } from './chatThread';
@@ -20,7 +21,7 @@ type TranslateScope = 'selection' | 'file' | 'project';
 type ProposedFile = { filePath: string; proposed: string };
 type ReferencesMeta = { results: ReferenceResult[]; bibFile: string; bibIncluded: boolean };
 /** what we keep in ChatMessage.meta */
-type MessageMeta = { changes?: ProposedFile[]; quick?: boolean; references?: ReferencesMeta; latex?: string; error?: boolean };
+type MessageMeta = { changes?: ProposedFile[]; quick?: boolean; references?: ReferencesMeta; latex?: string; error?: boolean; /** the answer stopped at the model's output limit */ cut?: boolean };
 
 const LANGUAGES = ['English', 'Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish'];
 const ACTION_VERBS: Record<Exclude<QuickAction, 'translate'>, string> = { polish: 'Polish', rewrite: 'Rewrite', structure: 'Restructure' };
@@ -253,22 +254,15 @@ export default function Composer({
       let selectionArg = selection;
       let content = editorValue;
       if (action === 'translate') {
-        const note = text ? `\nUser note: ${text}` : '';
+        // in the words of the document's own language: the open file's, or else the main file's
+        prompt = translatePrompt(translateScope, language, docLanguage(activePath, api.mainFile), text);
         if (translateScope === 'project') {
           agentMode = 'tools';
           selectionArg = '';
           content = '';
-          prompt = `Translate all .tex files in the project to ${language}. Preserve LaTeX commands and structure.${note}`;
         } else if (translateScope === 'file') {
           selectionArg = '';
-          prompt = `Translate the current file to ${language}. Preserve LaTeX commands and structure.${note}`;
-        } else {
-          prompt = `Translate the selected text to ${language}. Preserve LaTeX commands and structure.${note}`;
         }
-      }
-      if (!chat) {
-        const context = await buildProjectContext(api);
-        if (context) prompt = `${prompt}\n\n[Project Context]\n${context}`;
       }
       const history = chat
         ? base.messages
@@ -293,8 +287,9 @@ export default function Composer({
         reasoningEffort: api.settings.reasoningEffort,
         instructions: resolveInstructions(api.settings, personaId) || undefined
       });
-      // the backend words AI failures as a reply; show them as errors, kept out of the history
-      if (!res.ok) throw new Error(res.reply || 'The AI request failed.');
+      // the backend words AI failures as a reply; show them as errors, kept out of the history. A whole-project run
+      // that failed part-way still hands back the changes it had prepared, which stay reviewable
+      if (!res.ok && !res.patches?.length) throw new Error(res.reply || 'The AI request failed.');
       const source = label || 'Assistant';
       let changes: PendingChange[] = [];
       if (!chat && res.patches?.length) {
@@ -306,10 +301,13 @@ export default function Composer({
       }
       changes = changes.filter((c) => c.original !== c.proposed);
       const fallback = chat ? 'No reply.' : changes.length ? 'Suggested changes are ready to review.' : 'No changes were suggested.';
-      append(
-        base,
-        msg('assistant', res.reply || fallback, changes.length ? { changes: changes.map(({ filePath, proposed }) => ({ filePath, proposed })), quick: true } : undefined)
-      );
+      const said = res.ok ? res.reply || fallback : `The request failed part-way: ${res.reply} The changes made before it are ready to review.`;
+      const meta: MessageMeta = {
+        ...(changes.length && { changes: changes.map(({ filePath, proposed }) => ({ filePath, proposed })), quick: true }),
+        ...(!res.ok && { error: true }),
+        ...(res.incomplete === 'cut' && { cut: true })
+      };
+      append(base, msg('assistant', said, Object.keys(meta).length ? meta : undefined));
       if (changes.length) latest.current.proposeChanges(changes);
     } catch (err) {
       append(base, msg('assistant', `Request failed: ${errorText(err)}`, { error: true }));
@@ -523,6 +521,14 @@ export default function Composer({
               </div>
             );
           })}
+          {!busy && messages.length > 0 && metaOf(messages[messages.length - 1]).cut && (
+            <div className="composer-hint row">
+              <span className="grow">The answer was cut off by the model’s output limit.</span>
+              <button className="btn small" onClick={() => void sendAssistant('Continue from where your last answer stopped, without repeating it.')}>
+                Continue
+              </button>
+            </div>
+          )}
           {busy && (
             <div className="composer-msg assistant composer-thinking">
               <span className="spinner" /> {mode === 'references' ? 'Looking it up…' : 'Thinking…'}

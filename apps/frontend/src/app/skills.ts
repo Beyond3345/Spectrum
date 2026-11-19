@@ -13,6 +13,8 @@ const GROUP_OF: Record<string, SkillGroup> = {
   'research-grants': 'Writing',
   'markdown-mermaid-writing': 'Writing',
   'spectrum-latex': 'Writing',
+  'spectrum-typst': 'Writing',
+  'spectrum-markdown': 'Writing',
   'spectrum-related-work': 'Writing',
   'peer-review': 'Review',
   'scientific-critical-thinking': 'Review',

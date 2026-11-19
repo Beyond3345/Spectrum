@@ -1,7 +1,7 @@
 // Self-check for the local agent transcript. Run:
 // npx esbuild apps/frontend/src/editor/agent/transcript.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/transcript.cjs && node <scratch>/transcript.cjs
 import type { AgentEvent } from '../../api/client';
-import { addEvent, closeChanges, openChanges, project, storedChanges } from './transcript';
+import { addEvent, closeChanges, metaOf, openChanges, project, resumeNote, storedChanges } from './transcript';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -13,6 +13,23 @@ const up = (data: Record<string, unknown>) => ev('update', data);
 const chunk = (sessionUpdate: string, text: string) => up({ sessionUpdate, content: { type: 'text', text } });
 const shape = (events: AgentEvent[], extra?: Parameters<typeof project>[1]) =>
   project(events, extra).items.map((i) => [i.type, 'text' in i ? i.text : i.type === 'tool' ? `${i.call.title}:${i.call.status}` : i.type === 'todo' ? i.todo.text : i.type === 'request' ? i.answered : i.type === 'checkpoint' ? i.checkpoint.number : '']);
+
+// a run that ended before its answer: the thread keeps its steps and changes with the failure, they stay open for
+// review, and the next run is told where it got to
+{
+  const failed = { changes: storedChanges([{ filePath: 'main.typ', original: 'a', proposed: 'b' }]), steps: [{ tool: 'read_file', about: 'main.typ', ok: true }, { tool: 'read_file', about: '.env', ok: false }, { tool: 'propose_patch', about: 'main.typ', ok: true }], error: true, resume: 'failed' as const };
+  eq(
+    resumeNote(failed),
+    'Your last run stopped before its answer, at a request to the model that failed. Steps it had finished: read_file main.typ; propose_patch main.typ. The changes it prepared (main.typ) are still open: read_file shows each file with them, and a new change builds on them. Go on from there. Do not redo what is finished.',
+    'a failed run'
+  );
+  eq(resumeNote({ resume: 'steps' }), 'Your last run stopped at its limit of 25 steps, before its answer. Go on from there. Do not redo what is finished.', 'the step limit');
+  eq(resumeNote({ resume: 'cut' }), 'Your last answer was cut off by the output limit: go on from where it stops, without repeating it.', 'a cut-off answer');
+  eq(resumeNote({ steps: [{ tool: 'read_file', ok: true }] }), '', 'a finished run');
+  const chat = { id: 'c', title: '', createdAt: '', updatedAt: '', mode: 'assistant' as const, messages: [{ role: 'user' as const, content: 'go', createdAt: '' }, { role: 'assistant' as const, content: 'Request failed: Overloaded.', createdAt: '', meta: failed }] };
+  eq(metaOf(chat.messages[1]).resume, 'failed', 'kept with the message');
+  void openChanges(chat, async () => 'a').then((open) => eq(open.map((c) => [c.filePath, c.original, c.proposed]), [['main.typ', 'a', 'b']], 'a failed run’s change stays open'));
+}
 
 // messages: chunks join; a thought is its own item; a new user turn starts a new reply
 eq(

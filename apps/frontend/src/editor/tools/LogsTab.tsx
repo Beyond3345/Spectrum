@@ -1,3 +1,4 @@
+import { docLanguage, fixPrompt } from '../../../../backend/src/utils/docLanguage.js';
 import { useEffect, useState } from 'react';
 import Icon from '../../app/Icon';
 import { getGenerated, installBiber, installPandoc, installTypst } from '../../api/client';
@@ -78,7 +79,7 @@ export default function LogsTab() {
     const where = error ? [error.file, error.line && `line ${error.line}`].filter(Boolean).join(', ') : '';
     // "Fix all" goes after the errors; the warnings only when the build has none
     const prompt = error
-      ? `Fix this LaTeX ${error.severity}: ${error.message}${where ? ` (${where})` : ''}. Propose a patch that can be applied.`
+      ? fixPrompt(docLanguage(error.file, api.compiledDoc, api.mainFile), { severity: error.severity, message: error.message, where })
       : errorCount
         ? 'Diagnose the errors in the compile log and fix them. Ignore warnings. Propose patches that can be applied.'
         : 'Fix the warnings in the compile log (overfull/underfull boxes, undefined references and citations). Propose patches that can be applied.';

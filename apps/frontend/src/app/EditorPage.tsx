@@ -145,6 +145,7 @@ import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDocument, isSource, keptMainFile, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
+import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
 import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
 
@@ -1513,24 +1514,19 @@ function Editor({ projectId }: { projectId: string }) {
     clearGhost();
     const pos = view.state.selection.main.head;
     const doc = view.state.doc.toString();
-    const heading = nearestHeading(doc, pos);
-    const env = currentEnvironment(doc.slice(0, pos));
+    // the heading the cursor is under, as each language writes one, and LaTeX's open environment
+    const language = docLanguage(path, mainFile);
+    const before = doc.slice(0, pos);
+    const outline = language.kind === 'typst' ? parseTypstOutline(before) : language.kind === 'markdown' ? parseMarkdownOutline(before) : null;
+    const heading = outline ? outline[outline.length - 1] : nearestHeading(doc, pos);
+    const env = language.kind === 'latex' ? currentEnvironment(before) : '';
     ghostRef.current = { text: '', pos };
     setSuggesting(true);
     placeGhost(pos);
     try {
       const res = await runAgent({
         task: 'autocomplete',
-        prompt: [
-          'You are a LaTeX writing assistant.',
-          'Continue after <CURSOR> with a coherent next block (1-2 paragraphs or a full environment).',
-          heading ? `Current section: ${heading.title}.` : '',
-          env ? `You are inside the ${env} environment.` : '',
-          'Preserve style and formatting.',
-          'Return only the continuation text, no commentary.'
-        ]
-          .filter(Boolean)
-          .join(' '),
+        prompt: autocompletePrompt(language, { heading: heading?.title, environment: env }),
         selection: '',
         content: `${doc.slice(Math.max(0, pos - 4000), pos)}<CURSOR>${doc.slice(pos, pos + 400)}`,
         mode: 'direct',

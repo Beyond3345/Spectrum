@@ -1218,9 +1218,12 @@ export function runAgent(payload: {
   drafts?: { path: string; original: string; proposed: string }[];
 }) {
   // tools mode: changes lists its patches as local agents' changes tray does, todos the to-dos it suggests and steps
-  // its tool calls
-  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; changes?: AgentChange[]; todos?: SuggestedTodo[]; steps?: AgentStep[] }>('/api/agent/run', json('POST', payload));
+  // its tool calls; incomplete: why a run ended before its answer, with what it had prepared returned all the same
+  return request<{ ok: boolean; reply: string; suggestion: string; patches?: AgentPatch[]; changes?: AgentChange[]; todos?: SuggestedTodo[]; steps?: AgentStep[]; incomplete?: Incomplete }>('/api/agent/run', json('POST', payload));
 }
+
+/** Why a run ended before its answer: a model request failed, the step limit was reached, or the answer stopped at the output limit */
+export type Incomplete = 'failed' | 'steps' | 'cut';
 
 /** One of the Spectrum agent's tool calls: the tool, what it was about (a path, a query, an id) and whether it worked */
 export type AgentStep = { tool: string; about?: string; ok: boolean };
