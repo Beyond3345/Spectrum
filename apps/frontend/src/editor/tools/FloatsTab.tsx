@@ -2037,7 +2037,7 @@ function TableToChart() {
       <button className={`btn full${code ? '' : ' primary'}`} onClick={() => write()} disabled={!!busy}>
         {busy === 'write' ? <span className="spinner" /> : <Icon name="chart.bar.xaxis" />} {code ? 'Write the code again' : 'Write the code'}
       </button>
-      {!hasTable && <div className="field-hint">Select a table in the editor to plot it.</div>}
+      {!hasTable && !code && <div className="field-hint">Select a table in the editor to plot it.</div>}
       {code && (
         <div className="field">
           <div className="row spread">
