@@ -3,7 +3,7 @@
 // Drawn as MATH2150's notes draw theirs: the original a blue dashed outline, its image red and thick over a light red
 // fill, the eigenlines grey with v in black and Av coloured along them.
 import { escapeTex } from '../shared';
-import { at, fmt, pictureOf, results, RESULTS_FIELD, scene } from './fluids';
+import { at, fmt, nameField, nameOf, pictureOf, results, RESULTS_FIELD, scene } from './fluids';
 import type { Pt } from './fluids';
 import { clipLine, plain, plane, viewOf } from './plane';
 import type { FormField, FormPreset, FormValues } from './presets';
@@ -51,8 +51,14 @@ export function linearMap({ a, b, c, d }: Matrix) {
 
 const point = (p: Pt) => `(${fmt(p.x)}, ${fmt(p.y)})`;
 
-/** The working, a line each: the columns, the determinant and what it says, the eigenvalues and eigenvectors. */
-export function linearWorking(m: Matrix, name = 'A'): string[] {
+/** what the basis vectors and the eigenvectors are called, before their subscripts */
+export const [BASIS, EIGENVECTOR] = ['\\mathbf{e}', '\\mathbf{v}'];
+
+/**
+ * The working, a line each: the columns, the determinant and what it says, the eigenvalues and eigenvectors, the
+ * vectors called e and v (their subscripts after) unless they're named otherwise.
+ */
+export function linearWorking(m: Matrix, name = 'A', basis = BASIS, vector = EIGENVECTOR): string[] {
   const r = linearMap(m);
   const area = fmt(Math.abs(r.det));
   const det = r.singular
@@ -64,10 +70,10 @@ export function linearWorking(m: Matrix, name = 'A'): string[] {
       ? `no real eigenvectors: $\\lambda = ${fmt(e.re) === '0' ? '' : fmt(e.re)} \\pm ${fmt(e.im) === '1' ? '' : fmt(e.im)}i$`
       : e.kind === 'repeated'
         ? e.vector
-          ? `$\\lambda = ${fmt(e.value)}$ twice, with one line of eigenvectors along $\\mathbf{v} = ${point(e.vector)}$`
+          ? `$\\lambda = ${fmt(e.value)}$ twice, with one line of eigenvectors along $${vector} = ${point(e.vector)}$`
           : `$\\lambda = ${fmt(e.value)}$ twice: every vector is an eigenvector`
-        : e.values.map((l, i) => `$\\lambda_${i + 1} = ${fmt(l)}$ with $\\mathbf{v}_${i + 1} = ${point(e.vectors[i])}$`).join(', ');
-  return [`$${name}\\mathbf{e}_1 = ${point(r.e1)}$, $${name}\\mathbf{e}_2 = ${point(r.e2)}$`, `$\\det ${name} = ${fmt(r.singular ? 0 : r.det)}$: ${det}`, eigen];
+        : e.values.map((l, i) => `$\\lambda_${i + 1} = ${fmt(l)}$ with $${vector}_${i + 1} = ${point(e.vectors[i])}$`).join(', ');
+  return [`$${name}${basis}_1 = ${point(r.e1)}$, $${name}${basis}_2 = ${point(r.e2)}$`, `$\\det ${name} = ${fmt(r.singular ? 0 : r.det)}$: ${det}`, eigen];
 }
 
 /** how far each way the grid runs */
@@ -77,6 +83,8 @@ export function transformationDrawing(values: FormValues) {
   const m: Matrix = { a: Number(values.a11), b: Number(values.a12), c: Number(values.a21), d: Number(values.a22) };
   const r = linearMap(m);
   const name = escapeTex(String(values.name).trim()) || 'A';
+  // the vectors' names, the user's; an empty one leaves those arrows unnamed, and the working with e and v
+  const [basis, vector] = [nameOf(values, 'basisName'), nameOf(values, 'eigenName')];
   const show = (key: string) => values[key] === true;
   const T = (p: Pt): Pt => ({ x: m.a * p.x + m.b * p.y, y: m.c * p.x + m.d * p.y });
   const O = { x: 0, y: 0 };
@@ -129,28 +137,28 @@ export function transformationDrawing(values: FormValues) {
     const [from, tip] = [P(O), P(to)];
     sc.add(`\\draw[->, ${style}] ${at(from)} -- ${at(tip)};`);
     sc.seg([from, tip]);
-    sc.label(tip, tex, { x: tip.x - from.x, y: tip.y - from.y }, false, colour);
+    if (tex) sc.label(tip, tex, { x: tip.x - from.x, y: tip.y - from.y }, false, colour);
   };
   /** a vector and where it goes: both arrows, or one named for both when it stays where it is */
   const pair = (p: Pt, tex: string, colour: string, own: string, ownColour?: string) => {
     const image = T(p);
     const stays = Math.hypot(image.x - p.x, image.y - p.y) < 1e-9;
-    arrow(image, `${colour}, very thick`, `$${name}${tex}${stays ? ` = ${tex}` : ''}$`, colour);
-    if (!stays) arrow(p, own, `$${tex}$`, ownColour);
+    arrow(image, `${colour}, very thick`, tex && `$${name}${tex}${stays ? ` = ${tex}` : ''}$`, colour);
+    if (!stays) arrow(p, own, tex && `$${tex}$`, ownColour);
   };
   if (show('basis')) {
     sc.add('% e1 and e2, and where they go');
-    pair({ x: 1, y: 0 }, '\\mathbf{e}_1', 'red', 'blue, thick', 'blue');
-    pair({ x: 0, y: 1 }, '\\mathbf{e}_2', 'red', 'blue, thick', 'blue');
+    pair({ x: 1, y: 0 }, basis && `${basis}_1`, 'red', 'blue, thick', 'blue');
+    pair({ x: 0, y: 1 }, basis && `${basis}_2`, 'red', 'blue, thick', 'blue');
   }
   if (eigen.length) {
     sc.add('% Eigenvectors v, and Av along the same lines');
     // red and blue as the notes have them; teal and orange beside the red and blue of e1, e2 and their images
     const colours = show('basis') ? ['teal', 'orange!80!black'] : ['red', 'blue'];
-    eigen.forEach(({ v, sub }, i) => pair(v, `\\mathbf{v}${sub}`, colours[i], 'thick'));
+    eigen.forEach(({ v, sub }, i) => pair(v, vector && `${vector}${sub}`, colours[i], 'thick'));
   }
 
-  const working = linearWorking(m, name);
+  const working = linearWorking(m, name, basis || BASIS, vector || EIGENVECTOR);
   const width = P({ x: view.x1, y: 0 }).x;
   if (show('results')) results(sc, width / 2, working);
   return { ...pictureOf(sc, [`Linear transformation: ${name} = [${fmt(m.a)} ${fmt(m.b)}; ${fmt(m.c)} ${fmt(m.d)}]`, ...working.map(plain)], false), map: r };
@@ -172,9 +180,11 @@ export const TRANSFORMATION: FormPreset = {
     { key: 'basis', label: 'Images of e₁ and e₂', kind: 'switch' },
     { key: 'eigen', label: 'Eigenvectors', kind: 'switch', hint: 'The real ones: their lines through the origin, with v and Av.' },
     { key: 'ticks', label: 'Numbers on the axes', kind: 'switch' },
-    { ...RESULTS_FIELD, label: 'Write the working under the figure' }
+    { ...RESULTS_FIELD, label: 'Write the working under the figure' },
+    nameField('basisName', 'Basis vectors', { hint: 'Maths, without the dollar signs, before the subscripts 1 and 2: \\mathbf{e}, \\hat{e}. An empty name leaves those arrows unnamed.' }),
+    nameField('eigenName', 'Eigenvectors')
   ],
   // the notes' shear then stretch (Section 4, composition): BA = [1 1; 0 2], the unit square to (1,0), (2,2), (1,2)
-  values: { a11: 1, a12: 1, a21: 0, a22: 2, name: 'A', show: 'square', basis: true, eigen: true, ticks: true, results: true },
+  values: { a11: 1, a12: 1, a21: 0, a22: 2, name: 'A', show: 'square', basis: true, eigen: true, ticks: true, results: true, basisName: BASIS, eigenName: EIGENVECTOR },
   toCode: (values) => transformationDrawing(values).code
 };

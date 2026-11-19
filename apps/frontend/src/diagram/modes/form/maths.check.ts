@@ -61,8 +61,8 @@ const central = (q: Conic, k: 'circle' | 'ellipse' | 'hyperbola', what: string) 
   eq(conicWorking(q), [
     'Ellipse: $B^2 - 4AC = -84 < 0$',
     'axes turned by $\\theta = 45^\\circ$, where $\\cot 2\\theta = \\frac{A - C}{B}$',
-    '$7(u + 1.414)^2 + 3(v - 1.414)^2 = 21$',
-    '$\\frac{(u + 1.414)^2}{3} + \\frac{(v - 1.414)^2}{7} = 1$',
+    '$7(U + 1.414)^2 + 3(V - 1.414)^2 = 21$',
+    '$\\frac{(U + 1.414)^2}{3} + \\frac{(V - 1.414)^2}{7} = 1$',
     'centre $C(-2, 0)$, $a = 2.646$, $b = 1.732$, $c = 2$, $e = 0.7559$'
   ], 'the working, as the notes complete the squares');
   // every point of the curve the picture samples satisfies the equation
@@ -307,9 +307,9 @@ const g = (A: number, B: number, C: number, D: number, E: number, F: number, mor
   eq(body.includes('\\draw[very thick, teal, rotate around={135:(3.5,3.5)}] (3.5,3.5) ellipse [x radius=3.341, y radius=2.187];'), true, 'the ellipse, thick and teal, turned to its axes');
   eq((body.match(/\\draw\[red, line width=0.8pt\]/g) ?? []).length, 2, 'two foci as red crosses');
   eq((body.match(/\\draw\[->, dashed\]/g) ?? []).length, 2, 'the turned axes dashed');
-  eq(['{$u$}', '{$v$}', '{$C$}', '{$F_1$}', '{$F_2$}', '{$V_1$}', '{$V_2$}'].filter((name) => !body.includes(name)), [], 'named: the turned axes as the working names them, the centre, foci and vertices');
-  // not A and B, the letters of B² − 4AC in the working under it; not U and V, beside a vertex V
-  eq(body.match(/\{\$[ABUV]\$\}/g), null, 'no point named A, B, U or V');
+  eq(['{$U$}', '{$V$}', '{$C$}', '{$F_1$}', '{$F_2$}', '{$V_1$}', '{$V_2$}'].filter((name) => !body.includes(name)), [], 'named: the turned axes U and V as the notes draw them, the centre, foci and vertices');
+  // not A and B, the letters of B² − 4AC in the working under it
+  eq(body.match(/\{\$[AB]\$\}/g), null, 'no point named A or B');
   eq(body.includes('% centre C(-2, 0), a = 2.646, b = 1.732, c = 2, e = 0.7559'), true, 'the working in the code’s comments');
   const hidden = conicDrawing({ ...CONIC.values, foci: false, vertices: false, axes: false, ticks: false, results: false }).code.body;
   eq([/red/.test(hidden), /dashed/.test(hidden), /\$V_/.test(hidden), /foreach/.test(hidden), /align=center/.test(hidden)], [false, false, false, false, false], 'each can be hidden');
@@ -319,6 +319,23 @@ const g = (A: number, B: number, C: number, D: number, E: number, F: number, mor
   const parabola = conicDrawing(g(1, 0, 0, -4, 3, -1)).code.body;
   eq([(parabola.match(/\\draw\[dashed, gray\]/g) ?? []).length, parabola.includes('{directrix}'), parabola.includes('{$V$}'), parabola.includes('{$F$}')], [1, true, true, true], 'a parabola’s directrix dashed grey, its vertex and focus');
   eq(/dashed, gray/.test(conicDrawing(g(1, 0, 0, -4, 3, -1, { directrix: false })).code.body), false, 'directrix hidden');
+  // ─── names: typed, switched, hidden, and kept apart ───
+  const named = (more: object, A = 5, B = 4, C = 5, D = 20, E = 8, F = -1) => conicDrawing(g(A, B, C, D, E, F, more)).code.body;
+  const lower = named({ axisNames: 'uv' });
+  eq([lower.includes('{$u$}'), lower.includes('{$v$}'), lower.includes('$7(u + 1.414)^2 + 3(v - 1.414)^2 = 21$'), lower.includes('% 7(u + 1.414)^2')], [true, true, true, true], 'u and v: the axes, the working and the comments');
+  const typed = named({ axisNames: 'own', axisU: "X'", axisV: "Y'", centre: 'O', vertex1: 'A_1', vertex2: 'A_2', focus1: 'S', focus2: "S'" });
+  eq(["{$X'$}", "{$Y'$}", '{$O$}', '{$A_1$}', '{$A_2$}', '{$S$}', "{$S'$}", "7(X' + 1.414)^2", "centre $O(-2, 0)$"].filter((name) => !typed.includes(name)), [], 'every name typed, in the figure and the working');
+  eq(named({ axisNames: 'own', axisU: "X'", centre: '', coordinates: true }).match(/\{\$\((-2, 0)\)\$\}|\{\$Y'\$\}|\{\$C/g), null, 'an empty name hides its label, coordinates too');
+  eq(named({ centre: '' }).includes('centre $(-2, 0)$'), true, 'and the working gives the coordinates alone');
+  eq(named({ centre: '50% $C$' }).includes('{$50\\% C$}'), true, 'a name escaped as the form’s other text is, with no $ of its own');
+  const turnedHyperbola = conicDrawing({ ...CONIC.values, input: 'standard', kind: 'hyperbola', a: 1.5, b: 1, turn: 30, axisNames: 'own', axisU: 'U_1', axisV: "V'" }).code.body;
+  eq([turnedHyperbola.includes('\\frac{{U_1}^2}{2.25} - \\frac{{V\'}^2}{1} = 1'), turnedHyperbola.includes('{$U_1$}')], [true, true], 'a longer name squared in braces, so it takes its square');
+  eq(/\{\$[UVuv]\$\}/.test(named({}, 1, 0, 1, -8, 2, -19)), false, 'no turn, no turned axes named');
+  // a parabola turned 45°: U and V would put V on an axis and the vertex, so the axes are u and v; typed, as typed
+  const turnedParabola = named({}, 1, -2, 1, -8, -8, 0);
+  eq([turnedParabola.includes('{$u$}'), turnedParabola.includes('{$v$}'), turnedParabola.includes('{$V$}'), turnedParabola.includes('$v^2 = 5.657u$')], [true, true, true, true], 'a turned parabola’s axes u and v beside its vertex V');
+  eq(named({ vertex: 'P' }, 1, -2, 1, -8, -8, 0).includes('{$U$}'), true, 'U and V again once the vertex is P');
+  eq(named({ axisNames: 'own' }, 1, -2, 1, -8, -8, 0).includes('{$U$}'), true, 'typed U and V kept as typed');
   eq(['{$F(2, 0.9167)$}', '{$V(2, 1.667)$}'].filter((name) => !conicDrawing(g(1, 0, 0, -4, 3, -1, { coordinates: true })).code.body.includes(name)), [], 'coordinates beside the names');
   eq(['{$V_1(0.6307, 0.75)$}', '{$V_2(3.369, 0.75)$}', '{$C(2, 0.75)$}'].filter((name) => !conicDrawing(g(1, 0, -2, -4, 3, 1, { coordinates: true })).code.body.includes(name)), [], 'a hyperbola’s vertices V₁ and V₂ with theirs');
   eq(conicDrawing(g(1, 0, 1, 0, 0, 1, { results: false })).code.body.includes('{No real points}'), true, 'no real points: the figure says so');
@@ -344,6 +361,11 @@ const g = (A: number, B: number, C: number, D: number, E: number, F: number, mor
   eq((transformationDrawing({ ...TRANSFORMATION.values, show: 'grid' }).code.body.match(/very thin|red!45/g) ?? []).length, 2, 'a grid before and after');
   eq(transformationDrawing({ ...TRANSFORMATION.values, name: 'H_x(1)' }).code.body.includes('$\\det H_x(1) = 2$'), true, 'its name in the working');
   eq(formCode({ preset: 'transformation', values: { ...TRANSFORMATION.values, name: '50%' } }, {}).body.includes('$50\\%\\mathbf{e}_2$'), true, 'a % in the name escaped');
+  // the vectors' names: \hat{\imath}-style or any, in the figure and the working; empty leaves the arrows unnamed
+  const hats = transformationDrawing({ ...TRANSFORMATION.values, basisName: '\\hat{e}', eigenName: '\\vec{u}' }).code.body;
+  eq(['{$A\\hat{e}_2$}', '{$\\hat{e}_2$}', '{$A\\vec{u}_1$}', '$A\\hat{e}_1 = (1, 0)$', '$\\vec{u}_1 = '].filter((t) => !hats.includes(t)), [], 'e and v renamed in the figure and the working');
+  const unnamed = transformationDrawing({ ...TRANSFORMATION.values, basisName: '', eigenName: '' }).code.body;
+  eq([['{$A\\mathbf{e}_2$}', '{$\\mathbf{e}_2$}', '{$A\\mathbf{v}_1$}', '{$\\mathbf{v}_1$}'].some((t) => unnamed.includes(t)), unnamed.includes('$A\\mathbf{e}_1 = (1, 0)$')], [false, true], 'empty: no names on the arrows, the working with e and v')
   for (const [a11, a12, a21, a22] of [[0, 0, 0, 0], [2, 6, 1, 3], [1, 0, 0, 1], [-0.8, 0.6, 0.6, 0.8], [1000, 0, 0, 0.001]]) eq(/NaN|Infinity|undefined/.test(transformationDrawing({ ...TRANSFORMATION.values, a11, a12, a21, a22 }).code.body), false, `[${a11} ${a12}; ${a21} ${a22}]`);
 }
 const drawings: [string, ReturnType<typeof conicDrawing> | ReturnType<typeof transformationDrawing>][] = [

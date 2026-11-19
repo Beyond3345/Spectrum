@@ -3,7 +3,7 @@
 // npx esbuild apps/frontend/src/diagram/modes/form/mohr.check.ts --bundle --platform=node --log-level=warning | node
 import { clashes } from '../structures/labels';
 import { MOHR, mohr, mohrDrawing } from './mohr';
-import { formCode, formStyle, newFormModel, presetFor } from './presets';
+import { formCode, formNeedsVersion5, formStyle, newFormModel, presetFor } from './presets';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -113,5 +113,14 @@ eq(code({}, { unit: '%' }).body.includes('{$80$\\,\\%}'), true, 'a % unit escape
 // σz is asked for only with the three-dimensional state, as its switch says
 const shownKeys = (v: Record<string, unknown>) => MOHR.fields.filter((f) => f.shown?.(v as never) ?? true).map((f) => f.key);
 eq([shownKeys(MOHR.values).includes('sigmaZ'), shownKeys({ ...MOHR.values, threeD: true }).includes('sigmaZ')], [false, true], 'σz with the 3D switch only');
+
+// the points' names (2.6): as before unless changed, which makes the drawing file version 5 (a 2.4 build would lose them)
+{
+  const named = code({}, { xName: 'A', yName: 'B', cName: 'O' }).body;
+  eq([named.includes('$A(80, 25)$'), named.includes('$B(-40, -25)$'), named.includes('$O = 20$'), /\$[XY]\(/.test(named)], [true, true, true, false], 'X, Y and C renamed');
+  const rotated = code({}, { theta: 30, xName: 'A', yName: '' }).body;
+  eq([rotated.includes("$A'("), /\$-?[0-9.]+, -?[0-9.]+\)\$|\$B|\$Y/.test(rotated)], [true, false], 'the rotated point takes the prime; an empty name, no label');
+  eq([formNeedsVersion5(newFormModel('mohr')), formNeedsVersion5({ preset: 'mohr', values: { ...MOHR.values, cName: 'O' } }), formNeedsVersion5({ preset: 'mohr', values: { sigmaX: 1 } })], [false, true, false], 'version 5 only with a name of its own');
+}
 
 console.log('mohr.check: ok');

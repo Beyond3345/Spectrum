@@ -386,7 +386,7 @@ Each drawing records a file version in its last line, the lowest that holds ever
   caption: [Drawing file versions.],
 ) <fig-composer-versions>
 
-Version 5 covers, for example, the fluid mechanics and construction materials symbols, the 2.5 annotations, a support's settlement, the new vector constructions, the new flowchart shapes and label places, the new plot series and the fluid statics forms, and since then a colour or a thickness on a structure's part and the liquids in the manometers. Spectrum 2.5 opens a drawing with those two but draws the parts without them. A drawing that uses nothing new keeps its old version and writes the same code as before, so it still opens in 2.4.
+Version 5 covers, for example, the fluid mechanics and construction materials symbols, the 2.5 annotations, a support's settlement, the new vector constructions, the new flowchart shapes and label places, the new plot series and the fluid statics forms, and since then a colour or a thickness on a structure's part, the liquids in the manometers and a name of its own on a point of Mohr's circle. Spectrum 2.5 opens a drawing with those but draws it without them. A drawing that uses nothing new keeps its old version and writes the same code as before, so it still opens in 2.4.
 
 Opened as code, a drawing shows #ui[This file has no drawing Spectrum can open, so it opens as code.] Its code can still be edited, saved and inserted, and the drawing's last line is kept as it was, so the drawing opens again in a Spectrum that knows it. Hence a figure drawn in 2.5 survives a trip through an older copy, as long as only its code is changed there.
 

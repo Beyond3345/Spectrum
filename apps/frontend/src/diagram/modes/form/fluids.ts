@@ -5,7 +5,7 @@
 import { formatValue } from '../structures/draw';
 import { anchorFor, placeLabels, shapesOf } from '../structures/labels';
 import type { Label, Shape, ShapeItem } from '../structures/labels';
-import { num } from '../shared';
+import { escapeTex, num } from '../shared';
 import type { FormField, FormValues } from './presets';
 
 export type Pt = { x: number; y: number };
@@ -60,6 +60,18 @@ export const LOOK_FIELD: FormField = {
   options: [['colour', 'Lecture slides (tinted)'], ['exam', 'Exam paper (black and white)']]
 };
 export const RESULTS_FIELD: FormField = { key: 'results', label: 'Write the results under the figure', kind: 'switch' };
+
+// ─── names a figure draws, which the user can change (in a Names fold) ───
+
+/** A name field: TeX maths without the dollar signs, in the Names fold; empty hides that label. */
+export const nameField = (key: string, label: string, more: Partial<FieldExtras> = {}): FormField => ({ key, label, kind: 'text', group: 'Names', ...more });
+type FieldExtras = { hint: string; shown(values: FormValues): boolean; newer: boolean };
+
+/** A name as typed, ready to go between dollar signs: its % escaped as the form's other text is, and no $ of its own. */
+export const nameOf = (values: FormValues, key: string) => escapeTex(String(values[key] ?? '').trim().split('$').join(''));
+
+/** A name and what follows it as one maths label, or nothing when the name is empty: $G$, $V_1(2, 3)$. */
+export const named = (name: string, after = '') => (name ? `$${name}${after}$` : '');
 
 /** n to four significant figures, as the course's worked answers give them */
 export const fmt = (n: number, figures = 4) => formatValue(n, figures);

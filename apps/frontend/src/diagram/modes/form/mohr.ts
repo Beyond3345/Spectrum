@@ -10,6 +10,7 @@ import { escapeTex, num } from '../shared';
 import { anchorFor, formatValue } from '../structures/draw';
 import { placeLabels, shapesOf } from '../structures/labels';
 import type { Label, Shape, ShapeItem } from '../structures/labels';
+import { nameField, nameOf } from './fluids';
 import type { FormPreset, FormValues } from './presets';
 
 type Pt = { x: number; y: number };
@@ -114,7 +115,10 @@ export function mohrDrawing(values: FormValues, style: Record<string, unknown>):
   const C = P(m.C, 0);
   line(X, Y);
   lines.push('% X, Y and the centre', `\\draw ${at(X)} -- ${at(Y)};`, dot(X), dot(Y), dot(C));
-  lines.push(node(X, `$X(${fmt(sx)}, ${fmt(txy)})$`, away(X)), node(Y, `$Y(${fmt(sy)}, ${fmt(-txy)})$`, away(Y)));
+  // X, Y and C as named (2.6): an empty name leaves the point unlabelled, its value then by itself
+  const [xName, yName, cName] = ['xName', 'yName', 'cName'].map((key) => nameOf(values, key));
+  if (xName) lines.push(node(X, `$${xName}(${fmt(sx)}, ${fmt(txy)})$`, away(X)));
+  if (yName) lines.push(node(Y, `$${yName}(${fmt(sy)}, ${fmt(-txy)})$`, away(Y)));
 
   // principal stresses and the maximum shear points
   const s1 = P(m.sigma1, 0);
@@ -123,7 +127,7 @@ export function mohrDrawing(values: FormValues, style: Record<string, unknown>):
   const bottom = P(m.C, -m.R * sign);
   lines.push('% Principal stresses and maximum shear', dot(s1), dot(s2), dot(top), dot(bottom));
   if (!m.threeD) lines.push(node(s1, `$\\sigma_1 = ${fmt(m.sigma1)}$`, { x: 1, y: 1 }), node(s2, `$\\sigma_2 = ${fmt(m.sigma2)}$`, { x: -1, y: 1 }));
-  lines.push(node(C, `$C = ${fmt(m.C)}$`, { x: 0, y: X.y < -1e-9 ? 1 : -1 }));
+  lines.push(node(C, `$${cName ? `${cName} = ` : ''}${fmt(m.C)}$`, { x: 0, y: X.y < -1e-9 ? 1 : -1 }));
   // σz between σ1 and σ2: the in-plane circle is the largest, its top the absolute maximum too
   const same = !!m.threeD && Math.abs(m.threeD.tauMax - m.tauMax) <= 1e-9 * Math.max(1, m.tauMax);
   // under its point when a larger circle runs just over it, so it isn't taken for that circle's
@@ -143,7 +147,8 @@ export function mohrDrawing(values: FormValues, style: Record<string, unknown>):
     const Yr = P(m.rotated.sigmaY, -m.rotated.tauXY);
     line(Xr, Yr);
     lines.push(`% Rotated by ${fmt(theta)} degrees`, `\\draw[dashed] ${at(Xr)} -- ${at(Yr)};`, dot(Xr), dot(Yr));
-    lines.push(node(Xr, `$X'(${fmt(m.rotated.sigmaX)}, ${fmt(m.rotated.tauXY)})$`, away(Xr)), node(Yr, `$Y'$`, away(Yr)));
+    if (xName) lines.push(node(Xr, `$${xName}'(${fmt(m.rotated.sigmaX)}, ${fmt(m.rotated.tauXY)})$`, away(Xr)));
+    if (yName) lines.push(node(Yr, `$${yName}'$`, away(Yr)));
   }
   if (m.threeD) {
     const [a, b, c] = m.threeD.sigma;
@@ -240,9 +245,13 @@ export const MOHR: FormPreset = {
         ['rotated', 'Original and rotated by θ'],
         ['all', 'Original, rotated, principal and maximum shear']
       ]
-    }
+    },
+    // added in 2.6 to a preset 2.4 had: a name other than its own makes the drawing file version 5
+    nameField('xName', 'The x face’s point', { newer: true, hint: 'Each name is maths, without the dollar signs: X, Y, C. The rotated points add a prime. An empty name leaves its point unlabelled.' }),
+    nameField('yName', 'The y face’s point', { newer: true }),
+    nameField('cName', 'The centre', { newer: true })
   ],
-  values: { sigmaX: 80, sigmaY: -40, tauXY: 25, unit: 'MPa', theta: 0, threeD: false, sigmaZ: 0, elements: 'original' },
+  values: { sigmaX: 80, sigmaY: -40, tauXY: 25, unit: 'MPa', theta: 0, threeD: false, sigmaZ: 0, elements: 'original', xName: 'X', yName: 'Y', cName: 'C' },
   conventions: ['mohrShear', 'siUnits'],
   toCode: (values, style) => mohrDrawing(values, style).code
 };

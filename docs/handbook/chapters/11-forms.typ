@@ -55,6 +55,22 @@ A Form preset's window has the same header and the same preview as every compose
 
 #shot("figures/11-forms/gate-window.png", [A Form preset's window: the form of Hydrostatic force on a gate above, the compiled figure in the preview below.], width: 85%) <fig-forms-window>
 
+The names a figure draws, such as a gate's hinge and stop or a conic's vertices, are fields too, gathered at the end of the form in a fold named #ui[Names]. The fold opens by itself when one of its names differs from the preset's own. Each name is maths without the dollar signs, such as `V_1` or `\hat{e}`, escaped as the form's other text is, and an empty name hides that label. The working under the figure and in the file uses the same names. Mohr's circle, Hydrostatic force on a gate, Floating body and stability, Conic section and Linear transformation have names to change (@tab-forms-names). Manometer and Venn diagram already take theirs in their own fields, and Accelerating tank names only quantities.
+
+#figure(
+  table(
+    columns: (auto, 1fr, auto),
+    align: (left, left, left),
+    table.header[Preset][Names in the fold][To start with],
+    [Mohr's circle], [The $x$ face's point, the $y$ face's point and the centre. The rotated points add a prime], [$X$, $Y$, $C$],
+    [Hydrostatic force on a gate], [The hinge and the stop, whose forces are $F$ with the name below], [$A$, $B$],
+    [Floating body and stability], [The centre of gravity, the centre of buoyancy and the metacentre, which the results use, as in $G M$], [$G$, $B$, $M$],
+    [Conic section], [The turned axes, the centre, the two vertices and two foci, and a parabola's vertex and focus], [$U$, $V$, $C$, $V_1$, $V_2$, $F_1$, $F_2$, $V$, $F$],
+    [Linear transformation], [The basis vectors and the eigenvectors, before their subscripts], [$bold(e)$, $bold(v)$],
+  ),
+  caption: [The names each preset lets you change. Quantities such as $F_R$, $y_p$, $theta$ and $sigma$ keep their usual symbols.],
+) <tab-forms-names>
+
 A field appears only when it is needed. For example, the gate's #ui[Width] is hidden for a circular gate, and the manometer shows a column's height only once the column names a fluid. A number field takes a value only when it is a number inside the field's range. When a number outside it is typed, the drawing keeps its last value and a red hint under the field says what it takes (@fig-forms-range). The hint stays until the next number is typed, while the field goes back to the last value when you leave it. The ranges are also given in each section's table.
 
 #shot("figures/11-forms/range-hint.png", [A width of 0 typed into the gate's #ui[Width], which takes 0.001 to 1000 m.], width: 55%) <fig-forms-range>
@@ -81,7 +97,7 @@ A Form preset writes a standalone TikZ file in `diagrams/`, as every TikZ compos
 + the `tikzpicture` and
 + the composer's last line, `% spectrum-diagram v1 …`, which keeps the preset's name, every value of its form and its style.
 
-When the file is opened again, the composer reads that last line and opens the form with its values. A number missing from it, or out of its range, is replaced by the preset's own starting value. The Hydrostatic force on a gate, Manometer, Accelerating tank, Floating body and stability, Conic section and Linear transformation presets are new in 2.5, so their files are file version 5, which Spectrum 2.4 and earlier open as code. Mohr's circle and Venn diagram files keep version 1. A file whose preset this build does not have opens as code.
+When the file is opened again, the composer reads that last line and opens the form with its values. A number missing from it, or out of its range, is replaced by the preset's own starting value. The Hydrostatic force on a gate, Manometer, Accelerating tank, Floating body and stability, Conic section and Linear transformation presets are new in 2.5, so their files are file version 5, which Spectrum 2.4 and earlier open as code. Mohr's circle and Venn diagram files keep version 1, unless a point of Mohr's circle has a name of its own, which Spectrum 2.4 would draw without, so that drawing is version 5. A file whose preset this build does not have opens as code.
 
 == Mohr's circle <sec-forms-mohr>
 
@@ -102,6 +118,7 @@ Mohr's circle shows the plane stress at a point: from the normal stresses $sigma
     [Three-dimensional state], [Adds σz and the two other circles], [switch],
     [σz], [The third principal stress, shown with the switch on], [the stress unit],
     [Stress elements], [None; Original; Original and rotated by θ; Original, rotated, principal and maximum shear], [choice],
+    [Names], [A fold with the names of the points for the $x$ and $y$ faces and of the centre, $X$, $Y$ and $C$ to start with (@tab-forms-names)], [text],
   ),
   caption: [The fields of Mohr's circle. The stresses take any value up to $10^9$ either way.],
 ) <tab-forms-mohr>
@@ -214,6 +231,7 @@ Hydrostatic force on a gate works out the resultant force of a fluid on a plane 
     [g], [The acceleration of gravity, 9.81 to start with], [m/s², 0.1 to 100],
     [Look], [Lecture slides (tinted) or Exam paper (black and white)], [choice],
     [Write the results under the figure], [The forces and $y_p$ as lines under the figure], [switch],
+    [Names], [A fold with the hinge's and the stop's names, $A$ and $B$ to start with. Their forces are $F$ with the name below, as $F_B$], [text],
   ),
   caption: [The fields of Hydrostatic force on a gate.],
 ) <tab-forms-gate>
@@ -384,6 +402,7 @@ Floating body and stability works out how deep a body floats in a liquid and whe
     [G above the base (KG)], [The height of $G$ above the base, at most the body's height], [m, 0 to 1000],
     [Look], [Lecture slides (tinted) or Exam paper (black and white)], [choice],
     [Write the results under the figure], [The draught, $K B$, $B M$, $K G$ and $G M$ with the verdict], [switch],
+    [Names], [A fold with the names of the centre of gravity, the centre of buoyancy and the metacentre, $G$, $B$ and $M$ to start with, which the results use too], [text],
   ),
   caption: [The fields of Floating body and stability.],
 ) <tab-forms-floating>
@@ -453,13 +472,33 @@ The switches each show or hide a part of the figure,
     [Vertices], [The vertices $V_1$ and $V_2$, or a parabola's vertex $V$, as dots. They are not named $A$ and $B$, which are the coefficients in $B^2 - 4 A C$],
     [Directrix], [A parabola's directrix, dashed grey],
     [Asymptotes], [A hyperbola's asymptotes, dashed grey],
-    [Turned axes u and v], [The turned axes $u$ and $v$ of the working, dashed through the centre or vertex, when there is an $x y$ term],
+    [Turned axes], [The turned axes, $U$ and $V$ as the notes draw them, dashed through the centre or vertex, when there is an $x y$ term],
     [Coordinates beside the names], [Each named point's coordinates, as $C(-2, 0)$],
     [Numbers on the axes], [Tick numbers on the $x$ and $y$ axes, in steps of 1, 2 or 5 times a power of ten],
     [Write the working under the figure], [The classification and the working, as lines under the figure],
   ),
   caption: [The switches of Conic section. All but Coordinates beside the names are on in a new drawing.],
 ) <tab-forms-conic-switches>
+
+Every name the figure draws is in the #ui[Names] fold at the end of the form, and the working under the figure and in the file's comments uses the same names (@tab-forms-conic-names, @fig-forms-conic-names). Only the names of what the conic has are shown: a parabola's vertex and focus, or an ellipse's or a hyperbola's centre, vertices and foci, and the turned axes when there is an $x y$ term.
+
+#figure(
+  table(
+    columns: (auto, 1fr, auto),
+    align: (left, left, left),
+    table.header[Name][What it names][To start with],
+    [Turned axes], [U and V, u and v, or Typed, which shows a field for each axis. The working names the turned coordinates the same, as in $7 (U + 1.414)^2$], [U and V],
+    [Centre], [An ellipse's, a hyperbola's or a circle's centre, also where two lines cross], [$C$],
+    [First vertex, Second vertex], [An ellipse's or a hyperbola's vertices], [$V_1$, $V_2$],
+    [First focus, Second focus], [An ellipse's or a hyperbola's foci], [$F_1$, $F_2$],
+    [Vertex, Focus], [A parabola's], [$V$, $F$],
+  ),
+  caption: [The names of Conic section. An empty name hides its label, and the working then gives the point's coordinates alone.],
+) <tab-forms-conic-names>
+
+A turned parabola would have an axis $V$ and a vertex $V$, so with #ui[U and V] chosen its turned axes are drawn as $u$ and $v$ whenever its vertex or focus is named $U$ or $V$. Name the vertex $P$, say, to have $U$ and $V$ again, or choose #ui[Typed] to have any names at all.
+
+#shot("figures/11-forms/conic-names.png", [The #ui[Names] fold of the notes' rotated ellipse, opened.], width: 40%) <fig-forms-conic-names>
 
 === What it calculates
 
@@ -500,8 +539,8 @@ The working under the figure has a line each for the name and the discriminant, 
 === Worked example
 
 The notes' rotated ellipse, $5 x^2 + 4 x y + 5 y^2 + 20 x + 8 y - 1 = 0$, has $B^2 - 4 A C = 16 - 100 = -84 < 0$. Since $A = C$, $cot 2 theta = 0$ and $theta = 45°$, which gives $lambda_1 = 7$, $lambda_2 = 3$, $g_1 = 14 sqrt(2)$ and $g_2 = -6 sqrt(2)$. Completing the squares,
-$ 7 (u + sqrt(2))^2 + 3 (v - sqrt(2))^2 = 21, quad "that is" quad (u + sqrt(2))^2 / 3 + (v - sqrt(2))^2 / 7 = 1, $
-an ellipse with $a = sqrt(7) = 2.646$, $b = sqrt(3) = 1.732$, $c = 2$ and $e = 0.7559$, centred at $(-2, 0)$ in the original axes with its major axis along $v$. These are a new Conic section drawing's starting values (@fig-forms-conic-form), and @fig-forms-conic shows the same working under the figure.
+$ 7 (U + sqrt(2))^2 + 3 (V - sqrt(2))^2 = 21, quad "that is" quad (U + sqrt(2))^2 / 3 + (V - sqrt(2))^2 / 7 = 1, $
+an ellipse with $a = sqrt(7) = 2.646$, $b = sqrt(3) = 1.732$, $c = 2$ and $e = 0.7559$, centred at $(-2, 0)$ in the original axes with its major axis along $V$. These are a new Conic section drawing's starting values (@fig-forms-conic-form), and @fig-forms-conic shows the same working under the figure.
 
 #figure(
   grid(columns: (1fr, 1fr), gutter: 10pt, align: top,
@@ -509,7 +548,7 @@ an ellipse with $a = sqrt(7) = 2.646$, $b = sqrt(3) = 1.732$, $c = 2$ and $e = 0
   caption: [The form of a new Conic section drawing: the notes' rotated ellipse, with its switches.],
 ) <fig-forms-conic-form>
 
-#shot("figures/11-forms/conic-preview.png", [The notes' rotated ellipse, with the turned axes $u$ and $v$ and the working under it.], width: 46%) <fig-forms-conic>
+#shot("figures/11-forms/conic-preview.png", [The notes' rotated ellipse, with the turned axes $U$ and $V$ and the working under it.], width: 46%) <fig-forms-conic>
 
 Given by its own numbers instead, a hyperbola centred at $(1, -1)$ with $a = 2$ and $b = 1.5$, opening left and right, has $c = sqrt(4 + 2.25) = 2.5$ and $e = 1.25$, foci at $(-1.5, -1)$ and $(3.5, -1)$ and asymptotes $y + 1 = plus.minus 0.75 (x - 1)$. With #ui[Given as] set to #ui[An ellipse, hyperbola or parabola], #ui[Conic] to #ui[Hyperbola], the centre to $(1, -1)$, #ui[a] to 2 and #ui[b] to 1.5, @fig-forms-conic-standard shows the same with #ui[Coordinates beside the names] on.
 
@@ -537,6 +576,7 @@ Linear transformation draws what a 2×2 matrix does to the plane: the unit squar
     [Eigenvectors], [Each real eigenvector's line through the origin, with $bold(v)$ and $A bold(v)$ along it], [switch],
     [Numbers on the axes], [Tick numbers on the axes], [switch],
     [Write the working under the figure], [The columns, the determinant and the eigenvalues], [switch],
+    [Names], [A fold with the names of the basis vectors and the eigenvectors before their subscripts, `\mathbf{e}` and `\mathbf{v}` to start with, as `\hat{e}` or `\vec{u}`. Empty leaves those arrows unnamed, and the working keeps $bold(e)$ and $bold(v)$], [text],
   ),
   caption: [The fields of Linear transformation.],
 ) <tab-forms-transformation>
