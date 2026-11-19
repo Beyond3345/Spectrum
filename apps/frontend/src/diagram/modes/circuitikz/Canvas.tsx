@@ -11,7 +11,7 @@ import { colourCss } from '../shared';
 import { FONT_SCALE, HEAD_CM, MARK_CROSS_CM, MARK_PT, MATERIALS, PATTERNS, PATTERN_PT, PLACES, ROUNDED_CM, SURFACE_CM, box, compass, dimensionGeometry, hatchSegments, isBehind, leaderText, loopLine, presetElements } from './annotate';
 import type { Preset } from './annotate';
 import { DEFAULT_LENGTH, VOLTAGE_SHIFT, readStyle, symbolOptions } from './code';
-import { copy, detach, flip, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
+import { along, copy, detach, flip, freeSpot, moveBy, newNodePart, newPathPart, paste, remove, rotate } from './edit';
 import { GRID_CM, PARTS, POINT_BY_POINT, PT_PER_GRID, grabsHandles, asCircuit, drawsSymbol,circuitBounds, isPart, isPoint, locator, newId, pathFrame, pinAxis, pinsOfElement, placeholderBox, placeholderShape, snapDelta, variantKey, wirePath } from './model';
 import type { Annotation, CircuitModel, Element, End, Mark, NodePart, PathPart, Pt, Route, ShapeOf, SnapPin, Wire } from './model';
 import { labelSize, plain, scriptRuns, svgRuns } from '../../sketch';
@@ -75,7 +75,9 @@ function bendControls(p: Pt, q: Pt, bend: number): [Pt, Pt] {
 
 export default function CircuitCanvas({ model: raw, onChange, style, readOnly }: { model: CircuitModel; onChange(m: CircuitModel): void; style: Record<string, unknown>; readOnly?: boolean }) {
   const model = asCircuit(raw);
-  const { tool, selection: rawSelection } = useCircuitUi();
+  const { tool, selection: rawSelection, place } = useCircuitUi();
+  /** what a part placed from the keyboard says to a screen reader */
+  const [placedSay, setPlacedSay] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -444,6 +446,24 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
   useEffect(() => {
     if (tool !== (drawingLine.current || 'wire') && wire) finishWire(wire);
   }, [tool]);
+
+  // a part asked for from the keyboard: at the free grid spot nearest the middle of the view, selected
+  // the ask already made when this canvas opened (the store outlives it) is not one for it
+  const placedN = useRef(place?.n);
+  useEffect(() => {
+    const part = place && PARTS.get(place.type);
+    if (!place || !part || readOnly || !view || place.n === placedN.current) return;
+    placedN.current = place.n;
+    const offsets = Object.values(shapeOf(place.type, []).pins);
+    const ends = (at: Pt) => (part.kind === 'node' ? (offsets.length ? offsets.map((o) => ({ x: at.x + o.x, y: at.y + o.y })) : [at]) : along(at, clickEnd(place.type, at)));
+    const lines = model.elements.flatMap((el) => (el.kind === 'path' ? along(pos(el.a), pos(el.b)) : []));
+    const at = freeSpot(toGrid({ x: size.width / 2, y: size.height / 2 }), ends, [...allPins(model), ...lines]);
+    const placed = part.kind === 'node' ? newNodePart(model, place.type, at) : newPathPart(model, place.type, at, clickEnd(place.type, at));
+    commit({ ...model, elements: [...model.elements, placed] });
+    setSelection([placed.id]);
+    const name = placed.kind === 'node' ? placed.name : placed.label?.text.replace(/[{}$_]/g, '');
+    setPlacedSay(`${part.label}${name ? ` ${name}` : ''} placed at (${+(at.x * GRID_CM).toFixed(2)}, ${+(at.y * GRID_CM).toFixed(2)}) cm`);
+  }, [place?.n]);
 
   // ─── keys ───
 
@@ -1046,6 +1066,9 @@ export default function CircuitCanvas({ model: raw, onChange, style, readOnly }:
             <Icon name={prefs.dark ? 'sun.max' : 'moon'} />
           </button>
         )}
+      </div>
+      <div className="sr-only" role="status" aria-live="polite">
+        {placedSay}
       </div>
       {(loading || error) && (
         <div className={`ckt-status ${error ? 'error' : ''}`} role="status">

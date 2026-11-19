@@ -1,6 +1,6 @@
 // Self-check for the Document insights scanner. It imports latexEditor.ts, which Node can't strip, so bundle it first:
 // `npx esbuild apps/frontend/src/editor/insights.check.ts --bundle --platform=node --log-level=warning --outfile=<file>.js`, then `node <file>.js`
-import { headingNumbers, inReading, metadataText, plainText, scanInsights, texlabNotes, withNumbers } from './insights.ts';
+import { headingNumbers, inReading, markdownWords, metadataText, plainText, scanInsights, texlabNotes, withNumbers } from './insights.ts';
 import { scanTodos } from './todos.ts';
 
 const NEWLINE = String.fromCharCode(10);
@@ -258,5 +258,37 @@ eq(
   'a block-scalar abstract and authors given by name'
 );
 eq(scanTodos([{ path: 'main.typ', text: typstDoc }, { path: 'main.md', text: markdownDoc }]).map((t) => [t.file, t.line, t.text]), [['main.typ', 7, 'add a conclusion'], ['main.md', 24, 'add a conclusion']], 'Typst and Markdown to-dos');
+
+// a Markdown document's words: prose alone, headings apart, CJK characters one each
+eq(
+  markdownWords(
+    [
+      '---',
+      'title: Not counted here',
+      'author: Nobody',
+      '---',
+      '# Two words',
+      '',
+      'One two three, it’s well-known [@knuth84; @lamport94] and $x + y$ too.',
+      '',
+      '```python',
+      'print(1)',
+      'print("no words here")',
+      '```',
+      '',
+      '- A [link text](https://example.com/path) and ![alt words](figure.png){#fig:a} `code`',
+      '<!-- not this -->',
+      '$$',
+      'E = mc^2',
+      '$$',
+      '',
+      '| Cell one | Cell |',
+      '|---|---|',
+      '中文字 ok'
+    ].join(NEWLINE)
+  ),
+  { words: 20, wordsInText: 18, wordsInHeaders: 2, mathInline: 1, mathDisplay: 1 },
+  'Markdown word count'
+);
 
 console.log('insights: all checks passed');

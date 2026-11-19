@@ -15,14 +15,15 @@ export function registerReviewRoutes(fastify) {
     return { ok: true, ...(await reviewState(root, await documentOf(root, req.query?.doc), { bib: req.query?.bib === '1' })) };
   });
 
-  // The AI review. Read-only: one model call, no tools. Closing the request (Cancel) stops the call.
+  // The AI review, or one part of a long document's. Read-only: one model call, no tools. Closing the request (Stop)
+  // stops the call.
   fastify.post('/api/review', async (req, reply) => {
-    const { projectId, doc, activePath, findings, llmConfig, reasoningEffort } = req.body || {};
+    const { projectId, doc, findings, llmConfig, reasoningEffort, part, summary } = req.body || {};
     const root = await getProjectRoot(projectId);
     const cancel = new AbortController();
     reply.raw.on('close', () => {
       if (!reply.raw.writableEnded) cancel.abort();
     });
-    return aiReview({ root, doc: await documentOf(root, doc), activePath: String(activePath || ''), findings, llmConfig, reasoningEffort, signal: cancel.signal });
+    return aiReview({ root, doc: await documentOf(root, doc), findings, llmConfig, reasoningEffort, part: Number(part) || 0, summary: String(summary || ''), signal: cancel.signal });
   });
 }

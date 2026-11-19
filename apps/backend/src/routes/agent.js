@@ -8,7 +8,7 @@ import { DATA_RULE, untrusted } from '../utils/outsideText.js';
 const CUT_OFF = 'The answer was cut off by the model’s output limit before it finished. Try a smaller selection, or a lower effort.';
 
 export function registerAgentRoutes(fastify) {
-  fastify.post('/api/agent/run', async (req) => {
+  fastify.post('/api/agent/run', async (req, res) => {
     const {
       task = 'polish',
       prompt = '',
@@ -104,7 +104,11 @@ export function registerAgentRoutes(fastify) {
       selection ? '' : `Full Content:\n${auto ? content : untrusted(activePath || 'current file', content)}`
     ].filter(Boolean).join('\n\n');
 
+    // autocomplete given up in the editor (typing on, the cursor moved, Esc) closes the request: the model call stops too
+    const cancel = new AbortController();
+    if (auto) res.raw.on('close', () => !res.raw.writableEnded && cancel.abort());
     const result = await callOpenAICompatible({
+      signal: cancel.signal,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user }

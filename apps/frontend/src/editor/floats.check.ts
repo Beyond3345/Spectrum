@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableTitle, tableRules, tableTypst, typstMarkup, uniqueName } from './floats';
+import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableTitle, tableRules, tableTypst, typstMarkup, typstPlacement, uniqueName } from './floats';
 import type { FigureSet, FigureSize, TableModel } from './floats';
 import { TYPST_SUBFIGURE, addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -395,6 +395,17 @@ eq(
   '#table(columns: 2, align: (left, center), stroke: none, table.hline(y: 0, stroke: 0.08em), table.hline(y: 1, stroke: 0.08em), [a\\[1\\]], [b\\\\c\\]])',
   'Typst cells keep brackets and backslashes as text'
 );
+// Typst's placement from the panel's letters, span as scope: "parent", notes under the table and \\ as a line break
+eq([typstPlacement('H'), typstPlacement('h'), typstPlacement('t'), typstPlacement('!b'), typstPlacement('htbp'), typstPlacement('p'), typstPlacement('H', true), typstPlacement('t', true)], ['', '', ', placement: top', ', placement: bottom', ', placement: auto', ', placement: auto', ', placement: auto, scope: "parent"', ', placement: top, scope: "parent"'], 'Typst placement');
+eq(figureTypst({ path: 'a.png', width: 1, caption: 'A', label: 'fig:a', placement: 'tb', span: true }), '#figure(image("/a.png", width: 100%), caption: [A], placement: auto, scope: "parent") <fig:a>', 'a Typst figure across both columns');
+eq(figureTypstInclude({ path: 'd.typ', caption: '', label: '', placement: 'b' }), '#figure(include "/d.typ", placement: bottom)', 'a Typst diagram at the bottom');
+eq(
+  tableTypst({ ...model, cells: [['Site', 'Load\\tnote{a}'], ['North \\\\ ridge', '12']], align: ['l', 'r'], merges: [], partRules: [], breaks: true, notes: 'a: At noon.\nSource: me.', placement: 't', label: 'tab:l', caption: 'L' }),
+  '#figure([#table(columns: 2, align: (left, right), stroke: none, table.hline(y: 0, stroke: 0.08em), table.hline(y: 1, stroke: 0.05em), table.hline(y: 2, stroke: 0.08em), table.header([Site], [Load#super[a]]), [North \\ ridge], [12])\n#block(width: 100%, align(left, text(size: 0.85em)[#super[a] At noon. \\ Source: me.]))], caption: [L], placement: top) <tab:l>',
+  'a Typst table with notes, a cell’s line break and its placement'
+);
+eq(tableTypst({ ...model, cells: [['a \\\\ b']], header: false, float: false, breaks: false, notes: '' }).endsWith('[a \\\\\\\\ b])'), true, 'without line breaks, \\\\ stays text');
+
 // each compiles to its own text with Typst 0.15.1
 eq(typstMarkup('*Total'), '\\*Total', 'a star that would open bold');
 eq(typstMarkup('snake_case a*b f(*x) a_ b'), 'snake_case a*b f(\\*x) a\\_ b', 'a star or underscore inside a word stays as it is');

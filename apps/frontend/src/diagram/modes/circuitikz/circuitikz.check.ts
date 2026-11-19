@@ -2,7 +2,7 @@
 // npx esbuild apps/frontend/src/diagram/modes/circuitikz/circuitikz.check.ts --bundle --platform=node --log-level=warning | node
 import { symbolGeometry, symbolRequest } from './symbolGeometry';
 import { circuitCode, readStyle, symbolOptions } from './code';
-import { attach, detach, moveBy, newPathPart, paste, remove, rotate } from './edit';
+import { along, attach, detach, freeSpot, moveBy, newPathPart, paste, remove, rotate } from './edit';
 import { PRESETS, annotateListed } from './annotate';
 import { markLayout, pinLabelSpots, plusAtStart, sideName } from './labels';
 import { CATALOGUE, CIRCUIT_KINDS, PARTS, PT_PER_GRID, asCircuit, circuitSetsInUse, listedIn, railParts, circuitBounds, isPart, findJunctions, locator, pathFrame, pinAxis, placeNodeOffset, placeholderBox, grabsHandles, placeholderShape, snapDelta, wirePath } from './model';
@@ -598,5 +598,11 @@ eq([circuitSetsInUse(old(), ['circuitikz-logic']), circuitSetsInUse(old(), ['cir
 eq(circuitSetsInUse(old('ground'), ['circuitikz-mech']), ['circuitikz-mech', 'circuitikz'], 'a ground pasted into a mechanical drawing brings Circuit');
 eq(circuitSetsInUse(old('ground'), ['circuitikz-logic']), ['circuitikz-logic'], 'but not into a Logic schematic, which lists it');
 eq(circuitSetsInUse(old('fluid-pipe'), ['circuitikz-logic']), ['circuitikz-logic', 'spx-fluid'], 'another set’s part keeps its set');
+
+// a part placed from the keyboard: the free spot nearest the middle of the view, clear of the pins already there
+const across = (at: { x: number; y: number }) => along(at, { x: at.x + 8, y: at.y });
+eq(freeSpot({ x: 3.4, y: 1.2 }, across, []), { x: 4, y: 2 }, 'an empty drawing: the 0.5 cm point nearest the middle');
+eq(freeSpot({ x: 0, y: 0 }, across, across({ x: 0, y: 0 })), { x: 0, y: -4 }, 'over a resistor: the nearest spot 1 cm clear of its line (beside it), not along it');
+eq(Math.hypot(freeSpot({ x: 0, y: 0 }, (at) => [at], [{ x: 1, y: 0 }]).x - 1, freeSpot({ x: 0, y: 0 }, (at) => [at], [{ x: 1, y: 0 }]).y) >= 4, true, 'a node part keeps 1 cm from a pin');
 
 console.log('circuitikz.check: ok');

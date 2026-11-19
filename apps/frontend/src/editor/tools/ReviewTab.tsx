@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { blobUrl, getFile, getReviewState, runAiReview } from '../../api/client';
-import type { AiFinding, AiReview, LLMConfig } from '../../api/client';
+import type { AiFinding, LLMConfig, ReviewRun } from '../../api/client';
 import Icon from '../../app/Icon';
 import Sheet from '../../app/Sheet';
 import { useEditor } from '../EditorContext';
@@ -11,9 +11,11 @@ import { pdfFacts } from '../preflight/pdfFacts';
 import { GROUPS, isScanned, preflightGaps, runPreflight } from '../preflight/run';
 import type { Finding, PdfPage, PreflightGroup } from '../preflight/run';
 import { Markdown, errorText, fixTitle, fixWithAI, isSource, relativeTime } from '../shared';
+import { mergePart, partLine, partsLimit } from './reviewParts';
+import type { PartsReview } from './reviewParts';
 
 // Tools › Review: one press compiles when the PDF is older than the source, runs the Preflight checks that are ticked
-// and, when ticked, the AI review (one read-only model call). The latest run is kept per project while Spectrum runs.
+// and, when ticked, the AI review (one read-only model call, or one a part for a long document). The latest run is kept per project while Spectrum runs.
 
 // for pdfFacts, which leaves the worker to its caller
 GlobalWorkerOptions.workerSrc ||= pdfWorker;
@@ -33,7 +35,7 @@ type Run = {
   /** what pdf.js read from the PDF, for the screen reader view */
   pages: PdfPage[] | null;
   /** null: not asked for */
-  ai: null | { running: true } | { error: string } | { review: Omit<AiReview, 'findings'> & { findings: AiRow[] } };
+  ai: null | { running: true } | { error: string } | { review: Omit<PartsReview, 'findings'> & { findings: AiRow[] } };
 };
 type Kept = { run: Run | null; ticks: Record<Tick, boolean>; anonymous: boolean; dismissed: string[] };
 
@@ -113,14 +115,14 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       }
   );
   const { run, ticks } = state;
-  // a Typst or Markdown document runs the compile, references notice and privacy checks only
+  // a Typst or Markdown document runs the compile, references and privacy checks only (Typst's references, a notice)
   const latexDoc = /\.(tex|ltx)$/i.test(doc);
   const groupsForDoc = GROUPS.map(([group]) => group).filter((group) => latexDoc || group === 'compile' || group === 'references' || group === 'privacy');
   const set = (patch: Partial<Kept> | ((was: Kept) => Partial<Kept>)) => setState((was) => ({ ...was, ...(typeof patch === 'function' ? patch(was) : patch) }));
   const setRun = (next: (was: Run) => Run) => set((was) => (was.run ? { run: next(was.run) } : {}));
   useEffect(() => void kept.set(projectId, state), [projectId, state]);
 
-  // what the run is doing ('' when it isn't), and Cancel's
+  // what the run is doing ('' when it isn't), and Stop's
   const [step, setStep] = useState('');
   const abortRef = useRef<AbortController | null>(null);
   const [fixing, setFixing] = useState<string | null>(null);
@@ -173,7 +175,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       const pdfAt = latest.current.keptPdf(doc)?.at ?? status.pdfAt;
       const fresh = pdfAt !== null && (status.sourceAt === null || pdfAt >= status.sourceAt) && latest.current.compiledDoc === doc && Boolean(latest.current.compileLog);
       if (!fresh) {
-        // ponytail: Cancel stops the review, not a compile it started; Stop on the Compile button does
+        // ponytail: Stop stops the review, not a compile it started; Stop on the Compile button does
         setStep('Compiling…');
         const ended = await api.compile(doc);
         await nextCommit();
@@ -234,15 +236,31 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       });
       if (!ticks.ai) return;
 
+      // a long document comes back a part at a time, each told the summary of the parts before; Stop keeps the parts done
       setStep('AI review…');
-      const res = await runAiReview(
-        { projectId, doc: reviewed, activePath, findings: findings.map(({ id: _id, ...f }) => f), llmConfig: api.llm.main, reasoningEffort: api.settings.reasoningEffort },
-        abort.signal
-      ).catch((err) => ({ ok: false as const, error: abort.signal.aborted ? 'Stopped.' : `The request failed: ${errorText(err)}` }));
-      setRun((was) => ({
-        ...was,
-        ai: res.ok ? { review: { ...res, findings: res.findings.map((f) => ({ ...f, id: ['ai', f.severity, f.file, f.line, f.issue].join('|') })) } } : { error: res.error }
-      }));
+      let merged: PartsReview | null = null;
+      let plan: ReviewRun[][] = [];
+      let done = 0;
+      let failed = '';
+      while (done === 0 || done < plan.length) {
+        if (done) setStep(`AI review, ${partLine(plan, done)}…`);
+        const res = await runAiReview(
+          { projectId, doc: reviewed, findings: findings.map(({ id: _id, ...f }) => f), llmConfig: api.llm.main, reasoningEffort: api.settings.reasoningEffort, part: done, summary: merged?.summary },
+          abort.signal
+        ).catch((err) => ({ ok: false as const, error: abort.signal.aborted ? 'Stopped.' : `The request failed: ${errorText(err)}` }));
+        if (!res.ok) {
+          failed = abort.signal.aborted ? '' : res.error;
+          if (!done) setRun((was) => ({ ...was, ai: { error: res.error } }));
+          break;
+        }
+        plan = res.plan;
+        merged = mergePart(merged, res);
+        done += 1;
+      }
+      if (merged) {
+        const review = { ...merged, limits: [...partsLimit(plan, done, failed), ...merged.limits] };
+        setRun((was) => ({ ...was, ai: { review: { ...review, findings: review.findings.map((f) => ({ ...f, id: ['ai', f.severity, f.file, f.line, f.issue].join('|') })) } } }));
+      }
     } catch (err) {
       if (!abort.signal.aborted) api.notify(`The review stopped: ${errorText(err)}`, 'error');
     } finally {
@@ -338,7 +356,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
         <h2>Review</h2>
         {busy ? (
           <button className="btn" onClick={cancel}>
-            <span className="spinner" /> Cancel
+            <span className="spinner" /> Stop
           </button>
         ) : (
           <button className="btn primary" disabled={!doc || !Object.values(ticks).some(Boolean)} onClick={review}>

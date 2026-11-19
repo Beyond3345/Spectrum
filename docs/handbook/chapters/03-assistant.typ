@@ -152,7 +152,7 @@ AI autocomplete writes a suggestion at the cursor with the quick model. It is as
 - #ui[Word] (#key("→")), which keeps the next word only and
 - #ui[Dismiss] (#key("Esc")), which removes it.
 
-Autocomplete is told the document's language, the nearest heading and, in a LaTeX file, the environment the cursor is in. It never uses the default instructions or a persona, and its key can be changed in #menu[Settings][Shortcuts]. Because it has to be quick, it asks a busy provider once only.
+Autocomplete is told the document's language, the nearest heading and, in a LaTeX file, the environment the cursor is in. It never uses the default instructions or a persona, and its key can be changed in #menu[Settings][Shortcuts]. Because it has to be quick, it asks a busy provider once only. Typing, moving the cursor or pressing #key("Esc") while a suggestion is being written cancels the request, so it is not paid for. After typing, a new request goes out once the keys have rested for a moment, and pressing #key("⌥", "/") again replaces the request with a new one at the cursor.
 
 == Personas and skills <sec-assistant-personas>
 
@@ -318,12 +318,14 @@ Review checks the document that #ui[Compile] builds before it goes anywhere. It 
     [#ui[Privacy and blind review]], [Lines that look like keys or passwords, `\todo` notes, `TODO` comments and highlighted text, and with #ui[Anonymous review] on, the authors, `\thanks`, the acknowledgements and the PDF's Author field],
     [#ui[Accessibility]], [The PDF's title, language, tags and bookmarks, small text, pages with no text, alt text, heading levels that skip and vague link text],
     [#ui[Submission readiness]], [The PDF version, encryption, fonts that are not embedded, Type 3 fonts, absolute paths, file names that clash by letter case, image formats pdfLaTeX cannot include, the abstract and the keywords],
-    [#ui[AI review]], [One read of the whole document by the main model, which returns a summary, strengths, a score, its confidence and points marked Major, Minor or Note, each tied to a line],
+    [#ui[AI review]], [One read of the whole document by the main model, with the files it includes, which returns a summary, strengths, a score, its confidence and points marked Major, Minor or Note, each tied to a line],
   ),
-  caption: [The groups of checks in Review. A Typst or Markdown document runs Compile and layout and Privacy and blind review, and Accessibility and Submission readiness run for LaTeX only.],
+  caption: [The groups of checks in Review. A Typst document runs Compile and layout and Privacy and blind review. A Markdown document also runs References and assets, which checks its citations against the `.bib` its front matter names, entries never cited, missing images and links to files that are not in the project, each at its line of the `.md`. Accessibility and Submission readiness run for LaTeX only.],
 ) <tab-assistant-review>
 
 The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes). Until a model is set up, it opens #menu[Settings][Models] instead. A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
+
+The AI review reads the main file and every file it brings in with `\input`, `\include` or `#include`. A document longer than about 160,000 characters of source, roughly 25,000 words, is read in parts, one request each, and each part is told the summary of the parts before it. The status line shows the part being read, such as "AI review, part 2 of 4, chapters/ch3.tex:252 to chapters/ch6.tex:2", and each point is tied to its own file and line. #ui[Stop] ends the review after the parts already read, and the limits of the review say how far it got. A very large thesis takes one request for each part, so a 900 KB thesis is about six requests and takes about six times as long as a paper.
 
 #shot("figures/03-assistant/review-results.png", [Review of the lab report. The never-cited `Knuth1984` entry is a note under References and assets, with its line in `references.bib`, and the untagged PDF is an Accessibility warning.], width: 60%) <fig-assistant-review-results>
 

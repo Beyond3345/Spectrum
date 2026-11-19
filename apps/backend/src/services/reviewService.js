@@ -10,10 +10,17 @@ import { safeJoin } from '../utils/pathUtils.js';
 import { inlineInputs } from '../utils/texUtils.js';
 
 // Tools › Review: what the review needs to know about a document (whether its PDF is older than its source, and the
-// project's .bib entries), and the AI review, one read-only model call over the whole document. It never writes.
+// project's .bib entries), and the AI review, one read-only model call over the document, or one a part for a long
+// one. It never writes.
 
-/** Characters of numbered source one review sends, about 75,000 tokens; a longer document is reviewed a file at a time. */
-export const REVIEW_BUDGET = 300_000;
+/**
+ * Characters of numbered source one review call sends; a longer document is reviewed in parts of this size, one call
+ * each. Measured with the o200k and cl100k tokenizers on numbered source (TeX Live's documentation, 1.6 MB, and
+ * Spectrum's templates and handbook): LaTeX runs 3.3 characters a token, Typst 3.6 and Markdown 3.7. At 3.2 this is
+ * 50,000 tokens, which with the instructions, up to 3,000 bibliography keys and the answer fits a 128k context with
+ * room to spare, and a 64k one for most papers.
+ */
+export const REVIEW_BUDGET = 160_000;
 const MAX_REPORTED = 150;
 const SEVERITIES = ['major', 'minor', 'note'];
 
@@ -132,7 +139,8 @@ const squash = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
  * only one file has that name, by name.
  */
 export function anchor(finding, files) {
-  const named = finding.file.replace(/^\.\//, '');
+  // a part of a long document names its runs "ch1.tex (lines 2001 to 2600)", which a model may copy whole
+  const named = finding.file.replace(/^\.\//, '').replace(/\s*\(lines \d+ to \d+\)$/, '');
   const byName = files.filter((f) => path.posix.basename(f.path) === path.posix.basename(named));
   const file = files.find((f) => f.path === named) ?? (byName.length === 1 ? byName[0] : null);
   if (!file || !squash(finding.quote) || !finding.line) return { ...finding, file: file?.path ?? named, anchored: false };
@@ -206,14 +214,47 @@ export function readReview(content, files) {
   };
 }
 
-const numbered = (file) => [`=== ${file.path} ===`, ...file.lines.map((line, i) => `${i + 1}| ${line}`)].join('\n');
+const numbered = ({ path: file, lines, from = 1, to = lines.length }) =>
+  [`=== ${file}${from > 1 || to < lines.length ? ` (lines ${from} to ${to})` : ''} ===`, ...lines.slice(from - 1, to).map((line, i) => `${from + i}| ${line}`)].join('\n');
+const lineCost = (line, i) => `${i + 1}| ${line}\n`.length;
+
+/**
+ * The document in parts of at most budget characters of numbered source, in reading order: each part a list of
+ * { path, from, to } line runs, whole files while they fit and a file longer than the budget cut between lines.
+ * ponytail: cut at the line the budget runs out on, not at a heading; a section split across two parts is read in two
+ */
+export function reviewParts(files, budget = REVIEW_BUDGET) {
+  const parts = [[]];
+  let size = 0;
+  for (const file of files) {
+    file.lines.forEach((line, i) => {
+      const cost = lineCost(line, i);
+      let part = parts[parts.length - 1];
+      let run = part[part.length - 1];
+      if (size && size + cost > budget) {
+        parts.push((part = []));
+        size = 0;
+        run = null;
+      }
+      if (run?.path !== file.path) {
+        part.push((run = { path: file.path, from: i + 1, to: i }));
+        size += file.path.length + 30;
+      }
+      run.to = i + 1;
+      size += cost;
+    });
+  }
+  return parts.filter((part) => part.length);
+}
 
 /**
  * The AI review of doc: its source files in reading order with numbered lines, the .bib keys and what Preflight already
- * reported, in one model call with no tools. Over REVIEW_BUDGET only activePath (or doc) is sent, cut short if need be,
- * and the limits say so, as they do for an \input .pgf or data file left out. Aborting signal stops the call.
+ * reported, in one model call with no tools. A document longer than REVIEW_BUDGET is reviewed in parts (reviewParts),
+ * one request each: part is which one (from 0), and summary what the model said of the parts before, so each part is
+ * read knowing the story so far. The answer names the part, how many there are and what each holds (plan). Figure and
+ * data code an \input reads (a .pgf) is left out and the limits say so. Aborting signal stops the call.
  */
-export async function aiReview({ root, doc, activePath, findings = [], llmConfig, reasoningEffort, signal }) {
+export async function aiReview({ root, doc, findings = [], llmConfig, reasoningEffort, signal, part = 0, summary = '' }) {
   const order = await documentFiles(root, doc);
   if (!order.length) return { ok: false, error: `Couldn’t read ${doc}.` };
   let files = [];
@@ -224,20 +265,12 @@ export async function aiReview({ root, doc, activePath, findings = [], llmConfig
   // a matplotlib .pgf or a table's data the document \inputs can run to megabytes: code, not the paper's text
   const figures = files.filter((f) => !/\.(?:tex|ltx|typ|md|markdown)$/i.test(f.path));
   files = files.filter((f) => !figures.includes(f));
-  const size = (list) => list.reduce((n, f) => n + numbered(f).length, 0);
   const limits = [];
   if (figures.length) limits.push(`${figures.map((f) => f.path).join(', ')} ${figures.length === 1 ? 'is figure or data code and wasn’t' : 'are figure or data code and weren’t'} sent.`);
-  if (size(files) > REVIEW_BUDGET) {
-    const open = files.find((f) => f.path === activePath) ?? files[0];
-    let lines = open.lines;
-    while (size([{ ...open, lines }]) > REVIEW_BUDGET) lines = lines.slice(0, Math.floor(lines.length * 0.9));
-    files = [{ ...open, lines }];
-    limits.push(
-      lines.length < open.lines.length
-        ? `The document is too long for one review, so only ${open.path} up to line ${lines.length} was reviewed.`
-        : `The document is too long for one review, so only ${open.path} was reviewed. Open another file and review again for that one.`
-    );
-  }
+  const plan = reviewParts(files);
+  const index = Number.isInteger(part) && part >= 0 ? part : 0;
+  if (index >= plan.length) return { ok: false, error: 'That part of the document isn’t there any more. Review again.' };
+  const runs = plan[index].map((run) => ({ ...files.find((f) => f.path === run.path), from: run.from, to: run.to }));
   const bibs = (await projectFiles(root)).filter((p) => /\.bib$/i.test(p));
   const keys = [];
   for (const file of bibs) keys.push(...parseBibEntries(await fs.readFile(safeJoin(root, file), 'utf8').catch(() => '')).map((e) => e.key));
@@ -247,10 +280,16 @@ export async function aiReview({ root, doc, activePath, findings = [], llmConfig
   });
   const user = [
     `Document: ${doc}. Files in reading order: ${files.map((f) => f.path).join(', ')}.`,
+    plan.length > 1 &&
+      [
+        `The document is too long for one reading, so it is reviewed in ${plan.length} parts in turn. This is part ${index + 1}: report findings in this part only.`,
+        index ? `What the parts before it hold, as summarised by their review:\n${text(summary, 6000) || '(no summary)'}` : '',
+        'Write the summary, strengths, score and confidence for the document as far as this part, taking in what the parts before held.'
+      ].filter(Boolean).join('\n'),
     `Bibliography keys: ${keys.length ? [...new Set(keys)].slice(0, 3000).join(', ') : 'none'}.`,
     `Already reported:\n${reported.length ? reported.join('\n') : '- nothing'}`,
-    ...files.map(numbered)
-  ].join('\n\n');
+    ...runs.map(numbered)
+  ].filter(Boolean).join('\n\n');
   const res = await chatCompletion({
     messages: [
       { role: 'system', content: system(docLanguage(doc)) },
@@ -266,5 +305,5 @@ export async function aiReview({ root, doc, activePath, findings = [], llmConfig
   if (!res.ok) return { ok: false, error: res.error, ...(res.stopped && { stopped: true }) };
   const review = readReview(res.message.content, files);
   if (!review) return { ok: false, error: 'The model’s answer couldn’t be read as a review. Try again, or try another model.' };
-  return { ok: true, ...review, limits: [...limits, ...review.limits], files: files.map((f) => f.path) };
+  return { ok: true, ...review, limits: [...limits, ...review.limits], files: [...new Set(runs.map((r) => r.path))], part: index, plan };
 }
