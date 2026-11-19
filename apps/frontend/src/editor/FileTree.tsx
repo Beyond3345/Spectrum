@@ -290,6 +290,8 @@ const FileTree = forwardRef<
     setSelected('');
     await onRefresh();
     const undo = res.undo;
+    // the main file, or the folder it was in: it is main again when it comes back
+    const wasMain = mainFile && (mainFile === path || mainFile.startsWith(`${path}/`)) ? mainFile : '';
     if (!res.bin) notify(`Deleted “${name}”`);
     else
       toast(`Moved “${name}” to the ${BIN}`, {
@@ -301,6 +303,7 @@ const FileTree = forwardRef<
                   const back = await restoreFile(projectId, undo);
                   if (!back.ok) throw new Error(back.error || 'Undo failed.');
                   await onRefresh();
+                  if (wasMain) props.onSetMain(wasMain);
                 }, `Couldn’t put “${name}” back`)
             }
           : undefined
