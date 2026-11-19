@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableRules, tableTypst, typstMarkup, uniqueName } from './floats';
+import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableTitle, tableRules, tableTypst, typstMarkup, uniqueName } from './floats';
 import type { FigureSet, FigureSize, TableModel } from './floats';
 import { TYPST_SUBFIGURE, addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -168,6 +168,10 @@ eq(inner({ ...bare, header: false, escape: false, cells: [['[a]', 'b']] })[2], '
 eq(tableLatex({ ...model, caption: '50% of R&D' }).split('\n')[2], '    \\caption{50\\% of R\\&D}', 'caption escaped with the cells');
 eq(tableLatex({ ...model, caption: '50\\% of R\\&D', escape: false }).split('\n')[2], '    \\caption{50\\% of R\\&D}', 'caption as typed with escaping off');
 eq(tableLatex({ ...model, caption: '', label: tableLabel('') }).split('\n').slice(2, 4), ['    \\caption{}', '    \\begin{tabular}{lcc}'], 'no caption, no label');
+
+eq(tableTitle('', [['Method', 'Score'], ['a', '1']]), { caption: 'Caption.', label: 'tab:method-score' }, 'no caption: one to fill in, and a label from the header');
+eq(tableTitle('Results', [['Method']]), { caption: 'Results', label: 'tab:results' }, 'a caption names the label');
+eq(tableTitle(' ', []), { caption: 'Caption.', label: '' }, 'nothing to name it from');
 
 eq(escapeCell('R&D 10% #1 a_b ~ 2^3'), 'R\\&D 10\\% \\#1 a\\_b \\textasciitilde{} 2\\textasciicircum{}3', 'every special character');
 eq(escapeCell('\\textbf{x_y} \\& \\_ {a}'), '\\textbf{x\\_y} \\& \\_ {a}', 'commands, escapes and braces kept');

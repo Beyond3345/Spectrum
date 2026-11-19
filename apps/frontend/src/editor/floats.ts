@@ -52,6 +52,11 @@ export const tableLabel = (caption: string) => {
   return words ? `tab:${words.slice(0, 3).join('-')}` : '';
 };
 
+/** A table's caption and label as written: an empty caption becomes "Caption." to fill in (an empty \caption{} prints
+ * "Table 1:" and nothing), and the label comes from the header cells instead */
+export const tableTitle = (caption: string, cells: string[][]) =>
+  caption.trim() ? { caption, label: tableLabel(caption) } : { caption: 'Caption.', label: tableLabel((cells[0] ?? []).join(' ')) };
+
 /** The placement letters, what each asks of LaTeX, for the toggles and their key. H stands alone. */
 export const PLACEMENT_LETTERS: [letter: string, name: string, meaning: string][] = [
   ['H', 'Exactly here', 'exactly here, no longer floating (needs the float package, which is added)'],
