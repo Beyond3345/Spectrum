@@ -17,7 +17,7 @@
 //   todo    { text, link? }              a to-do the agent suggests
 //   notice  { message }
 //   result  { turn, ok, reply, patches, changes, todos, steps, says?, incomplete?, usage?, unsent? }   the turn's
-//           whole outcome, as /api/agent/run answers; then the last `state`
+//           whole outcome, as /api/agent/run answers (usage with the turn's model); then the last `state`
 import crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -102,7 +102,8 @@ export async function startTurn(body, { resume = false, runId } = {}) {
     } catch (err) {
       result = { ok: false, reply: err.message || 'The run failed.', patches: [], changes: [], todos: [], steps: [], incomplete: 'failed' };
     }
-    emit(run, 'result', { turn, ...result });
+    // the turn's tokens with the model that read them, which the page keeps with the reply (the meter's estimate)
+    emit(run, 'result', { turn, ...result, ...(result.usage && model && { usage: { ...result.usage, model } }) });
     run.status = result.incomplete || (result.ok ? 'done' : 'failed');
     emit(run, 'state', { status: run.status, turn, ...(result.incomplete && { incomplete: result.incomplete }) });
     run.timer = setTimeout(() => forget(run), KEEP_MS);

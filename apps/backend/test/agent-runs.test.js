@@ -170,7 +170,7 @@ test('a turn is a job: its steps and its answer are heard as they happen, read-o
   assert.equal(result.reply, 'Changed line two. It was not compiled.');
   assert.deepEqual(result.patches.map((x) => [x.path, x.content]), [['main.tex', '\\section{One}\nline 2\nline three\n']]);
   assert.deepEqual(result.says, [{ before: 0, text: 'Looking around.' }]);
-  assert.deepEqual(result.usage, usage[2].total);
+  assert.deepEqual(result.usage, { ...usage[2].total, model: 'live' });
   assert.deepEqual(events.at(-1).data, { status: 'done', turn: 1 });
   assert.equal(await fs.readFile(path.join(p.path, 'main.tex'), 'utf8'), '\\section{One}\nline two\nline three\n', 'nothing is written');
 
