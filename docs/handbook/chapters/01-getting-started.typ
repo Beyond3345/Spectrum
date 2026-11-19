@@ -106,6 +106,8 @@ The New project window asks for the following,
 - #ui[From arXiv…] asks for an arXiv ID and makes a project from the paper's source and
 - #ui[Open existing folder…] opens a folder that already holds LaTeX, Typst or Markdown files as a project, in place, without copying it. The folder stays where it is, and Spectrum works on it there.
 
+A Git repository inside a `.zip` file or an arXiv source is left out, so the new project starts without a history and without a link to a repository on GitHub. A folder opened in place keeps its repository.
+
 The file list of every project follows changes made outside Spectrum, so a file added, removed or renamed in Finder or by another editor shows up straight away. If a project's folder is moved in Finder, the project is marked as missing, and #ui[Locate…] in its menu points it at the new location.
 
 #shots(("figures/01-getting-started/import-menu.png", "figures/01-getting-started/project-menu.png"), [The Import menu, left, and a project's menu, right, which opens from its #dots button or with a right-click.], columns: (1.3fr, 1fr)) <fig-start-import>

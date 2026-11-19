@@ -32,6 +32,10 @@ For development there are two options. `npm run desktop:dev` runs the macOS shel
 
 The server only accepts requests from the same computer, since it has full access to the project folders.
 
+In the desktop app it also answers only the app's own windows. At each launch the shell makes a random secret, writes it to the server's standard input and starts each window at `/session`, which keeps the secret in an `HttpOnly`, `SameSite=Strict` cookie named for the port. A request to `/api` without that cookie gets a 403, so another program or another account on the computer cannot use the API. `npm run dev` and `npm start` have no secret and work as before. Set `SPECTRUM_SESSION_SECRET` to try the gate in a browser: open `http://localhost:8787/session?t=<the secret>&next=/projects` once, then use the app as usual.
+
+The pages the server sends carry a content security policy: scripts come only from the app's own files, with no inline script and no `eval`, and a page fetches only from the server it came from. The Vite dev server sends no policy, so check a change that adds a script, a worker or a new kind of address on the built frontend. `SPECTRUM_CSP_REPORT_ONLY=1` makes the policy report to the console without stopping anything.
+
 ## Configuration
 
 The backend reads the following environment variables, either from the environment or from a `.env` file.
@@ -44,6 +48,7 @@ The backend reads the following environment variables, either from the environme
 | `SPECTRUM_PROJECTS_DIR` | Default folder for new projects | `~/Documents/Spectrum` |
 | `SPECTRUM_DATA_DIR` | Project list and user templates | `data/` in the repository, or the application support folder in the app |
 | `SPECTRUM_HOST` and `PORT` | Address the server listens on | `127.0.0.1` and `8787` |
+| `SPECTRUM_SESSION_SECRET` | A secret the API then asks of every request, as the desktop app does at each launch | none: the API is open to this computer |
 | `SPECTRUM_PYTHON` | Python used by the table to chart tool | `python3` |
 | `SPECTRUM_MINERU_TOKEN` | MinerU token for template conversion, sent only to MinerU's own address or to `SPECTRUM_MINERU_API_BASE` | none |
 | `SPECTRUM_MINERU_API_BASE` | MinerU API address | `https://mineru.net/api/v4` |

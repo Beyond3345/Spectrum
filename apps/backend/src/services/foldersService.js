@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { listFilesRecursive } from '../utils/fsUtils.js';
+import { listFilesRecursive, writeFileAtomic } from '../utils/fsUtils.js';
 import { mutateProjectRoot, readMeta, touchProject, updateMeta } from './projectService.js';
 
 // The composer's drawing on a line of its own (% for TikZ, // for Typst and %% for Mermaid): base64 JSON, then the
@@ -74,7 +74,8 @@ export async function moveToNewFolders(root) {
       if (text === null) continue;
       const next = rules.reduce((t, [re, to]) => t.replace(re, to), text);
       if (next === text) continue;
-      await fs.writeFile(abs, next);
+      // through a temp file, so a crash leaves the document whole; a link keeps its target
+      await writeFileAtomic(await fs.realpath(abs).catch(() => abs), next);
       rewrote.push(doc);
     }
     await updateMeta(root, (meta) => ({ ...meta, layout: LAYOUT }));

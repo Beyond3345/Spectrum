@@ -1318,6 +1318,54 @@ test('restore moves aside files versions never captured instead of overwriting t
   assert.equal((await fs.stat(path.join(p.path, 'data (before restore).csv'))).size, big.length);
 });
 
+test('restore follows a checkpoint only to the project’s own files', async () => {
+  const p = await newProject('Restore stays in');
+  const versions = `/api/projects/${p.id}/versions`;
+  await writeFile(p.id, 'main.tex', 'v1');
+  const { id } = (await api(versions, { method: 'POST', body: {} })).json.version;
+  // a checkpoint as another computer or an imported folder might bring it, naming the repository and the app's data
+  const manifestFile = path.join(p.path, '.spectrum', 'history', 'manifests', `${id}.json`);
+  const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+  const sha = manifest.files['main.tex'];
+  Object.assign(manifest.files, { '.git/config': sha, '.GIT/hooks/pre-commit': sha, '.spectrum/project.json': sha, 'sub/.Spectrum/x': sha });
+  await fs.writeFile(manifestFile, JSON.stringify(manifest));
+  const meta = await fs.readFile(path.join(p.path, '.spectrum', 'project.json'), 'utf8');
+  await writeFile(p.id, 'main.tex', 'v2');
+
+  assert.ok((await api(`${versions}/${id}/restore`, { method: 'POST', body: {} })).json.ok);
+  assert.equal(await fs.readFile(path.join(p.path, 'main.tex'), 'utf8'), 'v1');
+  assert.equal(existsSync(path.join(p.path, '.git')), false);
+  assert.equal(existsSync(path.join(p.path, 'sub')), false);
+  assert.equal(JSON.parse(await fs.readFile(path.join(p.path, '.spectrum', 'project.json'), 'utf8')).id, JSON.parse(meta).id);
+});
+
+test('an imported archive brings no repository, and on Windows no device name', async (t) => {
+  const { sanitizeUploadPath } = await import('../src/utils/pathUtils.js');
+  assert.equal(sanitizeUploadPath('figs/aux.tex', 'win32'), 'figs/_aux.tex');
+  assert.equal(sanitizeUploadPath('CON/nul/Com1.txt', 'win32'), '_CON/_nul/_Com1.txt');
+  assert.equal(sanitizeUploadPath('console.tex/auxiliary/com10.txt', 'win32'), 'console.tex/auxiliary/com10.txt');
+  assert.equal(sanitizeUploadPath('figs/aux.tex', 'darwin'), 'figs/aux.tex');
+
+  if (!canZip) return t.skip('zip not installed');
+  const src = path.join(tmp, 'with-repo');
+  await fs.mkdir(path.join(src, '.git'), { recursive: true });
+  await fs.mkdir(path.join(src, 'sub', '.GIT'), { recursive: true });
+  await fs.writeFile(path.join(src, '.git', 'config'), '[remote "origin"]\n\turl = https://example.invalid/other.git\n');
+  await fs.writeFile(path.join(src, 'sub', '.GIT', 'config'), 'x');
+  await fs.writeFile(path.join(src, 'sub', 'notes.tex'), 'notes');
+  await fs.writeFile(path.join(src, 'main.tex'), '\\documentclass{article}\\begin{document}x\\end{document}');
+  const zipPath = path.join(tmp, 'with-repo.zip');
+  zip(src, zipPath, '.');
+  const form = new FormData();
+  form.append('zip', new Blob([await fs.readFile(zipPath)]), 'with-repo.zip');
+  const res = await (await fetch(`${base}/api/projects/import-zip`, { method: 'POST', body: form })).json();
+  assert.ok(res.ok, res.error);
+  assert.equal(existsSync(path.join(res.project.path, 'main.tex')), true);
+  assert.equal(existsSync(path.join(res.project.path, 'sub', 'notes.tex')), true);
+  assert.equal(existsSync(path.join(res.project.path, '.git')), false);
+  assert.equal(existsSync(path.join(res.project.path, 'sub', '.GIT')), false);
+});
+
 test('restore writes over a read-only file, keeping it read-only', async () => {
   const p = await newProject('Read-only');
   const file = path.join(p.path, 'main.tex');
@@ -1827,13 +1875,26 @@ test('a project’s file opened as a page can run no script on the app’s addre
   }
 });
 
-test('the app’s pages draw images only from the app itself', async () => {
+test('the app’s pages run only the app’s own scripts and draw and fetch only from the app itself', async () => {
   for (const page of ['/', '/editor/some-project']) {
     const res = await fetch(`${base}${page}`);
     assert.match(res.headers.get('content-type'), /^text\/html/);
-    assert.equal(res.headers.get('content-security-policy'), "img-src 'self' data: blob:");
+    const policy = Object.fromEntries(res.headers.get('content-security-policy').split('; ').map((part) => [part.split(' ')[0], part.split(' ').slice(1).join(' ')]));
+    assert.equal(policy['default-src'], "'self'");
+    assert.equal(policy['script-src'], "'self'", 'no inline script, no eval, no other host');
+    assert.equal(policy['img-src'], "'self' data: blob:");
+    assert.equal(policy['connect-src'], `'self' blob: ipc:${WINDOWS ? ' http://ipc.localhost' : ''}`);
+    assert.equal(policy['base-uri'], "'none'");
+    assert.equal(policy['form-action'], "'none'");
+    assert.equal(policy['frame-ancestors'], "'none'");
+    for (const sources of Object.values(policy)) assert.doesNotMatch(sources, /unsafe-eval|https?:\/\/(?!ipc\.localhost)|\*/);
+    assert.deepEqual(Object.keys(policy).filter((name) => policy[name].includes("'unsafe-inline'")), ['style-src']);
   }
   assert.equal((await fetch(`${base}/api/health`)).headers.get('content-security-policy'), null);
+  // which the page keeps to: its one early script is a file of the app's, not inline
+  const html = await fs.readFile(path.join(here, '..', '..', 'frontend', 'index.html'), 'utf8');
+  for (const [tag] of html.matchAll(/<script\b[^>]*>/g)) assert.match(tag, /\ssrc="\/[^"]+"/, tag);
+  assert.doesNotMatch(html, /\son\w+=|javascript:/i);
 });
 
 test('file routes do not follow links out of the project', async () => {

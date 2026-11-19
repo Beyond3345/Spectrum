@@ -29,13 +29,13 @@ jobs:
       # the dictionaries and templates ship as they are in the repo, with LF line endings
       - run: git config --global core.autocrlf false
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           # the whole history, so the rollback test finds 1.10.4's commit rather than skipping
           fetch-depth: 0
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: npm
@@ -43,7 +43,7 @@ jobs:
       # rustup comes with the runner
       - run: rustup toolchain install stable --profile minimal && rustup default stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src-tauri
 
@@ -58,7 +58,7 @@ jobs:
       # built from its tagged source with the C runtime linked in, which takes a while, so kept between runs: saved as
       # soon as it's built, as the whole cache action saves only when every later step passes
       - id: texlab-cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~\AppData\Local\spectrum-build\texlab-5.26.0-x64
           key: texlab-5.26.0-x64-crt-static
@@ -67,7 +67,7 @@ jobs:
         run: node scripts/desktop.mjs texlab
 
       - if: steps.texlab-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~\AppData\Local\spectrum-build\texlab-5.26.0-x64
           key: texlab-5.26.0-x64-crt-static
@@ -75,7 +75,7 @@ jobs:
       - name: Installer
         run: node scripts/desktop.mjs build
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: spectrum-windows-x64
           path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
@@ -196,7 +196,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: spectrum-windows-x64
       # TexLab's source (GPL 3.0), to go with the TexLab both installers carry; the digest is desktop.mjs's

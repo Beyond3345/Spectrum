@@ -86,32 +86,24 @@ async function fetchOk(url) {
   return res;
 }
 
-async function latestNode24() {
-  const cached = path.join(cacheDir, 'index.json');
-  let index;
-  try {
-    index = await (await fetchOk('https://nodejs.org/dist/index.json')).text();
-    fs.writeFileSync(cached, index);
-  } catch (err) {
-    if (!fs.existsSync(cached)) throw err;
-    console.warn(`Using the cached Node.js release list (${err.message})`);
-    index = fs.readFileSync(cached, 'utf8');
+// The Node.js that runs the backend, and whose npm ships beside it: one version, with the SHA-256 of each archive as
+// nodejs.org's SHASUMS256.txt lists it, kept here like every other program Spectrum ships. A newer Node is a change to
+// these lines, made on purpose.
+export const NODE = {
+  version: 'v24.22.3',
+  archives: {
+    'node-v24.22.3-darwin-arm64.tar.gz': 'ff6e17d4874b76d272212b908cc020d6e815fba5a6c7eaaa06add725840307fd',
+    'node-v24.22.3-win-x64.zip': 'e612af99f626ab415ea225af6bce5c971feb448cb5cae250bb1c3fa50c5f7d9f'
   }
-  const release = JSON.parse(index).find((r) => r.version.startsWith('v24.') && r.lts);
-  if (!release) throw new Error('No Node.js 24 LTS release found');
-  return release.version;
-}
+};
 
 const sha256 = (file) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
-async function expectedSha(version, file) {
-  const sumsFile = path.join(cacheDir, `SHASUMS256-${version}.txt`);
-  if (!fs.existsSync(sumsFile)) {
-    fs.writeFileSync(sumsFile, await (await fetchOk(`https://nodejs.org/dist/${version}/SHASUMS256.txt`)).text());
-  }
-  const line = fs.readFileSync(sumsFile, 'utf8').split('\n').find((l) => l.trim().endsWith(`  ${file}`));
-  if (!line) throw new Error(`${file} isn't listed in SHASUMS256.txt for ${version}`);
-  return line.split(/\s+/)[0];
+/** The pinned digest of one of Node's archives; an archive with none is never downloaded. */
+function nodeSha(file) {
+  const expected = NODE.archives[file];
+  if (!expected) throw new Error(`No pinned SHA-256 for ${file}: add it to NODE in scripts/desktop.mjs`);
+  return expected;
 }
 
 /** url saved as file, kept from an earlier run when it matches the SHA-256 expected. */
@@ -136,7 +128,7 @@ async function nodeBinary(version, arch) {
   const out = path.join(outDir, `node${EXE}`);
   if (fs.existsSync(out)) return out;
 
-  const archive = await verifiedDownload(`https://nodejs.org/dist/${version}/${file}`, path.join(cacheDir, file), await expectedSha(version, file));
+  const archive = await verifiedDownload(`https://nodejs.org/dist/${version}/${file}`, path.join(cacheDir, file), nodeSha(file));
   fs.mkdirSync(outDir, { recursive: true });
   if (win) run(winTar, ['-xf', archive, '-C', outDir, '--strip-components', '1', `${name}/node.exe`]);
   else run('tar', ['-xzf', archive, '-C', outDir, '--strip-components', '2', `${name}/bin/node`]);
@@ -155,7 +147,7 @@ async function sidecar(name, arches, binary) {
 
 async function nodeRuntime(arches) {
   fs.mkdirSync(cacheDir, { recursive: true });
-  const version = await latestNode24();
+  const { version } = NODE;
   await sidecar('node', arches, (arch) => nodeBinary(version, arch));
   console.log(`Node.js ${version} (${arches.join(', ')}) → ${path.relative(root, binDir)}`);
   return version;
@@ -170,7 +162,7 @@ async function bundledNpm(version) {
   const outDir = path.join(cacheDir, `npm-${version}`);
   if (!fs.existsSync(path.join(outDir, 'bin', 'npm-cli.js'))) {
     const file = `${name}.tar.gz`;
-    const archive = await verifiedDownload(`https://nodejs.org/dist/${version}/${file}`, path.join(cacheDir, file), await expectedSha(version, file));
+    const archive = await verifiedDownload(`https://nodejs.org/dist/${version}/${file}`, path.join(cacheDir, file), nodeSha(file));
     fs.rmSync(outDir, { recursive: true, force: true });
     fs.mkdirSync(outDir, { recursive: true });
     run('tar', ['-xzf', archive, '-C', outDir, '--strip-components', '4', `${name}/lib/node_modules/npm`]);

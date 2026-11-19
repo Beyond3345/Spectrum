@@ -197,6 +197,21 @@ test('the Windows workflow runs typst.exe by its path, and its tests after a fai
   for (const step of ['TeX tools', 'Backend tests']) assert.match(workflow, new RegExp(`- name: ${step}\\n\\s+if: \\$\\{\\{ !cancelled\\(\\) \\}\\}`), step);
 });
 
+test('the Node.js the app ships is one version, each archive checked against a SHA-256 kept here', async () => {
+  const { NODE } = await import('../../../scripts/desktop.mjs');
+  assert.match(NODE.version, /^v24\.\d+\.\d+$/);
+  for (const archive of ['darwin-arm64.tar.gz', 'win-x64.zip']) assert.match(NODE.archives[`node-${NODE.version}-${archive}`], /^[0-9a-f]{64}$/, archive);
+  // never whichever release is newest on the day, checked against a list fetched with it
+  const script = await repo('scripts/desktop.mjs');
+  assert.doesNotMatch(script, /SHASUMS256\.txt`|dist\/index\.json/);
+});
+
+test('the Windows workflow runs other people’s actions by commit, never by a tag that can move', async () => {
+  const uses = (await repo('.github/workflows/windows.yml')).match(/uses: .*/g);
+  assert.ok(uses.length >= 7);
+  for (const line of uses) assert.match(line, /^uses: [\w./-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/, line);
+});
+
 test('the Mac app is built for Apple silicon only', async () => {
   const script = await repo('scripts/desktop.mjs');
   assert.match(script, /: \{ arm64: 'aarch64-apple-darwin' \};/);

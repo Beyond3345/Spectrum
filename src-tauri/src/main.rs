@@ -74,6 +74,11 @@ struct Backend(Mutex<Option<Child>>);
 /// The backend's port, for the windows built after the first.
 struct Port(u16);
 
+/// This launch's secret (new_secret): the backend answers only requests that carry it, so the API
+/// is closed to other programs and other accounts on this computer. The backend reads it from its
+/// stdin; a window gets it as a cookie by starting at session_url.
+struct Session(String);
+
 /// A file opened from Finder or Explorer waits here until the app's page has loaded.
 #[derive(Default)]
 struct Opened {
@@ -337,17 +342,28 @@ fn start(app: &AppHandle) -> tauri::Result<()> {
     let window = build_window(app, port, splash_ready.clone())?;
     let log_path = app.path().app_log_dir()?.join("backend.log");
 
+    let secret = new_secret();
+    if let Ok(secret) = &secret {
+        app.manage(Session(secret.clone()));
+    }
+
     // off the main thread: reading the login shell's PATH can take a second
     let app = app.clone();
     thread::spawn(move || {
-        let started = spawn_backend(&app, port, &log_path).and_then(|child| {
+        let started = secret.and_then(|secret| {
+            let child = spawn_backend(&app, port, &secret, &log_path)?;
             *app.state::<Backend>().0.lock().unwrap() = Some(child);
-            wait_for_backend(&app, port)
+            wait_for_backend(&app, port, &secret)?;
+            Ok(secret)
         });
         match started {
-            Ok(()) => {
+            Ok(secret) => {
                 let waiting = app.state::<Mutex<Opened>>().lock().unwrap().waiting.take();
-                let _ = window.navigate(app_url(port, waiting.as_deref()));
+                let _ = window.navigate(session_url(
+                    port,
+                    &secret,
+                    &app_url(port, waiting.as_deref()),
+                ));
             }
             Err(message) => {
                 // eval is lost if it lands before the splash has loaded
@@ -381,6 +397,29 @@ fn app_url(port: u16, file: Option<&Path>) -> Url {
     url
 }
 
+/// Where a window starts: the backend's /session keeps `secret` as the window's cookie and sends it
+/// on to `page`. The address is never logged (index.js), and the page never sees the secret.
+fn session_url(port: u16, secret: &str, page: &Url) -> Url {
+    let mut url =
+        Url::parse(&format!("http://127.0.0.1:{port}/session")).expect("valid backend URL");
+    let next = match page.query() {
+        Some(query) => format!("{}?{query}", page.path()),
+        None => page.path().to_string(),
+    };
+    url.query_pairs_mut()
+        .append_pair("t", secret)
+        .append_pair("next", &next);
+    url
+}
+
+/// This launch's secret: 32 bytes from the system's random source, as hex.
+fn new_secret() -> Result<String, String> {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes)
+        .map_err(|e| format!("Couldn't make this launch's secret: {e}"))?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
 /// The composer's page (App.tsx's /diagram) for a project, with the project-relative diagram file to
 /// open, or the language its chooser starts in.
 fn diagram_url(port: u16, project: &str, file: Option<&str>, language: Option<&str>) -> Url {
@@ -412,7 +451,9 @@ async fn open_diagram(
     let port = app.state::<Port>().0;
     let url = diagram_url(port, &project, file.as_deref(), language.as_deref());
     let Some(window) = app.get_webview_window(DIAGRAM) else {
-        return build_diagram_window(&app, port, url)
+        // a new window presents the secret itself, whatever cookies it shares with the main one
+        let start = session_url(port, &app.state::<Session>().0, &url);
+        return build_diagram_window(&app, port, start)
             .map(|_| ())
             .map_err(|e| e.to_string());
     };
@@ -1100,7 +1141,12 @@ fn download_path(dir: &Path, proposed: &Path) -> PathBuf {
     path
 }
 
-fn spawn_backend(app: &AppHandle, port: u16, log_path: &Path) -> Result<Child, String> {
+fn spawn_backend(
+    app: &AppHandle,
+    port: u16,
+    secret: &str,
+    log_path: &Path,
+) -> Result<Child, String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&data_dir)
         .map_err(|e| format!("Couldn't create {}: {e}", data_dir.display()))?;
@@ -1117,6 +1163,9 @@ fn spawn_backend(app: &AppHandle, port: u16, log_path: &Path) -> Result<Child, S
         .env("SPECTRUM_HOST", "127.0.0.1")
         .env("SPECTRUM_DATA_DIR", &data_dir)
         .env("SPECTRUM_EXIT_WITH_STDIN", "1")
+        // the secret follows on stdin, and the backend won't start without it
+        .env("SPECTRUM_SESSION_STDIN", "1")
+        .env_remove("SPECTRUM_SESSION_SECRET")
         .env("NODE_ENV", "production")
         // the test suite's stand-in for / (agent detection), never a release's
         .env_remove("SPECTRUM_SYSTEM_ROOT")
@@ -1154,8 +1203,17 @@ fn spawn_backend(app: &AppHandle, port: u16, log_path: &Path) -> Result<Child, S
             cmd.env("SPECTRUM_PROJECTS_DIR", docs.join("Spectrum"));
         }
     }
-    cmd.spawn()
-        .map_err(|e| format!("Couldn't start the Spectrum server: {e}"))
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Couldn't start the Spectrum server: {e}"))?;
+    // down the pipe the backend already watches, not in its environment, which any process of this
+    // user can read, an agent inside its isolation included
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin
+            .write_all(format!("{secret}\n").as_bytes())
+            .map_err(|e| format!("Couldn't start the Spectrum server: {e}"))?;
+    }
+    Ok(child)
 }
 
 /// Release: the bundled Node runs the bundled server, which seeds templates into
@@ -1318,7 +1376,7 @@ fn shell_path(shell: &str) -> Option<String> {
     path
 }
 
-fn wait_for_backend(app: &AppHandle, port: u16) -> Result<(), String> {
+fn wait_for_backend(app: &AppHandle, port: u16, secret: &str) -> Result<(), String> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     while Instant::now() < deadline {
         if let Some(child) = app.state::<Backend>().0.lock().unwrap().as_mut() {
@@ -1328,7 +1386,7 @@ fn wait_for_backend(app: &AppHandle, port: u16) -> Result<(), String> {
                 ));
             }
         }
-        if health_ok(port) {
+        if health_ok(port, secret) {
             return Ok(());
         }
         thread::sleep(Duration::from_millis(200));
@@ -1336,13 +1394,19 @@ fn wait_for_backend(app: &AppHandle, port: u16) -> Result<(), String> {
     Err("The Spectrum server didn't respond within 40 seconds.".into())
 }
 
-fn health_ok(port: u16) -> bool {
+/// The shell's own request to the API carries the secret as a window's would, in the cookie the
+/// backend names for its port (authUtils.js, SESSION_COOKIE).
+fn health_request(port: u16, secret: &str) -> String {
+    format!("GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nCookie: spectrum_session_{port}={secret}\r\nConnection: close\r\n\r\n")
+}
+
+fn health_ok(port: u16, secret: &str) -> bool {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(500)) else {
         return false;
     };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-    let request = "GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    let request = health_request(port, secret);
     if stream.write_all(request.as_bytes()).is_err() {
         return false;
     }
@@ -1481,6 +1545,31 @@ mod tests {
         assert_eq!(release_defaults(&dir, &exts), Err(DEBUG_BUILD.into()));
         // nothing noted, and the first launch's marker isn't left either
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn a_window_starts_at_the_session_address_and_goes_on_to_its_page() {
+        let secret = new_secret().unwrap();
+        assert_eq!(secret.len(), 64);
+        assert!(secret.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(secret, new_secret().unwrap());
+
+        let file = Path::new("/Users/me/My Thesis/chapter 1 & 2 é.tex");
+        for page in [
+            app_url(PREFERRED_PORT, None),
+            app_url(PREFERRED_PORT, Some(file)),
+            diagram_url(PREFERRED_PORT, "p1", Some("figures/a b&c.tex"), Some("tikz")),
+        ] {
+            let url = session_url(PREFERRED_PORT, &secret, &page);
+            assert_eq!(url.origin(), page.origin());
+            assert_eq!(url.path(), "/session");
+            let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+            assert_eq!(query["t"], secret);
+            // what the backend redirects to is the page asked for, to the letter
+            assert_eq!(page.join(&query["next"]).unwrap(), page);
+        }
+        assert!(health_request(38787, &secret)
+            .contains(&format!("\r\nCookie: spectrum_session_38787={secret}\r\n")));
     }
 
     #[test]
