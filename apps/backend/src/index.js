@@ -65,11 +65,20 @@ await fastify.register(multipart, {
 // Single-user, local-only: nothing off this machine (or relayed through a proxy) may use the
 // server. Every request is checked, however its path is spelt: the router decodes '/%61pi/…'
 // to an /api route. Browsers mark requests another site makes (<img>, links, forms) as
-// cross-site, which no API route accepts, since those carry no Origin header to check.
+// cross-site, and those of a page on another port of this computer as same-site, which no API
+// route accepts, since those carry no Origin header to check.
 fastify.addHook('onRequest', async (req, reply) => {
-  const crossSiteApi = req.routeOptions?.url?.startsWith('/api') && req.headers['sec-fetch-site'] === 'cross-site';
+  const crossSiteApi = req.routeOptions?.url?.startsWith('/api') && ['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']);
   if (crossSiteApi || !isLocalRequest(req)) {
     return reply.code(403).send({ ok: false, error: 'Spectrum only accepts requests from this computer.' });
+  }
+});
+
+// The app's pages draw images only from the app itself (its own files, data: and blob:), so nothing a reply, a
+// search result or a document puts on a page is fetched from elsewhere, taking the project's text with it.
+fastify.addHook('onSend', async (req, reply) => {
+  if (String(reply.getHeader('content-type')).startsWith('text/html') && !reply.hasHeader('content-security-policy')) {
+    reply.header('Content-Security-Policy', "img-src 'self' data: blob:");
   }
 });
 

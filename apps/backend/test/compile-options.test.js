@@ -15,7 +15,7 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject } = await import('../src/services/projectService.js');
-const { findExecutable, keptFileFailed, runCompile, stopCompile } = await import('../src/services/compileService.js');
+const { findExecutable, glossariesUnsafe, keptFileFailed, runCompile, runSpawn, stopCompile } = await import('../src/services/compileService.js');
 const { documentLabels, projectStats } = await import('../src/services/statsService.js');
 const { compile: compileTarget } = await import('../src/services/transferAgent/nodes/compile.js');
 const { registerSystemRoutes } = await import('../src/routes/system.js');
@@ -25,7 +25,7 @@ const WINDOWS = process.platform === 'win32';
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 const tools = {};
-for (const name of ['pdflatex', 'bibtex', 'biber', 'makeindex', 'makeglossaries', 'makeglossaries-lite', 'latexmk', 'tectonic']) tools[name] = await findExecutable(name);
+for (const name of ['pdflatex', 'bibtex', 'biber', 'makeindex', 'makeglossaries', 'makeglossaries-lite', 'xindy', 'latexmk', 'tectonic']) tools[name] = await findExecutable(name);
 const needs = (...names) => names.filter((name) => !tools[name]).map((name) => `needs ${name}`)[0] || false;
 
 const newProject = (files) => createProject({
@@ -358,6 +358,74 @@ test('makeglossaries-lite stands in for a makeglossaries that fails, and a warni
   await fs.writeFile(path.join(bin, 'makeglossaries-lite'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
   const neither = await compile(p, { texFolder: bin, fresh: true });
   assert.match(neither.log, /\[spectrum warning\] makeglossaries didn’t run, so the glossaries weren’t built/);
+});
+
+test('what a compile runs never gets a key or a token from Spectrum’s environment', async () => {
+  const env = { ...process.env, SPECTRUM_LLM_API_KEY: 'sk-test', GITHUB_TOKEN: 'ghp-test', DB_PASSWORD: 'pw', TEXINPUTS: 'kept' };
+  let out = '';
+  await runSpawn(process.execPath, ['-e', 'console.log(JSON.stringify(["SPECTRUM_LLM_API_KEY", "GITHUB_TOKEN", "DB_PASSWORD", "TEXINPUTS"].map((name) => process.env[name] ?? null)))'], tmp, (chunk) => (out += chunk), env);
+  assert.deepEqual(JSON.parse(out), [null, null, null, 'kept']);
+});
+
+test('glossary settings a command line would run are told from the ones the glossaries package writes', () => {
+  const written = [
+    '\\providecommand\\@glsorder[1]{}', '\\providecommand\\@istfilename[1]{}', '\\@istfilename{"my paper (final)".ist}', '\\@glsorder{word}',
+    '\\providecommand\\@glsmakeindexappname[1]{}', '\\@glsmakeindexappname{makeindex}', '\\providecommand\\@gls@extramakeindexopts[1]{}',
+    '\\@gls@extramakeindexopts{ -g -p 5}', '\\providecommand\\@newglossary[4]{}', '\\@newglossary{main}{glg}{gls}{glo}',
+    '\\@xdylanguage{main}{english}', '\\@gls@codepage{main}{utf8}', '\\@input{chapters/one.aux}'
+  ].join('\n');
+  assert.equal(glossariesUnsafe(written, 'my paper (final)'), false);
+  for (const line of [
+    '\\@istfilename{x$(id).ist}', '\\@istfilename{x`id`.ist}', '\\@istfilename{|id}', '\\@newglossary{main}{glg}{gls;id}{glo}',
+    '\\@xdylanguage{main}{english" & calc & "}', '\\@gls@codepage{main}{utf8>out}', '\\@glsmakeindexappname{perl}',
+    '\\@gls@extramakeindexopts{evil.pl}', '\\@gls@extramakeindexopts{-o /tmp/x}', '\\@input{|id #.aux}', '\\@input{a}b.aux}'
+  ]) assert.equal(glossariesUnsafe(`${written}\n${line}\n`, 'main'), true, line);
+  assert.equal(glossariesUnsafe(written, '$(id)'), true);
+});
+
+test('a document that writes a command into its .aux doesn’t have makeglossaries run it', { skip: WINDOWS ? 'a POSIX shell’s $( )' : needs('pdflatex', 'makeglossaries') }, async () => {
+  const marker = path.join(tmp, 'glossaries-ran');
+  const p = await newProject({
+    'main.tex': [
+      '\\documentclass{article}',
+      '\\makeatletter\\AtBeginDocument{%',
+      `  \\immediate\\write\\@auxout{\\string\\@istfilename{x\\string$(touch ${marker}).ist}}%`,
+      '  \\immediate\\write\\@auxout{\\string\\@newglossary{main}{glg}{gls}{glo}}%',
+      '  \\newwrite\\glo\\immediate\\openout\\glo=\\jobname.glo \\immediate\\write\\glo{x}\\immediate\\closeout\\glo}',
+      '\\makeatother',
+      '\\begin{document}Text\\end{document}',
+      ''
+    ].join('\n')
+  });
+  const result = await compile(p);
+  assert.ok(result.ok, result.log);
+  assert.match(result.log, /\[spectrum warning\] The glossary settings/);
+  assert.doesNotMatch(result.log, /makeglossaries version/);
+  assert.equal(existsSync(marker), false);
+});
+
+test('an xindy style the document wrote can’t write outside the build folder', { skip: process.platform !== 'darwin' ? 'the Mac’s sandbox' : needs('pdflatex', 'makeglossaries', 'xindy') }, async () => {
+  const marker = path.join(tmp, 'xindy-ran');
+  const p = await newProject({
+    'main.tex': [
+      '\\documentclass{article}',
+      '\\makeatletter\\AtBeginDocument{%',
+      ...['\\@istfilename{\\jobname.xdy}', '\\@newglossary{main}{glg}{gls}{glo}', '\\@xdylanguage{main}{english}', '\\@gls@codepage{main}{utf8}']
+        .map((line) => `  \\immediate\\write\\@auxout{${line.replace(/\\(?=@)/g, '\\string\\')}}%`),
+      '  \\newwrite\\x\\immediate\\openout\\x=\\jobname.xdy',
+      `  \\immediate\\write\\x{(ext:run-program "/usr/bin/touch" :arguments (list "${marker}"))}%`,
+      '  \\immediate\\write\\x{(define-attributes ("default"))}\\immediate\\closeout\\x',
+      '  \\immediate\\openout\\x=\\jobname.glo',
+      '  \\immediate\\write\\x{(indexentry :tkey (("a" "a")) :locref "1" :attr "default")}\\immediate\\closeout\\x}',
+      '\\makeatother',
+      '\\begin{document}Text\\end{document}',
+      ''
+    ].join('\n')
+  });
+  const result = await compile(p);
+  assert.ok(result.ok, result.log);
+  assert.match(result.log, /xindy/);
+  assert.equal(existsSync(marker), false);
 });
 
 test('a chapter naming its document with % !TEX root compiles the document', { skip: needs('pdflatex') }, async () => {

@@ -34,6 +34,10 @@ const projectsDir = path.join(tmp, 'projects');
 // uploads write templates, so never into the repo's own folder, which is only read, as the app's shipped copy
 const templateDir = path.join(tmp, 'templates');
 const shippedDir = path.join(here, '..', '..', '..', 'templates');
+// a stand-in for the built frontend, so the app's page is served as the desktop app serves it
+const frontendDist = path.join(tmp, 'dist');
+mkdirSync(frontendDist);
+writeFileSync(path.join(frontendDist, 'index.html'), '<!doctype html><title>Spectrum</title>');
 const port = 20000 + Math.floor(Math.random() * 20000);
 const base = `http://127.0.0.1:${port}`;
 const legacyId = crypto.randomUUID();
@@ -75,6 +79,7 @@ function startMockLLM() {
         }
         if (payload.model === 'denied') return reply({ error: { message: 'Incorrect API key provided: bad', code: 'invalid_api_key' } }, 401);
         if (payload.model === 'broken') return reply({ error: { message: 'boom' } }, 500);
+        if (payload.model === 'echo') return reply({ error: { message: `Incorrect API key provided: ${req.headers.authorization}` } }, 400);
         if (payload.model === 'plain' && payload.reasoning_effort !== undefined) {
           return reply({ error: { message: 'Unrecognized request argument supplied: reasoning_effort' } }, 400);
         }
@@ -135,6 +140,7 @@ async function startServer() {
       SPECTRUM_PROJECTS_DIR: projectsDir,
       SPECTRUM_TEMPLATE_DIR: templateDir,
       SPECTRUM_TEMPLATE_SEED_DIR: shippedDir,
+      SPECTRUM_FRONTEND_DIST: frontendDist,
       SPECTRUM_LLM_API_KEY: '',
       SPECTRUM_MINERU_TOKEN: '',
       SPECTRUM_ARXIV_BASE: `http://127.0.0.1:${mockPort}/arxiv`
@@ -829,7 +835,13 @@ test('refuses requests that did not come from this computer', async () => {
     }).end();
   });
   assert.equal(rebound, 403);
-  assert.equal((await api('/api/projects', { headers: { origin: 'http://localhost:5173' } })).status, 200);
+  // the app's own page, and the dev page through the Vite proxy, which names itself in X-Forwarded-Host
+  assert.equal((await api('/api/projects', { headers: { origin: base } })).status, 200);
+  assert.equal((await api('/api/projects', { headers: { origin: 'http://localhost:5173', 'x-forwarded-host': 'localhost:5173' } })).status, 200);
+  // a page of another program on this computer (a dev server, a notebook) is not the app
+  assert.equal((await api('/api/projects', { headers: { origin: 'http://localhost:5173' } })).status, 403);
+  assert.equal((await api('/api/projects', { method: 'POST', body: { name: 'From another port' }, headers: { origin: 'http://evil.localhost' } })).status, 403);
+  assert.equal((await api('/api/projects', { headers: { 'sec-fetch-site': 'same-site' } })).status, 403);
 });
 
 test('tool agent runs the tool loop and returns proposed patches', async () => {
@@ -1692,6 +1704,8 @@ test('model errors are plain sentences', async () => {
   });
   assert.equal((await chat(llmConfig('denied'))).json.reply, 'The API key was rejected. Check it in Settings › Models.');
   assert.equal((await chat(llmConfig('broken'))).json.reply, 'The model provider returned an error (HTTP 500): boom.');
+  // a provider that repeats the key: never shown, or saved with the chat
+  assert.equal((await chat({ ...llmConfig('echo'), apiKey: 'sk-test-canary' })).json.reply, 'The model provider returned an error (HTTP 400): Incorrect API key provided: Bearer [API key].');
   assert.equal((await chat({})).json.reply, 'No AI model is set up yet. Add an endpoint, model and API key in Settings › Models.');
   assert.match((await chat({ endpoint: 'http://127.0.0.1:9/v1', apiKey: 'k', model: 'm' })).json.reply, /^Couldn’t reach 127\.0\.0\.1:9\./);
 });
@@ -1719,6 +1733,27 @@ test('the local-only gate holds however the path is spelt', async () => {
   // <img src> and links from other sites carry no Origin, but browsers mark them cross-site
   assert.equal(await raw('/api/projects/import-arxiv-sse?arxivIdOrUrl=x', { 'sec-fetch-site': 'cross-site' }), 403);
   assert.equal(await raw('/api/projects', { 'sec-fetch-site': 'same-origin' }), 200);
+});
+
+test('a project’s file opened as a page can run no script on the app’s address', async () => {
+  const p = await newProject('Blob headers');
+  await writeFile(p.id, 'evil.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>fetch("/api/projects")</script></svg>');
+  await writeFile(p.id, 'page.html', '<script>fetch("/api/projects")</script>');
+  for (const [file, type] of [['evil.svg', 'image/svg+xml'], ['page.html', 'application/octet-stream']]) {
+    const res = await fetch(`${base}/api/projects/${p.id}/blob?path=${file}`);
+    assert.equal(res.headers.get('content-type'), type);
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(res.headers.get('content-security-policy'), /^sandbox;/);
+  }
+});
+
+test('the app’s pages draw images only from the app itself', async () => {
+  for (const page of ['/', '/editor/some-project']) {
+    const res = await fetch(`${base}${page}`);
+    assert.match(res.headers.get('content-type'), /^text\/html/);
+    assert.equal(res.headers.get('content-security-policy'), "img-src 'self' data: blob:");
+  }
+  assert.equal((await fetch(`${base}/api/health`)).headers.get('content-security-policy'), null);
 });
 
 test('file routes do not follow links out of the project', async () => {

@@ -76,6 +76,34 @@ const INDEXERS = [
 ];
 // each glossary's files, as the glossaries package names them in the .aux: \@newglossary{name}{log}{out}{in}
 const NEW_GLOSSARY = /\\@newglossary\{[^}]*\}\{[^}]*\}\{([^}]*)\}\{([^}]*)\}/g;
+// What makeglossaries (Perl) and makeglossaries-lite (Lua) take from the .aux and paste into a command line for the
+// shell, or open as Perl opens a name ('|program' runs it): the style file, each glossary's extensions, the sort order,
+// xindy's language and code page, makeindex's extra options, the indexer's own name and the chapters' .aux files. A
+// document writes its own .aux, so one of them (or the document's name) that a shell would read as more than a name,
+// options that aren't plain switches or an indexer that isn't one keep both from running
+const GLOSSARY_SETTING = /\\@(istfilename|newglossary|glsorder|xdylanguage|gls@codepage|gls@extramakeindexopts|glsmakeindexappname|input)(?![A-Za-z@])(.*)$/gm;
+const SHELL_READS = /[$`\\;&|<>^%\r\n]/;
+const GLOSSARY_RULES = {
+  'gls@extramakeindexopts': /^\s*(?:\[1\]\{\}|\{[\w\s-]*\})\s*$/,
+  glsmakeindexappname: /^\s*(?:\[1\]\{\}|\{(?:makeindex|upmendex|mendex)\})\s*$/,
+  input: /^\{[^{}]*\}\s*$/
+};
+export function glossariesUnsafe(aux, base) {
+  if (SHELL_READS.test(base)) return true;
+  return [...aux.matchAll(GLOSSARY_SETTING)].some(([, name, rest]) => SHELL_READS.test(rest) || GLOSSARY_RULES[name]?.test(rest) === false);
+}
+/**
+ * An index or glossary program as it runs on a Mac: able to write only the build folder (its temp files there too) and
+ * to reach no network. makeglossaries hands xindy a style file the document wrote, and xindy's styles are Lisp that
+ * can run any program, which the settings check above can't tell from a real one. ponytail: it still reads what the
+ * user can, and Windows has no such wrapper; compiling inside the agents' isolation would cover the engine too
+ */
+async function confined(tool, args, dir, env) {
+  if (process.platform !== 'darwin') return [tool, args, env];
+  const real = await fs.realpath(dir);
+  const profile = `(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (subpath ${JSON.stringify(real)}) (literal "/dev/null") (literal "/dev/tty") (literal "/dev/dtracehelper"))`;
+  return ['/usr/bin/sandbox-exec', ['-p', profile, tool, ...args], { ...env, TMPDIR: real }];
+}
 // draft mode's images, as boxes of their size (Overleaf's fast mode)
 const DRAFT_IMAGES = '\\PassOptionsToPackage{draft}{graphicx}';
 // TeX breaks its log's lines at 79 characters
@@ -250,7 +278,10 @@ const cmdEscape = (s) => s.replace(/[()\][%!^"`<>&|;, *?]/g, '^$&');
  */
 export async function runSpawn(cmd, args, cwd, pushLog, env, limit = PASS_TIMEOUT_MS[cmd] || DEFAULT_PASS_TIMEOUT_MS, input = null) {
   let file = cmd;
-  let options = { cwd, env: env || process.env, detached: true };
+  // never a key or a token of Spectrum's own environment (the .env file's, the system's): a document reads it with
+  // kpsewhich -var-value or Lua's os.getenv, and a plot's code or a filter as easily
+  const safeEnv = Object.fromEntries(Object.entries(env || process.env).filter(([name]) => !/KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i.test(name)));
+  let options = { cwd, env: safeEnv, detached: true };
   if (WINDOWS) {
     // Windows would look in cwd (the project) before PATH
     file = path.isAbsolute(cmd) ? cmd : await findExecutable(cmd);
@@ -769,9 +800,13 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
             && (changed(from) || redo || (!now.has(`${base}.${out}`) && now.get(`${base}.${from}`).length > 0)));
           if (!due) continue;
           let ran = null;
+          // a .aux that would have the glossaries' programs run something else: neither runs
+          const unsafe = input === 'glo' && glossariesUnsafe(await auxWithInputs(outDir, `${base}.aux`), base);
+          if (unsafe) pushLog(Buffer.from('\n[spectrum warning] The glossary settings in this document’s .aux file (or its name) hold characters a command line would run, so makeglossaries wasn’t run.\n'));
           // an untrusted compile's helpers are Perl and Lua (and MiKTeX's), which TeX's limits don't reach: none run
-          for (const tool of options.untrusted ? [] : [indexer, fallback].filter(Boolean)) {
-            ran = await runSpawn(tool, indexArgs(base), outDir, pushLog, texEnv).catch(() => null); // not installed
+          for (const tool of options.untrusted || unsafe ? [] : [indexer, fallback].filter(Boolean)) {
+            const [run, runArgs, runEnv] = await confined(tool, indexArgs(base), outDir, texEnv);
+            ran = await runSpawn(run, runArgs, outDir, pushLog, runEnv).catch(() => null); // not installed
             if (ran?.code === 0 || stopped()) break;
           }
           if (ran?.code !== 0 && !stopped()) {

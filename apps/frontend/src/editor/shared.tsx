@@ -1,7 +1,7 @@
 import { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
 export { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
 import { withoutComments } from '../../../backend/src/latex/text.js';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { runAgent } from '../api/client';
 import type { AgentPatch, ReferenceResult } from '../api/client';
@@ -60,12 +60,24 @@ export function relativeTime(iso: string) {
   return relativeFormat.format(-Math.floor(seconds / size), unit);
 }
 
+/**
+ * Whether a reply's image may be drawn: one carried in the reply itself. Any other address would be fetched as soon as
+ * the reply shows, so a model steered by what it read could send the project's text out in it, or call the app's own API.
+ */
+export const inlineImage = (src: unknown) => typeof src === 'string' && /^(?:data:image\/|blob:)/i.test(src);
+
 export function Markdown({ children }: { children: string }) {
   return (
     <div className="md">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        components={{ a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" /> }}
+        // react-markdown drops data: addresses unless told to keep them
+        urlTransform={(url) => (inlineImage(url) ? url : defaultUrlTransform(url))}
+        components={{
+          a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
+          // an image elsewhere is shown as a link to it, which fetches nothing until it's clicked
+          img: ({ node: _node, src, alt }) => (inlineImage(src) ? <img src={src} alt={alt} /> : <a href={src} target="_blank" rel="noreferrer">{alt || src}</a>)
+        }}
       >
         {children}
       </ReactMarkdown>
