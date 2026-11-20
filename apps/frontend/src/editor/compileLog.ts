@@ -90,14 +90,23 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
     return message;
   };
 
+  // TeX's "l.N …" a few lines on: the line it stopped on, and what it had read of it then
+  const stoppedAt = (i: number) => {
+    for (let j = i + 1; j < Math.min(i + 8, lines.length); j += 1) {
+      const m = lines[j].match(/^l\.(\d+)(?: (.*))?$/);
+      if (m) return { line: Number(m[1]), context: m[2] };
+    }
+    return null;
+  };
+
   // "==> Fatal error occurred", and "Emergency stop." once an error has been found, only repeat that error
   const aftermath = (message: string) =>
     /^\s*==> Fatal error occurred/.test(message) || (/^Emergency stop\.?\s*$/.test(message) && found.some((e) => e.severity === 'error'));
 
-  const push = (severity: CompileError['severity'], message: string, raw: string, line?: number, file?: string) => {
+  const push = (severity: CompileError['severity'], message: string, raw: string, line?: number, file?: string, context?: string) => {
     if (severity === 'warning' && earlyLine) return;
     message = message.trim();
-    if (message) found.push({ severity, message, raw, ...(line ? { line } : null), ...(file ? { file: relative(file, root) } : null) });
+    if (message) found.push({ severity, message, raw, ...(line ? { line } : null), ...(file ? { file: relative(file, root) } : null), ...(context ? { context } : null) });
   };
 
   for (let i = 0; i < lines.length; i += 1) {
@@ -144,22 +153,16 @@ export function parseCompileLog(log: string, root = ''): CompileError[] {
     if (at) {
       // TeX giving up after an error already listed (a missing .sty) says so twice more: once is enough
       if (aftermath(at[3])) continue;
-      push('error', named(at[3], i), line, Number(at[2]), at[1]);
+      const stopped = stoppedAt(i);
+      push('error', named(at[3], i), line, Number(at[2]), at[1], stopped?.line === Number(at[2]) ? stopped.context : undefined);
       continue;
     }
 
     if (line.startsWith('!')) {
       const message = line.replace(/^!+\s*/, '');
       if (aftermath(message)) continue;
-      let lineNo: number | undefined;
-      for (let j = i + 1; j < Math.min(i + 8, lines.length); j += 1) {
-        const m = lines[j].match(/^l\.(\d+)/);
-        if (m) {
-          lineNo = Number(m[1]);
-          break;
-        }
-      }
-      push('error', named(message, i), line, lineNo, texFile());
+      const stopped = stoppedAt(i);
+      push('error', named(message, i), line, stopped?.line, texFile(), stopped?.context);
       continue;
     }
 

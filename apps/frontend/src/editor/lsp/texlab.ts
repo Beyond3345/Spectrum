@@ -1,6 +1,7 @@
-import { Compartment, Prec } from '@codemirror/state';
-import type { EditorState, Extension } from '@codemirror/state';
-import { diagnosticCount, setDiagnostics } from '@codemirror/lint';
+import { Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
+import type { EditorState, Extension, Text } from '@codemirror/state';
+import { diagnosticCount, linter, setDiagnostics } from '@codemirror/lint';
+import type { Diagnostic } from '@codemirror/lint';
 import { EditorView, keymap } from '@codemirror/view';
 import { LSPClient, LSPPlugin, Workspace, hoverTooltips, jumpToDefinition, serverDiagnostics } from '@codemirror/lsp-client';
 import type { LSPClientConfig, WorkspaceFile } from '@codemirror/lsp-client';
@@ -120,7 +121,57 @@ export class ProjectWorkspace extends Workspace {
   }
 }
 
-const TEXLAB: LspServer = { name: 'TexLab', route: 'lsp', languageOf, config: { sanitizeHTML: plainOnly, extensions: [serverDiagnostics(), hoverTooltips()] } };
+const SEVERITY = { 1: 'error', 2: 'warning', 3: 'info', 4: 'hint' } as const;
+
+/** An LSP position in doc, or null past its end (marks for text that has changed since). */
+function offset(doc: Text, { line, character }: lsp.Position) {
+  if (line < 0 || line >= doc.lines) return null;
+  const at = doc.line(line + 1);
+  return Math.min(at.to, at.from + character);
+}
+
+/** A language server's marks as the open file's lint marks, mapped on to its text as it is now; source: the server. */
+export function lspMarks(diagnostics: lsp.Diagnostic[], synced: Text, mapPos: (pos: number) => number, source: string): Diagnostic[] {
+  return diagnostics.flatMap((d) => {
+    const from = offset(synced, d.range.start);
+    const to = offset(synced, d.range.end);
+    if (from == null || to == null) return [];
+    return [{ from: mapPos(from), to: mapPos(Math.max(from, to)), severity: SEVERITY[d.severity ?? 1] ?? 'error', message: d.message, source }];
+  });
+}
+
+const setMarks = StateEffect.define<Diagnostic[]>();
+// TexLab's latest marks for the open file, moved along as the text is edited until its next ones come
+const marksField = StateField.define<Diagnostic[]>({
+  create: () => [],
+  update(marks, tr) {
+    for (const effect of tr.effects) if (effect.is(setMarks)) return effect.value;
+    return tr.docChanged && marks.length ? marks.map((d) => ({ ...d, from: tr.changes.mapPos(d.from), to: tr.changes.mapPos(d.to) })) : marks;
+  }
+});
+
+/**
+ * TexLab's marks go to a lint source of their own, beside the last compile's (compileMarks.ts): put straight into
+ * @codemirror/lint, as the client's serverDiagnostics would, each would take the other's place.
+ */
+function texlabMarks(client: LSPClient, params: lsp.PublishDiagnosticsParams) {
+  const file = client.workspace.getFile(params.uri);
+  const view = file?.getView();
+  const plugin = view && LSPPlugin.get(view);
+  if (!file || !view || !plugin || (params.version != null && params.version !== file.version)) return true;
+  view.dispatch({ effects: setMarks.of(lspMarks(params.diagnostics, plugin.syncedDoc, (pos) => plugin.unsyncedChanges.mapPos(pos), 'TexLab')) });
+  return true;
+}
+const texlabLint = [marksField, linter((view) => view.state.field(marksField), { needsRefresh: (update) => update.transactions.some((tr) => tr.effects.some((e) => e.is(setMarks))) })];
+
+// serverDiagnostics for its sending of edits half a second after typing; the client's own handlers come before its
+// extensions', so the marks go through texlabMarks
+const TEXLAB: LspServer = {
+  name: 'TexLab',
+  route: 'lsp',
+  languageOf,
+  config: { sanitizeHTML: plainOnly, notificationHandlers: { 'textDocument/publishDiagnostics': texlabMarks }, extensions: [serverDiagnostics(), hoverTooltips(), texlabLint] }
+};
 
 /**
  * One project's line to its TexLab (or another server), from the editor's first look until close(). The backend's event stream says

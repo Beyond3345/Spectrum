@@ -824,10 +824,10 @@ function Editor({ projectId }: { projectId: string }) {
     showText('', [0, 0]);
   };
 
-  /** The last compile's Typst errors and warnings underlined in the open .typ file, until the next compile. */
+  /** The last compile's errors and warnings underlined in the open .typ or .tex file, until the next compile. */
   const markCompileErrors = () => {
     const view = viewRef.current;
-    if (!view || docKind(activeRef.current) !== 'typst') return;
+    if (!view) return;
     view.dispatch({ effects: setCompileMarks.of(compileMarks(compileErrorsRef.current, activeRef.current, view.state.doc)) });
   };
 
@@ -840,6 +840,8 @@ function Editor({ projectId }: { projectId: string }) {
     // a .typ file's marks come from lint sources, Tinymist's among them, and go with their source
     const clear = texlabRef.current?.available || docKind(path) === 'typst' ? null : clearMarks(view.state);
     if (clear) view.dispatch(clear);
+    // and the compile's, cleared with them, come back
+    if (clear) markCompileErrors();
   };
 
   const openFile = async (path: string) => {
@@ -2037,8 +2039,9 @@ function Editor({ projectId }: { projectId: string }) {
   /** A panel's top-bar button: opens it, or closes it when it's open. */
   const togglePanel = (next: Panel) => (panel === next ? setPanel(null) : openPanel(next));
 
+  // Tools on its own opens on Logs while the last compile has errors
   const openTools = (tab?: ToolsTab) => {
-    if (tab) setToolsTab(tab);
+    if (tab || compileErrorsRef.current.some((e) => e.severity === 'error')) setToolsTab(tab ?? 'logs');
     openPanel('tools');
   };
 

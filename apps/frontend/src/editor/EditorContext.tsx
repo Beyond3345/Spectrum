@@ -22,6 +22,8 @@ export interface CompileError {
   line?: number;
   /** from 0, in characters: Typst's only */
   column?: number;
+  /** TeX's only: what it had read of the line when it stopped (its "l.N …" line), the command at fault last */
+  context?: string;
   file?: string;
   raw?: string;
 }

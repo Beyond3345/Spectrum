@@ -8,7 +8,7 @@ import type { EditorView } from '@codemirror/view';
 import { LSPPlugin, formatDocument, hoverTooltips, serverCompletionSource, serverDiagnostics, signatureHelp } from '@codemirror/lsp-client';
 import type { LSPClient } from '@codemirror/lsp-client';
 import type * as lsp from 'vscode-languageserver-protocol';
-import { Texlab } from './texlab';
+import { Texlab, lspMarks as serverMarks } from './texlab';
 import type { TexlabHost } from './texlab';
 
 // The editor's side of the project's Tinymist (the backend's tinymist route), on TexLab's kind of line: completion,
@@ -21,7 +21,6 @@ import type { TexlabHost } from './texlab';
 export type TypstWords = { main: string; words: number; chars: number; cjkChars: number };
 
 const SOURCE = 'Tinymist';
-const SEVERITY = { 1: 'error', 2: 'warning', 3: 'info', 4: 'hint' } as const;
 
 const setMarks = StateEffect.define<Diagnostic[]>();
 // Tinymist's latest marks for the open file, moved along as the text is edited until its next ones come
@@ -33,22 +32,8 @@ const marksField = StateField.define<Diagnostic[]>({
   }
 });
 
-/** An LSP position in doc, or null past its end (marks for text that has changed since). */
-function offset(doc: Text, { line, character }: lsp.Position) {
-  if (line < 0 || line >= doc.lines) return null;
-  const at = doc.line(line + 1);
-  return Math.min(at.to, at.from + character);
-}
-
 /** Tinymist's marks as the open file's lint marks, mapped on to its text as it is now. */
-export function lspMarks(diagnostics: lsp.Diagnostic[], synced: Text, mapPos: (pos: number) => number): Diagnostic[] {
-  return diagnostics.flatMap((d) => {
-    const from = offset(synced, d.range.start);
-    const to = offset(synced, d.range.end);
-    if (from == null || to == null) return [];
-    return [{ from: mapPos(from), to: mapPos(Math.max(from, to)), severity: SEVERITY[d.severity ?? 1] ?? 'error', message: d.message, source: SOURCE }];
-  });
-}
+export const lspMarks = (diagnostics: lsp.Diagnostic[], synced: Text, mapPos: (pos: number) => number) => serverMarks(diagnostics, synced, mapPos, SOURCE);
 
 /**
  * The marks to show where Tinymist checks the file: its own only, as it compiles what the syntax check and the last
