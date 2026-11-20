@@ -1,7 +1,8 @@
 // The user's own MCP servers, for the Spectrum agent: a program the user typed (stdio), added off and started only
 // when the user checks it in Settings › Agents or a turn of the agent needs it while it is on. It runs inside the
-// agents' isolation (its own home and an empty folder, never the project; HTTPS out as a local agent has), and is
-// stopped after a few minutes unused. Its tools reach the model as server__tool, their answers marked as material
+// agents' isolation (its own home and an empty folder, never the project) and reaches only the hosts the user listed
+// for it, through the gate (agentNetwork.js), or any public HTTPS host when the user chose that; a host it asked for
+// and was refused is kept to show beside it. It is stopped after a few minutes unused. Its tools reach the model as server__tool, their answers marked as material
 // (the tool loop's untrusted()); a tool the server does not mark read-only asks the user first (agentService.js). The
 // list of tools is pinned when the user checks it: a server whose tools change gives none until it is checked again.
 import crypto from 'node:crypto';
@@ -13,31 +14,45 @@ import { APP_VERSION, DATA_DIR } from '../config/constants.js';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 import { httpError } from './projectService.js';
 import { killAgentProcess, spawnAgentProcess } from './agentSandbox.js';
+import { cleanHost, cleanHosts, hostAllowed } from './agentNetwork.js';
 
 const FILE = path.join(DATA_DIR, 'mcp-servers.json');
 const NAME = /^[a-z0-9-]{1,24}$/;
 const IDLE_MS = 5 * 60 * 1000;
 const CALL_MS = 60 * 1000;
 
-/** The servers: [{ name, command, args, on, tools? (the pinned hash) }]. */
+/** The servers: [{ name, command, args, on, tools? (the pinned hash), hosts (the ones it may reach), anyHost? }]. */
 export async function listServers() {
   const data = await readJson(FILE).catch(() => null);
-  return (Array.isArray(data?.servers) ? data.servers : []).filter((s) => NAME.test(s?.name) && typeof s.command === 'string' && Array.isArray(s.args));
+  return (Array.isArray(data?.servers) ? data.servers : []).filter((s) => NAME.test(s?.name) && typeof s.command === 'string' && Array.isArray(s.args)).map((s) => ({ ...s, hosts: cleanHosts(s.hosts) }));
 }
 const save = (servers) => writeJsonAtomic(FILE, { servers });
 
-/** Adds a server, off: name, and the command line as the program and its arguments. */
-export async function addServer({ name, command, args = [] } = {}) {
+/** The hosts as the user gave them, or the one that is no host name refused. */
+function hostList(hosts) {
+  if (!Array.isArray(hosts) || hosts.length > 100) throw httpError('The hosts are a list of up to 100 names.', 400);
+  const bad = hosts.find((h) => !cleanHost(h));
+  if (bad !== undefined) throw httpError(`“${String(bad).slice(0, 80)}” is not a host name. Give a name such as api.example.com, or *.example.com for every host below one.`, 400);
+  return cleanHosts(hosts);
+}
+// name → the hosts it asked for and was refused, since Spectrum started
+const refused = new Map();
+/** The hosts a server was refused that its list still leaves out: what Settings offers to allow. */
+export const refusedHosts = (server) => (server.anyHost ? [] : [...refused.get(server.name) || []].filter((host) => !hostAllowed(host, server.hosts)));
+
+/** Adds a server, off: name, the command line as the program and its arguments, and the hosts it may reach (none unless given). */
+export async function addServer({ name, command, args = [], hosts = [], anyHost = false } = {}) {
   if (typeof name !== 'string' || !NAME.test(name)) throw httpError('A name is up to 24 lower-case letters, digits and hyphens.', 400);
   if (typeof command !== 'string' || !command.trim() || command.length > 1000) throw httpError('Give the command that starts the server.', 400);
   if (!Array.isArray(args) || args.length > 50 || !args.every((a) => typeof a === 'string' && a.length <= 1000)) throw httpError('The arguments are a list of up to 50 words.', 400);
   const servers = await listServers();
   if (servers.some((s) => s.name === name)) throw httpError(`There is a server named “${name}” already.`, 409);
-  await save([...servers, { name, command: command.trim(), args, on: false }]);
+  await save([...servers, { name, command: command.trim(), args, on: false, hosts: hostList(hosts), ...(anyHost === true && { anyHost: true }) }]);
 }
 
 export async function removeServer(name) {
   stop(name);
+  refused.delete(name);
   await save((await listServers()).filter((s) => s.name !== name));
 }
 
@@ -49,6 +64,17 @@ export async function setServerOn(name, on) {
   if (on && !server.tools) throw httpError('Check the server first, to see its tools.', 400);
   if (!on) stop(name);
   await save(servers.map((s) => (s.name === name ? { ...s, on: on === true } : s)));
+}
+
+/** Where a server may connect: its hosts, or any host. A running one hears a changed list at its next connection; any host, or back to a list, starts it again. */
+export async function setServerNetwork(name, { hosts, anyHost } = {}) {
+  const servers = await listServers();
+  const server = servers.find((s) => s.name === name);
+  if (!server) throw httpError('No such server.', 404);
+  const { anyHost: was, ...rest } = server;
+  const any = anyHost === undefined ? !!was : anyHost === true;
+  if (any !== !!was) stop(name);
+  await save(servers.map((s) => (s === server ? { ...rest, hosts: hosts === undefined ? server.hosts : hostList(hosts), ...(any && { anyHost: true }) } : s)));
 }
 
 // ── Running them ──
@@ -90,7 +116,14 @@ async function started(server) {
     // a script or folder the command line names is read where it is (the folder that holds it, read-only)
     const named = [];
     for (const arg of server.args) if (path.isAbsolute(arg) && (await fs.stat(arg).catch(() => null))) named.push(path.dirname(arg));
-    const child = await spawnAgentProcess({ command: server.command, args: server.args, workspace: path.join(dir, 'work'), home: path.join(dir, 'home'), runtimePaths: [...new Set(named)] });
+    const child = await spawnAgentProcess({
+      command: server.command, args: server.args, workspace: path.join(dir, 'work'), home: path.join(dir, 'home'), runtimePaths: [...new Set(named)],
+      // its own list, as it is at each connection
+      ...(!server.anyHost && {
+        hosts: async () => (await listServers()).find((s) => s.name === server.name)?.hosts || [],
+        onRefused: (host) => refused.set(server.name, (refused.get(server.name) || new Set()).add(host))
+      })
+    });
     let error = '';
     child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-2000); });
     const client = new Client({ name: 'spectrum', version: APP_VERSION });
@@ -146,10 +179,18 @@ export async function serverTools() {
           readOnly: t.annotations?.readOnlyHint === true,
           mcp: { server: server.name, tool: t.name },
           run: async (ctx, input) => {
-            const result = await (await started(server)).callTool({ name: t.name, arguments: input }, undefined, { timeout: CALL_MS, signal: ctx.signal });
+            const before = new Set(refused.get(server.name));
+            // what the call was refused, said with its answer so the user hears why it came up short
+            const told = () => {
+              const hosts = [...refused.get(server.name) || []].filter((host) => !before.has(host));
+              return hosts.length ? `\n[Spectrum’s isolation refused “${server.name}” the host${hosts.length > 1 ? 's' : ''} ${hosts.join(', ')}. The user can allow ${hosts.length > 1 ? 'them' : 'it'} for this server in Settings › Agents › MCP servers.]` : '';
+            };
+            let result;
+            try { result = await (await started(server)).callTool({ name: t.name, arguments: input }, undefined, { timeout: CALL_MS, signal: ctx.signal }); }
+            catch (err) { throw new Error(err.message + told()); }
             const text = (result.content || []).map((c) => (c.type === 'text' ? c.text : `[${c.type}]`)).join('\n');
-            if (result.isError) throw new Error(text || 'The tool failed.');
-            return text;
+            if (result.isError) throw new Error((text || 'The tool failed.') + told());
+            return text + told();
           }
         });
       }

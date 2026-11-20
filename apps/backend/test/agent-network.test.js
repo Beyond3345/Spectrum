@@ -17,10 +17,12 @@ Object.assign(process.env, { SPECTRUM_DATA_DIR: path.join(tmp, 'data'), SPECTRUM
 const { cleanHost, cleanHosts, helloName, hostAllowed, nameStandIn, openGate, thisComputer, SCHOLARLY_HOSTS } = await import('../src/services/agentNetwork.js');
 const { sandboxProfile, spawnAgentProcess } = await import('../src/services/agentSandbox.js');
 const { PROFILES, agentConfigs, agentEntry, allowAgentHost, agentHome, launchOptions, networkOf, profileFor, recordTest, saveAgentConfig } = await import('../src/services/agentProfiles.js');
+const servers = await import('../src/services/mcpServers.js');
 const fixtures = fileURLToPath(new URL('./fixtures/', import.meta.url));
 after(async () => {
   const { shutdownAgents } = await import('../src/services/agentSessionService.js');
   await shutdownAgents();
+  servers.stopServers();
   rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -290,4 +292,59 @@ test('a session’s agent held to its list: Spectrum’s tools reach the scholar
     assert.match(JSON.stringify(entries.filter((q) => q.method === 'session/prompt').at(-1).params.prompt), /The user now allows you to reach unlisted\.test/);
     assert.equal(asked.at(-1), 'unlisted.test/');
   } finally { await standIn.close(); }
+});
+
+// a stdio MCP server by hand, with one tool that asks a host for a page
+const MCP = `import https from 'node:https';
+import readline from 'node:readline';
+readline.createInterface({ input: process.stdin }).on('line', async (line) => {
+  const m = JSON.parse(line);
+  if (m.id === undefined) return;
+  const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) + '\\n');
+  if (m.method === 'initialize') return reply({ protocolVersion: m.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'web', version: '1' } });
+  if (m.method === 'tools/list') return reply({ tools: [{ name: 'page', description: 'Asks a host for a page', inputSchema: { type: 'object', properties: { host: { type: 'string' } } }, annotations: { readOnlyHint: true } }] });
+  const said = await new Promise((resolve) => https.get('https://' + m.params.arguments.host + '/', { rejectUnauthorized: false }, (res) => { res.resume(); resolve('status ' + res.statusCode); }).on('error', (err) => resolve('no answer')));
+  reply({ content: [{ type: 'text', text: said }] });
+});
+`;
+
+test('an MCP server has its own hosts: none until given, checked as typed, kept with the server', async () => {
+  await assert.rejects(servers.addServer({ name: 'bad', command: 'node', hosts: ['ok.example.com', '10.0.0.1'] }), /“10\.0\.0\.1” is not a host name/);
+  await servers.addServer({ name: 'plain', command: 'node', args: ['x.mjs'] });
+  await servers.addServer({ name: 'open', command: 'node', anyHost: true, hosts: ['Kept.Example.com'] });
+  const of = async (name) => (await servers.listServers()).find((s) => s.name === name);
+  assert.deepEqual((await of('plain')).hosts, []);
+  assert.equal((await of('plain')).anyHost, undefined);
+  assert.deepEqual([(await of('open')).anyHost, (await of('open')).hosts], [true, ['kept.example.com']]);
+  await servers.setServerNetwork('plain', { hosts: ['registry.npmjs.org'] });
+  assert.deepEqual((await of('plain')).hosts, ['registry.npmjs.org']);
+  await servers.setServerNetwork('open', { anyHost: false });
+  assert.deepEqual([(await of('open')).anyHost, (await of('open')).hosts], [undefined, ['kept.example.com']]);
+  await assert.rejects(servers.setServerNetwork('plain', { hosts: 'registry.npmjs.org' }), /list of up to 100/);
+  await assert.rejects(servers.setServerNetwork('nobody', { hosts: [] }), /No such server/);
+  for (const name of ['plain', 'open']) await servers.removeServer(name);
+});
+
+test('an MCP server reaches only its own hosts: a refused one is told with the answer and kept to offer, and works once listed', { skip, timeout: 60000 }, async () => {
+  const file = path.join(tmp, 'mcp-fixture', 'server.mjs');
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, MCP);
+  const standIn = await standIns(['pages.test'], path.join(tmp, 'mcp-stand-in.pem'));
+  try {
+    await servers.addServer({ name: 'web', command: process.execPath, args: [file] });
+    await servers.checkServer('web');
+    await servers.setServerOn('web', true);
+    const page = async () => (await servers.serverTools()).tools.find((t) => t.name === 'web__page').run({}, { host: 'pages.test' });
+    const web = async () => (await servers.listServers()).find((s) => s.name === 'web');
+    const first = await page();
+    assert.match(first, /^no answer\n\[Spectrum’s isolation refused “web” the host pages\.test\. The user can allow it for this server in Settings › Agents › MCP servers\.\]$/);
+    assert.deepEqual(servers.refusedHosts(await web()), ['pages.test']);
+    // listed: the running server reaches it, and it is no longer offered
+    await servers.setServerNetwork('web', { hosts: ['pages.test'] });
+    assert.equal(await page(), 'status 200');
+    assert.deepEqual(servers.refusedHosts(await web()), []);
+    // any host: the profile every server had before, which reaches no stand-in on this computer and asks no gate
+    await servers.setServerNetwork('web', { anyHost: true, hosts: [] });
+    assert.deepEqual(servers.refusedHosts(await web()), []);
+  } finally { await servers.removeServer('web'); await standIn.close(); }
 });
