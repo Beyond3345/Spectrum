@@ -269,6 +269,16 @@ Tinymist has Typst 0.15.1 inside it. In a project on that version, its errors ta
 
 Without Tinymist, completion after `#` lists the project's own `#let` functions, and `⌘`-click on a quoted path opens that file. For Typst the outline follows `#include` to any depth, numbers the headings and figures as the last compile printed them, and keeps the whole document when a chapter is open.
 
+### Typing, maths and figures
+
+Return after an `\item` starts the next item, and Return on an empty item ends the list. Typst lists work the same way. Typing `$`, `\(`, `\[` or `\left(` adds its closer, and Backspace in an empty pair removes both. Both switches are in Settings › Editor › Typing.
+
+In LaTeX and Markdown, the equation the cursor is in is drawn under it. Your own `\newcommand`, `\def` and `\DeclareMathOperator` commands are used. A command KaTeX does not know, or one with an optional argument, shows a short note instead of a picture. Esc hides it. The switch is Show the maths at the cursor in Settings › Editor.
+
+`⌥⌘P` (`Alt+Shift+P` on Windows), or Preview this figure in the right-click menu, compiles the tikzpicture, table, figure or equation the cursor is in, or the selection, on its own with the document's preamble. It appears in a panel under the source and compiles again a second after each change. Nothing is written into the project. The compile is always confined, so a piece that needs shell escape, such as `minted`, does not preview.
+
+Settings › Snippets holds your own snippets: each has a name, a trigger, the kinds of file it works in and its text. `${1:text}`, `${2}` and `${0}` mark where Tab goes. Type the trigger and press Tab, or pick the snippet from Insert (+). Snippets follow you to your other computers with your settings.
+
 ### Markdown
 
 Label a figure `![Caption](plot.png){#fig:plot}`, a table at the end of its `Table:` line `{#tbl:use}`, an equation `$$ Q = vA $$ {#eq:flow}` and a heading `# Method {#sec:method}`, then refer to them as `@fig:plot` ("Figure 1"), `[@fig:a; @fig:b]` ("Figures 1 and 2") or `[-@eq:flow]` (the number alone). Sections are referred to by number with `numbersections: true`, else by title.

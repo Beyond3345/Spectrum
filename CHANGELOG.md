@@ -15,6 +15,11 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
 - Go to a file or heading (⌘P) opens a project file or an Outline heading by its name
 - Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
+- The maths at the cursor is drawn under it in LaTeX and Markdown, with the document's own `\newcommand`s
+- Preview this figure (⌥⌘P): the tikzpicture, table, figure or equation at the cursor compiled on its own with the document's preamble
+- Your own snippets in Settings › Snippets: a trigger then Tab, or from Insert (+)
+- Return after an `\item` continues the list, and on an empty item ends it, in Typst lists too
+- `$`, `\(`, `\[` and `\left(` bring their closers in LaTeX (`$` in Typst), and Backspace in an empty pair removes both
 - The projects page says when a newer Spectrum is out, asking the release page at most once a day and sending nothing about you. A switch in Settings › System turns it off
 - Vim or Emacs keys in the source editor, in Settings › Editor
 - Agents you run yourself, such as Claude Code, Codex or Cursor, can use a project's Spectrum tools once you turn on Use from another agent in the Local agents bar. The secret is new each time and ends when Spectrum quits
