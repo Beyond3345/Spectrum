@@ -1763,6 +1763,26 @@ export function addReference(payload: { projectId: string; candidateId: string; 
   );
 }
 
+/** A .bib entry against the record its DOI, arXiv id or title finds (Review’s References exist), and where it was read. */
+export interface ReferenceCheckRow {
+  key: string;
+  file: string;
+  line: number;
+  title: string;
+  status: 'found' | 'differs' | 'not-found' | 'retracted' | 'unchecked';
+  /** where the record was read, a page to open */
+  read?: { from: string; url: string };
+  record?: { title: string; authors: string[]; year: string; doi?: string; venue?: string };
+  differences?: { field: string; bib: string; record: string }[];
+  retraction?: { label: string; date?: string; notice?: string; url: string; from: string };
+  notices?: { label: string; date?: string; notice?: string; url: string }[];
+  note?: string;
+}
+
+export function checkReferences(projectId: string, keys?: string[], signal?: AbortSignal) {
+  return request<{ ok: boolean; rows: ReferenceCheckRow[]; bibFiles: string[] }>('/api/references/check', { ...json('POST', { projectId, keys }), signal });
+}
+
 // ─── Zotero (its local API and Better BibTeX, through the backend) ───
 
 export interface ZoteroStatus {

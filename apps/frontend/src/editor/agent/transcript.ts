@@ -293,6 +293,7 @@ const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
   literature_search: ['search', 'Search the literature', 'Search the literature for'],
   arxiv_bibtex: ['fetch', 'Get BibTeX from arXiv', 'Get BibTeX for'],
   fetch_bibtex: ['fetch', 'Get BibTeX', 'Get BibTeX for'],
+  check_references: ['search', 'Check the references against their sources'],
   load_skill: ['read', 'Load a skill', 'Load the skill'],
   read_skill_file: ['read', 'Read a skill’s file', 'Read the skill file'],
   list_todos: ['read', 'List the to-dos'],
