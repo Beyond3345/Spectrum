@@ -338,10 +338,13 @@ function preview(session, doc) {
   if (session.preview?.doc === doc) return session.preview.ready;
   stopPreview(session);
   const task = `spectrum-${++session.tasks}`;
-  const view = { doc, task, ws: null, idle: null };
+  // live: shown in the Live view, so it doesn't stop when jumps pause
+  const view = { doc, task, ws: null, idle: null, url: '', live: false };
   view.ready = (async () => {
     const args = ['--task-id', task, '--data-plane-host=127.0.0.1:0', '--control-plane-host=127.0.0.1:0', '--invert-colors=never', '--no-open', file];
     const { dataPlanePort, staticServerPort } = await command(session, 'tinymist.doStartPreview', [args]);
+    // its own page, which the Live view shows: the editors' text laid out as it is typed
+    view.url = `http://127.0.0.1:${staticServerPort}/`;
     const ws = new WebSocket(`ws://127.0.0.1:${dataPlanePort}/`, { headers: { Origin: `http://127.0.0.1:${staticServerPort}` } });
     ws.binaryType = 'arraybuffer';
     view.ws = ws;
@@ -386,8 +389,7 @@ function jump(projectId, doc, key, ask) {
     // one at a time, as an answer doesn't say which ask it was for
     return session.jumps(async () => {
       const view = await preview(session, doc);
-      clearTimeout(view.idle);
-      view.idle = setTimeout(() => session.preview === view && stopPreview(session), PREVIEW_IDLE_MS).unref();
+      keepPreview(session, view);
       let timer;
       const answered = new Promise((resolve) => {
         session[key] = resolve;
@@ -401,6 +403,28 @@ function jump(projectId, doc, key, ask) {
         session[key] = null;
       }
     });
+  });
+}
+
+/** The preview stops PREVIEW_IDLE_MS after its last use, unless the Live view shows it. */
+function keepPreview(session, view) {
+  clearTimeout(view.idle);
+  if (!view.live) view.idle = setTimeout(() => session.preview === view && stopPreview(session), PREVIEW_IDLE_MS).unref();
+}
+
+/**
+ * The Live view of doc (a project path): on, the address of Tinymist's preview page, which lays out the editors' text as
+ * it is typed; off, the preview goes back to stopping when the jumps pause. { url } or null without Tinymist.
+ */
+export async function livePreview(projectId, doc, on) {
+  const session = await tinymistSession(projectId);
+  if (!session) return null;
+  scheduleIdle(session);
+  return session.jumps(async () => {
+    const view = await preview(session, doc);
+    view.live = !!on;
+    keepPreview(session, view);
+    return { url: view.url };
   });
 }
 

@@ -49,6 +49,7 @@ import {
   downloadDictionary,
   synctexEdit,
   synctexView,
+  tinymistLive,
   tinymistPdf,
   tinymistSource,
   searchZotero,
@@ -601,6 +602,8 @@ function Editor({ projectId }: { projectId: string }) {
   /** the project's Tinymist for .typ files, once downloaded, and whether it's answering (editor/lsp/tinymist.ts) */
   const tinymistRef = useRef<Tinymist | null>(null);
   const [tinymistOn, setTinymistOn] = useState(false);
+  // the Live view: Tinymist's preview page of a Typst document in place of its PDF, laid out as it is typed
+  const [live, setLive] = useState<{ doc: string; url: string } | null>(null);
   /** ⇧F12's list: where what's at the cursor is used */
   const [references, setReferences] = useState<Reference[] | null>(null);
   /** the outline TexLab gives for a document: its root, the headings and floats, and the files it read */
@@ -2956,6 +2959,27 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
+  // the Live view goes with its document, or with Tinymist; the preview then stops when its jumps pause
+  const liveShown = !!live && live.doc === shownDoc && tinymistOn;
+  useEffect(() => {
+    if (!live || liveShown) return;
+    setLive(null);
+    tinymistLive(projectId, live.doc, false).catch(() => undefined);
+  }, [live, liveShown]);
+  const toggleLive = async () => {
+    if (live) {
+      setLive(null);
+      tinymistLive(projectId, live.doc, false).catch(() => undefined);
+      return;
+    }
+    try {
+      const { url } = await tinymistLive(projectId, shownDoc, true);
+      setLive({ doc: shownDoc, url });
+    } catch (err) {
+      notify(`Couldn’t start the live view: ${errorText(err)}`, 'error');
+    }
+  };
+
   // autosave 1.5 s after the last keystroke
   useEffect(() => {
     if (!dirty) return;
@@ -3877,6 +3901,11 @@ function Editor({ projectId }: { projectId: string }) {
                     onSelect: () => setZoom(z)
                   }))}
                 />
+                {/\.typ$/i.test(shownDoc) && tinymistOn && tinymistRef.current?.exact() && (
+                  <button className={`btn small ${liveShown ? 'primary' : 'ghost'}`} title="Show the document as you type it, laid out by Tinymist" aria-pressed={liveShown} onClick={() => void toggleLive()}>
+                    Live
+                  </button>
+                )}
                 {/\.typ$/i.test(shownDoc) ? (
                   <MenuButton
                     icon="arrow.down.to.line"
@@ -3938,7 +3967,9 @@ function Editor({ projectId }: { projectId: string }) {
                     onHeading={(file, line) => showHeading(file, line).catch(() => undefined)}
                   />
                 )}
-                {pdf ? (
+                {liveShown ? (
+                  <iframe className="typst-live" title={`Live view of ${nameOf(shownDoc)}`} src={live!.url} />
+                ) : pdf ? (
                   <PdfPreview
                     ref={pdfRef}
                     url={pdf.url}
@@ -4005,7 +4036,7 @@ function Editor({ projectId }: { projectId: string }) {
                   />
                 )}
 
-                {pdf && (
+                {pdf && !liveShown && (
                   <div className="pdf-pill">
                     {pdfSwitcher}
                     <button

@@ -978,6 +978,11 @@ export function tinymistPdf(projectId: string, at: { file: string; line: number;
   return request<({ ok: true } & PdfPoint) | { ok: false }>(`/api/projects/${projectId}/tinymist/pdf`, json('POST', { ...at, doc }));
 }
 
+/** The Live view of a Typst document: the address of Tinymist's preview page, kept running while on. */
+export function tinymistLive(projectId: string, doc: string, on: boolean) {
+  return request<{ ok: true; url: string }>(`/api/projects/${projectId}/tinymist/live`, json('POST', { doc, on }));
+}
+
 // ─── Review ───
 
 /** When doc's PDF and the newest file it reads were written (ms; null: none), and with bib the project's .bib entries. */
