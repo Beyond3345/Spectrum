@@ -956,7 +956,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
     r.forceNew = true;
   }
   state(r, 'running');
-  let outcome, unreached = false;
+  let outcome, sent = false, unreached = false;
   const task = (async () => {
     // kept from the start, should Spectrum close, Stop be pressed or the agent fail to start
     const asked = emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
@@ -991,6 +991,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       const notes = r.notes.length && `Since your last turn:\n${r.notes.map((note) => `- ${note}`).join('\n')}`;
       const handoff = earlier && `Previous conversation (a new agent session was required):\n${earlier}`;
       const text = [persona, intro, notes, handoff, prompt].filter(Boolean).join('\n\n');
+      sent = true;
       const result = await timeout(r.peer.request('session/prompt', { sessionId: r.remoteId, prompt: [{ type: 'text', text }, ...contextBlocks(r, context)] }), 30 * 60 * 1000, 'The agent task exceeded 30 minutes.', r.connectionAbort.signal);
       // told once the prompt is through: a failed one, or a session whose first prompt never landed, tells them again
       r.notes = [];
@@ -1005,7 +1006,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       // an agent that stopped by itself is told of by its exit, with its last words: wait a moment for that, so the
       // protocol's own word for a closed pipe doesn't take its place
       const child = r.child;
-      unreached = child?.gateAsked?.() === 0;
+      // one that never got its task, or wants a sign-in, asked for no host for that reason, which its own message covers
+      unreached = sent && err.code !== -32000 && child?.gateAsked?.() === 0;
       if (!r.cancelled && child?.pid && child.exitCode === null && child.signalCode === null) await timeout(new Promise((resolve) => child.once('exit', resolve)), 500, 'still running').catch(() => {});
       const told = r.status === 'failed' && child && (child.exitCode !== null || child.signalCode !== null);
       // ACP's "authentication required": the agent has no key or login inside isolation, which its own words don't say how to give
