@@ -3585,8 +3585,8 @@ function Editor({ projectId }: { projectId: string }) {
               <button className="icon-btn float-button hue-green" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
                 <Icon name="pencil" />
               </button>
-              {/* aria-disabled rather than disabled, so its tooltip still says why */}
-              <button
+              {/* aria-disabled rather than disabled, so its tooltip still says why; not in Markdown, which never has it */}
+              {(docKind(activePath) ?? docKind(mainFile)) !== 'markdown' && <button
                 className="icon-btn float-button hue-pink"
                 title={jyutpingOk ? 'Jyutping' : 'Jyutping works in LaTeX documents only'}
                 aria-label="Jyutping"
@@ -3594,7 +3594,7 @@ function Editor({ projectId }: { projectId: string }) {
                 onClick={() => void openJyutping()}
               >
                 <Icon name="custom.jyut" />
-              </button>
+              </button>}
               <span className="spacer" />
               <button className={`icon-btn hue-purple ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
                 <Icon name="sparkles" />
