@@ -22,6 +22,8 @@ import { registerAgentRoutes } from './routes/agent.js';
 import { registerAgentSessionRoutes } from './routes/agentSessions.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { registerOutsideToolRoutes } from './routes/outsideTools.js';
+import { registerMcpServerRoutes } from './routes/mcpServers.js';
+import { stopServers } from './services/mcpServers.js';
 import { shutdownAgents } from './services/agentSessionService.js';
 import { clearStaleRuns, shutdownRuns } from './services/agentRunService.js';
 import { registerTransferRoutes } from './routes/transfer.js';
@@ -146,6 +148,7 @@ registerAgentRoutes(fastify);
 registerAgentSessionRoutes(fastify);
 registerSkillRoutes(fastify);
 registerOutsideToolRoutes(fastify);
+registerMcpServerRoutes(fastify);
 registerTransferRoutes(fastify);
 registerConvertRoutes(fastify);
 registerSearchRoutes(fastify);
@@ -209,6 +212,7 @@ async function quit() {
   // the backups still waiting are committed, and pushed at the next start
   await Promise.race([commitWaiting(), new Promise((resolve) => setTimeout(resolve, 3000))]);
   shutdownRuns();
+  stopServers();
   await shutdownAgents();
   await stopTexlab();
   await stopTinymist();

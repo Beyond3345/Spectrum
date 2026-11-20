@@ -473,8 +473,9 @@ export function serveTools(server, ctx, names = null) {
 }
 
 /** A tool as a model's request lists it: an OpenAI-style function with the schema as JSON Schema. */
-export function toolSpec({ name, description, schema }) {
-  const { properties = {}, required = [] } = z.toJSONSchema(z.object(schema));
+export function toolSpec({ name, description, schema, jsonSchema }) {
+  // a user's MCP server's tool brings its schema as JSON Schema already
+  const { properties = {}, required = [] } = jsonSchema && typeof jsonSchema === 'object' ? jsonSchema : z.toJSONSchema(z.object(schema));
   // as written by hand before: no bounds a model never needs, and nothing some providers' checkers refuse
   const plain = (node) => (Array.isArray(node) ? node.map(plain) : node && typeof node === 'object'
     ? Object.fromEntries(Object.entries(node).filter(([key, value]) => !['$schema', 'additionalProperties'].includes(key) && !(['minimum', 'maximum'].includes(key) && Math.abs(value) > 1e9)).map(([key, value]) => [key, plain(value)]))
@@ -484,6 +485,11 @@ export function toolSpec({ name, description, schema }) {
 
 /** A tool's input checked against its schema; throws with what is wrong, in words a model can act on. */
 export function checkedInput(tool, input) {
+  // an MCP server checks its own tools' input
+  if (tool.jsonSchema) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(`Invalid input for ${tool.name}: give an object.`);
+    return input;
+  }
   const parsed = z.object(tool.schema).safeParse(input ?? {});
   if (parsed.success) return parsed.data;
   throw new Error(`Invalid input for ${tool.name}: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'input'}: ${issue.message}`).join('; ')}`);
