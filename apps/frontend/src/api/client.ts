@@ -1693,6 +1693,26 @@ export function addResearchResults(projectId: string, id: string, payload: { res
 export const researchNote = (projectId: string, id: string, resultId: string) =>
   request<{ ok: boolean; path: string; created: boolean }>(`/api/projects/${projectId}/research/${id}/note`, json('POST', { resultId }));
 
+/** A claim the agent checked, kept in the project’s claims ledger with the code’s evidence for it. */
+export interface ClaimRow {
+  id: string;
+  /** the claim, in the text’s words */
+  text: string;
+  file: string;
+  line: number;
+  keys: string[];
+  rating: 'supported' | 'partly' | 'unsupported' | 'needs-source' | 'not-checkable';
+  /** the source’s own words, found in it by the code */
+  quote?: string;
+  /** where the quote was found: the full text’s page, or the abstract alone; where: the address or the project’s PDF */
+  read?: { kind: 'full text' | 'abstract'; page?: number; where: string };
+  note?: string;
+  createdAt: string;
+}
+
+export const listClaims = (projectId: string) => request<{ ok: boolean; claims: ClaimRow[] }>(`/api/projects/${projectId}/claims`);
+export const deleteClaim = (projectId: string, id: string) => request<{ ok: boolean }>(`/api/projects/${projectId}/claims/${id}`, { method: 'DELETE' });
+
 /** An open-access PDF into research/papers; email lets Unpaywall be asked. existing: it was there already. */
 export const researchPdf = (projectId: string, id: string, resultId: string, email?: string) =>
   request<{ ok: boolean; path: string; existing?: boolean }>(`/api/projects/${projectId}/research/${id}/pdf`, json('POST', { resultId, email }));
@@ -1784,6 +1804,26 @@ export function addReference(payload: { projectId: string; candidateId: string; 
     '/api/references/add',
     json('POST', payload)
   );
+}
+
+/** A .bib entry against the record its DOI, arXiv id or title finds (Review’s References exist), and where it was read. */
+export interface ReferenceCheckRow {
+  key: string;
+  file: string;
+  line: number;
+  title: string;
+  status: 'found' | 'differs' | 'not-found' | 'retracted' | 'unchecked';
+  /** where the record was read, a page to open */
+  read?: { from: string; url: string };
+  record?: { title: string; authors: string[]; year: string; doi?: string; venue?: string };
+  differences?: { field: string; bib: string; record: string }[];
+  retraction?: { label: string; date?: string; notice?: string; url: string; from: string };
+  notices?: { label: string; date?: string; notice?: string; url: string }[];
+  note?: string;
+}
+
+export function checkReferences(projectId: string, keys?: string[], signal?: AbortSignal) {
+  return request<{ ok: boolean; rows: ReferenceCheckRow[]; bibFiles: string[] }>('/api/references/check', { ...json('POST', { projectId, keys }), signal });
 }
 
 // ─── Zotero (its local API and Better BibTeX, through the backend) ───

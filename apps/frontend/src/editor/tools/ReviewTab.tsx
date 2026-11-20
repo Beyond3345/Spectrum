@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
-import { blobUrl, getFile, getReviewState, runAiReview } from '../../api/client';
-import type { AiFinding, LLMConfig, ReviewRun } from '../../api/client';
+import { blobUrl, checkReferences, getFile, getReviewState, runAiReview } from '../../api/client';
+import type { AiFinding, LLMConfig, ReferenceCheckRow, ReviewRun } from '../../api/client';
 import Icon from '../../app/Icon';
 import Sheet from '../../app/Sheet';
 import { useEditor } from '../EditorContext';
@@ -11,7 +11,10 @@ import { pdfFacts } from '../preflight/pdfFacts';
 import { GROUPS, isScanned, preflightGaps, runPreflight } from '../preflight/run';
 import type { Finding, PdfPage, PreflightGroup } from '../preflight/run';
 import { Markdown, errorText, fixTitle, fixWithAI, isSource, relativeTime } from '../shared';
+import ReferenceCheckRows from './ReferenceCheck';
+import { checkCounts, checkReport } from './referenceWords';
 import { mergePart, partLine, partsLimit } from './reviewParts';
+import { untrusted } from '../../../../backend/src/utils/outsideText.js';
 import type { PartsReview } from './reviewParts';
 
 // Tools › Review: one press compiles when the PDF is older than the source, runs the Preflight checks that are ticked
@@ -20,7 +23,7 @@ import type { PartsReview } from './reviewParts';
 // for pdfFacts, which leaves the worker to its caller
 GlobalWorkerOptions.workerSrc ||= pdfWorker;
 
-type Tick = PreflightGroup | 'ai';
+type Tick = PreflightGroup | 'exist' | 'ai';
 type Row = Finding & { id: string };
 type AiRow = AiFinding & { id: string };
 type Run = {
@@ -34,6 +37,8 @@ type Run = {
   gaps: Partial<Record<PreflightGroup, string>>;
   /** what pdf.js read from the PDF, for the screen reader view */
   pages: PdfPage[] | null;
+  /** References exist: each .bib entry looked up; null: not asked for */
+  exist?: null | { running: true } | { error: string } | { rows: ReferenceCheckRow[] };
   /** null: not asked for */
   ai: null | { running: true } | { error: string } | { review: Omit<PartsReview, 'findings'> & { findings: AiRow[] } };
 };
@@ -42,6 +47,7 @@ type Kept = { run: Run | null; ticks: Record<Tick, boolean>; anonymous: boolean;
 const kept = new Map<string, Kept>();
 
 const AI_LABEL = 'AI review';
+const EXIST_LABEL = 'References exist';
 const LABEL = Object.fromEntries(GROUPS) as Record<PreflightGroup, string>;
 const ICON = { error: 'xmark.octagon.fill', warning: 'exclamationmark.triangle.fill', info: 'info.circle' } as const;
 const SEVERITY_WORD = { error: 'Error', warning: 'Warning', info: 'Note' } as const;
@@ -74,6 +80,7 @@ function reportText(run: Run, hidden: Set<string>) {
     if (list.length) out.push('', ...list.map((f) => `- ${SEVERITY_WORD[f.severity]}: ${f.message}${where(f) ? ` (${where(f)})` : ''}`));
     else if (!run.gaps[group]) out.push('', 'No problems found.');
   }
+  if (run.exist) out.push('', `## ${EXIST_LABEL}`, '', ...('rows' in run.exist ? checkReport(run.exist.rows) : 'error' in run.exist ? [run.exist.error] : []));
   if (run.ai) out.push('', `## ${AI_LABEL}`);
   if (run.ai && 'error' in run.ai) out.push('', run.ai.error);
   if (review) {
@@ -109,7 +116,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
     () =>
       kept.get(projectId) ?? {
         run: null,
-        ticks: { compile: true, references: true, privacy: true, accessibility: true, submission: true, ai: modelReady(api.llm.main) },
+        ticks: { compile: true, references: true, privacy: true, accessibility: true, submission: true, exist: false, ai: modelReady(api.llm.main) },
         anonymous: false,
         dismissed: []
       }
@@ -231,9 +238,19 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
           findings,
           gaps: preflightGaps(input),
           pages: facts?.pages ?? null,
+          exist: ticks.exist ? { running: true } : null,
           ai: ticks.ai ? { running: true } : null
         }
       });
+      if (ticks.exist) {
+        setStep('Looking up the references…');
+        const exist = await checkReferences(projectId, undefined, abort.signal).then(
+          (res) => ({ rows: res.rows }),
+          (err) => ({ error: abort.signal.aborted ? 'Stopped.' : `The references couldn’t be looked up: ${errorText(err)}` })
+        );
+        setRun((was) => ({ ...was, exist }));
+        abort.signal.throwIfAborted();
+      }
       if (!ticks.ai) return;
 
       // a long document comes back a part at a time, each told the summary of the parts before; Stop keeps the parts done
@@ -287,6 +304,15 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       rows.find((f) => f.file)?.file,
       group === 'compile'
     );
+  const fixReference = (r: ReferenceCheckRow) =>
+    fix(
+      `exist|${r.key}`,
+      'Fix with AI',
+      // the record's fields come from Crossref, arXiv or OpenAlex: material to read, marked so
+      `Review’s References exist check looked up the .bib entry ${r.key} (${r.file}:${r.line}) at ${r.read?.from}: ${(r.differences || []).map((d) => d.field).join(', ')} ${(r.differences || []).length > 1 ? 'differ' : 'differs'} from the record. What was compared, and the record:\n${untrusted(`${r.read?.from} record`, JSON.stringify({ differences: r.differences, record: r.record, readAt: r.read?.url }))}\nCorrect the entry to match the record if it is the work cited; if it is not, say so and change nothing.`,
+      r.file,
+      false
+    );
   const aiPoint = (f: AiFinding) =>
     `- ${f.severity} (${f.category})${f.anchored ? ` at ${f.file}, line ${f.line}` : ''}${f.quote ? `, on “${f.quote}”` : ''}: ${f.issue}${f.suggestion ? ` Suggested: ${f.suggestion}` : ''}`;
   const fixAi = (f: AiRow) =>
@@ -312,7 +338,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
   const rows = run?.findings.filter((f) => !hidden.has(f.id)) ?? [];
   const aiReview = run?.ai && 'review' in run.ai ? run.ai.review : null;
   const aiRows = aiReview?.findings.filter((f) => !hidden.has(f.id)) ?? [];
-  const dismissedHere = run ? [...run.findings, ...(aiReview?.findings ?? [])].filter((f) => hidden.has(f.id)).length : 0;
+  const dismissedHere = run ? [...run.findings, ...(aiReview?.findings ?? []), ...(run.exist && 'rows' in run.exist ? run.exist.rows.map((r) => ({ id: `exist|${r.key}` })) : [])].filter((f) => hidden.has(f.id)).length : 0;
   const busy = Boolean(step);
 
   const head = (key: string, label: string, counts: string[], extra?: ReactNode) => (
@@ -382,6 +408,12 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
             )}
           </div>
         ))}
+        <div className="review-tick">
+          <label className="checkbox-row" title="Looks each .bib entry up in Crossref, doi.org, arXiv or OpenAlex, compares it and reads retractions">
+            <input type="checkbox" checked={ticks.exist ?? false} disabled={busy} onChange={(e) => set({ ticks: { ...ticks, exist: e.target.checked } })} />
+            <span>{EXIST_LABEL}</span>
+          </label>
+        </div>
         <div className="review-tick">
           <label className="checkbox-row">
             <input type="checkbox" checked={ticks.ai} disabled={busy} onChange={(e) => set({ ticks: { ...ticks, ai: e.target.checked } })} />
@@ -466,6 +498,26 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
               </section>
             );
           })}
+
+          {run.exist && (
+            <section className="review-group">
+              {head('exist', EXIST_LABEL, 'rows' in run.exist ? checkCounts(run.exist.rows.filter((r) => !hidden.has(`exist|${r.key}`))) : [])}
+              {!closed.has('exist') && (
+                <>
+                  {'running' in run.exist && <div className="tool-footnote">Looking up each entry…</div>}
+                  {'error' in run.exist && <div className="tool-note error">{run.exist.error}</div>}
+                  {'rows' in run.exist && (
+                    <ReferenceCheckRows
+                      rows={run.exist.rows.filter((r) => !hidden.has(`exist|${r.key}`))}
+                      onJump={(file, line) => api.jumpTo(file, line)}
+                      actions={(r) => actions(`exist|${r.key}`, r.status === 'differs' ? () => fixReference(r) : null)}
+                      after={(r) => notes[`exist|${r.key}`] && <Markdown>{notes[`exist|${r.key}`]}</Markdown>}
+                    />
+                  )}
+                </>
+              )}
+            </section>
+          )}
 
           {run.ai && (
             <section className="review-group">

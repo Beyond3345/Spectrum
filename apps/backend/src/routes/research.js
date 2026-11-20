@@ -3,6 +3,7 @@ import { getProjectRoot, httpError } from '../services/projectService.js';
 import {
   RESEARCH_SOURCES, addResults, deleteSession, fetchPdf, getSession, listSessions, openNote, searchResearch, updateSession
 } from '../services/researchService.js';
+import { deleteClaim, listClaims } from '../services/claimsLedger.js';
 
 const year = (v) => v == null || (Number.isInteger(v) && v >= 1000 && v <= 3000);
 const KEY_FIELDS = ['openalexKey', 'openalexEmail', 'semanticScholarKey', 'ncbiKey'];
@@ -68,6 +69,14 @@ export function registerResearchRoutes(fastify) {
   fastify.post('/api/projects/:id/research/:rid/note', async (req) => {
     const root = await getProjectRoot(req.params.id);
     return { ok: true, ...(await openNote({ root, id: req.params.rid, resultId: resultIdOf(req.body) })) };
+  });
+
+  // the claims ledger: what a claims check recorded, each claim with its quote and where it was read
+  fastify.get('/api/projects/:id/claims', async (req) => ({ ok: true, claims: await listClaims(await getProjectRoot(req.params.id)) }));
+
+  fastify.delete('/api/projects/:id/claims/:cid', async (req) => {
+    await deleteClaim(await getProjectRoot(req.params.id), req.params.cid);
+    return { ok: true };
   });
 
   fastify.post('/api/projects/:id/research/:rid/pdf', async (req) => {

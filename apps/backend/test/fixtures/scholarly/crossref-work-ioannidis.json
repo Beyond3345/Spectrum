@@ -1,0 +1,62 @@
+{
+ "status": "ok",
+ "message-type": "work",
+ "message": {
+  "DOI": "10.1371/journal.pmed.0020124",
+  "title": [
+   "Why Most Published Research Findings Are False"
+  ],
+  "author": [
+   {
+    "given": "John P. A.",
+    "family": "Ioannidis",
+    "sequence": "first"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2005,
+     8,
+     30
+    ]
+   ]
+  },
+  "container-title": [
+   "PLoS Medicine"
+  ],
+  "type": "journal-article",
+  "URL": "https://doi.org/10.1371/journal.pmed.0020124",
+  "updated-by": [
+   {
+    "DOI": "10.1371/journal.pmed.1004085",
+    "type": "correction",
+    "label": "Correction",
+    "source": "publisher",
+    "updated": {
+     "date-parts": [
+      [
+       2022,
+       8,
+       25
+      ]
+     ],
+     "date-time": "2022-08-25T00:00:00Z",
+     "timestamp": 1661385600000
+    }
+   }
+  ],
+  "published": {
+   "date-parts": [
+    [
+     2005,
+     8,
+     30
+    ]
+   ]
+  },
+  "volume": "2",
+  "page": "e124",
+  "issue": "8"
+ }
+}

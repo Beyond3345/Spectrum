@@ -272,7 +272,8 @@ test('instructions reach Ask, Edit and rewrites but never autocomplete, and the 
 
 test('fetch_bibtex makes BibTeX from a DOI as the references resolver does', async () => {
   const { fetchBibtex } = await import('../src/services/researchTools.js');
-  const bibtex = await fetchBibtex('https://doi.org/10.1234/drafts');
+  const { bibtex, match } = await fetchBibtex('https://doi.org/10.1234/drafts');
+  assert.equal(match, 'exact');
   assert.match(bibtex, /^@article\{Smith2024/);
   assert.match(bibtex, /title\s+= \{A study of drafts\}/);
   assert.match(bibtex, /doi\s+= \{10\.1234\/drafts\}/);

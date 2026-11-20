@@ -125,7 +125,7 @@ test('Plan: the turn has the tools that only read, with ask_user and propose_pla
   requests.length = 0;
   const planned = await run(turn(p, 'plan', { planFirst: true }));
   assert.equal(requests.length, 2, 'no model call after the plan: the turn has ended');
-  assert.deepEqual(names(requests[0]).filter((n) => !['read_file', 'list_files', 'read_skill_file', 'get_log', 'project_map', 'bib_entries', 'bib_search', 'search_text', 'literature_search', 'fetch_bibtex', 'list_todos', 'load_skill'].includes(n)), ['ask_user', 'propose_plan']);
+  assert.deepEqual(names(requests[0]).filter((n) => !['read_file', 'list_files', 'read_skill_file', 'get_log', 'project_map', 'bib_entries', 'bib_search', 'search_text', 'literature_search', 'fetch_bibtex', 'check_references', 'read_source', 'list_todos', 'load_skill'].includes(n)), ['ask_user', 'propose_plan']);
   assert.match(requests[0].messages.at(-1).content, /Plan is on for this request: you can only read in this turn/);
   const refused = toolResults(requests[1]);
   assert.match(refused[1], /^Error: Plan is on: this turn only reads\. Put this step in the plan/);
