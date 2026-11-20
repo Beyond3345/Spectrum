@@ -55,6 +55,15 @@ test('the draft’s preview PDF is compiled where TeX reads only the draft, into
     await assert.rejects(previewDraft(run, { mainFile: '../escape.tex' }), /Invalid path/);
     await assert.rejects(previewDraft(run, { engine: 'troff' }), /Unsupported engine/);
 
+    // a link the agent left in its copy leads nowhere: on Windows TeX runs outside isolation, so it compiles a copy
+    // the isolated reader made, which refuses links
+    const link = path.join(run.workspace, 'link');
+    await fs.symlink(path.dirname(secret), link, process.platform === 'win32' ? 'junction' : 'dir');
+    await fs.writeFile(path.join(run.workspace, 'linked.tex'), '\\documentclass{article}\n\\begin{document}\n\\IfFileExists{link/secret.tex}{\\input{link/secret.tex}}{\\typeout{SECRET-HIDDEN}}\n\\end{document}\n');
+    const linked = await previewDraft(run, { mainFile: 'linked.tex' }).catch((err) => ({ log: err.message }));
+    assert.doesNotMatch(linked.log, /SECRET-READ/);
+    await fs.rm(link); await fs.rm(path.join(run.workspace, 'linked.tex'));
+
     // a direct session's draft is the project itself; Windows has no direct sessions at all
     const directRun = newAgentRun({ projectId: (await createProject({ name: 'Direct preview' })).id, agentId: 'qoder', mode: 'direct' });
     if (process.platform === 'win32') await assert.rejects(directRun, { statusCode: 400 });

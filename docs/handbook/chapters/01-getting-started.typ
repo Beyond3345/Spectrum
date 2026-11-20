@@ -39,7 +39,7 @@ The Windows version is a preview, and it differs from the macOS version as follo
 - the icons are Microsoft's Fluent UI System Icons, since Apple's SF Symbols may only be used on Apple platforms,
 - the shortcuts use #key("Ctrl") for #key("⌘"), #key("Alt") for #key("⌥") and #key("Shift") for #key("⇧"), so Compile is #key("Ctrl", "Enter"). Fold and unfold are #key("Ctrl", "Shift", "[") and #key("Ctrl", "Shift", "]"), find next and previous are #key("F3") and #key("Shift", "F3"), and redo is #key("Ctrl", "Y"),
 - Show in Finder is Show in File Explorer, and projects are moved to the Recycle Bin,
-- local agents get no Spectrum tools yet (@ch-assistant),
+- local agents get no Spectrum tools and no #ui[Direct] mode yet, and Codex, Claude Agent, Pi and ZCode do not start there, while the Spectrum agent has every tool. An agent's draft is compiled as your own compile is, without shell escape, and #ui[PDF before and after] shows LaTeX and Typst drafts but not Markdown ones (@ch-assistant),
 - MiKTeX installs a missing package without asking, since its question would appear in a hidden window and
 - settings are kept in `%APPDATA%\com.beyond3345.spectrum`, and new projects are placed in `Documents\Spectrum`.
 
