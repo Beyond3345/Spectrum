@@ -63,10 +63,13 @@ import Icon from './Icon';
 import { radioKeys, radioTab } from './Segmented';
 import Tabs from './Tabs';
 import Sheet from './Sheet';
-import SettingsSheet from './SettingsSheet';
+import SettingsSheet, { SECTION_GROUPS } from './SettingsSheet';
 import type { Section as SettingsSection } from './SettingsSheet';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
+import CommandPalette from './CommandPalette';
+import { menuCommands, shortcutCommands } from './commands';
+import type { Command as PaletteCommand } from './commands';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { referenceEdits } from '../editor/references';
 import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
@@ -88,7 +91,7 @@ import type { CompileError, EditorApi, PendingChange } from '../editor/EditorCon
 import Composer from '../editor/Composer';
 import ResearchPanel from '../editor/research/ResearchPanel';
 import type { ResearchTask } from '../editor/research/ResearchPanel';
-import ToolsPanel from '../editor/ToolsPanel';
+import ToolsPanel, { LABELS as TOOLS_TABS } from '../editor/ToolsPanel';
 import FloatsPanel from '../editor/FloatsPanel';
 import type { FloatCard } from '../editor/FloatsPanel';
 import InsightsPanel from '../editor/InsightsPanel';
@@ -108,6 +111,8 @@ import SyncBanners from '../editor/SyncBanners';
 import { conflictCopyPath, onDiskChange } from '../editor/heldFiles';
 import FileTree from '../editor/FileTree';
 import type { FileTreeHandle } from '../editor/FileTree';
+import TextSearch from '../editor/TextSearch';
+import { matchRange } from '../editor/textMatches';
 import PdfPreview, { MAX_ZOOM, MIN_ZOOM, PageBox, pdfThumbnail, rememberPage } from '../editor/PdfPreview';
 import type { PdfDest, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
 import PdfSidebar from '../editor/PdfSidebar';
@@ -591,6 +596,8 @@ function Editor({ projectId }: { projectId: string }) {
   const reviewSittingNow = useMemo(reviewSitting, [reviewOpen]);
   // true: Settings at its first section; a section's name: open at that one
   const [settingsOpen, setSettingsOpen] = useState<boolean | SettingsSection>(false);
+  // the command palette's text as it opens ('>' for the commands), or null while it's closed
+  const [palette, setPalette] = useState<string | null>(null);
   const [preview, setPreview] = useState('');
   /** the project's TexLab while the editor is open, and whether it's answering (editor/lsp/texlab.ts) */
   const texlabRef = useRef<Texlab | null>(null);
@@ -822,10 +829,10 @@ function Editor({ projectId }: { projectId: string }) {
     showText('', [0, 0]);
   };
 
-  /** The last compile's Typst errors and warnings underlined in the open .typ file, until the next compile. */
+  /** The last compile's errors and warnings underlined in the open .typ or .tex file, until the next compile. */
   const markCompileErrors = () => {
     const view = viewRef.current;
-    if (!view || docKind(activeRef.current) !== 'typst') return;
+    if (!view) return;
     view.dispatch({ effects: setCompileMarks.of(compileMarks(compileErrorsRef.current, activeRef.current, view.state.doc)) });
   };
 
@@ -838,6 +845,8 @@ function Editor({ projectId }: { projectId: string }) {
     // a .typ file's marks come from lint sources, Tinymist's among them, and go with their source
     const clear = texlabRef.current?.available || docKind(path) === 'typst' ? null : clearMarks(view.state);
     if (clear) view.dispatch(clear);
+    // and the compile's, cleared with them, come back
+    if (clear) markCompileErrors();
   };
 
   const openFile = async (path: string) => {
@@ -1269,6 +1278,16 @@ function Editor({ projectId }: { projectId: string }) {
     view.dispatch({ selection: { anchor: Math.min(from, end), head: end }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
     cursorPlacedRef.current = true;
     view.focus();
+  };
+
+  /** Search's In text: the file at the line, with the match selected (the line as it is now). */
+  const openMatch = async (file: string, line: number, pattern: RegExp) => {
+    await jumpTo(file, line);
+    const view = viewRef.current;
+    if (!view || activeRef.current !== file) return;
+    const at = view.state.doc.line(Math.min(Math.max(1, line), view.state.doc.lines));
+    const range = matchRange(at.text, pattern);
+    if (range) await select(file, at.from + range[0], at.from + range[1]);
   };
 
   /**
@@ -2025,8 +2044,9 @@ function Editor({ projectId }: { projectId: string }) {
   /** A panel's top-bar button: opens it, or closes it when it's open. */
   const togglePanel = (next: Panel) => (panel === next ? setPanel(null) : openPanel(next));
 
+  // Tools on its own opens on Logs while the last compile has errors
   const openTools = (tab?: ToolsTab) => {
-    if (tab) setToolsTab(tab);
+    if (tab || compileErrorsRef.current.some((e) => e.severity === 'error')) setToolsTab(tab ?? 'logs');
     openPanel('tools');
   };
 
@@ -2302,7 +2322,8 @@ function Editor({ projectId }: { projectId: string }) {
     showFile: async (_path: string) => {},
     readText: async (_path: string) => '' as string,
     files: (): ReadonlySet<string> => new Set(),
-    renameSymbol: () => {}
+    renameSymbol: () => {},
+    openPalette: (_text: string) => {}
   });
   actions.current = {
     save: () => saveNow(true),
@@ -2337,7 +2358,29 @@ function Editor({ projectId }: { projectId: string }) {
     files: () => fileSet,
     renameSymbol: () => {
       renameSymbol();
-    }
+    },
+    openPalette: setPalette
+  };
+
+  // what each app shortcut does, for its keys and the command palette; each calls the newest handlers
+  const appCommands: Record<AppCommand, () => void> = {
+    save: () => actions.current.save(),
+    saveVersion: () => actions.current.saveVersion(),
+    compile: () => actions.current.compile(),
+    compileOpen: () => actions.current.compileOpen(),
+    assistant: () => actions.current.toggleComposer(),
+    grammar: () => actions.current.toggleGrammar(),
+    suggest: () => actions.current.suggest(),
+    sidebar: () => actions.current.toggleSidebar(),
+    viewEditor: () => actions.current.setView('editor'),
+    viewSplit: () => actions.current.setView('split'),
+    viewPdf: () => actions.current.setView('pdf'),
+    zoomIn: () => actions.current.zoomBy(1),
+    zoomOut: () => actions.current.zoomBy(-1),
+    zoomWidth: () => actions.current.fitWidth(),
+    zoomPage: () => actions.current.fitPage(),
+    commandPalette: () => actions.current.openPalette('>'),
+    quickOpen: () => actions.current.openPalette('')
   };
 
   // ─── effects: unsaved edits, CodeMirror, first load, shortcuts ───
@@ -2426,23 +2469,6 @@ function Editor({ projectId }: { projectId: string }) {
         }
       }
     });
-    const appCommands: Record<AppCommand, () => void> = {
-      save: () => a().save(),
-      saveVersion: () => a().saveVersion(),
-      compile: () => a().compile(),
-      compileOpen: () => a().compileOpen(),
-      assistant: () => a().toggleComposer(),
-      grammar: () => a().toggleGrammar(),
-      suggest: () => a().suggest(),
-      sidebar: () => a().toggleSidebar(),
-      viewEditor: () => a().setView('editor'),
-      viewSplit: () => a().setView('split'),
-      viewPdf: () => a().setView('pdf'),
-      zoomIn: () => a().zoomBy(1),
-      zoomOut: () => a().zoomBy(-1),
-      zoomWidth: () => a().fitWidth(),
-      zoomPage: () => a().fitPage()
-    };
     // matched by hand rather than with keymap.of, which can't see ⌥ shortcuts on a Mac (⌥/ types "÷")
     const shortcuts = EditorView.domEventHandlers({
       keydown(e, view) {
@@ -2893,6 +2919,8 @@ function Editor({ projectId }: { projectId: string }) {
       else if (is('zoomOut')) a.zoomBy(-1);
       else if (is('zoomWidth')) a.fitWidth();
       else if (is('zoomPage')) a.fitPage();
+      else if (is('commandPalette')) a.openPalette('>');
+      else if (is('quickOpen')) a.openPalette('');
       else if (matchesShortcut('Mod-,', e)) a.openSettings();
       else return;
       e.preventDefault();
@@ -3148,9 +3176,8 @@ function Editor({ projectId }: { projectId: string }) {
   const typstMain = docKind(mainFile) === 'typst';
   const tree = settings.projectFolders;
   const homeFolder = tree.folders.find((f) => f.id === tree.placement[projectId]);
-  const switcherItems: MenuItems = [
-    ...switcherList({ projects, tree, at: switcherAt, projectId, go: setSwitcherAt, open: (id) => leave(`/editor/${id}`) }),
-    { separator: true },
+  // the project menu's own items, under the projects (and in the command palette)
+  const projectItems: MenuItems = [
     // the Home folder the project is in, opened on Home
     homeFolder && { label: `Back to ${homeFolder.name}`, icon: 'arrow.uturn.backward', onSelect: () => leave('/projects', () => openProjectsOn('home', homeFolder.id)) },
     { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects', () => openProjectsOn('all')) },
@@ -3163,6 +3190,11 @@ function Editor({ projectId }: { projectId: string }) {
     markdownMain && { label: 'Convert to LaTeX project…', icon: 'doc.text', onSelect: convertMarkdownToLatex },
     latexMain && !draft && { label: 'Convert to Typst project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('typst')) },
     typstMain && !draft && { label: 'Convert to LaTeX project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('latex')) }
+  ];
+  const switcherItems: MenuItems = [
+    ...switcherList({ projects, tree, at: switcherAt, projectId, go: setSwitcherAt, open: (id) => leave(`/editor/${id}`) }),
+    { separator: true },
+    ...projectItems
   ];
 
   const filesMenu: MenuItems = [
@@ -3284,6 +3316,17 @@ function Editor({ projectId }: { projectId: string }) {
     </>
   );
 
+  const pdfMoreItems: MenuItems = [
+    { label: 'Two-page view', icon: 'book.pages', checked: spread, disabled: !pdf, onSelect: () => setSpread((v) => !v) },
+    { label: 'Annotate', icon: 'note.text.badge.plus', checked: annotate, disabled: !pdf, onSelect: () => setAnnotate((v) => !v) },
+    { label: 'Find in PDF', icon: 'magnifyingglass', shortcut: formatShortcut('Mod-f'), disabled: !pdf, onSelect: openFind },
+    { label: 'Presentation mode', icon: 'play.fill', disabled: !pdf || !pdfPages, onSelect: () => setPresenting(true) },
+    { separator: true },
+    ...pageItems,
+    { separator: true },
+    { label: 'Show logs', icon: 'terminal', checked: false, onSelect: () => openTools('logs') }
+  ];
+
   const insertKind: DocKind = docKind(activePath) ?? 'latex';
   const insertItems: MenuItems = SNIPPETS.filter((s) => !s || typeof s === 'string' || !('kinds' in s) || s.kinds.includes(insertKind)).flatMap((s): MenuItems | MenuItems[number] =>
     s === 'diagram'
@@ -3294,6 +3337,41 @@ function Editor({ projectId }: { projectId: string }) {
           ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) }
           : { separator: true }
   );
+
+  /** The command palette's commands: the shortcuts, the menus' items, Tools' tabs, the panels and Settings' sections. */
+  const paletteCommands = (): PaletteCommand[] => [
+    ...shortcutCommands(settings.shortcuts, (s) => {
+      const view = viewRef.current;
+      if (!s.run) appCommands[s.id as AppCommand]();
+      else if (view && activeRef.current) {
+        s.run(view);
+        view.focus();
+      }
+    }),
+    ...menuCommands('Compile', compileItems),
+    ...menuCommands('Insert', activePath ? insertItems : []),
+    ...menuCommands('Files', filesMenu),
+    ...menuCommands('Project', projectItems),
+    ...menuCommands('PDF', pdfMoreItems),
+    ...TOOLS_TABS.map(([tab, label]) => ({ label, section: 'Tools', run: () => openTools(tab) })),
+    { label: 'Document insights', section: 'Panels', run: () => openPanel('insights') },
+    { label: 'Agent', section: 'Panels', run: () => openPanel('agent') },
+    ...SECTION_GROUPS.flatMap(([, sections]) => sections.map(([section, label]) => ({ label, section: 'Settings', run: () => setSettingsOpen(section) })))
+  ];
+  /** Go to a file or heading: the project's files, then the outline's headings. */
+  const palettePlaces = (): PaletteCommand[] => [
+    ...items
+      .filter((i) => i.type === 'file' && !conflicts[i.path])
+      .map((i) => ({
+        label: i.path,
+        section: 'File',
+        run: () => {
+          if (TEXT_FILE.test(i.path)) showEditor();
+          open(i.path);
+        }
+      })),
+    ...outline.filter((o) => !o.float).map((o) => ({ label: o.title, section: `${nameOf(o.file)}, line ${o.line}`, run: () => void select(o.file, o.pos) }))
+  ];
 
   const zoomLabel = ZOOMS.find(([z]) => z === zoom)?.[1] || `${Math.round(scale * 100)}%`;
   // in two-page view `page` is the left page of a row, so the next row starts two pages on
@@ -3414,7 +3492,7 @@ function Editor({ projectId }: { projectId: string }) {
               <span className="spacer" />
               <button
                 className={`icon-btn small ${searchOpen ? 'active' : ''}`}
-                title={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
+                title={sidebarTab === 'files' ? 'Search files and text' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
                 aria-label="Search"
                 onClick={() => {
                   setSearchOpen((v) => !v);
@@ -3432,7 +3510,7 @@ function Editor({ projectId }: { projectId: string }) {
                 <input
                   autoFocus
                   value={filter}
-                  placeholder={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
+                  placeholder={sidebarTab === 'files' ? 'Search files and text' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
                   aria-label="Search"
                   onChange={(e) => setFilter(e.target.value)}
                   onKeyDown={(e) => {
@@ -3478,6 +3556,7 @@ function Editor({ projectId }: { projectId: string }) {
                 onNewBib={() => createBibFile().catch((err) => notify(`Couldn’t create the .bib file: ${errorText(err)}`, 'error'))}
                 notify={notify}
               />
+              {sidebarTab === 'files' && <TextSearch projectId={projectId} query={filter} beforeSearch={() => saveNow()} onOpen={(file, line, pattern) => void openMatch(file, line, pattern)} />}
             </div>
             {/* mounted while hidden, so a search running keeps its answer */}
             <div className="sidebar-list" hidden={sidebarTab !== 'research'}>
@@ -3858,21 +3937,7 @@ function Editor({ projectId }: { projectId: string }) {
                     <Icon name="arrow.down.to.line" />
                   </button>
                 )}
-                <MenuButton
-                  icon="ellipsis"
-                  title="More"
-                  align="end"
-                  items={[
-                    { label: 'Two-page view', icon: 'book.pages', checked: spread, disabled: !pdf, onSelect: () => setSpread((v) => !v) },
-                    { label: 'Annotate', icon: 'note.text.badge.plus', checked: annotate, disabled: !pdf, onSelect: () => setAnnotate((v) => !v) },
-                    { label: 'Find in PDF', icon: 'magnifyingglass', shortcut: formatShortcut('Mod-f'), disabled: !pdf, onSelect: openFind },
-                    { label: 'Presentation mode', icon: 'play.fill', disabled: !pdf || !pdfPages, onSelect: () => setPresenting(true) },
-                    { separator: true },
-                    ...pageItems,
-                    { separator: true },
-                    { label: 'Show logs', icon: 'terminal', checked: false, onSelect: () => openTools('logs') }
-                  ]}
-                />
+                <MenuButton icon="ellipsis" title="More" align="end" items={pdfMoreItems} />
                 {viewSwitcher}
               </div>
 
@@ -4284,6 +4349,7 @@ function Editor({ projectId }: { projectId: string }) {
         </Sheet>
       )}
 
+      {palette !== null && <CommandPalette start={palette} commands={paletteCommands()} places={palettePlaces()} onClose={() => setPalette(null)} />}
       {settingsOpen && <SettingsSheet projectId={projectId} section={settingsOpen === true ? undefined : settingsOpen} onClose={() => setSettingsOpen(false)} />}
 
       {jyutpingOpen && (

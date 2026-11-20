@@ -1280,6 +1280,56 @@ button.chip.active:hover {
   white-space: nowrap;
 }
 
+/* the command palette (CommandPalette.tsx): a box near the top of the window, its lines styled as a menu's */
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 72px 16px 16px;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  width: 600px;
+  max-width: 100%;
+  max-height: min(460px, calc(100vh - 100px));
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  animation: pop-in 0.1s ease-out;
+}
+
+.palette-field.search-field {
+  flex: none;
+  width: auto;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.palette-list {
+  min-height: 0;
+  margin-top: 6px;
+  overflow-y: auto;
+}
+
+.palette-section {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.palette-empty {
+  padding: 10px;
+  color: var(--text-tertiary);
+}
+
 /* --------------------------------------------------------------------------
    Sheets and alerts
    -------------------------------------------------------------------------- */

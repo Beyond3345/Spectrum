@@ -55,6 +55,7 @@ import { conflictCopies } from '../utils/conflictCopies.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 import { markdownToLatex, pandocDocx, projectImages, svgsAsPdf } from '../services/markdownService.js';
 import { pandocPath } from '../services/engineService.js';
+import { searchText } from '../mcp/tools.js';
 
 const execFileAsync = promisify(execFile);
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -671,6 +672,18 @@ export function registerProjectRoutes(fastify) {
       if (await isDiagram(root, item.path)) diagrams.push(item.path);
     }
     return { items, fileOrder, mainFile, documents, diagrams, conflicts };
+  });
+
+  // the sidebar's Search through the project's text: the agents' search_text, so both find the same lines.
+  // case, word and regex are '1' when on
+  fastify.get('/api/projects/:id/search', async (req) => {
+    const { q, case: caseSensitive, word, regex } = req.query || {};
+    const root = await getProjectRoot(req.params.id);
+    try {
+      return { ok: true, ...(await searchText(root, { query: String(q ?? ''), caseSensitive: caseSensitive === '1', wholeWord: word === '1', regex: regex === '1' })) };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   fastify.post('/api/projects/:id/file-order', async (req) => {

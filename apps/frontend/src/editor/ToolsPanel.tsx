@@ -10,7 +10,7 @@ import type { Section as SettingsSection } from '../app/SettingsSheet';
 
 export type ToolsTab = 'versions' | 'logs' | 'review' | 'github';
 
-const LABELS: [ToolsTab, string][] = [
+export const LABELS: [ToolsTab, string][] = [
   ['versions', 'Checkpoints'],
   ['logs', 'Logs'],
   ['review', 'Review'],

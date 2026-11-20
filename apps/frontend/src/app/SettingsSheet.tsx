@@ -134,7 +134,7 @@ const SCOPES = [
   ['project', 'This project']
 ] as const;
 
-const SECTION_GROUPS: [string, [Section, string, string][]][] = [
+export const SECTION_GROUPS: [string, [Section, string, string][]][] = [
   ['General', [
     ['appearance', 'Appearance', 'circle.lefthalf.filled'],
     ['editor', 'Editor', 'text.cursor'],

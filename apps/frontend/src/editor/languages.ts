@@ -167,7 +167,7 @@ const markdownSupport = (): Extension => [
 /** A file's editor language: LaTeX as it was, Typst once loaded, Markdown, and plain text for anything else. */
 export function languageFor(path: string): Extension {
   const kind = docKind(path);
-  if (kind === 'latex') return latexLanguage();
+  if (kind === 'latex') return [latexLanguage(), compileLint];
   if (kind === 'typst') return typst ?? compileLint;
   if (kind === 'markdown') return markdownSupport();
   return [];

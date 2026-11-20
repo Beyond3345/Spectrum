@@ -181,6 +181,12 @@ test('search_text finds plain text and regular expressions with file and line, a
   assert.deepEqual(await found({ query: 'method', caseSensitive: true }), ['main.tex:3', 'sections/two.tex:2']);
   assert.deepEqual(await found({ query: '^the \\w+ section$', regex: true }), ['main.tex:2']);
   assert.deepEqual(await found({ query: 'method', path: 'sections' }), ['sections/two.tex:2']);
+  // whole words: a letter, digit or _ on either side is part of another word; the query is text, not an expression
+  await write(path.join(where, 'words.tex'), '\\labelx{a}\n\\label{b}\nmethods\n(method)\n');
+  assert.deepEqual(await found({ query: 'method', wholeWord: true, path: 'words.tex' }), ['words.tex:4']);
+  assert.deepEqual(await found({ query: '\\label', wholeWord: true, path: 'words.tex' }), ['words.tex:2']);
+  assert.deepEqual(await found({ query: '(method)', wholeWord: true, path: 'words.tex' }), ['words.tex:4']);
+  await fs.rm(path.join(where, 'words.tex'));
   assert.deepEqual(await found({ query: 'method', path: 'main.tex' }), ['main.tex:2', 'main.tex:3']);
   assert.deepEqual(await found({ query: 'secret' }), [], 'nothing hidden, and nothing through a link');
   await assert.rejects(tools.searchText(where, { query: '(', regex: true }), /Not a regular expression/);
