@@ -164,6 +164,9 @@ import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
 import { expandTrigger, insertSnippet as insertUserSnippet } from '../editor/userSnippets';
 import { projectMacros } from '../editor/mathPreview';
+import { figurePreview, previewFigure } from '../editor/figurePreview';
+import { pdfPageCanvas } from '../diagram/Preview';
+import { previewFigure as previewFigureApi } from '../api/client';
 import { definitionCompletions, languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions, typstDefinitions, typstPathClick } from '../editor/languages';
 import type { TypstDefinition } from '../editor/languages';
 import { numberTypstOutline, parseMarkdownOutline, parseTypstOutline, typstDocumentOutline } from '../editor/outlines';
@@ -643,6 +646,8 @@ function Editor({ projectId }: { projectId: string }) {
   const docs = useMemo(() => [...new Set([mainFile, ...documents])].filter(Boolean), [mainFile, documents]);
   // the open file when it's a document of its own, else the main file: what completion scans and ⇧⌘↩ compiles
   const docRoot = docs.includes(activePath) ? activePath : mainFile;
+  const docRootRef = useRef(docRoot);
+  docRootRef.current = docRoot;
   // with PDF follows the open file, Compile and auto compile build the document showing; without, the main file
   const compileTarget = (settings.pdfFollowsFile && shownDoc) || mainFile;
   const compileErrors = useMemo<CompileError[]>(() => {
@@ -2609,6 +2614,13 @@ function Editor({ projectId }: { projectId: string }) {
       Prec.high(typstPathClick({ path: () => activeRef.current, files: () => a().files(), open: (path) => void a().showFile(path) })),
       texlabSlot.of([]),
       // the maths preview's \newcommands from the project's other files (a .cls's are a template's internals)
+      // Preview this figure: a piece of the open .tex compiled with its document's preamble
+      figurePreview(() =>
+        docKind(activeRef.current) === 'latex' && /\.(?:tex|ltx)$/i.test(docRootRef.current)
+          ? (piece, signal) => previewFigureApi(projectId, { file: docRootRef.current, piece, engine: compileOptionsRef.current.engine, texFolder: loadSettings().texFolder || undefined }, signal)
+          : null,
+        pdfPageCanvas
+      ),
       projectMacros.of(() => projectScanRef.current.scans.filter((scan) => !/\.cls$/i.test(scan.file ?? '') && scan.file !== activeRef.current).map((scan) => scan.macros ?? {})),
       // an image dropped on the editor goes to the Floats panel's Insert figure instead of into the text
       EditorView.domEventHandlers({
@@ -4370,6 +4382,16 @@ function Editor({ projectId }: { projectId: string }) {
               docKind(activePath) === 'latex' && { label: 'Wrap in Jyutping scope', disabled: !selected, onSelect: () => jyutpingWrapNow('scope') },
               docKind(activePath) === 'latex' && { label: 'Add Jyutping to selection (\\xjyutping*)', disabled: !selected, onSelect: () => jyutpingWrapNow('star') },
               docKind(activePath) === 'latex' && { separator: true },
+              docKind(activePath) === 'latex' && {
+                label: 'Preview this figure',
+                shortcut: formatShortcut(shortcutKey(settings.shortcuts, 'previewFigure')),
+                onSelect: () => {
+                  if (!view) return;
+                  // the piece where the menu was opened, unless something is selected
+                  if (!selected) view.dispatch({ selection: { anchor: lineMenu.pos } });
+                  previewFigure(view);
+                }
+              },
               !!diagram && { label: 'Edit diagram', onSelect: () => drawDiagram(diagram) },
               isDocument(activePath) && { label: 'Cite from Zotero…', onSelect: () => window.dispatchEvent(new Event(ZOTERO_CITE)) },
               tinymistOn && docKind(activePath) === 'typst' && { label: 'Format document', shortcut: formatShortcut('Shift-Alt-f'), onSelect: () => view && tinymistRef.current?.format(view) },
