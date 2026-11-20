@@ -31,7 +31,7 @@ Above the source is a row of tabs, one for each open file, and below it the tool
     columns: (auto, 1fr),
     align: left,
     table.header([Button], [What it does]),
-    [#ui[Insert] (+)], [inserts a snippet: a section, a list, an equation, an algorithm, a code listing, a citation, a reference or a label in LaTeX, and the Typst and Markdown equivalents. It also holds the four buttons beside it when the editor is too narrow for them],
+    [#ui[Insert] (+)], [inserts a snippet: a section, a list, an equation, an algorithm, a code listing, a citation, a reference or a label in LaTeX, and the Typst and Markdown equivalents, then your own snippets for that kind of file (@sec-writing-snippets). It also holds the four buttons beside it when the editor is too narrow for them],
     [#ui[Insert figure]], [opens the Floats panel at the figure card (@sec-writing-floats)],
     [#ui[Insert table]], [opens the Floats panel at the table card],
     [#ui[Draw a diagram]], [opens the diagram composer (@ch-composer)],
@@ -50,6 +50,22 @@ The tools that take the PDF's place, which are Floats, Check grammar, Document i
 === Typing in the source
 
 The source editor highlights LaTeX, Typst and Markdown, folds environments and blocks, and wraps long lines under their own indent, with formulas breaking between terms. #key("Tab") indents at the cursor by four spaces, Return after `\begin{…}` adds the matching `\end{…}` at the same indent, and typing `$` with text selected puts the text in maths, in the same way as `(` brackets it.
+
+Return at the end of an `\item` in an `itemize`, `enumerate` or `description` list starts the next item at the same indent, and in a `description` list the cursor goes between the brackets of `\item[]`. Return on an item with nothing in it ends the list by taking its `\item` away. Typst's `-`, `+`, numbered and `/` term items carry on in the same way, and Markdown's lists always have. Typing `$` in text gives `$$` with the cursor between, and `$` again in the empty pair makes display maths. `\(` and `\[` bring `\)` and `\]`, and `\left(`, `\left[`, `\left|` and `\left\{` bring their `\right`, as do `\bigl` and its larger sizes. Typing a closer that is already there steps over it, and Backspace in an empty pair removes both halves. Typst has the `$` pairs too. Markdown has none, since a `$` there is often money. The two switches, #ui[Continue lists] and #ui[Close maths delimiters], are in #menu[Settings][Editor] and are on by default.
+
+While the cursor is in maths in a LaTeX or Markdown file, the maths is drawn under it by KaTeX, so a missing brace or a wrong subscript shows before any compile (@fig-writing-maths-preview). This covers `$…$`, `\(…\)`, `\[…\]`, `$$…$$` and environments such as `equation` and `align`, which are drawn without their numbers. The document's own commands from `\newcommand`, `\renewcommand`, `\def`, `\DeclareMathOperator` and mathtools' `\DeclarePairedDelimiter` are used, from the open file and the files of its document. A command whose first argument is optional, a package's command that KaTeX does not know, such as siunitx's `\qty`, and anything that would link or load a file give a short note instead of a picture, so a picture is never a guess. #key("Esc") hides it until the cursor leaves that maths, and #ui[Show the maths at the cursor] in #menu[Settings][Editor] turns it off. Typst's maths is not drawn, since KaTeX reads only LaTeX.
+
+#shot("figures/02-writing/maths-preview.png", [The `align` environment the cursor is in, drawn under it with the document's own commands.], width: 62%) <fig-writing-maths-preview>
+
+#ui[Preview this figure], with #key("⌥", "⌘", "P") or in the source's right-click menu and the command palette, compiles the `tikzpicture`, `circuitikz`, table, figure or displayed equation the cursor is in on its own, with the document's preamble, and shows it in a panel under the source (@fig-writing-figure-preview). A selection is previewed as it is instead. The panel compiles again a second after the piece changes, so each nudge to a drawing shows without a full compile. A figure's caption shows with it. Errors are given in the panel's header, and a picture that compiled with errors still shows. The preview is compiled from a copy that holds the preamble and the piece, in a build of its own, so nothing is written into the project and the document's PDF stays as it was. It is always confined on a Mac, even in a trusted project, so a piece that needs shell escape, such as `minted`, does not preview. #ui[Compile the preview again] and #ui[Close the preview] are the panel's two buttons.
+
+#shot("figures/02-writing/figure-preview.png", [Preview this figure under the source, with the `tikzpicture` compiled on its own.], width: 62%) <fig-writing-figure-preview>
+
+=== Snippets <sec-writing-snippets>
+
+A snippet is text you write once and put in with a few keys, such as a theorem with its proof, a `cases` block or two figures side by side. #menu[Settings][Snippets] lists them (@fig-writing-snippets). Each has a name, a trigger, the kinds of file it works in, which are LaTeX, Typst and Markdown, and its text. Typing the trigger at the start of a word and pressing #key("Tab") puts the snippet in its place, and every snippet for the open kind of file is also at the bottom of #ui[Insert] (+) and in the command palette. In the text, `${1:text}` is the first place #key("Tab") goes to, with `text` selected to type over, `${2}` is the next, empty, and `${0}` is where the cursor ends. The same number twice is filled in twice. A `$` followed by a number without braces is plain text, so maths such as `$1$` is safe. Spectrum starts you with five snippets, which can be changed or deleted, and #ui[Reset to defaults] puts them back without touching your own. Snippets follow you to your other computers with your settings.
+
+#shot("figures/02-writing/settings-snippets.png", [#menu[Settings][Snippets], with a new snippet being written below the starters.], width: 70%) <fig-writing-snippets>
 
 Completion lists what can be typed where the cursor is (@fig-writing-complete). Typing `\`, or `/` at the start of a word in text, lists the commands that work there. In maths, inside `$…$`, `\[…\]` or an `equation` or `align` environment, it lists maths commands such as `\vec`, `\lambda` and `\frac` with their symbols, and in text it lists text commands, together with the project's own commands from `\newcommand` and `\DeclareMathOperator`. Each command shows the package it comes from. Commands with arguments go in with fields that #key("Tab") moves through, so `\frac` then #key("Tab") goes from the numerator to the denominator. Inside braces it lists the project's labels after `\ref{` and `\cref{`, its citation keys after `\cite{`, packages after `\usepackage{`, the project's images and files after `\includegraphics{` and `\input{`, and siunitx's units in a unit argument, so `/vo` offers `\volt`.
 
@@ -398,6 +414,7 @@ Every shortcut in @tab-writing-shortcuts can be changed in #menu[Settings][Short
     [Duplicate lines above or below], [#key("⌥", "⇧", "↑") and #key("⌥", "⇧", "↓")],
     [Delete lines], [#key("⇧", "⌘", "K")],
     [Bold, italic and emphasis], [#key("⌘", "B"), #key("⌘", "I") and #key("⇧", "⌘", "E")],
+    [Preview this figure], [#key("⌥", "⌘", "P")],
     [Add the next match to the selection], [#key("⌘", "D")],
     [Select all matches], [#key("⇧", "⌘", "L")],
     [Add a cursor above or below], [#key("⌥", "⌘", "↑") and #key("⌥", "⌘", "↓")],
