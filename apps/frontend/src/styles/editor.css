@@ -1490,6 +1490,21 @@ button.compile-status:hover {
   pointer-events: none;
 }
 
+/* Only the open chapter: says which, with the way back to the whole document */
+.pdf-partial-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 5px;
+  pointer-events: auto;
+}
+
+.pdf-partial-hint .btn {
+  border: 0;
+  background: color-mix(in srgb, var(--accent-text) 22%, transparent);
+  color: var(--accent-text);
+}
+
 /* the page box in the pill: the page number, typed over to go to another */
 .pdf-page-box {
   height: 22px;

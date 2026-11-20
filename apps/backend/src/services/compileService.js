@@ -131,7 +131,9 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
     case 'lualatex': {
       // draft: images drawn as boxes, which the first line passes to graphicx; the file it inputs still names the job.
       // ponytail: a name TeX would read as code (with %, # or braces) keeps its images
-      const input = draft && !/[\\{}%#&~^$]/.test(mainFile) ? `${DRAFT_IMAGES}\\input{${mainFile}}` : mainFile;
+      // only: the one \include'd chapter to typeset (\includeonly), by the same first line
+      const first = [options.only && `\\includeonly{${options.only}}`, draft && DRAFT_IMAGES].filter(Boolean).join('');
+      const input = first && !/[\\{}%#&~^$]/.test(mainFile) ? `${first}\\input{${mainFile}}` : mainFile;
       // extra: the document's own options (buildRecipe.js), last before the file; format: the precompiled preamble's
       // (preambleFormat.js)
       return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, shell, `-output-directory=${outDir}`, ...(options.format ? [`-fmt=${options.format}`] : []), ...(options.extra ?? []), input] };
@@ -806,15 +808,23 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   if (held) await fs.writeFile(path.join(held, LATEXMK_COPIES), JSON.stringify([...others]));
 
   const input = copy ? slashed(copy.main) : `./${mainName}`;
+  // Only the open chapter: \includeonly for the chapter the editor has open (options.onlyFile), where the
+  // document \include's it and its kept files hold the other chapters' numbers from a compile without errors. One
+  // pass, no bibliography or index run, and the PDF beside the source stays the last full compile's (a chapter alone
+  // is not the document). Anything else compiles in full: another engine's passes, a recipe, from scratch, no kept
+  // files yet, a file that is no chapter of this document
+  const only = options.onlyFile && multiPass && kept && !/[\\{}%#&~^$]/.test(input) ? includedAs(tex, mainDir, path.resolve(projectRoot, String(options.onlyFile))) : null;
+  if (options.onlyFile && !only && multiPass) pushLog(Buffer.from('[spectrum note] This compiled the whole document: Only the open chapter needs the open file to be one the document \\include’s, and the numbers a full compile keeps.\n'));
+  if (only) pushLog(Buffer.from(`[spectrum] Only ${only} was typeset, in one pass, with the other chapters’ numbers as the last full compile left them. The PDF beside the source is still that compile’s, and a citation or index entry added since waits for the next full compile (biblatex asking for Biber again here means only that).\n`));
   // The precompiled preamble (preambleFormat.js), for a full pdfLaTeX compile of the document as it is, with Spectrum's
   // own passes: not a draft, a copy with the page colour's or Jyutping's lines, a Markdown document's LaTeX, nor one
   // with a recipe or engine options of its own. format: one made and tried for the preamble as it is now, or null
-  const preamble = options.precompile && FORMAT_ENGINES.includes(engine) && multiPass && cache && !options.draft && !copy && !options.markdownSource && !recipe.options.length ? preambleOf(tex) : null;
+  const preamble = options.precompile && FORMAT_ENGINES.includes(engine) && multiPass && cache && !options.draft && !only && !copy && !options.markdownSource && !recipe.options.length ? preambleOf(tex) : null;
   const shell = options.untrusted ? '-no-shell-escape' : options.trusted ? '-shell-escape' : '-shell-restricted';
   const formatOf = preamble && { preamble, dir: path.join(cache, 'build-files', doc, `${engine}.format`), key: await formatKey({ preamble, mainName, shell, env: texEnv, files: projectFiles }), projectRoot };
   const format = formatOf && !options.noFormat ? await readyFormat(formatOf) : null;
   if (format) pushLog(Buffer.from(`[spectrum] This compile starts from a format of the preamble, made when the preamble last changed. The preamble’s own log, from then:\n${format.log}\n`));
-  const commandFor = (dir, fmt) => buildCommand(engine, slashed(dir), input, { ...options, extra: recipe.options, format: fmt && slashed(fmt) });
+  const commandFor = (dir, fmt) => buildCommand(engine, slashed(dir), input, { ...options, only, extra: recipe.options, format: fmt && slashed(fmt) });
   const { cmd, args } = commandFor(outDir, format?.file);
   // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
   const limit = PASS_TIMEOUT_MS[engine] || DEFAULT_PASS_TIMEOUT_MS;
@@ -850,7 +860,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     const keptFailed = () => kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log, kept);
     retry = keptFailed();
 
-    if (multiPass && !options.draft && !retry && carryOn()) {
+    if (multiPass && !options.draft && !only && !retry && carryOn()) {
       // what BibTeX reads, so a citation only a kept list put there (a caption's, from the .lof) goes again
       const cites = async () => (await auxWithInputs(outDir, `${base}.aux`)).match(/^\\(?:citation|bibdata|bibstyle)\{.*$/gm)?.join('\n') ?? '';
       let cited = await cites();
@@ -960,7 +970,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // the copy on disk is older than this compile's, so the editor keeps showing the one it was sent
   let pdfStale = false;
   try {
-    const written = await writePdf(projectRoot, absPdf, pdf, log);
+    // (a chapter alone is shown, never written over the document's PDF)
+    const written = only ? { log, stale: true } : await writePdf(projectRoot, absPdf, pdf, log);
     log = written.log;
     pdfStale = written.stale;
     // SyncTeX jumps do not point into the .md, so a Markdown compile keeps none
@@ -988,7 +999,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     prepareFormat({ ...formatOf, mainDir, mainName, base, shell, env: texEnv, trusted: !!options.trusted, store, passArgs: commandFor, first: miktex ? ['--enable-installer'] : [] });
   }
   const pdfPath = docPath(projectRoot, absPdf);
-  return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0, ...(pdfStale && { pdfStale }), ...notice };
+  return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0, ...(pdfStale && { pdfStale }), ...(only && { only }), ...notice };
 }
 
 /**
@@ -1071,6 +1082,18 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
     pushLog(Buffer.from(`[warn] ${bibCmd} not available, skipping bibliography pass.\n`));
   }
   return 0;
+}
+
+/**
+ * The name main's text \include's the file `abs` by, as written (\includeonly takes the same), or null: not one of
+ * its \include's, or a name TeX would read as more than a name.
+ */
+export function includedAs(tex, mainDir, abs) {
+  for (const [, name] of withoutComments(tex).matchAll(/\\include\s*\{([^}]+)\}/g)) {
+    const file = path.resolve(mainDir, /\.tex$/i.test(name.trim()) ? name.trim() : `${name.trim()}.tex`);
+    if (file === abs) return /[\\{}%#&~^$,\s]/.test(name) ? null : name;
+  }
+  return null;
 }
 
 const fileHash = async (file) => {

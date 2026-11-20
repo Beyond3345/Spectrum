@@ -490,6 +490,12 @@ function Editor({ projectId }: { projectId: string }) {
   // the extension list outlives a render, so the completion source reads this rather than a stale compile setting
   const compileOptionsRef = useRef(compileOptions);
   compileOptionsRef.current = compileOptions;
+  // Only the open chapter (the Compile menu's, until the project is closed): a compile typesets the \include'd chapter
+  // that is open, alone; partial: the chapter the PDF showing holds, '' for the whole document
+  const [chapterOnly, setChapterOnly] = useState(false);
+  const [partial, setPartial] = useState('');
+  const chapterRef = useRef('');
+  chapterRef.current = chapterOnly ? activePath : '';
   // Compile with page colour: the project's colour while it's on, and what the compile gives the pages (white: none)
   const ownPage = projectCompile.pageColour;
   const pageFill = ownPage && ownPage !== 'white' ? PDF_PAGE_FILLS[ownPage] : undefined;
@@ -1754,6 +1760,8 @@ function Editor({ projectId }: { projectId: string }) {
   const showPdf = (doc: string, next: { url: string; blob: boolean } | null) => {
     const old = pdfNow.current;
     setPdf(next);
+    // the whole document's, unless the compile that made it says otherwise
+    setPartial('');
     setShownDoc(doc);
     shownRef.current = doc;
     if (old?.blob) window.setTimeout(() => URL.revokeObjectURL(old.url), 10_000);
@@ -1847,7 +1855,7 @@ function Editor({ projectId }: { projectId: string }) {
     return drawn.flat();
   };
 
-  const runCompile = async (doc = compileTarget, opts: { fresh?: boolean; auto?: boolean } = {}): Promise<CompileState['state'] | 'busy'> => {
+  const runCompile = async (doc = compileTarget, opts: { fresh?: boolean; auto?: boolean; whole?: boolean } = {}): Promise<CompileState['state'] | 'busy'> => {
     if (compilingRef.current) return 'busy';
     if (!doc) {
       notify('There’s no document to compile. Add one, or choose “Set as main file” from a file’s menu.');
@@ -1888,6 +1896,7 @@ function Editor({ projectId }: { projectId: string }) {
         bibTool: options.bibTool,
         draft: options.draft,
         precompile: options.precompile,
+        only: (!opts.fresh && !opts.whole && chapterRef.current) || undefined,
         fresh: opts.fresh,
         texFolder: settings.texFolder || undefined,
         xjyutpingFolder: settings.xjyutpingFolder || undefined,
@@ -1929,14 +1938,16 @@ function Editor({ projectId }: { projectId: string }) {
         const url = URL.createObjectURL(blob);
         // an auto compile of a document whose PDF was put away meanwhile (another file opened) leaves the pane be;
         // the copy on disk, or stalePdf, shows when it comes back
-        if (!opts.auto || built === shownRef.current) showPdf(built, { url, blob: true });
-        else window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        if (!opts.auto || built === shownRef.current) {
+          showPdf(built, { url, blob: true });
+          setPartial(res.only || '');
+        } else window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
         // a copy on disk another program holds (Windows) is older: this one shows when the document's PDF comes back
         if (res.pdfStale) stalePdf.current.set(built, { blob, at: startedAt });
         else stalePdf.current.delete(built);
         setCompileFailure('');
         ended = 'ok';
-        if (built === mainFile)
+        if (built === mainFile && !res.only)
           pdfThumbnail(url)
             .then((png) => saveThumbnail(projectId, png))
             .catch(() => undefined);
@@ -3407,6 +3418,8 @@ function Editor({ projectId }: { projectId: string }) {
           [true, 'On: one pass, images as boxes']
         ])
       : []),
+    // one \include'd chapter of a thesis in a pass of its own, with the other chapters' numbers as the last full compile left them
+    compileKind === 'latex' && { label: 'Only the open chapter', checked: chapterOnly, onSelect: () => setChapterOnly((on) => !on) },
     // off: the compile is confined (on a Mac) and has TeX's restricted shell escape only
     usesTeX && trust && { label: 'Trust this project', checked: trust.trusted, onSelect: () => void toggleTrust() },
     usesTeX && trust && { separator: true },
@@ -4150,6 +4163,14 @@ function Editor({ projectId }: { projectId: string }) {
                 )}
 
                 {pdf && annotate && <div className="pdf-annotate-hint">Click the page to add a note</div>}
+                {pdf && partial && !annotate && (
+                  <div className="pdf-annotate-hint pdf-partial-hint">
+                    Only {partial}
+                    <button className="btn small" disabled={running} onClick={() => void runCompile(compileTarget, { whole: true })}>
+                      Whole document
+                    </button>
+                  </div>
+                )}
 
                 {compileNotice?.code === 'BIBER_MISSING' && !running && <BiberNotice compile={() => runCompile()} notify={notify} />}
 

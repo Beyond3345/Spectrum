@@ -493,3 +493,99 @@ test('an edit saved while a format is being made neither spoils it nor gets into
     assert.ok(samePages(pages(result), pages(await compile(q, { precompile: false }))), `the pages of “${word}”`);
   }
 });
+
+// ─── only the open chapter ───
+
+const pageCount = (result) => [...pdfObjects(pages(result)).values()].filter((body) => /\/Type\s*\/Page\b(?!s)/.test(body)).length;
+const ONLY = /Only chapters\/two was typeset/;
+const book = (extra = '') => [
+  '\\documentclass{report}',
+  '\\usepackage[backend=biber]{biblatex}',
+  '\\addbibresource{refs.bib}',
+  '\\begin{document}',
+  '\\tableofcontents',
+  '\\include{chapters/one}',
+  '\\include{chapters/two}',
+  '\\include{chapters/three}',
+  extra,
+  '\\printbibliography',
+  '\\end{document}',
+  ''
+].join('\n');
+const chapter = (n, more = '') => `\\chapter{Chapter ${n}}\\label{ch:${n}}\nText of chapter ${n} \\cite{knuth}, see Chapter~\\ref{ch:one}. ${more}\n\\newpage More of chapter ${n}.\n`;
+const bookFiles = () => ({ 'main.tex': book(), 'refs.bib': entry('knuth', 'The TeXbook') + entry('lamport', 'LaTeX'), 'chapters/one.tex': chapter('one'), 'chapters/two.tex': chapter('two'), 'chapters/three.tex': chapter('three'), 'notes.tex': 'Notes.\n' });
+
+test('Only the open chapter typesets that chapter in one pass with the others’ numbers, and leaves the document’s PDF alone', { skip: needs('pdflatex', 'biber') }, async () => {
+  const p = await newProject(bookFiles());
+  const full = await compile(p);
+  assert.equal(full.status, 0, full.log);
+  const onDisk = await fs.readFile(path.join(p.path, 'main.pdf'));
+  const all = pageCount(full);
+
+  await write(p, 'chapters/two.tex', chapter('two', 'An edit.'));
+  const only = await compile(p, { onlyFile: 'chapters/two.tex' });
+  assert.equal(only.status, 0, only.log);
+  assert.match(only.log, ONLY);
+  assert.equal(only.only, 'chapters/two');
+  assert.equal(passes(only.log), 1);
+  assert.equal(biberRuns(only.log), 0);
+  assert.ok(pageCount(only) < all, `${pageCount(only)} of ${all} pages`);
+  // chapter two still starts on its page of the whole document, and its reference to chapter one still has its number
+  assert.match(await fs.readFile(path.join(dataDir, 'cache', p.id, 'build-files', 'main.tex', 'pdflatex', 'chapters', 'two.aux'), 'utf8'), /\\newlabel\{ch:two\}\{\{2\}\{4\}/);
+  assert.doesNotMatch(only.log, /Reference `ch:one' on page \d+ undefined/);
+  // the PDF beside the source is the whole document's, and the editor is told so
+  assert.ok(onDisk.equals(await fs.readFile(path.join(p.path, 'main.pdf'))));
+  assert.equal(only.pdfStale, true);
+
+  // a label added in the chapter is there for the next compile of it
+  await write(p, 'chapters/two.tex', chapter('two', '\\section{New}\\label{sec:new} See Section~\\ref{sec:new}.'));
+  await compile(p, { onlyFile: 'chapters/two.tex' });
+  const again = await compile(p, { onlyFile: 'chapters/two.tex' });
+  assert.match(again.log, ONLY);
+  assert.doesNotMatch(again.log, /Reference `sec:new' on page \d+ undefined/);
+
+  // and the next full compile is the whole document again, as one from scratch makes it
+  const whole = await compile(p);
+  assert.equal(whole.status, 0, whole.log);
+  assert.doesNotMatch(whole.log, /Only chapters/);
+  assert.equal(pageCount(whole), all + 0);
+  assert.ok(Buffer.from(whole.pdf, 'base64').equals(await fs.readFile(path.join(p.path, 'main.pdf'))));
+  const scratch = await compile(p, { fresh: true });
+  assert.ok(samePages(pages(whole), pages(scratch)), 'the same pages as from scratch');
+});
+
+test('Only the open chapter compiles the whole document when it can’t be right', { skip: needs('pdflatex', 'biber') }, async () => {
+  const p = await newProject(bookFiles());
+  const wholeAfter = async (what, options) => {
+    const result = await compile(p, options);
+    assert.ok(result.ok, result.error || result.log);
+    assert.doesNotMatch(result.log, /Only chapters/, what);
+    assert.equal(result.only, undefined, what);
+    return result;
+  };
+  // nothing kept yet to take the other chapters' numbers from
+  const first = await wholeAfter('a first compile', { onlyFile: 'chapters/two.tex' });
+  assert.match(first.log, /This compiled the whole document/);
+  assert.ok(passes(first.log) >= 2);
+  assert.match((await compile(p, { onlyFile: 'chapters/two.tex' })).log, ONLY);
+  // a file that is no chapter of the document, and the document itself
+  await wholeAfter('a file the document doesn’t \\include', { onlyFile: 'notes.tex' });
+  await wholeAfter('the main file', { onlyFile: 'main.tex' });
+  await wholeAfter('a path out of the project', { onlyFile: '../chapters/two.tex' });
+  // from scratch, and the engines that choose their own passes
+  await wholeAfter('from scratch', { onlyFile: 'chapters/two.tex', fresh: true });
+  if (tools.latexmk) await wholeAfter('latexmk', { onlyFile: 'chapters/two.tex', engine: 'latexmk' });
+  // after a compile with errors nothing is kept, so the next is whole again
+  await write(p, 'chapters/two.tex', chapter('two', '\\undefinedthing'));
+  assert.notEqual((await compile(p, { onlyFile: 'chapters/two.tex' })).status, 0);
+  await write(p, 'chapters/two.tex', chapter('two'));
+  await wholeAfter('after errors', { onlyFile: 'chapters/two.tex' });
+  // with the precompiled preamble on, a chapter alone is a pass of its own without the format, and still right
+  await preSettled(p);
+  const withFormat = await pre(p);
+  assert.match(withFormat.log, FROM_FORMAT);
+  const chapterOnly = await pre(p, { onlyFile: 'chapters/two.tex' });
+  assert.match(chapterOnly.log, ONLY);
+  assert.doesNotMatch(chapterOnly.log, FROM_FORMAT);
+  assert.equal(chapterOnly.status, 0);
+});

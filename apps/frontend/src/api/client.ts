@@ -711,8 +711,10 @@ export interface CompileResult {
   pdf?: string;
   /** relative path of the PDF written next to the document, e.g. "main.pdf" */
   pdfPath?: string;
-  /** that copy wasn't updated (another program on Windows holds it), so only `pdf` is this compile's */
+  /** that copy wasn't updated (another program on Windows holds it, or this is one chapter alone), so only `pdf` is this compile's */
   pdfStale?: boolean;
+  /** Only the open chapter: the chapter this PDF holds, as the document \include's it */
+  only?: string;
   log?: string;
   status?: number;
   engine?: string;
@@ -775,6 +777,8 @@ export function compileProject(payload: {
   draft?: boolean;
   /** Precompile the preamble (Settings › Engines › LaTeX) */
   precompile?: boolean;
+  /** Only the open chapter: the open file, typeset alone when the document \include's it and a full compile's numbers are kept */
+  only?: string;
   fresh?: boolean;
   texFolder?: string;
   checkpoint?: boolean;
