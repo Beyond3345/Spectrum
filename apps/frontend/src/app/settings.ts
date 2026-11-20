@@ -397,18 +397,48 @@ export const REASONING_EFFORTS: [ReasoningEffort, string][] = [
   ['max', 'Max']
 ];
 
-/** What the user pays per million tokens of a model, in US dollars: input, input the cache served, output (a price needs input and output) */
-export type Price = { input?: number; cached?: number; output?: number };
+/**
+ * The currencies a price may be typed in: code, a symbol no other currency shares, and its name. Spectrum converts
+ * between none of them: a cost is shown in the currency of the price that gave it.
+ */
+export const CURRENCIES = [
+  ['USD', 'US$', 'US dollar'],
+  ['CNY', 'CN¥', 'Chinese yuan'],
+  ['EUR', '€', 'Euro'],
+  ['GBP', '£', 'British pound'],
+  ['AUD', 'A$', 'Australian dollar'],
+  ['NZD', 'NZ$', 'New Zealand dollar'],
+  ['CAD', 'CA$', 'Canadian dollar'],
+  ['SGD', 'S$', 'Singapore dollar'],
+  ['HKD', 'HK$', 'Hong Kong dollar'],
+  ['TWD', 'NT$', 'New Taiwan dollar'],
+  ['JPY', 'JP¥', 'Japanese yen'],
+  ['KRW', '₩', 'South Korean won'],
+  ['INR', '₹', 'Indian rupee'],
+  ['CHF', 'CHF ', 'Swiss franc']
+] as const;
+export type Currency = (typeof CURRENCIES)[number][0];
+
+/**
+ * What the user pays per million tokens of a model: input, input the cache served, output (a price needs input and
+ * output), in its currency (US dollars when it names none, as every price did before currencies)
+ */
+export type Price = { input?: number; cached?: number; output?: number; currency?: Currency };
 export type Prices = Record<string, Price>;
 export const PRICE_FIELDS = ['input', 'cached', 'output'] as const;
 
-/** Prices as typed: each a number of zero or more, or left out; a model with none is left out */
+/**
+ * Prices as typed: each a number of zero or more, or left out, and a currency Spectrum offers other than US dollars
+ * (an unknown one is US dollars); a model with neither a number nor such a currency is left out
+ */
 export function cleanPrices(value: unknown): Prices {
-  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 10_000;
+  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 10_000_000;
   return Object.fromEntries(
     Object.entries(typeof value === 'object' && value ? value : {}).flatMap(([id, p]) => {
       const v = (typeof p === 'object' && p ? p : {}) as Record<string, unknown>;
-      const price = Object.fromEntries(PRICE_FIELDS.flatMap((k) => (ok(v[k]) ? [[k, v[k]]] : [])));
+      const price: Price = Object.fromEntries(PRICE_FIELDS.flatMap((k) => (ok(v[k]) ? [[k, v[k]]] : [])));
+      const currency = CURRENCIES.find(([code]) => code !== 'USD' && code === v.currency)?.[0];
+      if (currency) price.currency = currency;
       return id && Object.keys(price).length ? [[id, price]] : [];
     })
   );

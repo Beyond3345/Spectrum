@@ -419,14 +419,20 @@ const ADAPTERS = {
 // the servers that refused a prompt cache key, by host: asked once, not at every step of a run
 const noCacheKey = new Set();
 
-/** Tokens as the provider counted them: all it read (input, with what the cache served and what it stored) and what it wrote. */
-function usageOf(u) {
+/**
+ * Tokens as the provider counted them: all it read (input, with what the cache served and what it stored) and what it
+ * wrote. With `reportsCost` (OpenRouter), also what the request cost in US dollars as the provider reports it: its
+ * usage.cost (credits, which are dollars) and, on the user's own provider key, what that provider charged beside it.
+ */
+function usageOf(u, reportsCost) {
   if (!u) return null;
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+  const cost = reportsCost && n(u.cost) !== null ? n(u.cost) + (n(u.cost_details?.upstream_inference_cost) ?? 0) : null;
   const cacheRead = u.cache_read_input_tokens ?? u.prompt_tokens_details?.cached_tokens ?? u.input_tokens_details?.cached_tokens ?? u.prompt_cache_hit_tokens ?? 0;
   const cacheWrite = u.cache_creation_input_tokens ?? 0;
   // the Messages API counts what the cache served and stored apart from the rest; the others inside their total
   const input = u.prompt_tokens ?? (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + cacheWrite;
-  return { input, output: u.completion_tokens ?? u.output_tokens ?? 0, ...(cacheRead && { cacheRead }), ...(cacheWrite && { cacheWrite }) };
+  return { input, output: u.completion_tokens ?? u.output_tokens ?? 0, ...(cacheRead && { cacheRead }), ...(cacheWrite && { cacheWrite }), ...(cost !== null && { cost }) };
 }
 
 /** onText for the answer's text alone: a leading <think>…</think> (open and local reasoning models) is held back until it closes. */
@@ -462,7 +468,8 @@ function visibleText(onText) {
  * same whole message either way. onRetry({ attempt, of, waitMs, streamed }): heard before each wait to try again
  * (attempt 2 of 3 is the second try); streamed says text of the try given up was already heard, and is to be dropped.
  * cache: a key for the conversation a tool loop sends again at each step, which asks the provider to cache its prefix.
- * usage: { input, output, cacheRead?, cacheWrite? } when the provider counts tokens.
+ * usage: { input, output, cacheRead?, cacheWrite?, cost? } when the provider counts tokens; cost (US dollars) where
+ * the provider reports it (OpenRouter).
  */
 export async function chatCompletion({ messages, model, endpoint, apiKey, tools, temperature = 0.2, reasoningEffort, provider: providerId, signal, retries: maxRetries = MAX_RETRIES, onText, onRetry, cache }) {
   const resolved = resolveLLMConfig({ endpoint, apiKey, model });
@@ -615,7 +622,8 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   if (truncated && (message.tool_calls?.length || !content)) {
     return { ok: false, error: 'The answer was cut off before it finished. Try a lower effort or a smaller request.' };
   }
-  const usage = usageOf(data.usage);
+  // OpenRouter reports each request's cost in its usage, unasked, in every format and in a stream's last piece
+  const usage = usageOf(data.usage, provider?.id === 'openrouter');
   // a text answer that stopped at the output limit is still an answer: the caller says it was cut off
   return { ok: true, message: { ...message, content }, ...(truncated && { truncated: true }), ...(usage && { usage }), ...(retries && { retries }) };
 }

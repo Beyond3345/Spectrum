@@ -97,10 +97,11 @@ import {
   useLivePreset,
   useProviders,
   PRICE_FIELDS,
+  CURRENCIES,
   cleanPrices,
   useSettings
 } from './settings';
-import type { AppSettings, ModelRole, PdfPageDark, PdfPageLight, Theme } from './settings';
+import type { AppSettings, Currency, ModelRole, PdfPageDark, PdfPageLight, Price, Theme } from './settings';
 import type { ProviderPreset } from '../api/client';
 import { FIXED_SHORTCUTS, SHORTCUTS, canonical, formatShortcut, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts';
 import type { Shortcut } from './shortcuts';
@@ -213,6 +214,61 @@ const INSTALL_HINTS: Record<string, string> = {
 };
 
 /** projectId: the open project, for Skills' This project; section: the one to open on */
+/**
+ * The user's own prices, for the main model or any other: the provider's listed models, the main model when typed,
+ * and every model already priced (of any provider, kept when the provider changes). Each price has its currency.
+ */
+function ModelPrices({ settings, update, preset }: { settings: AppSettings; update: (patch: Partial<AppSettings>) => void; preset: ProviderPreset | null }) {
+  const models = new Map<string, string>([[settings.llmModel, modelOf(preset, settings.llmModel)?.label || settings.llmModel]]);
+  for (const m of preset?.models || []) if (!models.has(m.id)) models.set(m.id, m.label);
+  for (const id of Object.keys(settings.modelPrices)) if (!models.has(id)) models.set(id, id);
+  // the model chosen here, until the main model changes
+  const [picked, setPicked] = useState({ main: settings.llmModel, id: settings.llmModel });
+  const model = picked.main === settings.llmModel && models.has(picked.id) ? picked.id : settings.llmModel;
+  const price = settings.modelPrices[model] || {};
+  const [, symbol] = CURRENCIES.find(([code]) => code === (price.currency || 'USD'))!;
+  const set = (patch: Partial<Price>) => update({ modelPrices: cleanPrices({ ...settings.modelPrices, [model]: { ...price, ...patch } }) });
+  return (
+    <div className="field">
+      <label id="settings-modelPrice">Prices</label>
+      <div className="row">
+        <Select
+          className="grow"
+          labelId="settings-mainTitle settings-modelPrice"
+          value={model}
+          options={[...models].map(([id, label]): [string, string] => [id, `${label}${id === settings.llmModel ? ' (main model)' : settings.modelPrices[id] ? ' (priced)' : ''}`])}
+          onChange={(id) => setPicked({ main: settings.llmModel, id })}
+        />
+        <Select
+          labelId="settings-modelPrice settings-priceCurrency"
+          value={price.currency || 'USD'}
+          options={CURRENCIES.map(([code, sign, name]): [string, string] => [code, `${name} (${sign.trim()})`])}
+          onChange={(currency) => set({ currency: currency as Currency })}
+        />
+        <span id="settings-priceCurrency" className="sr-only">Currency</span>
+      </div>
+      <div className="row">
+        {PRICE_FIELDS.map((k) => (
+          <input
+            key={k}
+            className="input grow"
+            type="number"
+            min={0}
+            step="any"
+            aria-label={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}, ${symbol.trim()} per million tokens`}
+            placeholder={{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}
+            value={price[k] ?? ''}
+            onChange={(e) => set({ [k]: e.target.value.trim() === '' ? undefined : Number(e.target.value) })}
+          />
+        ))}
+      </div>
+      <div className="field-hint">
+        Optional: input, cached input and output, per million tokens, from your provider’s price list, in its currency. The Spectrum agent’s tab then shows an estimate of what a thread cost, in that currency; Spectrum converts no currencies. With OpenRouter it shows OpenRouter’s own figure in US dollars instead. Without either it shows tokens alone.
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsSheet({ onClose, projectId, section: start = 'appearance' }: { onClose: () => void; projectId?: string; section?: Section }) {
   const [settings, update] = useSettings();
   const [section, setSection] = useState<Section>(start);
@@ -763,33 +819,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                   How long the model may think before answering. Higher levels are slower and cost more.
                 </div>
               </div>
-              {settings.llmModel && (
-                <div className="field">
-                  <label id="settings-modelPrice">Price of {mainModel?.label || settings.llmModel}</label>
-                  <div className="row">
-                    {PRICE_FIELDS.map((k) => (
-                      <input
-                        key={k}
-                        className="input grow"
-                        type="number"
-                        min={0}
-                        step="any"
-                        aria-label={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}, US dollars per million tokens`}
-                        placeholder={{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}
-                        value={settings.modelPrices[settings.llmModel]?.[k] ?? ''}
-                        onChange={(e) => {
-                          const n = e.target.value.trim() === '' ? undefined : Number(e.target.value);
-                          const price = { ...settings.modelPrices[settings.llmModel], [k]: n };
-                          update({ modelPrices: cleanPrices({ ...settings.modelPrices, [settings.llmModel]: price }) });
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <div className="field-hint">
-                    Optional: input, cached input and output, in US dollars per million tokens, from your provider’s price list. The Spectrum agent’s tab then shows an estimate of what a thread cost. Without a price it shows tokens alone.
-                  </div>
-                </div>
-              )}
+              {settings.llmModel && <ModelPrices settings={settings} update={update} preset={preset} />}
 
               {roleModel('quick', 'Quick model', 'Used for autocomplete and for splitting pasted references.', 'Listed models think as little as they allow, so it stays quick; other servers use their own default.')}
               {roleModel('vision', 'Vision model', 'Used for image → LaTeX and the layout check in template transfer.', 'Uses the model’s recommended effort.')}

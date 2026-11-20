@@ -246,6 +246,8 @@ try {
   eq(loadSettings().modelPrices, { m: { input: 3 } }, 'model prices are checked on load');
   stored({ modelPrices: [1] }, null);
   eq(loadSettings().modelPrices, {}, 'prices that are not a list of models are none');
+  stored({ modelPrices: { m: { input: 3, output: 15, currency: 'AUD' }, n: { input: 1, output: 2, currency: 'ZZZ' }, o: { input: 1, output: 2 } } }, null);
+  eq(loadSettings().modelPrices, { m: { input: 3, output: 15, currency: 'AUD' }, n: { input: 1, output: 2 }, o: { input: 1, output: 2 } }, 'a price’s currency is checked on load: an unknown one is US dollars');
   eq(DEFAULT_SETTINGS.modelPrices, {}, 'no prices until typed');
   stored({ checkpointEveryApply: 'yes' }, null);
   eq([DEFAULT_SETTINGS.checkpointEveryApply, loadSettings().checkpointEveryApply, 'checkpointEveryApply' in sharedPart(loadSettings())], [false, false, false], 'one checkpoint per review unless switched on, checked on load, kept to this computer');

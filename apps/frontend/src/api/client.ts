@@ -1325,7 +1325,8 @@ export type AgentStep = { tool: string; about?: string; ok: boolean; ms?: number
 /** What was said before step `before` of a turn: the model's own words, or (user) a message steered in */
 export type AgentSaid = { before: number; text: string; user?: boolean };
 /** Tokens as the provider counted them: all it read (cacheRead and cacheWrite are part of input) and what it wrote */
-export type AgentUsage = { input: number; output: number; cacheRead?: number; cacheWrite?: number };
+/** cost: what the provider reported the calls cost, in US dollars (OpenRouter; none from the others) */
+export type AgentUsage = { input: number; output: number; cacheRead?: number; cacheWrite?: number; cost?: number };
 
 // ─── The Spectrum agent's runs (agentRunService.js): a thread's turns as jobs, heard as events ───
 

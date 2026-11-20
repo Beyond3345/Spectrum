@@ -62,7 +62,7 @@ before(async () => {
         return res.end(JSON.stringify({ error: { type: 'overloaded_error', message: 'Overloaded' } }));
       }
       const toolCalls = (reply.calls || []).map(([name, args], i) => ({ index: i, id: `c${requests.length}-${i}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }));
-      const usage = { prompt_tokens: Math.ceil(body.length / 4), completion_tokens: 7, prompt_tokens_details: { cached_tokens: step ? 1000 : 0 } };
+      const usage = { prompt_tokens: Math.ceil(body.length / 4), completion_tokens: 7, prompt_tokens_details: { cached_tokens: step ? 1000 : 0 }, ...(reply.cost !== undefined && { cost: reply.cost }) };
       if (!payload.stream) {
         res.writeHead(200, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: reply.say || null, ...(toolCalls.length && { tool_calls: toolCalls }) } }], usage }));
@@ -489,4 +489,28 @@ test('compile builds a LaTeX proposal on the copy, with the error at its line', 
   assert.match(JSON.parse(out[1]).errors[0], /main\.tex:3: Undefined control sequence/);
   assert.equal(JSON.parse(out[3]).ok, true, out[3]);
   assert.deepEqual((await fs.readdir(p.path)).filter((name) => !name.startsWith('.')), ['main.tex']);
+});
+
+test('OpenRouter’s reported cost of each step is summed over the turn, and a turn with a step that reported none has none', async () => {
+  const p = await createProject({ name: 'Cost' });
+  await write(path.join(p.path, 'main.tex'), 'text\n');
+  // OpenRouter's address, answered by the scripted model: nothing leaves this computer
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (url, init) => realFetch(String(url).replace('https://openrouter.ai/api/v1', base), init);
+  try {
+    const openrouter = (model, threadId) => ({ ...turn(p, model), threadId, llmConfig: { endpoint: 'https://openrouter.ai/api/v1/chat/completions', apiKey: 'test', model } });
+    scripts['priced/model'] = [{ calls: [['read_file', { path: 'main.tex' }]], cost: 0.25 }, { say: 'Read it.', cost: 0.125 }];
+    let { run } = (await post('/api/agent/runs', openrouter('priced/model', 'cost-1'))).json;
+    let events = await hear(run.id);
+    assert.deepEqual(of(events, 'usage').map((u) => [u.cost, u.total.cost]), [[0.25, 0.25], [0.125, 0.375]]);
+    assert.equal(of(events, 'result')[0].usage.cost, 0.375);
+    assert.equal(of(events, 'result')[0].usage.model, 'priced/model');
+    scripts['half/model'] = [{ calls: [['read_file', { path: 'main.tex' }]], cost: 0.25 }, { say: 'Read it.' }];
+    ({ run } = (await post('/api/agent/runs', openrouter('half/model', 'cost-2'))).json);
+    events = await hear(run.id);
+    assert.equal(of(events, 'usage')[1].total.cost, undefined, 'a part reported is no turn’s cost');
+    assert.equal('cost' in of(events, 'result')[0].usage, false);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

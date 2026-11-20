@@ -333,7 +333,7 @@ const shownOf = (show) => show && {
  *
  * As a job (agentRunService.js) it is given:
  *   emit(type, data)   hears the turn as it happens: 'text' { text }, 'step' { id, tool, about?, status, ms?, show? },
- *                      'retry' { attempt, of, waitMs, streamed }, 'usage' { input, output, cacheRead?, cacheWrite?,
+ *                      'retry' { attempt, of, waitMs, streamed }, 'usage' { input, output, cacheRead?, cacheWrite?, cost?,
  *                      total, model }, 'todo' { text, link? }, 'user' { text, steered }, 'notice' { message }
  *   signal             Stop: aborts the model call and the tool running, and the turn returns with what it had done
  *   steer()            → the messages the user sent to be read between steps, each given to the model once
@@ -676,7 +676,11 @@ export async function runToolAgent({
 
   if (state && !readOnly) await prepare();
   const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  let counted = false;
+  let counted = 0;
+  // the provider's reported cost of the steps (OpenRouter), the turn's only while every counted step reported one
+  let cost = 0;
+  let costed = 0;
+  const summed = () => ({ ...total, ...(costed && costed === counted && { cost }) });
   /** One compile of the proposals as they are, as a step: { ok, errors }. */
   const build = async () => {
     if (lastBuild?.version === version) return lastBuild;
@@ -709,7 +713,7 @@ export async function runToolAgent({
       steps,
       ...(says.length && { says }),
       ...(incomplete && { incomplete }),
-      ...(counted && { usage: total }),
+      ...(counted && { usage: summed() }),
       ...(built && { build: { ok: built.ok, errors: built.errors } }),
       ...(unsent.length && { unsent }),
       ...(asked && !incomplete && { ask: asked }),
@@ -754,9 +758,13 @@ export async function runToolAgent({
       })
     });
     if (result.usage) {
-      counted = true;
+      counted += 1;
       for (const key of Object.keys(total)) total[key] += result.usage[key] || 0;
-      say('usage', { ...result.usage, total: { ...total }, model: resolved.model });
+      if (result.usage.cost !== undefined) {
+        costed += 1;
+        cost += result.usage.cost;
+      }
+      say('usage', { ...result.usage, total: summed(), model: resolved.model });
     }
     if (result.stopped || signal?.aborted) return done(false, 'Stopped.', 'stopped');
     if (!result.ok) {
