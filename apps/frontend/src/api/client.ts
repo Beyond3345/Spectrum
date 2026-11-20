@@ -1941,6 +1941,11 @@ export function systemCheck(texFolder?: string) {
   return request<SystemCheck>(`/api/system/check${texFolder ? `?${new URLSearchParams({ texFolder })}` : ''}`);
 }
 
+/** Keys moved out of the window into the keychain: their references, in order. keep: the references still in use. */
+export function saveKeys(values: string[], keep: string[]) {
+  return request<{ ok: boolean; refs: string[] }>('/api/keys', json('PUT', { values, keep }));
+}
+
 /** A newer Spectrum than this one, from the release page (asked by the backend at most once a day). */
 export function getUpdateNotice() {
   return request<{ available: boolean; version?: string; url?: string }>('/api/system/update');

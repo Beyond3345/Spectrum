@@ -58,6 +58,7 @@ import Select from './Select';
 import Sheet from './Sheet';
 import Tabs from './Tabs';
 import { ParserFields } from './TransferPanel';
+import { keyFailure, selectSavedKey } from './keys';
 import GitHubSettings from './GitHubSettings';
 import AgentsPane from './AgentSettings';
 import DiagramFields from '../diagram/modes/structures/DiagramFields';
@@ -516,6 +517,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
         className={opts.action ? 'input grow' : 'input'}
         list={opts.list?.length ? `settings-${key}-list` : undefined}
         type={opts.secret ? 'password' : 'text'}
+        onFocus={opts.secret ? selectSavedKey : undefined}
         value={String(settings[key] ?? '')}
         placeholder={opts.placeholder}
         spellCheck={false}
@@ -787,6 +789,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
           {section === 'models' && (
             <>
               <h3 id="settings-mainTitle" className="form-section-title">Main model</h3>
+              {keyFailure() && <div className="field-hint error">Your API keys stay in this window’s storage, as before: {keyFailure()}</div>}
               <div className="field">
                 <label id="settings-llmProvider">Provider</label>
                 <Select
@@ -898,7 +901,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                     {needsKey && <>
                       <label htmlFor={`search-key-${provider}`}>{label} API key{optional ? ' (optional)' : ''}</label>
                       <input id={`search-key-${provider}`} className="input" type="password" autoComplete="off" spellCheck={false}
-                        value={providerKey(settings, provider)} onChange={(e) => update(providerKeyPatch(settings, provider, e.target.value))} />
+                        value={providerKey(settings, provider)} onFocus={selectSavedKey} onChange={(e) => update(providerKeyPatch(settings, provider, e.target.value))} />
                     </>}
                     {provider === 'serpapi' && <>
                       <label id="settings-serpEngine">SerpApi engine for references</label>
@@ -922,7 +925,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 return <div className="field" key={provider}>
                   <label htmlFor={`research-key-${provider}`}>{label} API key <span className="optional">Optional</span></label>
                   <input id={`research-key-${provider}`} className="input" type="password" autoComplete="off" spellCheck={false}
-                    value={providerKey(settings, provider)} onChange={(e) => update(providerKeyPatch(settings, provider, e.target.value))} />
+                    value={providerKey(settings, provider)} onFocus={selectSavedKey} onChange={(e) => update(providerKeyPatch(settings, provider, e.target.value))} />
                 </div>;
               })}
               {text('OpenAlex email', 'openalexEmail', { placeholder: 'you@example.com', hint: 'Sent with each OpenAlex request, so OpenAlex can contact you about heavy use.' })}
