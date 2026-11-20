@@ -254,6 +254,12 @@ try {
   eq(DEFAULT_SETTINGS.modelPrices, {}, 'no prices until typed');
   stored({ checkpointEveryApply: 'yes' }, null);
   eq([DEFAULT_SETTINGS.checkpointEveryApply, loadSettings().checkpointEveryApply, 'checkpointEveryApply' in sharedPart(loadSettings())], [false, false, false], 'one checkpoint per review unless switched on, checked on load, kept to this computer');
+  stored({ compileAfterApply: 'no', offerFixAfterApply: false }, null);
+  eq(
+    [DEFAULT_SETTINGS.compileAfterApply, DEFAULT_SETTINGS.offerFixAfterApply, loadSettings().compileAfterApply, loadSettings().offerFixAfterApply, 'compileAfterApply' in sharedPart(loadSettings())],
+    [true, true, true, false, false],
+    'the automations after an apply are on until switched off, checked on load, kept to this computer'
+  );
   for (const junk of [null, 'not json', '"dark"', 'null', '{"dark":"yes","minimap":1}']) {
     stored({ theme: junk ? 'dark' : 'system', editorFontSize: 10 + String(junk).length }, junk);
     eq([loadSettings().composerDark, loadSettings().composerMinimap], [false, false], `old choices that can’t be read (${junk}) are off`);

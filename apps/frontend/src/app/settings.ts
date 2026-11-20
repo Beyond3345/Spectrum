@@ -131,6 +131,9 @@ export type AppSettings = {
   checkpointNotice: boolean;
   /** a "Before AI changes" checkpoint before each change applied in a review, not one per review */
   checkpointEveryApply: boolean;
+  /** Settings › Agents › Automations: a compile once an agent's changes are applied, and Fix with AI offered if it fails */
+  compileAfterApply: boolean;
+  offerFixAfterApply: boolean;
   /** switching to another document's .tex shows that document's PDF, and Compile builds it */
   pdfFollowsFile: boolean;
   editorFontSize: number;
@@ -276,6 +279,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   checkpointOnCompile: true,
   checkpointNotice: true,
   checkpointEveryApply: false,
+  compileAfterApply: true,
+  offerFixAfterApply: true,
   pdfFollowsFile: true,
   editorFontSize: 13,
   editorKeymap: 'default',
@@ -488,6 +493,8 @@ function parse(raw: string | null): AppSettings {
     merged.checkpointOnCompile = merged.checkpointOnCompile !== false;
     merged.checkpointNotice = merged.checkpointNotice !== false;
     merged.checkpointEveryApply = merged.checkpointEveryApply === true;
+    merged.compileAfterApply = merged.compileAfterApply !== false;
+    merged.offerFixAfterApply = merged.offerFixAfterApply !== false;
     merged.pdfFollowsFile = merged.pdfFollowsFile !== false;
     merged.zoteroCompletion = merged.zoteroCompletion !== false;
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system';

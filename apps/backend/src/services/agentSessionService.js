@@ -255,13 +255,13 @@ const NO_DIRECT = 'Direct editing isn’t available on Windows yet. Choose Isola
  * The app's default Typst version and Markdown PDF engine, as the editor sends them with a new session, for the agent's
  * compiles of a project that chooses neither; anything else left out.
  */
-const appCompile = (value) => ({
+export const appCompile = (value) => ({
   ...(/^\d+\.\d+\.\d+$/.test(value?.typstVersion ?? '') && { typstVersion: value.typstVersion }),
   ...(['latex', 'typst'].includes(value?.markdownEngine) && { markdownEngine: value.markdownEngine })
 });
 
 /** What an agent's compile and its draft's preview use: the project's compile settings, else the app's defaults. */
-async function compileChoices(r) {
+export async function compileChoices(r) {
   const own = (await readProjectSettings(r.root)).compile || {};
   return { engine: own.engine || 'auto', typstVersion: own.typstVersion || r.compile?.typstVersion, markdownEngine: own.markdownEngine || r.compile?.markdownEngine };
 }
