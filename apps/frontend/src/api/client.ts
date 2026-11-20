@@ -2010,7 +2010,7 @@ export interface LocalAgent {
   id: string; name: string; command: string; args: string[]; runtimePaths: string[];
   installed: boolean; supported: boolean; hasKey: boolean; canImport: boolean;
   keyEnv: string; keyEnvs: string[];
-  url: string; unavailable?: string; experimental?: string; planned?: string;
+  url: string; unavailable?: string; experimental?: string; planned?: string; support?: 'supported' | 'progress' | 'untested' | 'unsupported';
   /** where: the app or folder the program was found in; app: the agent's desktop app, when it is installed */
   program?: string; source?: 'chosen' | 'spectrum' | 'app' | 'found'; where?: string; reads?: string[];
   app?: { name: string; path: string };

@@ -14,6 +14,7 @@ import claudeLock from '../data/adapters/claude/package-lock.json' with { type: 
 import piLock from '../data/adapters/pi/package-lock.json' with { type: 'json' };
 import zcodeLock from '../data/adapters/zcode/package-lock.json' with { type: 'json' };
 
+const SUPPORT = { deepseek: 'supported', claude: 'supported', codex: 'progress' };
 export const ADAPTER_LOCKS = { codex: codexLock, claude: claudeLock, pi: piLock, zcode: zcodeLock };
 
 export const AGENT_DIR = path.join(DATA_DIR, 'agents');
@@ -86,7 +87,9 @@ export function profileFor(id) {
   const profile = PROFILES.find((p) => p.id === id);
   if (!profile) throw Object.assign(new Error('Unknown agent.'), { statusCode: 400 });
   const unavailable = profile.planned || profile.unsupported || (process.platform === 'win32' && profile.windows) || undefined;
-  return { ...profile, key: profile.keys[0] || '', unavailable };
+  // how far Spectrum vouches for it: used for real in isolation by the owner, being worked on, or only its start checked
+  const support = profile.unsupported ? 'unsupported' : SUPPORT[profile.id] || 'untested';
+  return { ...profile, key: profile.keys[0] || '', unavailable, support };
 }
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -287,7 +290,7 @@ export async function agentEntry(id, config, isolated) {
   const app = await agentApp(p);
   const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, test, configured });
   return {
-    id, name: p.name, url: p.url, experimental: p.experimental, planned: p.planned, unavailable: p.unavailable,
+    id, name: p.name, url: p.url, experimental: p.experimental, support: p.support, planned: p.planned, unavailable: p.unavailable,
     command: chosen, args: saved.args || p.args, runtimePaths: saved.runtimePaths || [], keyEnv,
     keyEnvs: [...p.keys, ...(keyEnv && !p.keys.includes(keyEnv) ? [keyEnv] : [])], hasKey: !!saved.apiKey,
     canImport: !!p.login.length, installed: !!found, supported: isolated && !p.unavailable,

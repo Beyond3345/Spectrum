@@ -38,6 +38,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A long review is grouped under the document's headings, with counts, and an agent's change of line endings is offered as a change of its own
 - Local agents stay running between turns of an Isolated session, so a follow-up starts at once
 - Local agents get a `search_text` tool from Spectrum
+- Each local agent's card says how far it is supported: Supported (Claude Agent, DeepSeek Harness), In progress (Codex), Untested or Not supported (OpenCode)
 - The AI review reads a long document in parts, with a progress line and Stop, and ties each point to its own file and line
 - Review checks a Markdown document's citations, bibliography, images and links
 - Document insights counts the words of a Markdown document

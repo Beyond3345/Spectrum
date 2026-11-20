@@ -159,7 +159,7 @@ test('Claude Agent always starts with the claude.ai sign-in hidden', { skip: nod
 test('OpenCode is listed as unsupported and never started', async () => {
   assert.match(profileFor('opencode').unavailable, /does not run inside Spectrum’s isolation/);
   await assert.rejects(launchOptions('opencode', { workspace: dir, home: dir }), /isolation/);
-  assert.equal(profileFor('deepseek').experimental, undefined);
+  assert.deepEqual(['deepseek', 'claude', 'codex', 'opencode', 'kimi'].map((id) => profileFor(id).support), ['supported', 'supported', 'progress', 'unsupported', 'untested']);
 });
 
 test('Pi: the adapter is told where Pi is, with its package readable and never the home folder', { skip: nodeAdapters || knownFolders }, async () => {

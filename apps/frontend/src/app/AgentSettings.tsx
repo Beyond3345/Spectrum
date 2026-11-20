@@ -32,6 +32,14 @@ const copy = (text: string) => navigator.clipboard?.writeText(text).then(() => t
 let testQueue: Promise<unknown> = Promise.resolve();
 
 /** What the last Test (or session) found, as a sentence. */
+/** How far Spectrum vouches for an agent: its badge and what the badge means. */
+const SUPPORT = {
+  supported: ['Supported', 'Used for real tasks inside Spectrum’s isolation.'],
+  progress: ['In progress', 'It starts in isolation, but a task does not get through yet. Being worked on.'],
+  untested: ['Untested', 'Spectrum can start it, but it has not been used for real tasks in isolation.'],
+  unsupported: ['Not supported', 'It cannot run inside Spectrum’s isolation.']
+} as const;
+
 function testSentence(a: LocalAgent) {
   const t = a.test;
   if (!t) return '';
@@ -347,7 +355,7 @@ function AgentCard({
         <span className="agent-card-title">
           <span className="skill-name">
             {a.name}
-            {a.experimental && <span className="badge agent-badge">Experimental</span>}
+            {!a.planned && a.support && <span className="badge agent-badge" title={SUPPORT[a.support][1]}>{SUPPORT[a.support][0]}</span>}
           </span>
           <span id={`${id}-status`} className="field-hint agent-card-status">
             {busy || statusLine(a)}

@@ -568,7 +568,7 @@ export default function LocalAgentTab({
                   </button>
                   <span className="agent-picker-name">
                     {current?.name}
-                    {current?.experimental && ' · Experimental'}
+                    {current?.support === 'progress' ? ' · In progress' : current?.support === 'untested' ? ' · Untested' : ''}
                   </span>
                   {current && !ready && (
                     <button
