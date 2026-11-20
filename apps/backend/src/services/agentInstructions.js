@@ -80,7 +80,8 @@ const INSTRUCTION_NAME = /(^|\/)agents(\.override|\.local)?\.md$/i;
  * instructionsBlock keeps), and any other file of those names, in a folder or at the top, which has no approval.
  */
 export async function withheldInstructions(root, files) {
-  const named = Object.keys(files).filter((rel) => INSTRUCTION_NAME.test(rel));
+  // also as a file system that ignores case takes the name (APFS folds 'ſ' to 's'), as agentHiddenName does
+  const named = Object.keys(files).filter((rel) => INSTRUCTION_NAME.test(rel) || INSTRUCTION_NAME.test(rel.toUpperCase().toLowerCase()));
   if (!named.length) return [];
   const approved = await approvedHash(root);
   // the bytes' hash is the text's only when they are that text in UTF-8, as the approval hashed it
