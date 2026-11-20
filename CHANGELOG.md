@@ -6,6 +6,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Security
 
+- On a Mac, a local agent can be held to a list of hosts: its provider's, the sites Spectrum's tools need and any you add (Settings › Agents › Network). Every agent starts on Any host with its list ready. A host an agent on a list is refused shows in its session, with Allow for that agent, and such an agent cannot look names up itself
+- On a Mac, an MCP server you add reaches only the hosts you list for it, or any host if you tick that, and Check shows what it asked for
 - API keys are kept in the keychain on a Mac and encrypted for your Windows account on Windows, not in the window's storage. Keys from earlier versions move there on first start, and stay where they were, still working, if the keychain cannot be used
 
 ### Added
