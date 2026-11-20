@@ -1,7 +1,7 @@
 import { Compartment } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
-import { HighlightStyle, foldService, syntaxHighlighting } from '@codemirror/language';
+import { HighlightStyle, Language, LanguageSupport, defaultHighlightStyle, foldService, languageDataProp, syntaxHighlighting } from '@codemirror/language';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { Tag, tags } from '@lezer/highlight';
 import type { MarkdownConfig } from '@lezer/markdown';
@@ -9,6 +9,7 @@ import { latex } from '../latex/lang';
 import { compileLint } from './compileMarks';
 import { latexFoldService, latexHighlight, mathsWrap } from './latexEditor';
 import { docKind } from './shared';
+import { ChunkedParser } from './typstChunks';
 import { includedPath } from './outlines';
 import { EditorView } from '@codemirror/view';
 import { IS_MAC } from '../app/platform';
@@ -24,9 +25,31 @@ let loading: Promise<Extension | null> | null = null;
 /** The Typst language, loaded once; null while loading or when the package fails. */
 export function loadTypst(): Promise<Extension | null> {
   loading ??= import('codemirror-lang-typst/lezer')
-    .then(({ typst_lezer }) => (typst = [typst_lezer(), compileLint]))
+    .then((mode) => (typst = [typstLanguage(mode), compileLint]))
     .catch(() => null);
   return loading;
+}
+
+/**
+ * The package's own typst_lezer(), part for part, around a parser that parses a long file in chunks and only the
+ * changed ones again (typstChunks.ts): its highlighting, completion, indentation, folding, list keys and linter.
+ */
+export function typstLanguage(mode: typeof import('codemirror-lang-typst/lezer')): Extension {
+  const base = new mode.TypstLezerParser(
+    languageDataProp.add((type) => (type.isTop ? mode.typstLezerLanguageData : undefined)),
+    mode.typstLezerHighlighting,
+    mode.typstLezerIndentation,
+    mode.typstLezerFolding
+  );
+  const top = base.nodeSet.types.find((type) => type.isTop)!;
+  return new LanguageSupport(new Language(mode.typstLezerLanguageData, new ChunkedParser(base, top), [], 'typst'), [
+    syntaxHighlighting(mode.TypstHighlightSytle),
+    syntaxHighlighting(defaultHighlightStyle),
+    mode.typstLezerIndentService,
+    mode.typstLezerListKeymap,
+    mode.typstLezerFoldService,
+    mode.typstLezerLinter
+  ]);
 }
 
 /** Whether Typst's own completions run for a project's Typst version: the built-in one's, 0.15 ('' for it). */
