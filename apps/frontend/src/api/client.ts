@@ -2117,7 +2117,7 @@ export interface LocalAgent {
 /**
  * Where an agent may connect: 'hosts' (its provider's, the scholarly sites of Spectrum's tools and the ones the user
  * added) or 'any' public HTTPS host; enforced: whether this computer can hold an agent to a list (a Mac can); sure:
- * whether the agent's own documentation was sure enough for it to start held to its list
+ * whether the agent's own documentation says enough to expect it to work held to its list
  */
 export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools: string[]; hosts: string[]; enforced: boolean; sure: boolean }
 /**
