@@ -490,10 +490,16 @@ function scanMarkdown(files: { path: string; text: string }[], doc: string): Ins
     if (label) out.labels.push({ file: doc, line: captionAt + 1, text: label, label });
     i = j;
   }
-  for (const m of text.matchAll(/\$\$([\s\S]*?)\$\$/g)) out.equations.push({ file: doc, line: lineAt(text, m.index!), text: shortened(collapse(m[1])) });
+  for (const m of text.matchAll(/\$\$([\s\S]*?)\$\$(?:[ \t]*\{#([A-Za-z0-9_:.-]+)\})?/g)) {
+    const label = m[2];
+    out.equations.push({ file: doc, line: lineAt(text, m.index!), text: shortened(collapse(m[1])), ...(label && { label }) });
+    if (label) out.labels.push({ file: doc, line: lineAt(text, m.index!), text: label, label });
+  }
   const cited = new Map<string, Citation>();
   for (const m of text.matchAll(/\[[^\]]*@[^\]]*\]/g)) {
     for (const key of m[0].matchAll(/@([A-Za-z0-9_:.-]+)/g)) {
+      // [@fig:x] is a cross-reference, not a citation
+      if (/^(?:fig|tbl|tab|eq|sec)[:-]/.test(key[1])) continue;
       const known = cited.get(key[1]);
       if (known) known.count += 1;
       else cited.set(key[1], { key: key[1], count: 1, file: doc, line: lineAt(text, m.index!) });

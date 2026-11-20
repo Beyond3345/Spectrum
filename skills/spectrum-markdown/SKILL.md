@@ -4,7 +4,7 @@ description: Edit and fix a Markdown project in Spectrum, which pandoc turns int
 license: MIT
 compatibility: Works with the Spectrum agent and with local agents. The compile and get_log tools come from Spectrum's tools server (local agents on macOS); without them, read the compile log the user sent or ask them to compile.
 metadata:
-  version: "1.1"
+  version: "1.2"
   skill-author: Spectrum
 ---
 
@@ -38,7 +38,8 @@ A Markdown project in Spectrum has a main `.md` file (usually `main.md`), `.bib`
 ## Rules for changes
 
 - Citations are `[@key]`, several as `[@a; @b]`, with a page as `[@key, p. 4]`. A citation in the running text is `@key`.
-- Figures are `![Caption](figures/plot.png){#fig:plot width=80%}`. Tables are pipe tables, with `Table: Caption` on the line before or after. Do not add `{#tbl:x}` to a table caption: pandoc before 3.8.2 prints it as part of the caption.
+- Figures are `![Caption](figures/plot.png){#fig:plot width=80%}`. Tables are pipe tables, with `Table: Caption {#tbl:name}` on the line before or after. A numbered equation is `$$ ... $$ {#eq:name}` and a heading `# Title {#sec:name}`.
+- Refer to them as `@fig:plot`, `@tbl:name`, `@eq:name` or `@sec:name` (Spectrum writes "Figure 1" and the like), `[@fig:a; @fig:b]` for several and `[-@fig:plot]` for the number alone. Never write `\ref{}` in Markdown. A warning "Nothing is labelled …" means the label is missing or misspelt.
 - Headings are `#` to `####`. Keep the document's own heading levels and its blank lines between blocks.
 - Inline maths is `$...$` and display maths `$$...$$`.
 - Change only what the task needs. Do not reflow paragraphs or rewrite the front matter.

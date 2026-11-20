@@ -40,8 +40,12 @@ export function typstCompletions({ path, version }: { path: () => string; versio
   };
 }
 
+/** The cross-reference labels of a Markdown document ({#fig:x}, {#tbl:x}, {#eq:x}, {#sec:x}, or fig-x and the like). */
+export const markdownLabels = (text: string) => [...text.matchAll(/\{#((?:fig|tbl|tab|eq|sec)[:-][\w:.-]*[\w])/g)].map((m) => m[1]);
+
 /**
- * After @ in Typst (keys and labels) and [@ or ; @ in Markdown (keys): the project's bibliography and labels. Where
+ * After @ in Typst (keys and labels), after @ in Markdown (its labels) and [@ or ; @ in Markdown (keys too): the
+ * project's bibliography and labels. Where
  * Typst's own completions run (version: the project's Typst version), they list the open file's labels, so only the
  * labels of the project's other files are added here.
  */
@@ -54,14 +58,20 @@ export function referenceCompletions({ path, keys, labels, version }: { path: ()
     const before = match.from > 0 ? context.state.sliceDoc(match.from - 1, match.from) : '';
     // not inside a word (an email address's @ says nothing about citations)
     if (/[\p{L}\p{N}_]/u.test(before)) return null;
+    const seen = new Set<string>();
+    const options: { label: string; type: string; detail?: string }[] = [];
     if (kind === 'markdown') {
+      // the open document's labels anywhere (@fig:x in the text), keys only inside brackets
+      for (const label of markdownLabels(context.state.doc.toString())) {
+        if (seen.has(label)) continue;
+        seen.add(label);
+        options.push({ label, type: 'label', detail: 'label' });
+      }
       const upTo = context.state.sliceDoc(0, match.from);
       const inside = upTo.lastIndexOf('[') > upTo.lastIndexOf(']');
       const afterSemicolon = match.from >= 2 && context.state.sliceDoc(match.from - 2, match.from) === '; ';
-      if (!inside || !(before === '[' || afterSemicolon)) return null;
+      if (!inside || !(before === '[' || before === '-' || afterSemicolon)) return options.length ? { from: match.from + 1, options, validFor: /^[\w:.+-]*$/ } : null;
     }
-    const seen = new Set<string>();
-    const options: { label: string; type: string; detail?: string }[] = [];
     for (const key of keys()) {
       if (seen.has(key)) continue;
       seen.add(key);

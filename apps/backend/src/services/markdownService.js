@@ -25,6 +25,9 @@ const SVG = /(?:!\[[^\]]*\]\([^)]*?\.svg|src=["'][^"']+?\.svg)/i;
 // the APA 7 style from the CSL styles repository (CC BY-SA 3.0, see THIRD_PARTY_NOTICES.md), as the LaTeX and Typst
 // templates cite in APA 7: beside the bundled backend at ../data/csl too
 const APA_CSL = fileURLToPath(new URL('../data/csl/apa.csl', import.meta.url));
+// Spectrum's own Lua filter for @fig:x, @tbl:x, @eq:x and @sec:x (data/pandoc/crossref.lua), run before --citeproc
+const CROSSREF = fileURLToPath(new URL('../data/pandoc/crossref.lua', import.meta.url));
+const crossrefArgs = () => (existsSync(CROSSREF) ? ['--lua-filter=' + CROSSREF] : []);
 const CJK_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const HANGUL = /\p{Script=Hangul}/u;
 // a front matter field with a value (an empty one is read as [])
@@ -258,16 +261,23 @@ export function latexWarnings(log) {
 
 /**
  * pandoc's [WARNING] lines as warnings, each once: a citation with no entry at the .md line that first cites the key,
- * which the PDF otherwise shows only as (key?).
+ * which the PDF otherwise shows only as (key?), and a reference to no label (crossref.lua's) at the line that makes it.
  */
 export function pandocWarnings(log, source, mainFile) {
   const messages = [...new Set([...String(log || '').matchAll(/^\[WARNING\] (.+)$/gm)].map((m) => m[1].trim()))];
   return messages.map((message) => {
+    const reference = /^Nothing is labelled \S+ for the reference @(\S+)\.$/.exec(message)?.[1];
+    if (reference) return { severity: 'warning', message, file: mainFile, ...lineOf(source, '@' + reference) };
     const key = /^Citeproc: citation (\S+) not found/.exec(message)?.[1];
-    const at = key ? String(source || '').search(new RegExp('@' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w:.+-]*[\\w])')) : -1;
     const text = key ? `No entry in the bibliography for the citation @${key}.` : message;
-    return { severity: 'warning', message: text, file: mainFile, ...(at !== -1 && { line: String(source).slice(0, at).split('\n').length, column: 1 }) };
+    return { severity: 'warning', message: text, file: mainFile, ...(key && lineOf(source, '@' + key)) };
   });
+}
+
+/** { line, column: 1 } of the first @key in the source not followed by more of a key, or {} where there is none. */
+function lineOf(source, at) {
+  const found = String(source || '').search(new RegExp(at.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w:.+-]*[\\w])'));
+  return found === -1 ? {} : { line: String(source).slice(0, found).split('\n').length, column: 1 };
 }
 
 /** A font as TeX's "Missing character" line names it: [lmroman10-regular]:+tlig; or NotoSerifSC-Regular.otf/OT:…, or a path. */
@@ -371,7 +381,7 @@ export async function markdownToLatex({ projectRoot, absMain, mainFile, generate
   const font = cjkFont(source, meta);
   const args = [
     ...(sandboxed ? [absMain, '--from=markdown'] : [generatedFile + '.json', '--from=json']),
-    '--to=latex', '--standalone', '--citeproc',
+    '--to=latex', '--standalone', ...crossrefArgs(), '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
     ...cslArgs(meta),
     ...(font ? cjkLatexArgs(font) : []),
@@ -493,7 +503,7 @@ export async function markdownToTypst({ projectRoot, absMain, mainFile, generate
   const generatedFile = path.join(generatedDir, mainFile + '.typ');
   await ensureDir(path.dirname(generatedFile));
   const args = [
-    absMain, '--from=markdown', '--to=typst', '--standalone', '--citeproc',
+    absMain, '--from=markdown', '--to=typst', '--standalone', ...crossrefArgs(), '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
     ...cslArgs(meta),
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
@@ -591,7 +601,7 @@ export async function pandocDocx(projectRoot, absMain, output) {
     const vetted = await vettedMarkdown(projectRoot, absMain, json);
     if (!vetted.ok) return { ok: false, log: vetted.log };
     const resources = '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter);
-    const run = await runPandoc([json, '--from=json', '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), ...cslArgs(meta), resources, '-o', output], path.dirname(absMain));
+    const run = await runPandoc([json, '--from=json', ...crossrefArgs(), '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), ...cslArgs(meta), resources, '-o', output], path.dirname(absMain));
     return { ok: run.code === 0 && !run.timedOut && !run.error, log: vetted.log + run.log };
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });

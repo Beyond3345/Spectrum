@@ -421,3 +421,38 @@ test('a .md with Chinese prints it in the bundled font and cites in APA 7, throu
   assert.match(tex, /\\setCJKmainfont\[BoldFont=NotoSerifTC-Bold\.otf\]\{NotoSerifTC-Regular\.otf\}/);
   assert.match(tex, /Jones, P\. \(2019\)\. \\emph\{Building services\}/);
 });
+
+test('cross-references: LaTeX gets \\label and \\ref, Word the numbers, and a reference to no label a warning at its line', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const dir = path.join(tmp, 'crossref');
+  await fs.mkdir(dir, { recursive: true });
+  const absMain = path.join(dir, 'main.md');
+  await fs.writeFile(absMain, [
+    '---', 'numbersections: true', '---', '',
+    '# Method {#sec:method}', '',
+    'See @fig:plan, [@tbl:use; @eq:flow], [-@fig:plan] and @sec:method.', '',
+    '![The plan](plan.png){#fig:plan}', '',
+    '| a | b |', '|---|---|', '| 1 | 2 |', '',
+    'Table: Weekly use. {#tbl:use}', '',
+    '$$ Q = vA $$ {#eq:flow}', '',
+    'And @fig:none.', ''
+  ].join('\n'));
+  const made = await markdownToLatex({ projectRoot: dir, absMain, mainFile: 'main.md', generatedDir: path.join(dir, 'generated') });
+  assert.equal(made.ok, true, made.error || made.log);
+  assert.match(made.text.replace(/\s+/g, ' '), /See Figure~\\ref\{fig:plan\}, Table~\\ref\{tbl:use\} and Equation~\\eqref\{eq:flow\}, \\ref\{fig:plan\} and Section~\\ref\{sec:method\}/);
+  // the table's label, which pandoc before 3.8.2 printed in the caption
+  assert.match(made.text, /\\caption\{Weekly use\.\}\\label\{tbl:use\}/);
+  assert.match(made.text, /\\begin\{equation\} Q = vA \\label\{eq:flow\}\\end\{equation\}/);
+  assert.match(made.text, /\\textbf\{\?\?\}/);
+  assert.deepEqual(pandocWarnings(made.log, await fs.readFile(absMain, 'utf8'), 'main.md'), [
+    { severity: 'warning', message: 'Nothing is labelled fig:none for the reference @fig:none.', file: 'main.md', line: 19, column: 1 }
+  ]);
+  const output = path.join(dir, 'main.docx');
+  assert.equal((await pandocDocx(dir, absMain, output)).ok, true);
+  const { execFileSync } = await import('node:child_process');
+  const xml = execFileSync('unzip', ['-p', output, 'word/document.xml']).toString().replace(/<[^>]+>/g, '');
+  assert.match(xml, /See Figure\u00a01, Table\u00a01 and Equation\u00a0\(1\), 1 and Section\u00a01\./);
+  assert.match(xml, /Table\u00a01: Weekly use\./);
+  assert.match(xml, /1 Method/);
+});

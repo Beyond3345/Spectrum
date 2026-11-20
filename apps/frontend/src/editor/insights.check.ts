@@ -227,7 +227,7 @@ const markdownDoc = [
   '---',
   '# Introduction {#sec:intro}',
   '',
-  'Some prose citing [@knuth84] and [see @lamport94].',
+  'Some prose citing [@knuth84] and [see @lamport94], as [@fig:flow] shows.',
   '',
   '![A flow diagram](figures/x.png){#fig:flow width=80%}',
   '',
@@ -239,7 +239,7 @@ const markdownDoc = [
   '',
   '$$',
   'E = m c^2',
-  '$$',
+  '$$ {#eq:energy}',
   '',
   '<!-- TODO: add a conclusion -->',
   ''
@@ -249,7 +249,7 @@ eq(markdownGot.headings.map((h) => [h.text, h.level, h.label ?? null, h.line]), 
 eq(markdownGot.figures.map((f) => [f.text, f.label, f.line]), [['A flow diagram', 'fig:flow', 12]], 'Markdown images as figures');
 eq(markdownGot.tables.map((t) => [t.text, t.label, t.line]), [['A · B', 'tab:results', 14]], 'Markdown pipe tables');
 eq(markdownGot.equations.map((e) => [e.text, e.line]), [['E = m c^2', 20]], 'Markdown $$ equations');
-eq(markdownGot.labels.map((l) => l.label), ['sec:intro', 'fig:flow', 'tab:results'], 'Markdown labels');
+eq(markdownGot.labels.map((l) => l.label), ['sec:intro', 'fig:flow', 'tab:results', 'eq:energy'], 'Markdown labels, an equation’s too');
 eq(markdownGot.citations.map((c) => [c.key, c.count, c.line]), [['knuth84', 1, 10], ['lamport94', 1, 10]], 'Markdown citations');
 eq(markdownGot.metadata, { title: 'A Markdown Paper', authors: ['Ada Lovelace', 'Charles Babbage'], keywords: ['markdown', 'writing'], date: '2026-10-25', abstract: 'A short abstract.' }, 'Markdown metadata');
 eq(
