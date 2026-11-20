@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { spawnWindowsAgent, windowsWorker } from './agentSandboxWindows.js';
 import { AGENT_SECRET_EXTENSIONS, secretNamePattern } from '../utils/pathUtils.js';
+import { openGate, proxyEnv } from './agentNetwork.js';
 
 export async function isolationAvailable() {
   if (process.platform === 'darwin') return true;
@@ -29,8 +30,12 @@ const q = (value) => JSON.stringify(value);
 // files of pathUtils' list, each letter in either case
 const HIDDEN = `\\.spectrum|\\.git|\\.claude|${secretNamePattern(AGENT_SECRET_EXTENSIONS)}`.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`);
 
-/** offline: no network at all (a chart's script), where an agent has HTTPS. */
-export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort, offline = false }) {
+/**
+ * offline: no network at all (a chart's script), where an agent has HTTPS. gatePort: the one way out is that port on
+ * this computer, where Spectrum's gate checks each host against a list (agentNetwork.js): no other address, and no
+ * name lookup, which would carry text out in the names asked for.
+ */
+export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort, offline = false, gatePort }) {
   const reads = [...new Set([...SYSTEM_READS, ...developerReads(), path.dirname(runtimeExecutable), ...runtimePaths])];
   return `(version 1)
 (deny default)
@@ -55,12 +60,13 @@ ${offline ? '' : `  (global-name "com.apple.networkd")
   (global-name "com.apple.SystemConfiguration.DNSConfiguration")
   (global-name "com.apple.SystemConfiguration.configd")`})
 ${offline ? '' : `(allow system-socket (require-all (socket-domain AF_SYSTEM) (socket-protocol 2)))
-; HTTPS is available; local HTTP APIs and Unix sockets are not.
+${gatePort ? `; the gate is the only way out
+(allow network-outbound (remote tcp "localhost:${Number(gatePort)}"))` : `; HTTPS is available; local HTTP APIs and Unix sockets are not.
 (allow network-outbound (require-all (remote tcp "*:443")
   (require-not (remote ip "localhost:*"))))
 (allow network-outbound (remote udp "*:53"))
 ; names go through the system's resolver, which is how most programs look one up
-(allow network-outbound (literal "/private/var/run/mDNSResponder"))
+(allow network-outbound (literal "/private/var/run/mDNSResponder"))`}
 ; the kernel's sockets that say which route and source address a connection takes, as every sandboxed network client has
 (allow network-outbound (control-name "com.apple.netsrc") (control-name "com.apple.network.statistics"))`}
 ${Number.isInteger(internalPort) && internalPort > 0 && internalPort < 65536 ? `(allow network-bind network-inbound (local tcp "localhost:${internalPort}"))\n(allow network-outbound (remote tcp "localhost:${internalPort}"))` : ''}
@@ -81,7 +87,12 @@ export async function resolveExecutable(command, envPath = process.env.PATH || '
   throw new Error(`“${command}” was not found. Install it or set its executable path in Agents.`);
 }
 
-export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false }) {
+/**
+ * hosts: a function giving the hosts the process may reach now, for one held to a list (none: any public HTTPS host,
+ * as before); onRefused(host): it asked for one off the list. macOS only: the Windows worker opens every public
+ * address or none, so there a list is not enforced.
+ */
+export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false, hosts, onRefused }) {
   if (!['darwin', 'win32'].includes(process.platform)) throw new Error('Native agent isolation is unavailable on this platform.');
   const executable = await resolveExecutable(command);
   if (process.platform === 'win32') return spawnWindowsAgent({ executable, args, workspace, home, runtimeExecutable, runtimePaths, forbiddenRoots, cwd, env, offline });
@@ -92,18 +103,27 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
   const workRoot = await fs.realpath(workspace), homeRoot = await fs.realpath(home);
   const reads = [...SYSTEM_READS, ...developerReads(), workRoot, homeRoot, ...roots, path.dirname(runtimeExecutable || executable)];
   if (!reads.some((root) => executable === root || executable.startsWith(root + path.sep))) throw new Error('This command is outside the approved runtime folders. Add its specific runtime folder in Setup.');
-  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline });
+  const gate = hosts && !offline ? await openGate({ hosts, onRefused }) : null;
+  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline, gatePort: gate?.port });
   const child = spawn('/bin/sh', ['-c', WATCHDOG, 'sh', profile, executable, ...args], {
     cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
     env: {
       PATH: process.env.PATH || '/usr/bin:/bin', HOME: home, TMPDIR: path.join(home, 'tmp'),
       XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local/share'),
       XDG_CACHE_HOME: path.join(home, '.cache'), LANG: 'en_US.UTF-8', TERM: 'dumb',
+      // only a courtesy: a program that ignores or changes them reaches nothing, as the profile opens the gate alone
+      ...(gate && proxyEnv(gate.port)),
       ...env
     }
   });
   // once it has exited, what it left in its group goes too
   child.once('exit', () => child.stdio[3]?.destroy());
+  if (gate) {
+    // for a program it starts with an environment of its own choosing (Spectrum's tools server)
+    child.gateEnv = proxyEnv(gate.port);
+    child.once('close', gate.close);
+    child.once('error', gate.close);
+  }
   return child;
 }
 
