@@ -146,7 +146,10 @@ async function make({ dir, key, preamble, projectRoot, mainDir, mainName, base, 
     await fs.rm(dir, { recursive: true, force: true });
     await ensureDir(dir);
     await fs.copyFile(path.join(made, `${base}.fmt`), path.join(dir, `${base}.fmt`));
-    await writeState(dir, { key, status: 'ready', base, deps, log: lines.join('').slice(0, 100_000), at: new Date().toISOString() });
+    // the preamble's own log, for its warnings: without the pass's banner and the dump's own lines, so the editor
+    // reads it with the pass that follows it
+    const log = lines.join('').replace(/^This is .*\r?\n/m, '').split(/^Beginning to dump on file/m)[0].slice(0, 100_000);
+    await writeState(dir, { key, status: 'ready', base, deps, log, at: new Date().toISOString() });
   } finally {
     await fs.rm(work, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
     await cleanBuild(buildRoot, work).catch(() => {});

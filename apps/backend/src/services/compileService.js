@@ -815,7 +815,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // files yet, a file that is no chapter of this document
   const only = options.onlyFile && multiPass && kept && !/[\\{}%#&~^$]/.test(input) ? includedAs(tex, mainDir, path.resolve(projectRoot, String(options.onlyFile))) : null;
   if (options.onlyFile && !only && multiPass) pushLog(Buffer.from('[spectrum note] This compiled the whole document: Only the open chapter needs the open file to be one the document \\include’s, and the numbers a full compile keeps.\n'));
-  if (only) pushLog(Buffer.from(`[spectrum] Only ${only} was typeset, in one pass, with the other chapters’ numbers as the last full compile left them. The PDF beside the source is still that compile’s, and a citation or index entry added since waits for the next full compile (biblatex asking for Biber again here means only that).\n`));
+  if (only) pushLog(Buffer.from(`[spectrum note] Only ${only} was typeset, in one pass, with the other chapters’ numbers as the last full compile left them. The PDF beside the source is still that compile’s, and a citation or index entry added since waits for the next full compile (biblatex asking for Biber again here means only that).\n`));
   // The precompiled preamble (preambleFormat.js), for a full pdfLaTeX compile of the document as it is, with Spectrum's
   // own passes: not a draft, a copy with the page colour's or Jyutping's lines, a Markdown document's LaTeX, nor one
   // with a recipe or engine options of its own. format: one made and tried for the preamble as it is now, or null
@@ -823,7 +823,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   const shell = options.untrusted ? '-no-shell-escape' : options.trusted ? '-shell-escape' : '-shell-restricted';
   const formatOf = preamble && { preamble, dir: path.join(cache, 'build-files', doc, `${engine}.format`), key: await formatKey({ preamble, mainName, shell, env: texEnv, files: projectFiles }), projectRoot };
   const format = formatOf && !options.noFormat ? await readyFormat(formatOf) : null;
-  if (format) pushLog(Buffer.from(`[spectrum] This compile starts from a format of the preamble, made when the preamble last changed. The preamble’s own log, from then:\n${format.log}\n`));
+  // ([spectrum note]: a line for the log alone; the editor lists a plain [spectrum] line as an error)
+  if (format) pushLog(Buffer.from(`[spectrum note] This compile starts from a format of the preamble, made when the preamble last changed. The preamble’s own log, from then:\n${format.log}\n`));
   const commandFor = (dir, fmt) => buildCommand(engine, slashed(dir), input, { ...options, only, extra: recipe.options, format: fmt && slashed(fmt) });
   const { cmd, args } = commandFor(outDir, format?.file);
   // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
@@ -854,7 +855,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     let log = await passLog();
     // with nothing changed latexmk runs nothing and says only that; the editor's warnings come from a pass's log
     if (held && pass.code === 0 && !/^This is \S*TeX/m.test(logChunks.join(''))) {
-      pushLog(Buffer.from(`[spectrum] Nothing this document reads has changed, so latexmk ran no pass. The last pass said:\n${await fs.readFile(path.join(outDir, `${base}.log`), 'utf8').catch(() => '')}`));
+      pushLog(Buffer.from(`[spectrum note] Nothing this document reads has changed, so latexmk ran no pass. The last pass said:\n${await fs.readFile(path.join(outDir, `${base}.log`), 'utf8').catch(() => '')}`));
     }
     const carryOn = () => !pass.timedOut && !stopped() && !(options.haltOnError && pass.code !== 0);
     const keptFailed = () => kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log, kept);
@@ -1058,7 +1059,7 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
   const reads = useBiber ? await biberReads(outDir, base, dirs, searchPath) : null;
   const made = reads && (await fs.readFile(recordFile, 'utf8').catch(() => ''));
   if (reads && made === `${reads}\n${await fileHash(path.join(outDir, `${base}.bbl`))}`) {
-    pushLog(Buffer.from('[spectrum] The bibliography is unchanged, so Biber wasn’t run.\n'));
+    pushLog(Buffer.from('[spectrum note] The bibliography is unchanged, so Biber wasn’t run.\n'));
     return 0;
   }
   await fs.rm(recordFile, { force: true });

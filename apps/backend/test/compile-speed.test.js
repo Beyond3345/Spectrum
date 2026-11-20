@@ -67,6 +67,7 @@ test('Biber is left out while the citations, the .bib files and Biber are as the
   assert.equal(second.status, 0, second.log);
   assert.equal(biberRuns(second.log), 0, second.log);
   assert.match(second.log, SKIPPED);
+  assert.doesNotMatch(second.log, /^\[spectrum\] /m, 'a note, not a line the editor lists as an error');
   assert.equal(passes(second.log), 1);
   await write(p, 'main.tex', cited('Other words \\cite{knuth}.'));
   const edit = await compile(p);
@@ -358,8 +359,10 @@ test('a format of the preamble is made behind the first compile and used from th
   const second = await pre(p);
   assert.equal(second.status, 0, second.log);
   assert.match(second.log, FROM_FORMAT);
-  assert.equal(passes(second.log), 2, 'the banner of the pass the format was made in, and one pass');
-  assert.match(second.log, /\(preloaded format=main /);
+  assert.equal(passes(second.log), 1);
+  assert.match(second.log, /\(preloaded format=[^)]*pdflatex\.format\/main\)/);
+  // nothing Spectrum says of its shortcuts is a line the editor lists as an error
+  assert.doesNotMatch(second.log, /^\[spectrum\] /m);
   // the preamble's own log comes with it, so its warnings are still listed
   assert.match(second.log, /hyperref\.sty/);
   // the same pages as a compile without it, and the same kept files
@@ -467,7 +470,7 @@ test('a pass that fails with an error of pdfTeX’s own under a format runs agai
   const broken = await pre(q);
   assert.notEqual(broken.status, 0);
   assert.match(broken.log, FROM_FORMAT);
-  assert.equal(passes(broken.log.split('The preamble’s own log')[1]), 2, 'the format’s own pass and the one it was made in, and no third');
+  assert.equal(passes(broken.log), 1, 'the format’s own pass, and no second without it');
   assert.equal(await fmtState(q), 'ready');
 });
 
