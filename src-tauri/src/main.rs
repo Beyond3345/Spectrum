@@ -64,7 +64,7 @@ const FLUSH_GRACE: Duration = Duration::from_millis(500);
 /// Set once quitting starts, so the editor is flushed only once.
 static QUITTING: AtomicBool = AtomicBool::new(false);
 static FLUSH_ID: AtomicUsize = AtomicUsize::new(0);
-/// The diagram composer's window (open_diagram), beside the main one.
+/// The diagram composers' windows (open_diagram), beside the main one: "diagram", then "diagram-2" and so on.
 const DIAGRAM: &str = "diagram";
 
 /// The backend process. Its stdin pipe stays open for as long as we hold it;
@@ -438,8 +438,24 @@ fn diagram_url(port: u16, project: &str, file: Option<&str>, language: Option<&s
     url
 }
 
-/// Draw a diagram and Edit diagram: the composer's window at the diagram asked for, built beside the
-/// main one or brought forward. One showing another diagram saves it first, then turns to this one.
+/// The project and diagram file of a composer's page, whatever else its address has gathered (the page adds the
+/// language and tool as it goes). A window still on its way in is at /session, with its page in `next`.
+fn diagram_of(url: &Url) -> Option<(String, String)> {
+    let get = |url: &Url, key: &str| {
+        url.query_pairs()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| value.into_owned())
+    };
+    let page = match get(url, "next") {
+        Some(next) if url.path() == "/session" => url.join(&next).ok()?,
+        _ => url.clone(),
+    };
+    Some((get(&page, "project")?, get(&page, "file")?))
+}
+
+/// Draw a diagram and Edit diagram: a composer's window at the diagram asked for, beside the main one. Every
+/// diagram has a window of its own, so opening a second never takes the place of the first; a diagram that is
+/// already open has its window brought forward.
 // async: building a window from a command that runs on the main thread can hang WebView2
 #[tauri::command]
 async fn open_diagram(
@@ -448,32 +464,24 @@ async fn open_diagram(
     file: Option<String>,
     language: Option<String>,
 ) -> Result<(), String> {
+    // one at a time, so two requests never choose the same label
+    static OPENING: Mutex<()> = Mutex::new(());
+    let _opening = OPENING.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let port = app.state::<Port>().0;
     let url = diagram_url(port, &project, file.as_deref(), language.as_deref());
-    let Some(window) = app.get_webview_window(DIAGRAM) else {
+    let wanted = diagram_of(&url);
+    let open = app.webview_windows().into_iter().find(|(label, window)| {
+        wanted.is_some()
+            && label.starts_with(DIAGRAM)
+            && window.url().is_ok_and(|at| diagram_of(&at) == wanted)
+    });
+    let Some((_, window)) = open else {
         // a new window presents the secret itself, whatever cookies it shares with the main one
         let start = session_url(port, &app.state::<Session>().0, &url);
         return build_diagram_window(&app, port, start)
             .map(|_| ())
             .map_err(|e| e.to_string());
     };
-    if window.url().map_or(true, |at| at != url) {
-        let event = flush_event("diagram-switch");
-        let target = window.clone();
-        let switching = app.clone();
-        let listener = window.once(event.clone(), move |event| {
-            let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
-            if payload.get("ok").and_then(|ok| ok.as_bool()) == Some(true) {
-                let _ = target.navigate(url);
-            } else {
-                save_failed(&switching, &payload);
-            }
-        });
-        if let Err(error) = flush(&window, &event) {
-            window.unlisten(listener);
-            return Err(error.to_string());
-        }
-    }
     let _ = window.unminimize();
     let _ = window.show();
     let _ = window.set_focus();
@@ -966,7 +974,12 @@ fn build_window(
 /// beside the document or on another screen. Closing it saves its diagram and never quits. Glass
 /// stays the main window's (appearance.ts).
 fn build_diagram_window(app: &AppHandle, port: u16, url: Url) -> tauri::Result<WebviewWindow> {
-    let builder = WebviewWindowBuilder::new(app, DIAGRAM, WebviewUrl::External(url))
+    // the lowest label free, so the first composer keeps the place it was last left in, and the second its own
+    let label = (1..)
+        .map(|n| if n == 1 { DIAGRAM.to_string() } else { format!("{DIAGRAM}-{n}") })
+        .find(|label| app.get_webview_window(label).is_none())
+        .expect("a free label");
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
         .title("Diagram")
         .inner_size(1180.0, 780.0)
         .min_inner_size(760.0, 520.0)
@@ -1008,6 +1021,24 @@ fn build_diagram_window(app: &AppHandle, port: u16, url: Url) -> tauri::Result<W
             }
         }
     });
+    // never exactly over another composer, which would look as if it had taken its place
+    if let Ok(placed) = window.outer_position() {
+        let taken: Vec<_> = app
+            .webview_windows()
+            .iter()
+            .filter(|(other, _)| other.starts_with(DIAGRAM) && **other != label)
+            .filter_map(|(_, other)| other.outer_position().ok())
+            .collect();
+        let step = (28.0 * window.scale_factor().unwrap_or(1.0)) as i32;
+        let mut at = placed;
+        while taken.contains(&at) {
+            at.x += step;
+            at.y += step;
+        }
+        if at != placed {
+            let _ = window.set_position(at);
+        }
+    }
     window.show()?;
     Ok(window)
 }
@@ -1418,6 +1449,21 @@ fn health_ok(port: u16, secret: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_composer_window_is_known_by_its_project_and_file() {
+        let asked = diagram_url(38787, "p1", Some("figures/a b.tikz"), None);
+        let wanted = Some(("p1".to_string(), "figures/a b.tikz".to_string()));
+        assert_eq!(diagram_of(&asked), wanted);
+        // on its way in through /session, and once the page has added its own parameters
+        assert_eq!(diagram_of(&session_url(38787, "secret", &asked)), wanted);
+        let grown = Url::parse("http://127.0.0.1:38787/diagram?project=p1&file=figures%2Fa+b.tikz&lang=tikz&tool=wire").unwrap();
+        assert_eq!(diagram_of(&grown), wanted);
+        // another file, another project and a new drawing are none of them this one
+        assert_ne!(diagram_of(&diagram_url(38787, "p1", Some("figures/b.tikz"), None)), wanted);
+        assert_ne!(diagram_of(&diagram_url(38787, "p2", Some("figures/a b.tikz"), None)), wanted);
+        assert_eq!(diagram_of(&diagram_url(38787, "p1", None, Some("typst"))), None);
+    }
 
     #[test]
     fn a_failed_save_cancels_only_its_quit_attempt_and_timer() {

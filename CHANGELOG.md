@@ -100,6 +100,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A busy model provider (429, 500, 502, 503, 504, 529) no longer ends a request: Spectrum waits as long as the provider asks, 20 seconds at most, and tries twice more. A rejected key, a wrong address and a spent quota are still reported at once
 - Conic section names its vertices V₁ and V₂ by default
 - Open Logs when a compile fails moved above the tabs in Settings › Engines, since it applies to every document
+- Each diagram opens in a composer window of its own, so opening a second diagram no longer takes the place of the one that is open. Asking for a diagram that is already open brings its window forward
 
 ### Fixed
 

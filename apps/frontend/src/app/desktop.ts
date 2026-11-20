@@ -12,7 +12,7 @@ export const IS_DESKTOP = typeof window !== 'undefined' && '__TAURI_INTERNALS__'
 
 const tauri = () => (window as unknown as { __TAURI_INTERNALS__: TauriInternals }).__TAURI_INTERNALS__;
 
-/** The window this page is in (main.rs): 'main', or 'diagram' for the diagram composer's. */
+/** The window this page is in (main.rs): 'main', or a diagram composer's ('diagram', 'diagram-2' and so on). */
 export const WINDOW_LABEL = (IS_DESKTOP && tauri().metadata?.currentWindow?.label) || 'main';
 
 /** Native folder picker in the app; in a browser, ask for an absolute path instead. */
@@ -64,7 +64,8 @@ export const releaseDefaultHandler = (exts: string[]) => tauri().invoke('release
 
 /**
  * The diagram composer, in a window of its own beside this one, at a diagram of the project (its project-relative file)
- * or at its chooser, which `lang` can start in. Only one is open: asking again brings it forward at this diagram.
+ * or at its chooser, which `lang` can start in. Each diagram has a window of its own: asking for one that is open
+ * brings its window forward, and any other opens beside it.
  */
 export async function openDiagram(projectId: string, file?: string, lang?: DiagramLanguage) {
   if (IS_DESKTOP) {
@@ -72,7 +73,7 @@ export async function openDiagram(projectId: string, file?: string, lang?: Diagr
     return;
   }
   const query = new URLSearchParams({ project: projectId, ...(file && { file }), ...(lang && { lang }) });
-  if (!window.open(`/diagram?${query}`, 'spectrum-diagram')) throw new Error('The browser blocked its window. Allow pop-ups for Spectrum and try again.');
+  if (!window.open(`/diagram?${query}`, file ? `spectrum-diagram:${projectId}:${file}` : '_blank')) throw new Error('The browser blocked its window. Allow pop-ups for Spectrum and try again.');
 }
 
 /** Brings this window to the front: the document's, when the composer hands it a diagram to insert. */

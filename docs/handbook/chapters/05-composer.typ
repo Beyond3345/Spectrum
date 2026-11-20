@@ -69,7 +69,7 @@ There are three ways to start a new drawing from the editor,
 + Choose #menu[Insert (+)][Draw a diagram…] in the same toolbar
 + Click #ui[Draw a diagram…] in the Floats panel's #ui[Insert diagram] card
 
-Each opens the chooser, #ui[Draw a diagram]. In the desktop app the composer is a window of its own beside the document, and only one is open at a time: asking for another drawing brings that window forward at it. In a browser copy of Spectrum the composer opens as a separate browser page, which the browser may first ask to allow as a pop-up.
+Each opens the chooser, #ui[Draw a diagram]. In the desktop app each drawing has a composer window of its own beside the document, so several can be open at once. Asking for a drawing that is already open brings its window forward. In a browser copy of Spectrum the composer opens as a separate browser page, which the browser may first ask to allow as a pop-up.
 
 #shot("figures/05-composer/draw-button.png", [The editor's toolbar. The pencil, fourth from the left, opens #ui[Draw a diagram].], width: 45%) <fig-composer-draw-button>
 
