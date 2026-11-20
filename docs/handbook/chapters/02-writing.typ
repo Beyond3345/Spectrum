@@ -313,12 +313,16 @@ Both checkers read only the prose. In LaTeX, commands, maths, comments, citation
 
 The #ui[To-dos] tab in the sidebar holds a to-do list for the project, with a badge counting the open to-dos (@fig-writing-todos). It has two groups,
 
-- #ui[Mine], your own to-dos, each with a tick box, its text, an optional link, Edit and Delete. A link points at a line of the source, which is found again by its text when lines move, at a page of the PDF or at a reference and
+- #ui[Mine], your own to-dos, each with a tick box, its text, an optional note and an optional link. A link points at a line of the source, which is found again by its text when lines move, at a page of the PDF or at a reference, and a click on it goes there and
 - #ui[In the source], which lists `\todo`, `\missingfigure` and `\fixme`, the notes of the fixme package (`\fxnote`, `\fxwarning`, `\fxerror` and `\fxfatal`) and `TODO`, `FIXME` and `XXX` in comments. Each one jumps to its line, and it is done once its mark is taken out of the source.
 
-#shot("figures/02-writing/todos.png", [The To-dos tab with two of your own to-dos and two from the source, a `\todo` and a `TODO` comment, each with its line.], width: 42%) <fig-writing-todos>
+#shot("figures/02-writing/todos.png", [The To-dos tab with two of your own to-dos, one with a note and one linked to a line, and two from the source, a `\todo` and a `TODO` comment, each with its line.], width: 42%) <fig-writing-todos>
 
-A to-do is added in the box at the top of the tab, or with #ui[Add to-do here] in the editor's right-click menu, which links the line, or in the PDF's, which links the page. The tab shows Open, Done or All and Mine, Source or both, and the sidebar's search finds to-dos too. Each to-do is a small file in the project's `.spectrum/todos` folder, so it travels with the project. Document insights also has a To-dos tab, and the open to-dos go with an agent's first message (@ch-assistant).
+A to-do is added by typing it in the box at the top of the tab and pressing #key("Return") or the #ui[+] at the end of the box, or with #ui[Add to-do here] in the editor's right-click menu, which links the line, or in the PDF's, which links the page. #ui[Open], #ui[Done] and #ui[All] below the box choose what is listed, each with its count, and a click on #ui[Mine] or #ui[In the source] folds that group away. The box and these buttons stay at the top while the list scrolls. The sidebar's search finds to-dos by their text, their notes and their links.
+
+Pointing at one of your own to-dos shows #ui[Edit] and #ui[Delete] at the end of its row, with #ui[Add a note] before them when it has none. A note is a few lines of detail under the to-do, up to 4000 characters, and it shows in two lines until it is clicked. #ui[Edit], or a double click on the text, changes the to-do and its note in place. #key("Return") in the text, or #key("⌘", "Return") in the note, saves the change, #key("Esc") puts both back and clicking elsewhere also saves. #ui[Delete] removes the to-do and the message that follows has #ui[Undo]. When ticked to-dos are listed, #ui[Clear done] under them deletes them all, again with #ui[Undo].
+
+Each to-do is a small file in the project's `.spectrum/todos` folder, so it travels with the project. Spectrum 2.5 opens a to-do with a note and keeps the note when it saves the to-do, without showing it. Document insights also has a To-dos tab, and the open to-dos go with an agent's first message (@ch-assistant).
 
 == Jyutping <sec-writing-jyutping>
 

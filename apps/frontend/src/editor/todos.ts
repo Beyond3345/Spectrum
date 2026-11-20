@@ -118,6 +118,41 @@ export function findLine(text: string, line: number, snippet?: string) {
   return best || line;
 }
 
+// ─── your own to-dos: the note, search, counts, order ───
+
+/** A to-do's note is at most this long, as the backend checks (routes/todos.js). */
+export const MAX_NOTE = 4000;
+
+type Own = { text: string; done: boolean; createdAt: string; note?: string };
+
+/** A to-do with the note as typed: trimmed, capped, and taken off when it's empty. */
+export function withNote<T extends Own>(todo: T, note: string): T {
+  const { note: _old, ...rest } = todo;
+  const clean = note.trim().slice(0, MAX_NOTE);
+  return (clean ? { ...rest, note: clean } : rest) as T;
+}
+
+/** Whether the search (lower case, trimmed) finds a to-do: in its text, its note or what its link shows. */
+export const todoMatches = (needle: string, todo: { text: string; note?: string }, linkLabel = '') =>
+  !needle || [todo.text, todo.note ?? '', linkLabel].some((t) => t.toLowerCase().includes(needle));
+
+/** The filters' counts: open is yours not ticked and every mark in the source, done yours ticked. */
+export function todoCounts(mine: { done: boolean }[], source: unknown[]) {
+  const done = mine.filter((t) => t.done).length;
+  return { open: mine.length - done + source.length, done, all: mine.length + source.length };
+}
+
+/** Open before done, then oldest first, so a list keeps the order it was written in. */
+export const sortTodos = <T extends Own>(todos: T[]) => [...todos].sort((a, b) => Number(a.done) - Number(b.done) || a.createdAt.localeCompare(b.createdAt));
+
+/** What the tab says when it shows nothing: a first hint, a search that found nothing, or the filter's own. */
+export function emptyText({ total, show, search }: { total: number; show: 'open' | 'done' | 'all'; search: string }) {
+  if (!total) return 'Nothing to do yet. Type one above, or right-click a line in the editor or a page of the PDF to add one that links to it.';
+  if (search) return `No to-dos match “${search}”.`;
+  // with to-dos and no search, only Open or Done can be empty
+  return show === 'done' ? 'Nothing ticked off yet.' : 'All done. Ticked ones are under Done.';
+}
+
 /** Where a key is defined: its \label in a .tex file, else its entry in a .bib file. */
 export function findKey(files: { path: string; text: string }[], key: string) {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
