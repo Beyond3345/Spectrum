@@ -2639,6 +2639,11 @@ textarea.table-latex {
   background: var(--border-strong);
 }
 
+/* in the chip the dot and the name share one label, which has no gap of its own */
+.persona-pick .persona-dot {
+  margin-inline-end: 6px;
+}
+
 .agent-scroll {
   flex: 1;
   min-height: 0;
