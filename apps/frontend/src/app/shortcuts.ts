@@ -53,7 +53,9 @@ export type AppCommand =
   | 'zoomIn'
   | 'zoomOut'
   | 'zoomWidth'
-  | 'zoomPage';
+  | 'zoomPage'
+  | 'commandPalette'
+  | 'quickOpen';
 
 export type Shortcut = {
   id: string;
@@ -122,6 +124,9 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'viewEditor', label: 'Show the editor only', group: 'App', key: 'Mod-1' },
   { id: 'viewSplit', label: 'Show the editor and PDF', group: 'App', key: 'Mod-2' },
   { id: 'viewPdf', label: 'Show the PDF only', group: 'App', key: 'Mod-3' },
+  // app/CommandPalette.tsx: every command by its name, and the project's files and headings
+  { id: 'commandPalette', label: 'Find a command', group: 'App', key: 'Shift-Mod-p' },
+  { id: 'quickOpen', label: 'Go to a file or heading', group: 'App', key: 'Mod-p' },
   // the composer's tool keys (diagram/toolKeys.ts): answered only while the pointer is over the drawing, so a plain
   // key is fine. Each is one composer's, or the same tool in several, so two composers may share a key
   { id: 'diagramWire', label: 'Draw a wire, or connect in a flowchart', group: 'Diagram', key: 'w' },
