@@ -155,6 +155,7 @@ import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/r
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
+import { expandTrigger, insertSnippet as insertUserSnippet } from '../editor/userSnippets';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
@@ -2491,6 +2492,8 @@ function Editor({ projectId }: { projectId: string }) {
         { key: 'Tab', run: completeOrAccept },
         // in a command's arguments, on to the next one (⇧Tab back)
         { key: 'Tab', run: nextSnippetField, shift: prevSnippetField },
+        // after a snippet's trigger (Settings › Snippets), the snippet
+        { key: 'Tab', run: expandTrigger(() => loadSettings().snippets, () => docKind(activeRef.current)) },
         // otherwise indent: spaces at the cursor, or the selected lines (⇧Tab takes them back)
         { key: 'Tab', run: insertIndent, shift: indentLess },
         { key: 'Enter', run: closeEnvironment },
@@ -3337,6 +3340,14 @@ function Editor({ projectId }: { projectId: string }) {
           ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) }
           : { separator: true }
   );
+  // the user's own snippets for this kind of file, under the built-in ones
+  const ownSnippets = settings.snippets.filter((s) => s.kinds.includes(insertKind));
+  if (ownSnippets.length) insertItems.push({ separator: true }, ...ownSnippets.map((s) => ({ label: s.name, icon: 'curlybraces', onSelect: () => {
+    const view = viewRef.current;
+    if (!view || !insertUserSnippet(view, s)) return;
+    showEditor();
+    view.focus();
+  } })));
 
   /** The command palette's commands: the shortcuts, the menus' items, Tools' tabs, the panels and Settings' sections. */
   const paletteCommands = (): PaletteCommand[] => [

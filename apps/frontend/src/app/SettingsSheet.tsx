@@ -50,6 +50,7 @@ import type { Persona } from '../editor/personas';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, errorText } from '../editor/shared';
 import { ZoteroSettings } from '../editor/ZoteroCite';
 import { confirmDialog } from './Dialogs';
+import SnippetsPane from './SnippetsPane';
 import Icon from './Icon';
 import Segmented from './Segmented';
 import { radioKeys, radioTab } from './Segmented';
@@ -116,6 +117,7 @@ export type Section =
   | 'composer'
   | 'language'
   | 'shortcuts'
+  | 'snippets'
   | 'projects'
   | 'github'
   | 'models'
@@ -144,6 +146,7 @@ export const SECTION_GROUPS: [string, [Section, string, string][]][] = [
   ['Writing', [
     ['engines', 'Engines', 'hammer'],
     ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
+    ['snippets', 'Snippets', 'curlybraces'],
     ['composer', 'Diagram composer', 'pencil'],
     ['checkpoints', 'Checkpoints', 'clock.arrow.circlepath']
   ]],
@@ -169,6 +172,7 @@ const SECTION_HUES: Record<Section, IconColour> = {
   appearance: 'pink',
   editor: 'blue',
   shortcuts: 'indigo',
+  snippets: 'yellow',
   system: 'gray',
   engines: 'orange',
   language: 'red',
@@ -689,6 +693,8 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
           {section === 'language' && <LanguagePane projectId={projectId} />}
 
           {section === 'shortcuts' && <ShortcutsPane />}
+
+          {section === 'snippets' && <SnippetsPane onUnsaved={setUnsaved} />}
 
           {section === 'personas' && <PersonasPane onUnsaved={setUnsaved} />}
 
