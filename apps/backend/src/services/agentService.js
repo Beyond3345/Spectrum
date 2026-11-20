@@ -292,7 +292,7 @@ const OWN_TOOLS = [
     readOnly: false,
     run: async (ctx, input) => {
       const row = await recordClaim(ctx.project, input, { checkPath: ctx.path });
-      return `Recorded: ${row.file}:${row.line} is ${row.rating}${row.read ? `, the quote found in the ${row.read.kind}${row.read.page ? ` on page ${row.read.page}` : ''} of ${row.read.where}` : ''}.`;
+      return `Recorded: ${row.file}:${row.line} is ${{ partly: 'partly supported', 'needs-source': 'in need of a source', 'not-checkable': 'not checkable' }[row.rating] || row.rating}${row.read ? `, the quote found in the ${row.read.kind}${row.read.page ? ` on page ${row.read.page}` : ''} of ${row.read.where}` : ''}.`;
     },
     show: (answer) => ({ text: answer })
   },
