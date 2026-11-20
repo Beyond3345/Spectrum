@@ -19,7 +19,7 @@ lines.on('line', async (line) => {
   const m = JSON.parse(line);
   if (m.method) log({ method: m.method, params: m.params });
   if (m.method === 'initialize') {
-    send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { embeddedContext: process.argv.includes('--embedded') }, sessionCapabilities: process.argv.includes('--system-prompt') ? { systemPrompt: {} } : {} }, agentInfo: { name: 'Draft fixture', version: '1' }, authMethods: [] } });
+    send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { embeddedContext: process.argv.includes('--embedded'), image: process.argv.includes('--embedded') }, sessionCapabilities: process.argv.includes('--system-prompt') ? { systemPrompt: {} } : {} }, agentInfo: { name: 'Draft fixture', version: '1' }, authMethods: [] } });
   } else if (m.method === 'session/load' && process.argv.includes('--lose-sessions')) {
     send({ id: m.id, error: { code: -32002, message: 'Session not found' } });
   } else if (m.method === 'session/new' || m.method === 'session/load') {
