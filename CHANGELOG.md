@@ -29,6 +29,12 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A failed Typst export lists every error in Logs and marks them in the editor, with what PDF/UA-1 needs. Insert figure asks for alt text in a Typst document, and the Typst document template exports as PDF/UA-1
 - Image to LaTeX writes Typst in a Typst document, and Table to chart takes a Typst `#table`
 - Tinymist's linter runs as you type
+- Markdown documents refer to figures, tables, equations and sections by number: `@fig:plot` prints “Figure 1” in the PDF and in Word. Typing @ lists the document's labels, and Insert (+) has Reference
+- Mermaid blocks in a Markdown document are drawn in the PDF and in Word, with the composer's Mermaid, and a caption makes one a numbered figure
+- A live preview of a Markdown document beside the editor, with maths, Mermaid, numbered references and pictures, following the editor as it scrolls
+- A Markdown document can be split across files with `include:` in its front matter, and Logs names the file each error is in
+- `slides: true` in the front matter makes Beamer slides from Markdown
+- New Markdown report, maths notes and slides templates
 - Review: References exist looks each .bib entry up in Crossref, doi.org, arXiv or OpenAlex and lists the retracted, unknown and differing ones with the record it read
 - The Spectrum agent reads a paper's open full text page by page, or its abstract when there is none
 - Verify claims records each claim with the source's own words, checked by Spectrum and found on their page, in Research › Claims checked
@@ -40,7 +46,14 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Insights gives Typst figure and appendix numbers as the PDF prints them
 - `fetch_bibtex` gives a title's BibTeX only for a work whose title, first author and year match, and lists the nearest works otherwise
 - Deep research starts with a plan to approve
+- A reference to a label that does not exist in a Markdown document prints ?? and is a warning at its line in Logs
+- A composer diagram goes into Markdown as its PNG, which Word shows
 - A long document's AI review starts each part at a top-level heading where it can
+
+### Fixed
+
+- A table's `{#tbl:x}` label no longer prints in its caption with pandoc before 3.8.2
+- No Jyutping button in a Markdown document's toolbar
 
 ## 2.6.0 (21 November 2026)
 
