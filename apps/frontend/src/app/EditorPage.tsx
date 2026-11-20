@@ -149,7 +149,7 @@ import { Tinymist, tinymistCompletions } from '../editor/lsp/tinymist';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
+import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, fixWithAI, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
@@ -1487,7 +1487,22 @@ function Editor({ projectId }: { projectId: string }) {
       })
     );
     notify(ready.length === 1 ? `Applied the changes to ${nameOf(ready[0].filePath)}` : `Applied changes to ${ready.length} files`, 'success');
+    void afterAgentApply();
     return { applied: ready, stale, checkpoint: version };
+  };
+
+  /** Settings › Agents › Automations, once an agent's changes are written: a compile, and Fix with AI offered (never called) if it fails. */
+  const afterAgentApply = async () => {
+    if (!settings.compileAfterApply || (await runCompile(compiledDoc || mainFile)) !== 'failed' || !settings.offerFixAfterApply) return;
+    toast('The document doesn’t build after the applied changes.', {
+      tone: 'error',
+      action: {
+        label: 'Fix with AI',
+        onClick: () => {
+          if (apiRef.current) void fixWithAI(apiRef.current, { task: 'debug_compile', prompt: 'Diagnose the errors in the compile log and fix them. Ignore warnings. Propose patches that can be applied.', label: 'Fix with AI' });
+        }
+      }
+    });
   };
 
   /**
@@ -3035,6 +3050,7 @@ function Editor({ projectId }: { projectId: string }) {
     showLineInPdf,
     proposeChanges,
     applyChanges: acceptChanges,
+    agentApplied: () => void afterAgentApply(),
     prepareAgent: async () => {
       await saveNow();
       if (heldRef.current.size) throw new Error('Resolve the files changed on disk before starting or applying agent work.');

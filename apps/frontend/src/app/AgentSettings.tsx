@@ -11,6 +11,7 @@ import Select from './Select';
 import { pickFile } from './desktop';
 import { IS_WINDOWS, tildify } from './platform';
 import { toast } from './Toast';
+import { useSettings } from './settings';
 
 /** The card the agent workspace asks Settings › Agents to open (its agent, when that isn't ready), read once. */
 export const AGENT_CARD_KEY = 'spectrum-agent-card';
@@ -153,6 +154,7 @@ export default function AgentsPane() {
   }, [agents]);
 
   const replace = (agent: LocalAgent) => setAgents((list) => list?.map((a) => (a.id === agent.id ? agent : a)) ?? null);
+  const [settings, update] = useSettings();
 
   return (
     <>
@@ -203,6 +205,26 @@ export default function AgentsPane() {
           </section>
         ))}
       {error && <div className="field-hint error">{error}</div>}
+      <section className="agent-group" aria-labelledby="agent-automations">
+        <h3 id="agent-automations" className="agent-group-title">
+          Automations
+        </h3>
+        <div className="field-hint">What Spectrum does by itself after an agent’s work, while it is open. None of them asks a model anything.</div>
+        <label className="checkbox-row">
+          <input type="checkbox" role="switch" checked={settings.compileAfterApply} onChange={(e) => update({ compileAfterApply: e.target.checked })} />
+          <span>
+            Compile after applying changes
+            <span className="field-hint">When you apply changes from the Spectrum agent, a local agent or Fix with AI.</span>
+          </span>
+        </label>
+        <label className="checkbox-row">
+          <input type="checkbox" role="switch" checked={settings.offerFixAfterApply} disabled={!settings.compileAfterApply} onChange={(e) => update({ offerFixAfterApply: e.target.checked })} />
+          <span>
+            Offer a fix when that compile fails
+            <span className="field-hint">The message about it has a Fix with AI button. The model is asked only when you click it.</span>
+          </span>
+        </label>
+      </section>
       <div className="field-hint">
         Keys and copied logins stay in Spectrum’s private data on this computer. The agent’s tools and commands stay isolated, and MCP servers set up for it outside
         Spectrum get no access to this computer.

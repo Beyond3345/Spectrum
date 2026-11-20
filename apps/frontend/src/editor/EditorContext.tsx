@@ -89,6 +89,8 @@ export interface EditorApi {
    * now replace it; they aren't written. checkpoint: null where none was saved.
    */
   applyChanges(changes: PendingChange[], sitting?: Sitting): Promise<{ applied: PendingChange[]; stale: PendingChange[]; checkpoint: VersionMeta | null }>;
+  /** a local agent's changes were applied, as applyChanges does for the others: what Settings › Agents › Automations asks for after */
+  agentApplied(): void;
   /** doc, or the document compiled last; says how it ended ('busy': another compile was running) */
   compile(doc?: string): Promise<'idle' | 'running' | 'ok' | 'failed' | 'stopped' | 'busy'>;
   /** saves the open file */

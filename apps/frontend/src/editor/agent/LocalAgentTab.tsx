@@ -307,6 +307,7 @@ export default function LocalAgentTab({
         await latest.current.reloadProject();
         window.dispatchEvent(new Event(VERSIONS_CHANGED));
         await loadCheckpoints();
+        latest.current.agentApplied();
       }
     } catch (err) {
       fail(err);
@@ -338,6 +339,7 @@ export default function LocalAgentTab({
         await latest.current.reloadProject();
         window.dispatchEvent(new Event(VERSIONS_CHANGED));
         await loadCheckpoints();
+        latest.current.agentApplied();
       }
     } catch (err) {
       fail(err);
