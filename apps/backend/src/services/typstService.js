@@ -541,12 +541,18 @@ export async function exportTypst(projectRoot, absMain, mainFile, format, option
     );
     const files = (await fs.readdir(outDir)).sort();
     if (result.code !== 0 || !files.length) {
-      const errors = parseTypstDiagnostics(chunks.join(''), projectRoot, path.dirname(absMain)).filter((e) => e.severity === 'error');
+      const log = chunks.join('');
+      const diagnostics = parseTypstDiagnostics(log, projectRoot, path.dirname(absMain));
+      const errors = diagnostics.filter((e) => e.severity === 'error');
       const first = errors[0];
       // an error with no place in the source (a PDF standard the document breaks, a flag an older Typst lacks)
-      const unplaced = chunks.join('').split(/\r?\n/).find((line) => /error/i.test(line))?.replace(/^error:\s*/i, '');
+      const unplaced = log.split(/\r?\n/).find((line) => /error/i.test(line))?.replace(/^error:\s*/i, '');
       if (result.timedOut) return { ok: false, error: 'The export took too long and was stopped.' };
-      return { ok: false, error: first ? first.file + ':' + first.line + ': ' + first.message : unplaced || 'Typst made nothing to export.' };
+      const where = first ? first.file + ':' + first.line + ': ' + first.message : unplaced || 'Typst made nothing to export.';
+      // every place, for Logs and the editor's marks, as a compile's are, each missing alt text with what to write
+      for (const e of errors) if (/missing alt text/i.test(e.message)) e.message += '\nHint: PDF/UA-1 needs alt text on every image and equation, inline ones too: image("…", alt: "…"), figure(…, alt: "…") for a drawing, #math.equation(alt: "…", $ … $)';
+      const error = errors.length > 1 ? `${where} (and ${errors.length - 1} more, in Logs)` : where;
+      return { ok: false, error, errors: diagnostics, log };
     }
     if (files.length === 1) {
       return { ok: true, name: base + '.' + kind.ext, data: (await fs.readFile(path.join(outDir, files[0]))).toString('base64') };

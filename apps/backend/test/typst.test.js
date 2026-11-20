@@ -368,7 +368,14 @@ test('a Typst document exports as PNG and SVG pages, HTML, PDF/A and PDF/UA, and
   assert.deepEqual((await fs.readdir(dir)).filter((name) => !name.startsWith('.')), ['main.typ']);
   // PDF/UA's own rule comes back as the reason; a format or file it doesn't know is refused
   await fs.writeFile(path.join(dir, 'untitled.typ'), '= One\n');
-  assert.equal((await exported('pdf-ua', 'untitled.typ')).message, 'PDF/UA-1 error: missing document title');
+  assert.equal((await exported('pdf-ua', 'untitled.typ')).error, 'PDF/UA-1 error: missing document title');
+  // every place that wants alt text comes back, for Logs and the marks, with what to write
+  await fs.writeFile(path.join(dir, 'maths.typ'), '#set document(title: "Maths")\nLet $x$ and $y$ be.\n');
+  const alt = await exported('pdf-ua', 'maths.typ');
+  assert.equal(alt.status, 422);
+  assert.deepEqual(alt.errors.map((e) => [e.file, e.line, e.column]), [['maths.typ', 2, 4], ['maths.typ', 2, 12]]);
+  assert.match(alt.error, /^maths\.typ:2: PDF\/UA-1 error: missing alt text \(and 1 more, in Logs\)$/);
+  assert.match(alt.errors[1].message, /\nHint: PDF\/UA-1 needs alt text on every image and equation/);
   assert.equal((await exported('docx')).status, 400);
   assert.equal((await exported('png', '../main.typ')).status, 400);
   await app.close();

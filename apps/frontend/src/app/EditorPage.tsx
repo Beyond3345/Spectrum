@@ -2277,6 +2277,14 @@ function Editor({ projectId }: { projectId: string }) {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       notify(`Couldn’t export: ${errorText(err)}`, 'error');
+      // every place Typst named (PDF/UA's alt text, above all) goes to Logs and the editor's marks, as a compile's
+      const data = err instanceof ApiError ? err.data : {};
+      if (Array.isArray(data.errors) && data.errors.length) {
+        setCompileLog(`Export: ${format.toUpperCase().replace('-', '/')}\nDocument: ${shownDoc}\n\n${String(data.log ?? '')}`.trim());
+        setCompileDiagnostics(data.errors as CompileDiagnostic[]);
+        setCompiledDoc(shownDoc);
+        openTools('logs');
+      }
     }
   };
 

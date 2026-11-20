@@ -468,7 +468,7 @@ export function registerProjectRoutes(fastify) {
 
   // PNG, SVG, HTML, PDF/A or PDF/UA from a .typ document, sent back to download; the project and its PDF stay as they are
   // typstVersion: the app's default, which a project that pins none exports with
-  fastify.post('/api/projects/:id/export/typst', async (req) => {
+  fastify.post('/api/projects/:id/export/typst', async (req, reply) => {
     const root = await getProjectRoot(req.params.id);
     const doc = path.posix.normalize(String(req.body?.doc || '').replace(/\\/g, '/'));
     if (!/\.typ$/i.test(doc) || doc.startsWith('../') || path.posix.isAbsolute(doc)) throw httpError('Choose a Typst document.', 400);
@@ -480,7 +480,8 @@ export function registerProjectRoutes(fastify) {
     // Compile with page colour's '#rrggbb', which the pages get as they do in the compile
     const pageColour = /^#[0-9a-f]{6}$/i.test(String(req.body?.pageColour)) ? req.body.pageColour : undefined;
     const made = await exportTypst(root, abs, doc, format, { typstVersion, pageColour });
-    if (!made.ok) throw httpError(made.error, 422);
+    // with every diagnostic and the log, for Logs
+    if (!made.ok) return reply.code(422).send(made);
     return made;
   });
 
