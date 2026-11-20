@@ -4,6 +4,10 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ## 2.7.0 (not released)
 
+### Security
+
+- API keys are kept in the keychain on a Mac and encrypted for your Windows account on Windows, not in the window's storage. Keys from earlier versions move there on first start, and stay where they were, still working, if the keychain cannot be used
+
 ### Added
 
 - Search in the sidebar finds text in the project's files too, with Match case, Whole words and Regular expression, and a click opens the line with the match selected
@@ -11,6 +15,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
 - Go to a file or heading (⌘P) opens a project file or an Outline heading by its name
 - Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
+- The projects page says when a newer Spectrum is out, asking the release page at most once a day and sending nothing about you. A switch in Settings › System turns it off
+- Vim or Emacs keys in the source editor, in Settings › Editor
+- A `% !TEX recipe` comment runs a document's own build steps, and `% !TEX options` adds engine options, inside the compile's sandbox
 - Auto compile has an As you type choice for Typst documents, which compiles 0.3 s after typing stops
 - Live in the PDF bar shows a Typst document as you type it, through Tinymist's preview
 - The Typst outline covers the whole document across nested includes, with the last compile's numbers and the figures and tables
