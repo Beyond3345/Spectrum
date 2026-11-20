@@ -12,7 +12,11 @@ The editor is divided into three columns (@fig-writing-editor). The sidebar on t
 
 === The sidebar
 
-The sidebar has three tabs. #ui[Files] is the project's file tree, #ui[Research] searches for papers (@ch-references) and #ui[To-dos] is the to-do list (@sec-writing-todos). The magnifying glass searches the tab that is showing: the file names, the research sessions or the to-dos. The #ui[+] button and a right-click on the file tree both hold #ui[New file…], #ui[New folder…], #ui[New .bib], #ui[Upload files…] and #ui[Upload folder…], and a right-click on a file adds #ui[Rename…], #ui[Move to Bin…] and, for a document, #ui[Set as main file]. #ui[Move to Bin…] moves the file or folder to the Bin, the Recycle Bin on Windows, after saving any text typed in it, so it can be put back from there. On macOS 15 and later the message that follows has #ui[Undo], which puts it back in the project at once, as the main file again if it was one. On a drive with no Bin, such as a network share, Spectrum says so and asks before it deletes the file for good. Files can also be dragged between folders and dropped in from Finder. When a renamed or moved file is named elsewhere in the project, by `\include`, `\input`, `\includegraphics` or `\bibliography` in LaTeX, `#include` or `image()` in Typst, or an image or link in Markdown, Spectrum lists each of these and offers to update them. It saves a Before updating references checkpoint first, so the change can be undone from #menu[Tools][Checkpoints]. Only a path that names the file exactly is changed. The main file, which Compile builds, is marked #ui[Main], and a drawing from the diagram composer has #ui[Edit diagram] in its menu (@ch-composer).
+The sidebar has three tabs. #ui[Files] is the project's file tree, #ui[Research] searches for papers (@ch-references) and #ui[To-dos] is the to-do list (@sec-writing-todos). The magnifying glass searches the tab that is showing: the project's files, the research sessions or the to-dos. The #ui[+] button and a right-click on the file tree both hold #ui[New file…], #ui[New folder…], #ui[New .bib], #ui[Upload files…] and #ui[Upload folder…], and a right-click on a file adds #ui[Rename…], #ui[Move to Bin…] and, for a document, #ui[Set as main file]. #ui[Move to Bin…] moves the file or folder to the Bin, the Recycle Bin on Windows, after saving any text typed in it, so it can be put back from there. On macOS 15 and later the message that follows has #ui[Undo], which puts it back in the project at once, as the main file again if it was one. On a drive with no Bin, such as a network share, Spectrum says so and asks before it deletes the file for good. Files can also be dragged between folders and dropped in from Finder. When a renamed or moved file is named elsewhere in the project, by `\include`, `\input`, `\includegraphics` or `\bibliography` in LaTeX, `#include` or `image()` in Typst, or an image or link in Markdown, Spectrum lists each of these and offers to update them. It saves a Before updating references checkpoint first, so the change can be undone from #menu[Tools][Checkpoints]. Only a path that names the file exactly is changed. The main file, which Compile builds, is marked #ui[Main], and a drawing from the diagram composer has #ui[Edit diagram] in its menu (@ch-composer).
+
+On #ui[Files] the search looks through the text of the project as well as the names of its files. The matching file names come first, and #ui[In text] below them lists each line that holds the search, grouped by file with its line number and the match highlighted (@fig-writing-search). A click on a line opens the file there with the match selected. The three buttons beside #ui[In text] narrow the search: #ui[Aa] matches the case, #ui[ab] matches whole words only, so `\label` does not find `\labelcref`, and #ui[.\*] reads the search as a regular expression. Specifically, the search reads every text file of the project as it is saved, after saving the open file, and leaves out the `.spectrum` folder, hidden files and binary files. Only the first 100 matches are listed, so a longer search narrows a long list. The agents search the project's text in the same way (@ch-assistant).
+
+#shot("figures/02-writing/text-search.png", [Search on the Files tab. No file is named "quick", while #ui[In text] lists the three lines that hold it, in two chapters.], width: 42%) <fig-writing-search>
 
 Below the files, #ui[Outline] lists the headings of the document, with the figures and tables by their captions, and a click on one moves the cursor to it. For LaTeX the outline follows `\input` and `\include` across the whole document and, with TexLab running (@sec-writing-lsp), shows the section numbers of the last compile. For Typst it follows `#include`, and for Markdown it lists the headings. The heading the cursor is in is shown in bold.
 
@@ -35,7 +39,7 @@ Above the source is a row of tabs, one for each open file, and below it the tool
     [#ui[Assistant]], [shows or hides the assistant chat (@ch-assistant)],
     [#ui[Check grammar]], [checks the grammar of the open file (@sec-writing-checks)],
     [#ui[Document insights]], [counts and lists the document's parts (@sec-writing-insights)],
-    [#ui[Tools]], [opens the Checkpoints, Logs, Review and GitHub tabs. A badge counts the errors and warnings of the last compile],
+    [#ui[Tools]], [opens the Checkpoints, Logs, Review and GitHub tabs, on Logs when the last compile had errors. A badge counts the errors and warnings of the last compile],
     [#ui[Agent]], [opens the agent workspace (@ch-assistant)],
   ),
   caption: [The buttons of the editor's toolbar.],
@@ -60,6 +64,10 @@ A grey suggestion after the cursor is AI autocomplete, which @ch-assistant cover
 === Finding and moving around
 
 #key("⌘", "F") opens find and replace in the open file, and #key("⌘", "G") and #key("⇧", "⌘", "G") go to the next and previous match. #key("⌃", "G") goes to a line by its number. #key("⌘", "D") adds the next match of the selection to the selection, #key("⇧", "⌘", "L") selects every match and #key("⌥", "⌘", "↑") and #key("⌥", "⌘", "↓") add a cursor above or below. A click with #key("⌥") held also adds a cursor. The other editing shortcuts are listed in @sec-writing-shortcuts.
+
+The command palette finds a command by its name, for one whose menu or shortcut is not at hand. #key("⇧", "⌘", "P") opens it with `>` typed, and the list narrows as the name is typed, where the first letters of its words are enough, so `rfs` finds #ui[Recompile from scratch] (@fig-writing-palette). It lists every command that has a shortcut, the items of the Compile button's menu, the #ui[Insert] menu, the file tree's #ui[+] menu, the project menu and the PDF's #dots menu, the tabs of Tools, the panels and the sections of Settings. Each line shows where the command lives and its shortcut, and a tick marks a choice in use, such as the project's compiler. #key("Enter") runs the highlighted command and #key("Esc") closes the palette. #key("⌘", "P") opens the same box without the `>`, to go to a file of the project or a heading of the Outline by its name. Typing `>` there turns it into the command palette.
+
+#shot("figures/02-writing/command-palette.png", [The command palette with `>compiler` typed. The project's compiler choices from the Compile button's menu come first, and the tick marks the one in use.], width: 62%) <fig-writing-palette>
 
 == Languages and engines <sec-writing-engines>
 
@@ -155,7 +163,9 @@ A failed compile marks the status line #ui[Failed — see Logs], and the #ui[Too
 
 #shot("figures/02-writing/logs.png", [Tools › Logs after a compile with one error and two warnings. Each card links to its line in the source and has Fix with AI.], width: 72%) <fig-writing-logs>
 
-For a Typst document, the errors and warnings of the last compile are also underlined in the source, where the pointer resting on one shows its message, until the next compile.
+The errors and warnings of the last compile are also underlined in the source until the next compile, and the pointer resting on one shows its message (@fig-writing-marks). A Typst error is underlined where Typst points. TeX gives only the line, together with what it had read of the line when it stopped, so a LaTeX error is underlined under the command it stopped after, such as an undefined `\gainval`, or else along the whole line. A LaTeX warning, such as a reference with no label, is underlined along its line. An edit in or beside an underline takes it away, since it may well be the fix. The underlines of the compile and those of TexLab (@sec-writing-lsp) are shown together.
+
+#shot("figures/02-writing/compile-marks.png", [An undefined command underlined in red after a compile, under the command itself. The reference with no label on the same line has TexLab's red underline and the compile's yellow one along the line.], width: 80%) <fig-writing-marks>
 
 == The PDF preview <sec-writing-preview>
 
@@ -383,6 +393,8 @@ Every shortcut in @tab-writing-shortcuts can be changed in #menu[Settings][Short
     [AI autocomplete], [#key("⌥", "/")],
     [Show or hide the sidebar], [#key("⌘", "\\")],
     [Editor only, editor and PDF, PDF only], [#key("⌘", "1"), #key("⌘", "2") and #key("⌘", "3")],
+    [Find a command], [#key("⇧", "⌘", "P")],
+    [Go to a file or heading], [#key("⌘", "P")],
   ),
   caption: [The shortcuts that can be changed in #menu[Settings][Shortcuts].],
 ) <tab-writing-shortcuts>
