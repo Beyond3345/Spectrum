@@ -421,3 +421,120 @@ test('a .md with Chinese prints it in the bundled font and cites in APA 7, throu
   assert.match(tex, /\\setCJKmainfont\[BoldFont=NotoSerifTC-Bold\.otf\]\{NotoSerifTC-Regular\.otf\}/);
   assert.match(tex, /Jones, P\. \(2019\)\. \\emph\{Building services\}/);
 });
+
+test('cross-references: LaTeX gets \\label and \\ref, Word the numbers, and a reference to no label a warning at its line', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const dir = path.join(tmp, 'crossref');
+  await fs.mkdir(dir, { recursive: true });
+  const absMain = path.join(dir, 'main.md');
+  await fs.writeFile(absMain, [
+    '---', 'numbersections: true', '---', '',
+    '# Method {#sec:method}', '',
+    'See @fig:plan, [@tbl:use; @eq:flow], [-@fig:plan] and @sec:method.', '',
+    '![The plan](plan.png){#fig:plan}', '',
+    '| a | b |', '|---|---|', '| 1 | 2 |', '',
+    'Table: Weekly use. {#tbl:use}', '',
+    '$$ Q = vA $$ {#eq:flow}', '',
+    'And @fig:none.', ''
+  ].join('\n'));
+  const made = await markdownToLatex({ projectRoot: dir, absMain, mainFile: 'main.md', generatedDir: path.join(dir, 'generated') });
+  assert.equal(made.ok, true, made.error || made.log);
+  assert.match(made.text.replace(/\s+/g, ' '), /See Figure~\\ref\{fig:plan\}, Table~\\ref\{tbl:use\} and Equation~\\eqref\{eq:flow\}, \\ref\{fig:plan\} and Section~\\ref\{sec:method\}/);
+  // the table's label, which pandoc before 3.8.2 printed in the caption
+  assert.match(made.text, /\\caption\{Weekly use\.\}\\label\{tbl:use\}/);
+  assert.match(made.text, /\\begin\{equation\} Q = vA \\label\{eq:flow\}\\end\{equation\}/);
+  assert.match(made.text, /\\textbf\{\?\?\}/);
+  assert.deepEqual(pandocWarnings(made.log, await fs.readFile(absMain, 'utf8'), 'main.md'), [
+    { severity: 'warning', message: 'Nothing is labelled fig:none for the reference @fig:none.', file: 'main.md', line: 19, column: 1 }
+  ]);
+  const output = path.join(dir, 'main.docx');
+  assert.equal((await pandocDocx(dir, absMain, output)).ok, true);
+  const { execFileSync } = await import('node:child_process');
+  const xml = execFileSync('unzip', ['-p', output, 'word/document.xml']).toString().replace(/<[^>]+>/g, '');
+  assert.match(xml, /See Figure\u00a01, Table\u00a01 and Equation\u00a0\(1\), 1 and Section\u00a01\./);
+  assert.match(xml, /Table\u00a01: Weekly use\./);
+  assert.match(xml, /1 Method/);
+});
+
+test('a ```mermaid block becomes the picture the editor saved for it, found by its code whatever its spacing', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const { default: Fastify } = await import('fastify');
+  const { registerMarkdownRoutes } = await import('../src/routes/markdown.js');
+  const { createHash } = await import('node:crypto');
+  const { inflateSync } = await import('node:zlib');
+  const app = Fastify();
+  registerMarkdownRoutes(app);
+  const p = await projectWith('See @fig:flow.\n\n```{.mermaid caption="The flow" #fig:flow}\ngraph TD\n\tA --> B\n```\n\n```mermaid\ngraph LR\n  X --> Y\n```\n');
+  const root = await getProjectRoot(p.id);
+  // the editor's key: the code with each run of whitespace one space (mermaidBlocks.ts)
+  const key = (code) => createHash('sha1').update(code.replace(/[ \t\n\v\f\r]+/g, ' ').replace(/^ | $/g, '')).digest('hex');
+  const flow = key('graph TD\n    A --> B');
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const post = (payload) => app.inject({ method: 'POST', url: `/api/projects/${p.id}/mermaid`, payload }).then((r) => [r.statusCode, JSON.parse(r.payload)]);
+  assert.deepEqual(await post({ wanted: [flow, key('graph LR X --> Y')] }), [200, { ok: true, missing: [flow, key('graph LR X --> Y')] }]);
+  assert.deepEqual(await post({ wanted: [flow], images: { [flow]: png } }), [200, { ok: true, missing: [] }]);
+  assert.equal((await post({ wanted: ['../x'] }))[0], 400);
+  assert.equal((await post({ images: { [flow]: Buffer.from('not a picture').toString('base64') } }))[0], 400);
+  await app.close();
+  // saved with a pHYs chunk of 288 dpi (11339 a metre) after IHDR, its CRC right, the picture unchanged
+  const saved = readFileSync(path.join(root, '.spectrum', 'mermaid', flow + '.png'));
+  assert.equal(saved.toString('latin1', 37, 41), 'pHYs');
+  assert.equal(saved.readUInt32BE(41), 11339);
+  const { crc32 } = await import('node:zlib');
+  assert.equal(saved.readUInt32BE(50), crc32(saved.subarray(37, 50)));
+  assert.equal(inflateSync(saved.subarray(saved.indexOf('IDAT') + 4, saved.indexOf('IEND') - 8)).length, 5);
+  // the first block is a figure with its label; the second, never drawn, stays code with a warning
+  const absMain = path.join(root, 'main.md');
+  const made = await markdownToLatex({ projectRoot: root, absMain, mainFile: 'main.md', generatedDir: path.join(tmp, 'mermaid-generated') });
+  assert.equal(made.ok, true, made.error || made.log);
+  assert.match(made.text, /See Figure~\\ref\{fig:flow\}/);
+  assert.match(made.text, /\\includegraphics\[[^\]]*\]\{[^}]*media\/[0-9a-f]+\.png\}\}\s*\\caption\{The flow\}\\label\{fig:flow\}/);
+  assert.match(made.text, /graph LR/);
+  assert.match(made.log, /A Mermaid diagram is printed as its code/);
+  // a captioned block with no picture yet is a figure of its code, so its label still holds
+  const other = path.join(root, 'other.md');
+  writeFileSync(other, 'See @fig:other.\n\n```{.mermaid caption="Not drawn" #fig:other}\ngraph TD\n  P --> Q\n```\n');
+  const undrawn = await markdownToLatex({ projectRoot: root, absMain: other, mainFile: 'other.md', generatedDir: path.join(tmp, 'mermaid-other') });
+  assert.match(undrawn.text, /See Figure~\\ref\{fig:other\}/);
+  assert.match(undrawn.text, /P \{-\}\{-\}\\textgreater\{\} Q[\s\S]*\\caption\{Not drawn\}\\label\{fig:other\}/);
+  // a LaTeX project made from the .md keeps its blocks as code
+  const converted = await markdownToLatex({ projectRoot: root, absMain, mainFile: 'main.md', generatedDir: path.join(tmp, 'mermaid-converted'), sandboxed: true });
+  assert.match(converted.text, /graph TD/);
+});
+
+test('slides: true makes Beamer slides, through LaTeX whatever the PDF engine', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const { isSlides } = await import('../src/services/markdownService.js');
+  assert.deepEqual([true, 'true', 'beamer', 'yes', 'no', '', undefined].map((slides) => isSlides({ slides })), [true, true, true, true, false, false, false]);
+  const dir = path.join(tmp, 'slides');
+  await fs.mkdir(dir, { recursive: true });
+  const absMain = path.join(dir, 'main.md');
+  await fs.writeFile(absMain, '---\ntitle: A talk\nslides: true\n---\n\n## First slide\n\n- One point\n');
+  const made = await markdownToLatex({ projectRoot: dir, absMain, mainFile: 'main.md', generatedDir: path.join(dir, 'generated') });
+  assert.equal(made.ok, true, made.error || made.log);
+  assert.match(made.text, /\\documentclass\[[^\]]*\]\{beamer\}/);
+  assert.match(made.text, /\\begin\{frame\}\{First slide\}/);
+});
+
+test('a document across files: include: joins them in order, and errors and warnings name the file they are in', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  if (!(await findExecutable('pdflatex')) && !(await findExecutable('xelatex'))) return t.skip('needs a TeX installation');
+  const p = await projectWith('---\ntitle: Across files\ninclude: [chapters/one.md, ../outside.md, missing.md, chapters/two.md]\n---\n\n# Start\n\nAs @fig:dot in the second chapter shows.\n', {
+    'chapters/one.md': '# One\n\nThe first chapter cites [@nobody].\n',
+    'chapters/two.md': '# Two\n\nThe second chapter has a line that goes wrong here \\undefinedcommand{} for the test.\n\n![A dot](figures/dot.png){#fig:dot}\n',
+    'figures/dot.png': Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+  });
+  const result = await compile(p);
+  const at = (pattern) => result.errors.filter((e) => pattern.test(e.message)).map((e) => [e.file, e.line ?? null]);
+  assert.deepEqual(at(/Undefined control sequence/), [['chapters/two.md', 3]]);
+  assert.deepEqual(at(/@nobody/), [['chapters/one.md', 3]]);
+  assert.deepEqual(at(/include: names/), [['main.md', 3], ['main.md', 3]]);
+  assert.deepEqual(at(/Nothing is labelled/), []);
+  const tex = await fs.readFile(path.join(process.env.SPECTRUM_DATA_DIR, 'cache', p.id, 'generated', 'main.md.tex'), 'utf8');
+  assert.ok(tex.indexOf('{Start}') < tex.indexOf('{One}') && tex.indexOf('{One}') < tex.indexOf('{Two}'), 'in order');
+  assert.match(tex, /As Figure~\\ref\{fig:dot\}/);
+});

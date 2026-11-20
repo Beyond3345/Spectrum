@@ -16,7 +16,8 @@ import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge, imageOf } from '../floats';
+import { typstTableRows } from '../outlines';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -360,7 +361,7 @@ async function drawAs(file: File, type: 'image/png' | 'image/jpeg') {
   }
 }
 
-type Panel = { key: number; source: FigureSource; name: string; caption: string; /** null: follows the file name */ label: string | null };
+type Panel = { key: number; source: FigureSource; name: string; caption: string; /** null: follows the file name */ label: string | null; /** Typst's alt text */ alt: string };
 let panelKeys = 0;
 
 const panelPath = (panel: Panel) => (panel.source.kind === 'project' ? panel.source.path : `figures/${safeFileName(panel.name, panel.source.ext)}`);
@@ -446,7 +447,7 @@ function InsertFigure() {
   }, [count]);
 
   const add = (source: FigureSource, name = '') => {
-    const panel: Panel = { key: (panelKeys += 1), source, name, caption: '', label: null };
+    const panel: Panel = { key: (panelKeys += 1), source, name, caption: '', label: null, alt: '' };
     setPanels((prev) => {
       if (several) return [...prev, panel];
       prev.forEach(forget);
@@ -593,7 +594,7 @@ function InsertFigure() {
       let wanted = ['graphicx'];
       if (several) {
         const figureSet: FigureSet = {
-          panels: used.map((p, i) => ({ path: saved[i], caption: p.caption, label: p.label ?? figureLabel(saved[i]) })),
+          panels: used.map((p, i) => ({ path: saved[i], caption: p.caption, label: p.label ?? figureLabel(saved[i]), alt: p.alt })),
           layout,
           columns: prefs.columns,
           labels: prefs.labels,
@@ -608,7 +609,7 @@ function InsertFigure() {
       } else {
         // an automatic label follows the name the file was saved under
         const figure = { path: saved[0], width: widthOf(prefs), caption, label: label ?? figureLabel(saved[0]), size };
-        text = docKindNow === 'typst' ? figureTypst({ ...figure, ...placement }) : docKindNow === 'markdown' ? figureMarkdown(figure) : figureLatex({ ...figure, ...placement });
+        text = docKindNow === 'typst' ? figureTypst({ ...figure, ...placement, alt: used[0].alt }) : docKindNow === 'markdown' ? figureMarkdown(figure) : figureLatex({ ...figure, ...placement });
       }
       const added =
         docKindNow === 'latex' ? await ensurePackages(() => apiRef.current, [...wanted, ...(placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [])]) : { text: '', warn: false };
@@ -734,6 +735,9 @@ function InsertFigure() {
                 spellCheck={false}
               />
             )}
+            {kind === 'typst' && (
+              <input className="input" aria-label={`Image ${i + 1} alt text`} placeholder="Alt text: what it shows" value={panel.alt} onChange={(e) => setPanel(panel.key, { alt: e.target.value })} />
+            )}
             {prefs.labels !== 'none' && (
               <>
                 <input className="input" aria-label={`Image ${i + 1} caption`} placeholder={prefs.labels === 'sub' ? 'Sub-caption' : 'Caption'} value={panel.caption} onChange={(e) => setPanel(panel.key, { caption: e.target.value })} />
@@ -843,6 +847,13 @@ function InsertFigure() {
                 <input id={`${id}-label`} className="input" value={mainLabel} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
               </div>
             </>
+          )}
+          {!several && kind === 'typst' && (
+            <div className="field">
+              <label htmlFor={`${id}-alt`}>Alt text</label>
+              <textarea id={`${id}-alt`} className="input" rows={2} value={first.alt} onChange={(e) => setPanel(first.key, { alt: e.target.value })} placeholder="What the image shows, for someone who can’t see it" />
+              <div className="field-hint">Read aloud by screen readers. Download › PDF/UA-1 needs it on every image.</div>
+            </div>
           )}
           <Segmented label="Size by" value={prefs.sizeMode} options={SIZE_MODES} onChange={(sizeMode) => set({ sizeMode })} />
           {prefs.sizeMode === 'line' && (
@@ -967,8 +978,6 @@ type DiagramWidth = 'natural' | WidthChoice;
 const DIAGRAM_WIDTHS: [DiagramWidth, string, string?][] = [['natural', 'Natural', 'Natural size'], ...WIDTHS];
 
 /** The image a diagram that isn't TikZ goes in as: the PDF or PNG saved beside it (or the image it is), '' when there's none. */
-const imageOf = (path: string, figures: string[]) =>
-  figureKind(path, '') === 'keep' ? path : ['pdf', 'png'].map((ext) => path.replace(/\.[^./]+$/, `.${ext}`)).find((p) => figures.includes(p)) || '';
 
 /** Whether a Typst version can show PDF images (0.14 and later). */
 const atLeastVersion = (version: string, minimum: string) => {
@@ -1112,7 +1121,7 @@ function InsertDiagram() {
       } else if (target === 'markdown') {
         // a TikZ picture goes in as the PDF the composer's preview made, which isn't among the figures (it's x.tex's)
         const pdf = tikz ? diagram.path.replace(/\.tex$/i, '.pdf') : '';
-        const source = tikz ? (a.projectFiles.includes(pdf) ? pdf : '') : imageOf(diagram.path, a.figureFiles);
+        const source = tikz ? (a.projectFiles.includes(pdf) ? pdf : '') : imageOf(diagram.path, a.figureFiles, true);
         if (!source) {
           a.notify(tikz ? 'Compile the diagram in the composer first, so its PDF is there.' : 'Export the diagram as a PDF or PNG in the composer first.', 'error');
           return;
@@ -1810,10 +1819,11 @@ function TableHelp() {
   );
 }
 
-// ─── Image → LaTeX ───
+// ─── Image → LaTeX, or Typst in a Typst document ───
 
 function ImageToLatex() {
   const api = useEditor();
+  const typst = docKind(api.activePath) === 'typst';
   const [mode, setMode] = useState<VisionMode>('equation');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState('');
@@ -1857,7 +1867,7 @@ function ImageToLatex() {
     setBusy(true);
     setResult('');
     try {
-      const res = await visionToLatex({ projectId: api.projectId, file, mode, prompt: prompt.trim() || VISION_HINTS[mode], llmConfig: api.llm.vision });
+      const res = await visionToLatex({ projectId: api.projectId, file, mode, prompt: prompt.trim() || (typst ? undefined : VISION_HINTS[mode]), llmConfig: api.llm.vision, kind: docKind(api.activePath) });
       if (!res.ok) throw new Error(res.error || 'The image couldn’t be read.');
       setResult(res.latex || '');
       if (res.assetPath) await api.refreshTree();
@@ -1871,7 +1881,7 @@ function ImageToLatex() {
   return (
     <section className="tool-card" onPaste={onPaste}>
       <div className="tool-card-title">
-        <Icon name="text.viewfinder" /> Image → LaTeX
+        <Icon name="text.viewfinder" /> Image → {typst ? 'Typst' : 'LaTeX'}
       </div>
       <div className="field">
         <label id="image-latex-mode">Convert to</label>
@@ -1932,7 +1942,7 @@ function ImageToLatex() {
           rows={2}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. only the tabular, no caption"
+          placeholder={typst ? 'e.g. only the table, no caption' : 'e.g. only the tabular, no caption'}
         />
       </div>
       <div className="row">
@@ -1955,6 +1965,10 @@ function ImageToLatex() {
 
 // ─── Table → chart ───
 
+/** Cells as a LaTeX tabular, the form the plotting script and the model read. */
+const asTabular = (rows: string[][]) =>
+  `\\begin{tabular}{${'l'.repeat(Math.max(...rows.map((r) => r.length)))}}\n${rows.map((r) => r.map((c) => c.replace(/\\/g, '').replace(/[&%]/g, '\\$&')).join(' & ') + ' \\\\').join('\n')}\n\\end{tabular}`;
+
 function TableToChart() {
   const api = useEditor();
   const [type, setType] = useState<'bar' | 'line' | 'heatmap'>('bar');
@@ -1970,14 +1984,17 @@ function TableToChart() {
   const [editing, setEditing] = useState(false);
   const [failed, setFailed] = useState('');
   const [asset, setAsset] = useState<{ path: string; at: number } | null>(null);
-  const table = api.selectionText;
+  // a Typst #table goes to the model and the plot as the tabular they read
+  const typst = docKind(api.activePath) === 'typst';
+  const typstRows = typst ? typstTableRows(api.selectionText) : null;
+  const table = typstRows ? asTabular(typstRows) : api.selectionText;
   const hasTable = table.includes('\\begin{tabular') || table.includes('\\begin{table');
 
   /** Asks the model for the code, which is shown and never run until Run this code. again: with the last run's error. */
   const write = async (again = false) => {
     const tableLatex = again ? source : table;
     if (!again && !hasTable) {
-      setStatus('Select a LaTeX table (tabular) in the editor first.');
+      setStatus(typst ? 'Select a Typst table (#table) in the editor first.' : 'Select a LaTeX table (tabular) in the editor first.');
       return;
     }
     setBusy('write');
@@ -2018,7 +2035,10 @@ function TableToChart() {
       setStatus(`Chart saved to ${res.assetPath}.`);
       await api.refreshTree();
       // after the selected table, not over it
-      if (autoInsert) api.insertAtCursor(figureSnippet(res.assetPath), { block: true, afterSelection: true });
+      if (autoInsert) {
+        const figure = docKind(api.activePath) === 'typst' ? figureTypst({ path: res.assetPath, width: 0.9, caption: 'Caption.', label: figureLabel(res.assetPath) }) : figureSnippet(res.assetPath);
+        api.insertAtCursor(figure, { block: true, afterSelection: true });
+      }
     } catch (err) {
       setFailed(errorText(err));
     } finally {

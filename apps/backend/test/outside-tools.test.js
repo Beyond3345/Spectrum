@@ -71,7 +71,7 @@ test('an outside agent reaches one project’s tools only while its switch is on
 
   const client = await connect(on.token);
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name).sort(), ['bib_entries', 'bib_search', 'compile', 'fetch_bibtex', 'get_log', 'list_todos', 'literature_search', 'project_map', 'search_text']);
+  assert.deepEqual(tools.map((t) => t.name).sort(), ['bib_entries', 'bib_search', 'check_references', 'compile', 'fetch_bibtex', 'get_log', 'list_todos', 'literature_search', 'preview_figure', 'project_map', 'search_text', 'view_pdf_page']);
   assert.equal(tools.find((t) => t.name === 'project_map').annotations.readOnlyHint, true);
   assert.equal(tools.find((t) => t.name === 'compile').annotations.readOnlyHint, false);
   // the answers are marked as material, and come from the project

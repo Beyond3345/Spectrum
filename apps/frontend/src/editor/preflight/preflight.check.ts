@@ -377,7 +377,7 @@ const REPORT_MD = [
   'bibliography: refs.bib',
   '---',
   '# Intro',
-  'As shown [@smith20; see @ghost99, p. 3], and @jones19 says so (@fig:plot).',
+  'As shown [@smith20; see @ghost99, p. 3], and @jones19 says so (@fig:plot, [@tab:use] and @sec-two).',
   '![A plot](figures/plot.png){#fig:plot}',
   '![Gone](figures/gone.png)',
   'See [the notes](notes.md#part) and [the data](data/missing.csv), [a site](https://example.com) and [above](#intro).',

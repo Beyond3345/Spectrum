@@ -982,6 +982,36 @@ a.research-title:hover {
   gap: 4px;
 }
 
+/* Research’s claims ledger: each claim with its rating, the source’s words and where they were found */
+.claims-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.claims-head,
+.claims-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.claim-text {
+  color: var(--text);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.claim-quote {
+  margin: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 /* --------------------------------------------------------------------------
    The bottom card's history
    -------------------------------------------------------------------------- */
@@ -1662,6 +1692,26 @@ span.log-location {
   display: flex;
   flex-wrap: wrap;
   gap: 2px 12px;
+}
+
+/* References exist: the fields that differ, the .bib's and the record's side by side */
+.refcheck-diff {
+  margin: 4px 0;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.refcheck-diff th,
+.refcheck-diff td {
+  padding: 2px 10px 2px 0;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.refcheck-diff th {
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .review-score {
@@ -2953,6 +3003,45 @@ textarea.table-latex {
   font: 11.5px/1.5 var(--font-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* pictures for the agents: chips in the message box, small copies under a message, a page or figure on a step's card */
+.agent-picture-chip img {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.agent-picture-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.agent-picture-strip img {
+  max-width: 96px;
+  max-height: 96px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.agent-tool-picture {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.agent-tool-picture img {
+  max-width: 100%;
+  max-height: 360px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
 }
 
 .agent-note {

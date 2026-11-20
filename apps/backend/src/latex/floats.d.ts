@@ -27,7 +27,8 @@ export type FigureSize = {
   trim?: [number, number, number, number] | null;
 };
 
-export type FigurePanel = { path: string; caption: string; label: string };
+/** alt: what the image shows, for screen readers and PDF/UA (Typst) */
+export type FigurePanel = { path: string; caption: string; label: string; alt?: string };
 
 /**
  * Several images in one figure: in one row or a grid of columns, as sub-figures (a), (b) with subcaption, as separate
@@ -87,7 +88,7 @@ export type TableModel = {
 };
 
 /** placement and span: Typst's, from the panel's LaTeX letters (typstPlacement) */
-export type FigureTextOptions = { path: string; width: number; caption: string; label: string; size?: FigureSize; markup?: boolean; placement?: string; span?: boolean };
+export type FigureTextOptions = { path: string; width: number; caption: string; label: string; size?: FigureSize; markup?: boolean; placement?: string; span?: boolean; alt?: string };
 
 export function widthArg(fraction: number): string;
 export function placementOf(letters: string, span?: boolean): string;

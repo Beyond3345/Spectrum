@@ -237,6 +237,11 @@ export function saveThumbnail(id: string, png: string) {
   return request<{ ok: boolean }>(`/api/projects/${id}/thumbnail`, json('PUT', { png }));
 }
 
+/** The editor's pictures of a Markdown document's ```mermaid blocks ({ sha1: base64 PNG }), and which wanted have none. */
+export function saveMermaid(id: string, wanted: string[], images: Record<string, string> = {}) {
+  return request<{ ok: boolean; missing: string[] }>(`/api/projects/${id}/mermaid`, json('POST', { wanted, images }));
+}
+
 export interface ProjectStats {
   ok: boolean;
   source: 'texcount' | 'estimate';
@@ -256,7 +261,9 @@ export interface ProjectStats {
   /** a file the document reads is newer than the kept .aux */
   stale?: boolean;
   /** the contents' entries from the kept .aux files, in order; number '' for an unnumbered one */
-  headings?: { level: string; number: string; page: string }[];
+  headings?: { level: string; number: string; page: string; title?: string }[];
+  /** a Typst document's figures in order, their numbers as printed */
+  figures?: { supplement: string; number: string; page: string; caption: string }[];
 }
 
 /** doc: the project-relative document; sent as mainFile too, which texcount counts from (looked for in texFolder first) */
@@ -325,6 +332,17 @@ export function getProjectTree(id: string) {
   return request<{ items: FileItem[]; fileOrder?: FileOrderMap; mainFile?: string; documents: string[]; diagrams?: string[]; conflicts?: Record<string, string> }>(
     `/api/projects/${id}/tree`
   );
+}
+
+/** A line of the project's text that holds a search, from 1, and the line itself (trimmed, at most 300 characters). */
+export type TextMatch = { file: string; line: number; text: string };
+export type TextSearchOptions = { caseSensitive: boolean; wholeWord: boolean; regex: boolean };
+
+/** Search in the sidebar's In text: the agents' search_text, the first 100 matches (more: what to do about the rest). */
+export function searchProjectText(id: string, query: string, options: TextSearchOptions, signal?: AbortSignal) {
+  const flags = { case: options.caseSensitive, word: options.wholeWord, regex: options.regex };
+  const params = new URLSearchParams({ q: query, ...Object.fromEntries(Object.entries(flags).filter(([, on]) => on).map(([k]) => [k, '1'])) });
+  return request<{ ok: boolean; matches?: TextMatch[]; more?: string; error?: string }>(`/api/projects/${id}/search?${params}`, { signal });
 }
 
 type FileText = { content: string; hash: string };
@@ -976,6 +994,11 @@ export function tinymistPdf(projectId: string, at: { file: string; line: number;
   return request<({ ok: true } & PdfPoint) | { ok: false }>(`/api/projects/${projectId}/tinymist/pdf`, json('POST', { ...at, doc }));
 }
 
+/** The Live view of a Typst document: the address of Tinymist's preview page, kept running while on. */
+export function tinymistLive(projectId: string, doc: string, on: boolean) {
+  return request<{ ok: true; url: string }>(`/api/projects/${projectId}/tinymist/live`, json('POST', { doc, on }));
+}
+
 // ─── Review ───
 
 /** When doc's PDF and the newest file it reads were written (ms; null: none), and with bib the project's .bib entries. */
@@ -1323,7 +1346,7 @@ export type Incomplete = 'failed' | 'steps' | 'cut' | 'stopped';
  * One of the Spectrum agent's tool calls: the tool, what it was about (a path, a query, an id), whether it worked, how
  * long it took, and what its card opens to (an output's text, or the two sides of an edit)
  */
-export type AgentStep = { tool: string; about?: string; ok: boolean; ms?: number; show?: { text?: string; diff?: { path: string; oldText: string; newText: string } }; paused?: boolean };
+export type AgentStep = { tool: string; about?: string; ok: boolean; ms?: number; show?: { text?: string; diff?: { path: string; oldText: string; newText: string }; image?: string }; paused?: boolean };
 /** What was said before step `before` of a turn: the model's own words, or (user) a message steered in */
 export type AgentSaid = { before: number; text: string; user?: boolean };
 /** Tokens as the provider counted them: all it read (cacheRead and cacheWrite are part of input) and what it wrote */
@@ -1358,6 +1381,8 @@ export type AgentTurnRequest = {
   plan?: AgentPlanEntry[];
   /** the run pauses before each new file it would change */
   eachFile?: boolean;
+  /** pictures sent with the request: base64 PNG, JPEG, WebP or GIF, at most four */
+  images?: { type: string; data: string; name?: string }[];
 };
 /** Starts a turn; the answer comes at once, and the turn is heard at agentRunEventsUrl. 409 while one is going. */
 export const startAgentTurn = (payload: AgentTurnRequest) => request<{ ok: boolean; run: AgentRunSnapshot }>('/api/agent/runs', json('POST', payload));
@@ -1550,10 +1575,13 @@ export async function visionToLatex(payload: {
   mode: 'equation' | 'table' | 'figure' | 'algorithm' | 'ocr';
   prompt?: string;
   llmConfig?: Partial<LLMConfig>;
+  /** the document's language: Typst gets Typst, anything else LaTeX */
+  kind?: string | null;
 }) {
   const form = new FormData();
   form.append('projectId', payload.projectId);
   form.append('mode', payload.mode);
+  if (payload.kind) form.append('kind', payload.kind);
   if (payload.prompt) form.append('prompt', payload.prompt);
   if (payload.llmConfig) form.append('llmConfig', JSON.stringify(payload.llmConfig));
   form.append('image', payload.file);
@@ -1672,6 +1700,26 @@ export function addResearchResults(projectId: string, id: string, payload: { res
 export const researchNote = (projectId: string, id: string, resultId: string) =>
   request<{ ok: boolean; path: string; created: boolean }>(`/api/projects/${projectId}/research/${id}/note`, json('POST', { resultId }));
 
+/** A claim the agent checked, kept in the project’s claims ledger with the code’s evidence for it. */
+export interface ClaimRow {
+  id: string;
+  /** the claim, in the text’s words */
+  text: string;
+  file: string;
+  line: number;
+  keys: string[];
+  rating: 'supported' | 'partly' | 'unsupported' | 'needs-source' | 'not-checkable';
+  /** the source’s own words, found in it by the code */
+  quote?: string;
+  /** where the quote was found: the full text’s page, or the abstract alone; where: the address or the project’s PDF */
+  read?: { kind: 'full text' | 'abstract'; page?: number; where: string };
+  note?: string;
+  createdAt: string;
+}
+
+export const listClaims = (projectId: string) => request<{ ok: boolean; claims: ClaimRow[] }>(`/api/projects/${projectId}/claims`);
+export const deleteClaim = (projectId: string, id: string) => request<{ ok: boolean }>(`/api/projects/${projectId}/claims/${id}`, { method: 'DELETE' });
+
 /** An open-access PDF into research/papers; email lets Unpaywall be asked. existing: it was there already. */
 export const researchPdf = (projectId: string, id: string, resultId: string, email?: string) =>
   request<{ ok: boolean; path: string; existing?: boolean }>(`/api/projects/${projectId}/research/${id}/pdf`, json('POST', { resultId, email }));
@@ -1763,6 +1811,26 @@ export function addReference(payload: { projectId: string; candidateId: string; 
     '/api/references/add',
     json('POST', payload)
   );
+}
+
+/** A .bib entry against the record its DOI, arXiv id or title finds (Review’s References exist), and where it was read. */
+export interface ReferenceCheckRow {
+  key: string;
+  file: string;
+  line: number;
+  title: string;
+  status: 'found' | 'differs' | 'not-found' | 'retracted' | 'unchecked';
+  /** where the record was read, a page to open */
+  read?: { from: string; url: string };
+  record?: { title: string; authors: string[]; year: string; doi?: string; venue?: string };
+  differences?: { field: string; bib: string; record: string }[];
+  retraction?: { label: string; date?: string; notice?: string; url: string; from: string };
+  notices?: { label: string; date?: string; notice?: string; url: string }[];
+  note?: string;
+}
+
+export function checkReferences(projectId: string, keys?: string[], signal?: AbortSignal) {
+  return request<{ ok: boolean; rows: ReferenceCheckRow[]; bibFiles: string[] }>('/api/references/check', { ...json('POST', { projectId, keys }), signal });
 }
 
 // ─── Zotero (its local API and Better BibTeX, through the backend) ───
@@ -1932,6 +2000,8 @@ export interface SystemCheck {
   dataDir: string;
   projectsDir: string;
   tools: Record<string, string | null>;
+  /** the TeX found (pdflatex, else latexmk, xelatex or lualatex) with its links followed, or null for none */
+  texReal?: string | null;
   /** tools that are on PATH but fail to run, with a short reason */
   problems?: Record<string, string>;
   python: { path: string; found: boolean; matplotlib: boolean; ddgs: boolean };
@@ -1941,6 +2011,16 @@ export interface SystemCheck {
 /** texFolder: Settings › Engines › LaTeX's TeX folder, looked in first */
 export function systemCheck(texFolder?: string) {
   return request<SystemCheck>(`/api/system/check${texFolder ? `?${new URLSearchParams({ texFolder })}` : ''}`);
+}
+
+/** Keys moved out of the window into the keychain: their references, in order. keep: the references still in use. */
+export function saveKeys(values: string[], keep: string[]) {
+  return request<{ ok: boolean; refs: string[] }>('/api/keys', json('PUT', { values, keep }));
+}
+
+/** A newer Spectrum than this one, from the release page (asked by the backend at most once a day). */
+export function getUpdateNotice() {
+  return request<{ available: boolean; version?: string; url?: string }>('/api/system/update');
 }
 
 // ─── This computer and the sync apps' folders ───
@@ -2036,7 +2116,7 @@ export interface AgentPersona { name: string; prompt: string }
  * What the editor sends with a prompt, as ACP resources: todos sends the open to-dos, research a research session's id,
  * skill a skill's SKILL.md in whole
  */
-export interface AgentPromptContext { activePath?: string; selection?: string; log?: string; todos?: boolean; research?: string; skill?: string }
+export interface AgentPromptContext { activePath?: string; selection?: string; log?: string; todos?: boolean; research?: string; skill?: string; images?: { type: string; data: string; name?: string }[] }
 export interface AgentChange {
   path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; beforeHash: string | null;
   afterHash: string | null; size: number; original?: string; proposed?: string;

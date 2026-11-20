@@ -18,6 +18,7 @@ import {
 } from '../api/client';
 import type { CompileEngine, PageImage, TemplateMeta } from '../api/client';
 import Icon from './Icon';
+import { selectSavedKey } from './keys';
 import { radioKeys, radioTab } from './Segmented';
 import Select from './Select';
 import { toast } from './Toast';
@@ -450,6 +451,7 @@ export function ParserFields({ inline = false }: { inline?: boolean }) {
         id={`${at}-parser-${field}`}
         className="input"
         type={field === 'key' ? 'password' : 'text'}
+        onFocus={field === 'key' ? selectSavedKey : undefined}
         value={saved[field] || ''}
         placeholder={field === 'appId' ? 'Paste your app ID' : custom || preset.keyOptional ? 'Optional' : `Paste your ${preset.keyName}`}
         spellCheck={false}

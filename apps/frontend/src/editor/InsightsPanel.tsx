@@ -5,7 +5,7 @@ import type { ProjectStats } from '../api/client';
 import Icon from '../app/Icon';
 import Tabs from '../app/Tabs';
 import { useEditor } from './EditorContext';
-import { headingNumbers, inReading, markdownWords, metadataText, scanInsights, texlabNotes, withNumbers } from './insights';
+import { headingNumbers, inReading, markdownIncludes, markdownWords, metadataText, scanInsights, texlabNotes, withNumbers } from './insights';
 import type { InsightRow, Insights } from './insights';
 import { scanProject } from './latexEnvs';
 import { scanTodos } from './todos';
@@ -73,13 +73,14 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
     const typst = /\.typ$/i.test(doc);
     const markdown = /\.(md|markdown)$/i.test(doc);
     const timer = window.setTimeout(async () => {
-      // Typst's #include chain and Markdown's one file: no LaTeX scan, and TexLab has nothing to say about either
+      // Typst's #include chain and Markdown's file with those its include: names: no LaTeX scan, and TexLab has nothing
+      // to say about either
       if (typst || markdown) {
-        const paths = typst ? api.projectFiles.filter((path) => /\.typ$/i.test(path)) : [doc];
+        const paths = typst ? api.projectFiles.filter((path) => /\.typ$/i.test(path)) : [doc, ...markdownIncludes(await read(doc).catch(() => ''), doc).filter((path) => api.projectFiles.includes(path))];
         const files = await Promise.all(paths.map(async (path) => ({ path, text: await read(path).catch(() => '') })));
         const todos = scanTodos(files);
         if (live) {
-          setScan({ ...scanInsights(files, doc), todos, ...(markdown && { words: markdownWords(files[0]?.text ?? '') }) });
+          setScan({ ...scanInsights(files, doc), todos, ...(markdown && { words: markdownWords(files.map((file) => file.text).join('\n\n')) }) });
           setNotes(null);
         }
         return;

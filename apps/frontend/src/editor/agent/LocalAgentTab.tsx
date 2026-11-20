@@ -30,6 +30,7 @@ import { resolveInstructions } from '../personas';
 import { AGENTS_CHANGED, VERSIONS_CHANGED, errorText, relativeTime } from '../shared';
 import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, readStored as read, taskPersona, useFollow, useSkills, writeStored as write } from './parts';
 import type { ContextKind, Draft, TaskRequest, TrayChange, TrayPart } from './parts';
+import type { Picture } from './pictures';
 import { RUNNING, addEvent, project } from './transcript';
 import AgentLogo from './AgentLogo';
 import AgentHeader from './AgentHeader';
@@ -230,7 +231,7 @@ export default function LocalAgentTab({
   };
 
   // the backend reads the open to-dos itself and sends each part as an ACP resource
-  const contextOf = (picked: Record<ContextKind, boolean>, skill?: string, research?: string): AgentPromptContext => {
+  const contextOf = (picked: Record<ContextKind, boolean>, skill?: string, research?: string, images?: Picture[]): AgentPromptContext => {
     const a = latest.current;
     return {
       ...(picked.file && a.activePath && { activePath: a.activePath }),
@@ -238,12 +239,14 @@ export default function LocalAgentTab({
       ...(picked.log && a.compileLog && { log: a.compileLog }),
       ...(picked.todos && { todos: true }),
       ...(skill && { skill }),
-      ...(research && { research })
+      ...(research && { research }),
+      // to an agent that takes images; the backend tells one that doesn't
+      ...(images?.length && { images: images.map(({ type, data, name }) => ({ type, data, name })) })
     };
   };
 
-  const send = async (text: string, { skill, research, context }: { skill?: string; research?: string; context: Record<ContextKind, boolean> }) => {
-    const message = { text: text || `/${skill}`, skill, research, persona: personaOf(persona), context: contextOf(context, skill, research) };
+  const send = async (text: string, { skill, research, context, images }: { skill?: string; research?: string; context: Record<ContextKind, boolean>; images?: Picture[] }) => {
+    const message = { text: text || `/${skill}`, skill, research, persona: personaOf(persona), context: contextOf(context, skill, research, images) };
     setError('');
     setWorking(true);
     try {
@@ -277,7 +280,7 @@ export default function LocalAgentTab({
       choose('').catch(fail);
       setPersona(taskPersona(api.settings.personas, task) ?? picked.current);
     }
-    setDraft({ text: task.prompt, skill: task.skill, research: task.research, n: task.n });
+    setDraft({ text: task.prompt, skill: task.skill, research: task.research, images: task.images, n: task.n });
   }, [task?.n]);
 
   const pickAgent = (id: string) => {

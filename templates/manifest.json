@@ -229,6 +229,48 @@
       "featured": true
     },
     {
+      "id": "markdown-report",
+      "label": "Markdown report",
+      "mainFile": "main.md",
+      "category": "reports",
+      "description": "A Markdown report with an abstract, contents, numbered sections, cross-references and a Mermaid diagram",
+      "tags": [
+        "Markdown",
+        "Report",
+        "Citations"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "markdown-maths-notes",
+      "label": "Markdown maths notes",
+      "mainFile": "main.md",
+      "category": "notes",
+      "description": "Lecture notes or an assignment in Markdown with numbered equations, a worked solution and exercises",
+      "tags": [
+        "Markdown",
+        "Maths",
+        "Notes"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
+      "id": "markdown-slides",
+      "label": "Markdown slides",
+      "mainFile": "main.md",
+      "category": "slides",
+      "description": "A 16:9 talk written in Markdown and made into Beamer slides, with maths, code, a table and a Mermaid diagram",
+      "tags": [
+        "Markdown",
+        "Slides",
+        "Beamer"
+      ],
+      "author": "Spectrum",
+      "featured": true
+    },
+    {
       "id": "acl",
       "label": "ACL",
       "mainFile": "main.tex",

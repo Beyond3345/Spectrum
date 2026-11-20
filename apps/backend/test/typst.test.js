@@ -17,7 +17,7 @@ process.env.SPECTRUM_TEMPLATE_DIR = path.join(tmp, 'templates');
 delete process.env.SPECTRUM_TYPST;
 
 const { BUILT_IN_TYPST_VERSION, builtInTypst } = await import('../src/services/engineService.js');
-const { parseTypstDiagnostics, stopTypstWatch, typstElements } = await import('../src/services/typstService.js');
+const { exportTypst, parseTypstDiagnostics, stopTypstWatch, typstElements } = await import('../src/services/typstService.js');
 const { compileFolder, runCompile } = await import('../src/services/compileService.js');
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { updateProjectSettings } = await import('../src/services/projectSettings.js');
@@ -283,6 +283,33 @@ test('labels in a file an included chapter includes still get their numbers and 
   assert.deepEqual(labels['tab:deep'], { number: '1', page: '1' });
 });
 
+test('a Typst document’s headings and figures come with their numbers as printed, for the outline', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const source = [
+    '#set heading(numbering: "1.1")',
+    '#let by-section(pattern) = n => numbering(pattern, counter(heading).get().first(), n)',
+    '#set figure(numbering: by-section("1.1"))',
+    '#set math.equation(numbering: "(1)")',
+    '= One',
+    '= Two',
+    '#figure(table(columns: 1, [x]), caption: [The *first* table]) <tab:a>',
+    '$ x $ <eq:x>',
+    '#set heading(numbering: "A.1")',
+    '#counter(heading).update(0)',
+    '= Extra <app:a>',
+    ''
+  ].join('\n');
+  const project = await projectWith('typst-outline', source);
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, true, result.error);
+  const { headings, figures, labels } = await typstDocumentLabels(await getProjectRoot(project.id), 'main.typ');
+  assert.deepEqual(headings.map((h) => [h.number, h.title]), [['1', 'One'], ['2', 'Two'], ['A', 'Extra']]);
+  assert.deepEqual(figures, [{ supplement: 'Table', number: '2.1', page: '1', caption: 'The first table' }]);
+  assert.equal(labels['tab:a'].number, '2.1');
+  assert.equal(labels['eq:x'].number, '1');
+  assert.equal(labels['app:a'].number, 'A');
+});
+
 test('an unpinned Typst document reads its numbers with the app’s default version', async (t) => {
   if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
   const project = await projectWith('typst-fallback', '#set heading(numbering: "1.")\n= One <sec:one>\n');
@@ -341,10 +368,27 @@ test('a Typst document exports as PNG and SVG pages, HTML, PDF/A and PDF/UA, and
   assert.deepEqual((await fs.readdir(dir)).filter((name) => !name.startsWith('.')), ['main.typ']);
   // PDF/UA's own rule comes back as the reason; a format or file it doesn't know is refused
   await fs.writeFile(path.join(dir, 'untitled.typ'), '= One\n');
-  assert.equal((await exported('pdf-ua', 'untitled.typ')).message, 'PDF/UA-1 error: missing document title');
+  assert.equal((await exported('pdf-ua', 'untitled.typ')).error, 'PDF/UA-1 error: missing document title');
+  // every place that wants alt text comes back, for Logs and the marks, with what to write
+  await fs.writeFile(path.join(dir, 'maths.typ'), '#set document(title: "Maths")\nLet $x$ and $y$ be.\n');
+  const alt = await exported('pdf-ua', 'maths.typ');
+  assert.equal(alt.status, 422);
+  assert.deepEqual(alt.errors.map((e) => [e.file, e.line, e.column]), [['maths.typ', 2, 4], ['maths.typ', 2, 12]]);
+  assert.match(alt.error, /^maths\.typ:2: PDF\/UA-1 error: missing alt text \(and 1 more, in Logs\)$/);
+  assert.match(alt.errors[1].message, /\nHint: PDF\/UA-1 needs alt text on every image and equation/);
   assert.equal((await exported('docx')).status, 400);
   assert.equal((await exported('png', '../main.typ')).status, 400);
   await app.close();
+});
+
+test('the Typst templates without maths export as PDF/UA-1', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const templates = path.join(import.meta.dirname, '..', '..', '..', 'templates');
+  for (const name of ['typst-document', 'typst-letter', 'typst-cv']) {
+    const dir = path.join(templates, name);
+    const made = await exportTypst(dir, path.join(dir, 'main.typ'), 'main.typ', 'pdf-ua');
+    assert.equal(made.ok, true, `${name}: ${made.error}`);
+  }
 });
 
 test.after(async () => {

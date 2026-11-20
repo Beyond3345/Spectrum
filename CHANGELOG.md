@@ -2,6 +2,59 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.7.0 (not released)
+
+### Security
+
+- API keys are kept in the keychain on a Mac and encrypted for your Windows account on Windows, not in the window's storage. Keys from earlier versions move there on first start, and stay where they were, still working, if the keychain cannot be used
+
+### Added
+
+- Search in the sidebar finds text in the project's files too, with Match case, Whole words and Regular expression, and a click opens the line with the match selected
+- A LaTeX compile's errors are underlined in the source, at the command TeX stopped after or along the line, beside TexLab's own
+- A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
+- Go to a file or heading (⌘P) opens a project file or an Outline heading by its name
+- Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
+- The projects page says when a newer Spectrum is out, asking the release page at most once a day and sending nothing about you. A switch in Settings › System turns it off
+- Vim or Emacs keys in the source editor, in Settings › Editor
+- Pictures go with a message to either agent: paste, drop or choose one, sent to models that read images. A model that does not read images is told a picture was left out, and says so
+- The Spectrum agent can look at a page of its draft and at a figure on its own, with Open in composer on a diagram's card
+- Send page to agent in the PDF's right-click menu, with the source line of the spot clicked
+- Send to agent on PDF notes, to-dos and Review's rows and AI points, each with its file, line and source lines
+- A `% !TEX recipe` comment runs a document's own build steps, and `% !TEX options` adds engine options, inside the compile's sandbox
+- Auto compile has an As you type choice for Typst documents, which compiles 0.3 s after typing stops
+- Live in the PDF bar shows a Typst document as you type it, through Tinymist's preview
+- The Typst outline covers the whole document across nested includes, with the last compile's numbers and the figures and tables
+- Typst completion lists the project's own `#let` functions and values without Tinymist, and ⌘-click on a path in a Typst file opens that file
+- A failed Typst export lists every error in Logs and marks them in the editor, with what PDF/UA-1 needs. Insert figure asks for alt text in a Typst document, and the Typst document template exports as PDF/UA-1
+- Image to LaTeX writes Typst in a Typst document, and Table to chart takes a Typst `#table`
+- Tinymist's linter runs as you type
+- Markdown documents refer to figures, tables, equations and sections by number: `@fig:plot` prints “Figure 1” in the PDF and in Word. Typing @ lists the document's labels, and Insert (+) has Reference
+- Mermaid blocks in a Markdown document are drawn in the PDF and in Word, with the composer's Mermaid, and a caption makes one a numbered figure
+- A live preview of a Markdown document beside the editor, with maths, Mermaid, numbered references and pictures, following the editor as it scrolls
+- A Markdown document can be split across files with `include:` in its front matter, and Logs names the file each error is in
+- `slides: true` in the front matter makes Beamer slides from Markdown
+- New Markdown report, maths notes and slides templates
+- Review: References exist looks each .bib entry up in Crossref, doi.org, arXiv or OpenAlex and lists the retracted, unknown and differing ones with the record it read
+- The Spectrum agent reads a paper's open full text page by page, or its abstract when there is none
+- Verify claims records each claim with the source's own words, checked by Spectrum and found on their page, in Research › Claims checked
+
+### Changed
+
+- Tools opens on Logs when the last compile had errors
+- The agents' text search can match whole words
+- Insights gives Typst figure and appendix numbers as the PDF prints them
+- `fetch_bibtex` gives a title's BibTeX only for a work whose title, first author and year match, and lists the nearest works otherwise
+- Deep research starts with a plan to approve
+- A reference to a label that does not exist in a Markdown document prints ?? and is a warning at its line in Logs
+- A composer diagram goes into Markdown as its PNG, which Word shows
+- A long document's AI review starts each part at a top-level heading where it can
+
+### Fixed
+
+- A table's `{#tbl:x}` label no longer prints in its caption with pandoc before 3.8.2
+- No Jyutping button in a Markdown document's toolbar
+
 ## 2.6.0 (21 November 2026)
 
 ### Security

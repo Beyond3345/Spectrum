@@ -6,6 +6,9 @@ import Segmented from '../app/Segmented';
 import { toast } from '../app/Toast';
 import { PROJECT_DATA_CHANGED, errorText } from './shared';
 import { MAX_NOTE, emptyText, findLine, scanTodos, sortTodos, todoCounts, todoMatches, withNote } from './todos';
+import { useEditor } from './EditorContext';
+import { sendLocated } from './agent/handoff';
+import type { Located } from './agent/handoff';
 import type { SourceTodo } from './todos';
 
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
@@ -175,6 +178,16 @@ export default function TodosList({
   const field = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const { mine, source, reload, save, remove, add, lineOf } = todos;
+  const api = useEditor();
+  /** A to-do for the agent, at the line or the page it links to. */
+  const located = (todo: Todo): Located => {
+    const link = knownLink(todo.link) ? todo.link : null;
+    // its note, which says more of what is to be done
+    const text = `${todo.text}${link && 'key' in link ? ` (the reference ${link.key})` : ''}${todo.note ? `\nNote: ${todo.note}` : ''}`;
+    if (link && 'file' in link) return { kind: 'To-do', text, file: link.file, line: lineOf(link) };
+    if (link && 'doc' in link) return { kind: 'To-do', text, doc: link.doc, page: link.page };
+    return { kind: 'To-do', text };
+  };
 
   // opening the tab reads them again
   useEffect(reload, []);
@@ -333,6 +346,9 @@ export default function TodosList({
                                 <Icon name="note.text.badge.plus" />
                               </button>
                             )}
+                            <button className="icon-btn small" title="Send to agent" aria-label={`Send “${todo.text}” to the agent`} onClick={() => void sendLocated([located(todo)], api.ensureFileContent)}>
+                              <Icon name="paperplane" />
+                            </button>
                             <button className="icon-btn small" title="Edit" aria-label={`Edit “${todo.text}”`} onClick={() => setEditing({ id: todo.id, note: false })}>
                               <Icon name="pencil" />
                             </button>

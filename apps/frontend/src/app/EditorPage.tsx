@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -29,6 +29,7 @@ import {
   getFileIfChanged,
   getEngines,
   getProjectSettings,
+  getProjectStats,
   getProjectTree,
   getSyncSettings,
   getTrust,
@@ -49,6 +50,7 @@ import {
   downloadDictionary,
   synctexEdit,
   synctexView,
+  tinymistLive,
   tinymistPdf,
   tinymistSource,
   searchZotero,
@@ -64,22 +66,29 @@ import Icon from './Icon';
 import { radioKeys, radioTab } from './Segmented';
 import Tabs from './Tabs';
 import Sheet from './Sheet';
-import SettingsSheet from './SettingsSheet';
+import SettingsSheet, { SECTION_GROUPS } from './SettingsSheet';
 import type { Section as SettingsSection } from './SettingsSheet';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
+import CommandPalette from './CommandPalette';
+import { menuCommands, shortcutCommands } from './commands';
+import type { Command as PaletteCommand } from './commands';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { referenceEdits } from '../editor/references';
 import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
 import ConvertSheet from './ConvertSheet';
 import JyutpingSheet from './JyutpingSheet';
+import { drawMermaid } from '../editor/mermaidBlocks';
+import { markdownIncludes } from '../editor/insights';
+// the live preview of a Markdown document, with KaTeX, loaded when first shown
+const MarkdownPreview = lazy(() => import('../editor/MarkdownPreview'));
 import { jyutpingWrap, loadsXjyutping } from '../editor/jyutping';
 import { switcherList, switcherStart } from './ProjectSwitcher';
 import { withDeletionCheck } from './github';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
-import { BIB_TOOLS, COMPILE_ENGINES, effectiveCompile, effectiveEffort, languageName, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
+import { AS_YOU_TYPE, BIB_TOOLS, COMPILE_ENGINES, autoPauseMs, effectiveCompile, effectiveEffort, languageName, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
 import type { CompileDefaults, LiveOutputEngine } from './settings';
 import { PDF_PAGE_FILLS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { EDITOR_SHORTCUTS, FIND_NEXT, FIND_PREVIOUS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
@@ -89,7 +98,7 @@ import type { CompileError, EditorApi, PendingChange } from '../editor/EditorCon
 import Composer from '../editor/Composer';
 import ResearchPanel from '../editor/research/ResearchPanel';
 import type { ResearchTask } from '../editor/research/ResearchPanel';
-import ToolsPanel from '../editor/ToolsPanel';
+import ToolsPanel, { LABELS as TOOLS_TABS } from '../editor/ToolsPanel';
 import FloatsPanel from '../editor/FloatsPanel';
 import type { FloatCard } from '../editor/FloatsPanel';
 import InsightsPanel from '../editor/InsightsPanel';
@@ -104,11 +113,14 @@ import ReviewChangesSheet from '../editor/ReviewChangesSheet';
 import { reviewSitting } from '../editor/reviewHunks';
 import type { Sitting } from '../editor/reviewHunks';
 import AgentWorkspace, { STATUS_TEXT } from '../editor/agent/AgentWorkspace';
+import { onHandoff, sendNotes, sendPdfPage } from '../editor/agent/handoff';
 import type { AgentStatus } from '../editor/agent/LocalAgentTab';
 import SyncBanners from '../editor/SyncBanners';
 import { conflictCopyPath, onDiskChange } from '../editor/heldFiles';
 import FileTree from '../editor/FileTree';
 import type { FileTreeHandle } from '../editor/FileTree';
+import TextSearch from '../editor/TextSearch';
+import { matchRange } from '../editor/textMatches';
 import PdfPreview, { MAX_ZOOM, MIN_ZOOM, PageBox, pdfThumbnail, rememberPage } from '../editor/PdfPreview';
 import type { PdfDest, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
 import PdfSidebar from '../editor/PdfSidebar';
@@ -151,8 +163,11 @@ import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/r
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, fixWithAI, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
-import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
-import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
+import { definitionCompletions, languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions, typstDefinitions, typstPathClick } from '../editor/languages';
+import type { TypstDefinition } from '../editor/languages';
+import { numberTypstOutline, parseMarkdownOutline, parseTypstOutline, typstDocumentOutline } from '../editor/outlines';
+import type { TypstNumbers } from '../editor/outlines';
+import { currentKeymap, keymapCompartment, keymapExtension } from '../editor/keymaps';
 import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
 import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
@@ -300,6 +315,7 @@ const SNIPPETS: (Snippet | FloatCard | null)[] = [
   { label: 'Maths', icon: 'function', text: '$x$', select: 'x', kinds: MARKDOWN },
   { label: 'Block maths', icon: 'function', text: '$$\nx\n$$', select: 'x', block: true, kinds: MARKDOWN },
   { label: 'Citation', icon: 'quote.opening', text: '[@key]', select: 'key', kinds: MARKDOWN },
+  { label: 'Reference', icon: 'link', text: '@fig:label', select: 'fig:label', kinds: MARKDOWN },
   { label: 'Footnote', icon: 'note.text', text: '^[Footnote text]', select: 'Footnote text', kinds: MARKDOWN },
   { label: 'Comment', icon: 'text.bubble', text: '<!-- comment -->', select: 'comment', kinds: MARKDOWN },
   { label: 'Code block', icon: 'chevron.left.forwardslash.chevron.right', text: '```\ncode\n```', select: 'code', block: true, kinds: MARKDOWN }
@@ -563,6 +579,8 @@ function Editor({ projectId }: { projectId: string }) {
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const dark = useDarkMode();
+  /** the live preview in the PDF's place, for a Markdown file */
+  const [mdPreview, setMdPreview] = useState(false);
   const setLayout = (patch: Partial<Layout>) => setLayoutState((prev) => ({ ...prev, ...patch }));
   const zoom = layout.pdfZoom;
   const setZoom = (pdfZoom: PdfZoom) => setLayout({ pdfZoom });
@@ -592,6 +610,8 @@ function Editor({ projectId }: { projectId: string }) {
   const reviewSittingNow = useMemo(reviewSitting, [reviewOpen]);
   // true: Settings at its first section; a section's name: open at that one
   const [settingsOpen, setSettingsOpen] = useState<boolean | SettingsSection>(false);
+  // the command palette's text as it opens ('>' for the commands), or null while it's closed
+  const [palette, setPalette] = useState<string | null>(null);
   const [preview, setPreview] = useState('');
   /** the project's TexLab while the editor is open, and whether it's answering (editor/lsp/texlab.ts) */
   const texlabRef = useRef<Texlab | null>(null);
@@ -599,6 +619,8 @@ function Editor({ projectId }: { projectId: string }) {
   /** the project's Tinymist for .typ files, once downloaded, and whether it's answering (editor/lsp/tinymist.ts) */
   const tinymistRef = useRef<Tinymist | null>(null);
   const [tinymistOn, setTinymistOn] = useState(false);
+  // the Live view: Tinymist's preview page of a Typst document in place of its PDF, laid out as it is typed
+  const [live, setLive] = useState<{ doc: string; url: string } | null>(null);
   /** ⇧F12's list: where what's at the cursor is used */
   const [references, setReferences] = useState<Reference[] | null>(null);
   /** the outline TexLab gives for a document: its root, the headings and floats, and the files it read */
@@ -823,10 +845,10 @@ function Editor({ projectId }: { projectId: string }) {
     showText('', [0, 0]);
   };
 
-  /** The last compile's Typst errors and warnings underlined in the open .typ file, until the next compile. */
+  /** The last compile's errors and warnings underlined in the open .typ or .tex file, until the next compile. */
   const markCompileErrors = () => {
     const view = viewRef.current;
-    if (!view || docKind(activeRef.current) !== 'typst') return;
+    if (!view) return;
     view.dispatch({ effects: setCompileMarks.of(compileMarks(compileErrorsRef.current, activeRef.current, view.state.doc)) });
   };
 
@@ -839,6 +861,8 @@ function Editor({ projectId }: { projectId: string }) {
     // a .typ file's marks come from lint sources, Tinymist's among them, and go with their source
     const clear = texlabRef.current?.available || docKind(path) === 'typst' ? null : clearMarks(view.state);
     if (clear) view.dispatch(clear);
+    // and the compile's, cleared with them, come back
+    if (clear) markCompileErrors();
   };
 
   const openFile = async (path: string) => {
@@ -870,7 +894,7 @@ function Editor({ projectId }: { projectId: string }) {
       clearGhost();
       view.setState(saved && saved.doc.toString() === content ? saved : EditorState.create({ doc: content, extensions: extensionsRef.current }));
       // a saved state keeps its own language configuration, so every open says again which file this is
-      view.dispatch({ effects: languageCompartment.reconfigure(languageFor(path)) });
+      view.dispatch({ effects: [languageCompartment.reconfigure(languageFor(path)), keymapCompartment.reconfigure(currentKeymap())] });
       if (docKind(path) === 'typst') loadTypst().then((language) => { if (language && activeRef.current === path) viewRef.current?.dispatch({ effects: languageCompartment.reconfigure(language) }); });
       activeRef.current = path;
       attachTexlab();
@@ -1270,6 +1294,16 @@ function Editor({ projectId }: { projectId: string }) {
     view.dispatch({ selection: { anchor: Math.min(from, end), head: end }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
     cursorPlacedRef.current = true;
     view.focus();
+  };
+
+  /** Search's In text: the file at the line, with the match selected (the line as it is now). */
+  const openMatch = async (file: string, line: number, pattern: RegExp) => {
+    await jumpTo(file, line);
+    const view = viewRef.current;
+    if (!view || activeRef.current !== file) return;
+    const at = view.state.doc.line(Math.min(Math.max(1, line), view.state.doc.lines));
+    const range = matchRange(at.text, pattern);
+    if (range) await select(file, at.from + range[0], at.from + range[1]);
   };
 
   /**
@@ -1804,6 +1838,14 @@ function Editor({ projectId }: { projectId: string }) {
    * The document Compile builds (compileTarget), or another once. fresh: its kept build files are cleared first.
    * auto: auto compile started it. Says how it ended ('busy': another compile was running).
    */
+  /** The Mermaid blocks of a Markdown document and of the files its include: names, drawn; warnings where they can't be. */
+  const drawMarkdownMermaid = async (doc: string) => {
+    const main = await readText(doc).catch(() => '');
+    const files = [doc, ...markdownIncludes(main, doc).filter((path) => fileSet.has(path))];
+    const drawn = await Promise.all(files.map(async (path) => drawMermaid(projectId, path, path === doc ? main : await readText(path)).catch(() => [])));
+    return drawn.flat();
+  };
+
   const runCompile = async (doc = compileTarget, opts: { fresh?: boolean; auto?: boolean } = {}): Promise<CompileState['state'] | 'busy'> => {
     if (compilingRef.current) return 'busy';
     if (!doc) {
@@ -1834,6 +1876,8 @@ function Editor({ projectId }: { projectId: string }) {
     try {
       await saveNow();
       const startedAt = Date.now();
+      // a Markdown document's ```mermaid blocks drawn first, with the composer's Mermaid, for pandoc to put in as pictures
+      const drawn = /\.(md|markdown)$/i.test(doc) ? await drawMarkdownMermaid(doc) : [];
       const res = await compileProject({
         projectId,
         mainFile: doc,
@@ -1845,7 +1889,8 @@ function Editor({ projectId }: { projectId: string }) {
         fresh: opts.fresh,
         texFolder: settings.texFolder || undefined,
         xjyutpingFolder: settings.xjyutpingFolder || undefined,
-        checkpoint: settings.checkpointOnCompile,
+        // not at every pause of As you type
+        checkpoint: settings.checkpointOnCompile && !(opts.auto && options.autoCompile === AS_YOU_TYPE),
         // the app's default only, read now: the backend takes the project's pin from its settings file first, so a
         // pin cleared a moment ago can't come back from this render
         typstVersion: loadSettings().compileDefaults.typstVersion || undefined,
@@ -1871,7 +1916,7 @@ function Editor({ projectId }: { projectId: string }) {
       const problem = checkpointProblem(res.checkpoint, skippedToldRef.current);
       if (problem && settings.checkpointNotice) notify(problem, 'error');
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
-      setCompileDiagnostics(res.errors ?? null);
+      setCompileDiagnostics(drawn.length ? [...(res.errors ?? []), ...drawn] : (res.errors ?? null));
       setCompileNotice(res.code ? { code: res.code, version: res.version, from: res.from, builtIn: res.builtIn } : null);
       setCompileGenerated(res.generated ?? null);
       // an install from Logs' notice changes what the compile menu can offer
@@ -2041,8 +2086,9 @@ function Editor({ projectId }: { projectId: string }) {
   /** A panel's top-bar button: opens it, or closes it when it's open. */
   const togglePanel = (next: Panel) => (panel === next ? setPanel(null) : openPanel(next));
 
+  // Tools on its own opens on Logs while the last compile has errors
   const openTools = (tab?: ToolsTab) => {
-    if (tab) setToolsTab(tab);
+    if (tab || compileErrorsRef.current.some((e) => e.severity === 'error')) setToolsTab(tab ?? 'logs');
     openPanel('tools');
   };
 
@@ -2087,6 +2133,9 @@ function Editor({ projectId }: { projectId: string }) {
       // nothing to hand over
     }
   }, [loaded, projectId]);
+  // a page of the PDF, notes, to-dos and review findings sent to the agent (agent/handoff.ts)
+  useEffect(() => onHandoff((t) => openAgentTask({ prompt: t.prompt, skill: '', images: t.images })));
+  const renderPage = (n: number, w: number, h: number) => pdfRef.current?.renderPage(n, w, h) ?? Promise.resolve(null);
 
   // an Edit chat from before 2.0 leaves the bottom card for the Spectrum agent
   const continueInAgent = (id: string) => {
@@ -2301,6 +2350,14 @@ function Editor({ projectId }: { projectId: string }) {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       notify(`Couldn’t export: ${errorText(err)}`, 'error');
+      // every place Typst named (PDF/UA's alt text, above all) goes to Logs and the editor's marks, as a compile's
+      const data = err instanceof ApiError ? err.data : {};
+      if (Array.isArray(data.errors) && data.errors.length) {
+        setCompileLog(`Export: ${format.toUpperCase().replace('-', '/')}\nDocument: ${shownDoc}\n\n${String(data.log ?? '')}`.trim());
+        setCompileDiagnostics(data.errors as CompileDiagnostic[]);
+        setCompiledDoc(shownDoc);
+        openTools('logs');
+      }
     }
   };
 
@@ -2330,7 +2387,8 @@ function Editor({ projectId }: { projectId: string }) {
     showFile: async (_path: string) => {},
     readText: async (_path: string) => '' as string,
     files: (): ReadonlySet<string> => new Set(),
-    renameSymbol: () => {}
+    renameSymbol: () => {},
+    openPalette: (_text: string) => {}
   });
   actions.current = {
     save: () => saveNow(true),
@@ -2365,7 +2423,29 @@ function Editor({ projectId }: { projectId: string }) {
     files: () => fileSet,
     renameSymbol: () => {
       renameSymbol();
-    }
+    },
+    openPalette: setPalette
+  };
+
+  // what each app shortcut does, for its keys and the command palette; each calls the newest handlers
+  const appCommands: Record<AppCommand, () => void> = {
+    save: () => actions.current.save(),
+    saveVersion: () => actions.current.saveVersion(),
+    compile: () => actions.current.compile(),
+    compileOpen: () => actions.current.compileOpen(),
+    assistant: () => actions.current.toggleComposer(),
+    grammar: () => actions.current.toggleGrammar(),
+    suggest: () => actions.current.suggest(),
+    sidebar: () => actions.current.toggleSidebar(),
+    viewEditor: () => actions.current.setView('editor'),
+    viewSplit: () => actions.current.setView('split'),
+    viewPdf: () => actions.current.setView('pdf'),
+    zoomIn: () => actions.current.zoomBy(1),
+    zoomOut: () => actions.current.zoomBy(-1),
+    zoomWidth: () => actions.current.fitWidth(),
+    zoomPage: () => actions.current.fitPage(),
+    commandPalette: () => actions.current.openPalette('>'),
+    quickOpen: () => actions.current.openPalette('')
   };
 
   // ─── effects: unsaved edits, CodeMirror, first load, shortcuts ───
@@ -2454,23 +2534,6 @@ function Editor({ projectId }: { projectId: string }) {
         }
       }
     });
-    const appCommands: Record<AppCommand, () => void> = {
-      save: () => a().save(),
-      saveVersion: () => a().saveVersion(),
-      compile: () => a().compile(),
-      compileOpen: () => a().compileOpen(),
-      assistant: () => a().toggleComposer(),
-      grammar: () => a().toggleGrammar(),
-      suggest: () => a().suggest(),
-      sidebar: () => a().toggleSidebar(),
-      viewEditor: () => a().setView('editor'),
-      viewSplit: () => a().setView('split'),
-      viewPdf: () => a().setView('pdf'),
-      zoomIn: () => a().zoomBy(1),
-      zoomOut: () => a().zoomBy(-1),
-      zoomWidth: () => a().fitWidth(),
-      zoomPage: () => a().fitPage()
-    };
     // matched by hand rather than with keymap.of, which can't see ⌥ shortcuts on a Mac (⌥/ types "÷")
     const shortcuts = EditorView.domEventHandlers({
       keydown(e, view) {
@@ -2504,6 +2567,8 @@ function Editor({ projectId }: { projectId: string }) {
       ])
     ]);
     extensionsRef.current = [
+      // Vim or Emacs, ahead of Spectrum's own keys
+      keymapCompartment.of([]),
       keys,
       editorBasics,
       indentation,
@@ -2522,6 +2587,7 @@ function Editor({ projectId }: { projectId: string }) {
         override: [
           latexCompletionSource(() => projectScanRef.current, () => activeRef.current),
           tinymistCompletions(() => tinymistRef.current, typstCompletions({ path: () => activeRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' })),
+          definitionCompletions({ path: () => activeRef.current, defs: () => (tinymistRef.current?.available ? [] : typstDefsRef.current), version: () => compileOptionsRef.current.typstVersion ?? '' }),
           referenceCompletions({ path: () => activeRef.current, keys: () => projectScanRef.current.bib.map((entry) => entry.key), labels: () => typstLabelsRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' }),
           zoteroCompletionSource({
             enabled: () => loadSettings().zoteroCompletion,
@@ -2563,6 +2629,8 @@ function Editor({ projectId }: { projectId: string }) {
         }
       }),
       grammarMarks,
+      // before Tinymist's Go to definition, which takes the clicks this leaves
+      Prec.high(typstPathClick({ path: () => activeRef.current, files: () => a().files(), open: (path) => void a().showFile(path) })),
       texlabSlot.of([]),
       // an image dropped on the editor goes to the Floats panel's Insert figure instead of into the text
       EditorView.domEventHandlers({
@@ -2622,6 +2690,14 @@ function Editor({ projectId }: { projectId: string }) {
       viewRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    keymapExtension(settings.editorKeymap, () => actions.current.save()).then((ext) => live && viewRef.current?.dispatch({ effects: keymapCompartment.reconfigure(ext) }));
+    return () => {
+      live = false;
+    };
+  }, [settings.editorKeymap]);
 
   // ?file=: a file opened from Finder or Explorer (App.tsx)
   const [params, setParams] = useSearchParams();
@@ -2921,6 +2997,8 @@ function Editor({ projectId }: { projectId: string }) {
       else if (is('zoomOut')) a.zoomBy(-1);
       else if (is('zoomWidth')) a.fitWidth();
       else if (is('zoomPage')) a.fitPage();
+      else if (is('commandPalette')) a.openPalette('>');
+      else if (is('quickOpen')) a.openPalette('');
       else if (matchesShortcut('Mod-,', e)) a.openSettings();
       else return;
       e.preventDefault();
@@ -2969,16 +3047,37 @@ function Editor({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
+  // the Live view goes with its document, or with Tinymist; the preview then stops when its jumps pause
+  const liveShown = !!live && live.doc === shownDoc && tinymistOn;
+  useEffect(() => {
+    if (!live || liveShown) return;
+    setLive(null);
+    tinymistLive(projectId, live.doc, false).catch(() => undefined);
+  }, [live, liveShown]);
+  const toggleLive = async () => {
+    if (live) {
+      setLive(null);
+      tinymistLive(projectId, live.doc, false).catch(() => undefined);
+      return;
+    }
+    try {
+      const { url } = await tinymistLive(projectId, shownDoc, true);
+      setLive({ doc: shownDoc, url });
+    } catch (err) {
+      notify(`Couldn’t start the live view: ${errorText(err)}`, 'error');
+    }
+  };
+
   // autosave 1.5 s after the last keystroke
   useEffect(() => {
     if (!dirty) return;
     return afterChange(1500, () => saveNow());
   }, [dirty, editorValue]);
 
-  // auto compile, the chosen pause after the last keystroke
+  // auto compile, the chosen pause after the last keystroke (As you type: a moment, for a Typst document)
   useEffect(() => {
     if (!compileOptions.autoCompile || !editedRef.current) return;
-    return afterChange(compileOptions.autoCompile * 1000, () => actions.current.autoCompile());
+    return afterChange(autoPauseMs(compileOptions.autoCompile, docKind(editedDocRef.current || compileTarget) === 'typst'), () => actions.current.autoCompile());
   }, [editorValue, compileOptions.autoCompile]);
 
   // PDF follows the open file: another document's .tex, or a chapter whose % !TEX root names one, shows that
@@ -3082,15 +3181,18 @@ function Editor({ projectId }: { projectId: string }) {
   const held = heldRef.current.get(activePath);
   const outlineFile = isDocument(activePath) ? activePath : mainFile;
   const outlineText = outlineFile === activePath ? editorValue : filesRef.current.get(outlineFile) || '';
-  // Typst's headings, with those in the files it includes one level deep; and the project's labels to complete after @
-  const [typstOutline, setTypstOutline] = useState<(OutlineItem & { file: string })[]>([]);
+  // Typst's headings and figures, with those in the files it includes; and the project's labels to complete after @
+  const [typstOutline, setTypstOutline] = useState<{ root: string; items: (OutlineItem & { file: string })[] }>({ root: '', items: [] });
   const [typstLabels, setTypstLabels] = useState<string[]>([]);
   const typstLabelsRef = useRef<string[]>([]);
   typstLabelsRef.current = typstLabels;
+  // and its #let functions and values, which only Tinymist would complete otherwise
+  const typstDefsRef = useRef<TypstDefinition[]>([]);
   const includeFileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file' && /\.typ$/i.test(i.path) && !conflicts[i.path]).map((i) => i.path)), [items, conflicts]);
   useEffect(() => {
     if (!includeFileSet.size) {
       setTypstLabels([]);
+      typstDefsRef.current = [];
       return;
     }
     let live = true;
@@ -3099,41 +3201,62 @@ function Editor({ projectId }: { projectId: string }) {
       const labels = new Set<string>();
       for (const text of texts) for (const m of text.matchAll(/<([A-Za-z0-9_:.-]+)>/g)) labels.add(m[1]);
       setTypstLabels([...labels]);
+      typstDefsRef.current = texts.flatMap(typstDefinitions);
     });
     return () => {
       live = false;
     };
   }, [includeFileSet]);
+  // the whole Typst document the open file is part of (the main file's, or the open file's when no document includes
+  // it), across its includes, with the numbers of its last compile once it has one
+  const [typstNumbers, setTypstNumbers] = useState<{ doc: string; numbers: TypstNumbers } | null>(null);
   useEffect(() => {
     if (docKind(outlineFile) !== 'typst') {
-      setTypstOutline([]);
+      setTypstOutline({ root: '', items: [] });
       return;
     }
     let live = true;
-    const own = parseTypstOutline(outlineText);
-    const includes = [...outlineText.matchAll(/^\s*#include\s+"([^"]+)"/gm)]
-      .map((m) => ({ line: outlineText.slice(0, m.index).split('\n').length, path: includedPath(outlineFile, m[1]) }))
-      .filter(({ path }) => fileSet.has(path));
-    Promise.all(includes.map(async ({ line, path }) => ({ line, path, items: parseTypstOutline(await ensureFileContent(path).catch(() => '')) }))).then((parts) => {
-      if (!live) return;
-      const entries = own.map((item) => ({ key: item.line, item: { ...item, file: outlineFile } }));
-      for (const part of parts) part.items.forEach((item, index) => entries.push({ key: part.line + (index + 1) / (part.items.length + 1), item: { ...item, file: part.path } }));
-      entries.sort((a, b) => a.key - b.key);
-      setTypstOutline(entries.map(({ item }) => item));
-    });
+    const read = (path: string) => (path === activePath ? Promise.resolve(editorValue) : ensureFileContent(path));
+    const timer = window.setTimeout(async () => {
+      const seen = new Set<string>();
+      const root = docKind(docRoot) === 'typst' ? docRoot : outlineFile;
+      let items = await typstDocumentOutline(root, fileSet, read, seen);
+      let shown = root;
+      if (!seen.has(outlineFile)) {
+        shown = outlineFile;
+        items = await typstDocumentOutline(outlineFile, fileSet, read);
+      }
+      if (live) setTypstOutline({ root: shown, items });
+    }, 300);
     return () => {
       live = false;
+      window.clearTimeout(timer);
     };
-  }, [outlineFile, outlineText, fileSet]);
+  }, [docRoot, outlineFile, editorValue, activePath, fileSet]);
+  // Typst's eval of the compiled document lays it out again, so not at every compile of As you type: once they pause
+  useEffect(() => {
+    const doc = typstOutline.root;
+    if (!doc || !layout.outlineOpen) return;
+    let live = true;
+    const timer = window.setTimeout(() => {
+      getProjectStats(projectId, doc, undefined, settings.compileDefaults.typstVersion || undefined)
+        .then((stats) => live && setTypstNumbers({ doc, numbers: stats }))
+        .catch(() => undefined);
+    }, typstNumbers ? 2000 : 0);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [projectId, typstOutline.root, compileLog, layout.outlineOpen]);
   const parsedOutline = useMemo(() => {
-    if (docKind(outlineFile) === 'typst') return typstOutline;
+    if (docKind(outlineFile) === 'typst') return numberTypstOutline(typstOutline.items, typstNumbers?.doc === typstOutline.root ? typstNumbers.numbers : null);
     const items = docKind(outlineFile) === 'markdown' ? parseMarkdownOutline(outlineText) : parseOutline(outlineText);
     return items.map((item) => ({ ...item, file: outlineFile }));
-  }, [outlineText, outlineFile, typstOutline]);
+  }, [outlineText, outlineFile, typstOutline, typstNumbers]);
   // TexLab's, across the files the document pulls in, once it has one that takes in the open file
   const projectOutline = symbolOutline?.root === docRoot && symbolOutline.items.length && (!isTex(activePath) || symbolOutline.seen.has(activePath)) ? symbolOutline : null;
   const outline = projectOutline?.items ?? parsedOutline;
-  const outlineName = projectOutline ? docRoot : outlineFile;
+  const outlineName = projectOutline ? docRoot : docKind(outlineFile) === 'typst' ? typstOutline.root || outlineFile : outlineFile;
   const outlineBase = Math.min(...outline.map((o) => o.level), 9);
   const currentHeading = outline.filter((o) => o.file === activePath && o.pos <= selectionRange[0]).pop();
 
@@ -3177,9 +3300,8 @@ function Editor({ projectId }: { projectId: string }) {
   const typstMain = docKind(mainFile) === 'typst';
   const tree = settings.projectFolders;
   const homeFolder = tree.folders.find((f) => f.id === tree.placement[projectId]);
-  const switcherItems: MenuItems = [
-    ...switcherList({ projects, tree, at: switcherAt, projectId, go: setSwitcherAt, open: (id) => leave(`/editor/${id}`) }),
-    { separator: true },
+  // the project menu's own items, under the projects (and in the command palette)
+  const projectItems: MenuItems = [
     // the Home folder the project is in, opened on Home
     homeFolder && { label: `Back to ${homeFolder.name}`, icon: 'arrow.uturn.backward', onSelect: () => leave('/projects', () => openProjectsOn('home', homeFolder.id)) },
     { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects', () => openProjectsOn('all')) },
@@ -3192,6 +3314,11 @@ function Editor({ projectId }: { projectId: string }) {
     markdownMain && { label: 'Convert to LaTeX project…', icon: 'doc.text', onSelect: convertMarkdownToLatex },
     latexMain && !draft && { label: 'Convert to Typst project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('typst')) },
     typstMain && !draft && { label: 'Convert to LaTeX project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('latex')) }
+  ];
+  const switcherItems: MenuItems = [
+    ...switcherList({ projects, tree, at: switcherAt, projectId, go: setSwitcherAt, open: (id) => leave(`/editor/${id}`) }),
+    { separator: true },
+    ...projectItems
   ];
 
   const filesMenu: MenuItems = [
@@ -3239,7 +3366,7 @@ function Editor({ projectId }: { projectId: string }) {
     ];
   };
   // On keeps the project's pause, else the app's (Settings › Engines › LaTeX sets its length), else 2 s
-  const autoPause = compileOptions.autoCompile || settings.compileDefaults.autoCompile || 2;
+  const autoPause = [compileOptions.autoCompile, settings.compileDefaults.autoCompile].find((n) => n >= 1) || 2;
   const compileKind = docKind(compileTarget) ?? 'latex';
   // TeX compiles a LaTeX document and Markdown through LaTeX; Typst has no bibliography tool or draft mode
   const usesTeX = compileKind === 'latex' || (compileKind === 'markdown' && compileOptions.markdownEngine !== 'typst');
@@ -3269,7 +3396,7 @@ function Editor({ projectId }: { projectId: string }) {
       : []),
     ...(compileKind === 'markdown' ? compileChoice('markdownEngine', 'PDF engine (this project)', [['latex', 'LaTeX'], ['typst', 'Typst']]) : []),
     ...(usesTeX ? compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES) : typstVersionChoices),
-    ...compileChoice('autoCompile', 'Auto compile', [[0, 'Off'], [autoPause, 'On']], (n) => (n ? 'On' : 'Off')),
+    ...compileChoice('autoCompile', 'Auto compile', [[0, 'Off'], [autoPause, 'On'], ...(compileKind === 'typst' ? [[AS_YOU_TYPE, 'As you type'] as [number, string]] : [])], (n) => (n === AS_YOU_TYPE ? 'As you type' : n ? 'On' : 'Off')),
     // Markdown's citations are pandoc's citeproc, never BibTeX or Biber
     ...(compileKind === 'latex' ? compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS) : []),
     ...(usesTeX
@@ -3313,6 +3440,17 @@ function Editor({ projectId }: { projectId: string }) {
     </>
   );
 
+  const pdfMoreItems: MenuItems = [
+    { label: 'Two-page view', icon: 'book.pages', checked: spread, disabled: !pdf, onSelect: () => setSpread((v) => !v) },
+    { label: 'Annotate', icon: 'note.text.badge.plus', checked: annotate, disabled: !pdf, onSelect: () => setAnnotate((v) => !v) },
+    { label: 'Find in PDF', icon: 'magnifyingglass', shortcut: formatShortcut('Mod-f'), disabled: !pdf, onSelect: openFind },
+    { label: 'Presentation mode', icon: 'play.fill', disabled: !pdf || !pdfPages, onSelect: () => setPresenting(true) },
+    { separator: true },
+    ...pageItems,
+    { separator: true },
+    { label: 'Show logs', icon: 'terminal', checked: false, onSelect: () => openTools('logs') }
+  ];
+
   const insertKind: DocKind = docKind(activePath) ?? 'latex';
   const insertItems: MenuItems = SNIPPETS.filter((s) => !s || typeof s === 'string' || !('kinds' in s) || s.kinds.includes(insertKind)).flatMap((s): MenuItems | MenuItems[number] =>
     s === 'diagram'
@@ -3323,6 +3461,41 @@ function Editor({ projectId }: { projectId: string }) {
           ? { label: s.label, icon: s.icon, onSelect: () => insertSnippet(s) }
           : { separator: true }
   );
+
+  /** The command palette's commands: the shortcuts, the menus' items, Tools' tabs, the panels and Settings' sections. */
+  const paletteCommands = (): PaletteCommand[] => [
+    ...shortcutCommands(settings.shortcuts, (s) => {
+      const view = viewRef.current;
+      if (!s.run) appCommands[s.id as AppCommand]();
+      else if (view && activeRef.current) {
+        s.run(view);
+        view.focus();
+      }
+    }),
+    ...menuCommands('Compile', compileItems),
+    ...menuCommands('Insert', activePath ? insertItems : []),
+    ...menuCommands('Files', filesMenu),
+    ...menuCommands('Project', projectItems),
+    ...menuCommands('PDF', pdfMoreItems),
+    ...TOOLS_TABS.map(([tab, label]) => ({ label, section: 'Tools', run: () => openTools(tab) })),
+    { label: 'Document insights', section: 'Panels', run: () => openPanel('insights') },
+    { label: 'Agent', section: 'Panels', run: () => openPanel('agent') },
+    ...SECTION_GROUPS.flatMap(([, sections]) => sections.map(([section, label]) => ({ label, section: 'Settings', run: () => setSettingsOpen(section) })))
+  ];
+  /** Go to a file or heading: the project's files, then the outline's headings. */
+  const palettePlaces = (): PaletteCommand[] => [
+    ...items
+      .filter((i) => i.type === 'file' && !conflicts[i.path])
+      .map((i) => ({
+        label: i.path,
+        section: 'File',
+        run: () => {
+          if (TEXT_FILE.test(i.path)) showEditor();
+          open(i.path);
+        }
+      })),
+    ...outline.filter((o) => !o.float).map((o) => ({ label: o.title, section: `${nameOf(o.file)}, line ${o.line}`, run: () => void select(o.file, o.pos) }))
+  ];
 
   const zoomLabel = ZOOMS.find(([z]) => z === zoom)?.[1] || `${Math.round(scale * 100)}%`;
   // in two-page view `page` is the left page of a row, so the next row starts two pages on
@@ -3443,7 +3616,7 @@ function Editor({ projectId }: { projectId: string }) {
               <span className="spacer" />
               <button
                 className={`icon-btn small ${searchOpen ? 'active' : ''}`}
-                title={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
+                title={sidebarTab === 'files' ? 'Search files and text' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
                 aria-label="Search"
                 onClick={() => {
                   setSearchOpen((v) => !v);
@@ -3461,7 +3634,7 @@ function Editor({ projectId }: { projectId: string }) {
                 <input
                   autoFocus
                   value={filter}
-                  placeholder={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
+                  placeholder={sidebarTab === 'files' ? 'Search files and text' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
                   aria-label="Search"
                   onChange={(e) => setFilter(e.target.value)}
                   onKeyDown={(e) => {
@@ -3507,10 +3680,11 @@ function Editor({ projectId }: { projectId: string }) {
                 onNewBib={() => createBibFile().catch((err) => notify(`Couldn’t create the .bib file: ${errorText(err)}`, 'error'))}
                 notify={notify}
               />
+              {sidebarTab === 'files' && <TextSearch projectId={projectId} query={filter} beforeSearch={() => saveNow()} onOpen={(file, line, pattern) => void openMatch(file, line, pattern)} />}
             </div>
             {/* mounted while hidden, so a search running keeps its answer */}
             <div className="sidebar-list" hidden={sidebarTab !== 'research'}>
-              <ResearchPanel filter={sidebarTab === 'research' ? filter : ''} onAgentTask={openAgentTask} />
+              <ResearchPanel filter={sidebarTab === 'research' ? filter : ''} onAgentTask={openAgentTask} todos={todos} />
             </div>
             {sidebarTab === 'todos' && (
               <div className="sidebar-list">
@@ -3613,8 +3787,8 @@ function Editor({ projectId }: { projectId: string }) {
               <button className="icon-btn float-button hue-green" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
                 <Icon name="pencil" />
               </button>
-              {/* aria-disabled rather than disabled, so its tooltip still says why */}
-              <button
+              {/* aria-disabled rather than disabled, so its tooltip still says why; not in Markdown, which never has it */}
+              {(docKind(activePath) ?? docKind(mainFile)) !== 'markdown' && <button
                 className="icon-btn float-button hue-pink"
                 title={jyutpingOk ? 'Jyutping' : 'Jyutping works in LaTeX documents only'}
                 aria-label="Jyutping"
@@ -3622,7 +3796,7 @@ function Editor({ projectId }: { projectId: string }) {
                 onClick={() => void openJyutping()}
               >
                 <Icon name="custom.jyut" />
-              </button>
+              </button>}
               <span className="spacer" />
               <button className={`icon-btn hue-purple ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
                 <Icon name="sparkles" />
@@ -3843,6 +4017,11 @@ function Editor({ projectId }: { projectId: string }) {
                 {/* always mounted, so screen readers hear each change */}
                 {compileStatus}
                 <span className="spacer" data-tauri-drag-region />
+                {docKind(activePath) === 'markdown' && (
+                  <button className={`icon-btn ${mdPreview ? 'active' : ''}`} title={mdPreview ? 'Show the PDF' : 'Live preview'} aria-label="Live preview" aria-pressed={mdPreview} onClick={() => setMdPreview((on) => !on)}>
+                    <Icon name="eye" />
+                  </button>
+                )}
                 <button
                   className={`icon-btn ${layout.pdfSidebarOpen ? 'active' : ''}`}
                   title="Document outline"
@@ -3867,6 +4046,11 @@ function Editor({ projectId }: { projectId: string }) {
                     onSelect: () => setZoom(z)
                   }))}
                 />
+                {/\.typ$/i.test(shownDoc) && tinymistOn && tinymistRef.current?.exact() && (
+                  <button className={`btn small ${liveShown ? 'primary' : 'ghost'}`} title="Show the document as you type it, laid out by Tinymist" aria-pressed={liveShown} onClick={() => void toggleLive()}>
+                    Live
+                  </button>
+                )}
                 {/\.typ$/i.test(shownDoc) ? (
                   <MenuButton
                     icon="arrow.down.to.line"
@@ -3887,25 +4071,17 @@ function Editor({ projectId }: { projectId: string }) {
                     <Icon name="arrow.down.to.line" />
                   </button>
                 )}
-                <MenuButton
-                  icon="ellipsis"
-                  title="More"
-                  align="end"
-                  items={[
-                    { label: 'Two-page view', icon: 'book.pages', checked: spread, disabled: !pdf, onSelect: () => setSpread((v) => !v) },
-                    { label: 'Annotate', icon: 'note.text.badge.plus', checked: annotate, disabled: !pdf, onSelect: () => setAnnotate((v) => !v) },
-                    { label: 'Find in PDF', icon: 'magnifyingglass', shortcut: formatShortcut('Mod-f'), disabled: !pdf, onSelect: openFind },
-                    { label: 'Presentation mode', icon: 'play.fill', disabled: !pdf || !pdfPages, onSelect: () => setPresenting(true) },
-                    { separator: true },
-                    ...pageItems,
-                    { separator: true },
-                    { label: 'Show logs', icon: 'terminal', checked: false, onSelect: () => openTools('logs') }
-                  ]}
-                />
+                <MenuButton icon="ellipsis" title="More" align="end" items={pdfMoreItems} />
                 {viewSwitcher}
               </div>
 
+              {mdPreview && docKind(activePath) === 'markdown' && (
+                <Suspense fallback={<div className="md-preview" />}>
+                  <MarkdownPreview projectId={projectId} doc={activePath} text={editorValue} dark={dark} view={() => viewRef.current} />
+                </Suspense>
+              )}
               <div
+                hidden={mdPreview && docKind(activePath) === 'markdown'}
                 className={`pdf-body ${pdf && layout.pdfSidebarOpen ? 'with-sidebar' : ''} ${ownPage && !dark ? 'own-page' : ''}`}
                 // a PDF with its own page colour shows as it is, not tinted again
                 style={ownPage && !dark ? ({ '--pdf-own-page': PDF_PAGE_FILLS[ownPage] } as CSSProperties) : undefined}
@@ -3928,7 +4104,9 @@ function Editor({ projectId }: { projectId: string }) {
                     onHeading={(file, line) => showHeading(file, line).catch(() => undefined)}
                   />
                 )}
-                {pdf ? (
+                {liveShown ? (
+                  <iframe className="typst-live" title={`Live view of ${nameOf(shownDoc)}`} src={live!.url} />
+                ) : pdf ? (
                   <PdfPreview
                     ref={pdfRef}
                     url={pdf.url}
@@ -3995,7 +4173,7 @@ function Editor({ projectId }: { projectId: string }) {
                   />
                 )}
 
-                {pdf && (
+                {pdf && !liveShown && (
                   <div className="pdf-pill">
                     {pdfSwitcher}
                     <button
@@ -4035,7 +4213,10 @@ function Editor({ projectId }: { projectId: string }) {
               {notes.length > 0 && (
                 <div className="pdf-notes">
                   <div className="pdf-notes-head">
-                    <span>Notes</span>
+                    <span className="grow">Notes</span>
+                    <button className="btn small ghost" title="Send the notes to the agent, each with where it points in the source" onClick={() => void sendNotes(projectId, notes, renderPage, readText)}>
+                      Send to agent
+                    </button>
                     <button
                       className="btn small ghost"
                       onClick={async () => {
@@ -4057,6 +4238,9 @@ function Editor({ projectId }: { projectId: string }) {
                         p. {note.page}
                       </button>
                       <span className="pdf-note-text">{note.text}</span>
+                      <button className="icon-btn small" title="Send to agent" aria-label="Send the note to the agent" onClick={() => void sendNotes(projectId, [note], renderPage, readText)}>
+                        <Icon name="paperplane" />
+                      </button>
                       <button
                         className="icon-btn small"
                         title="Remove note"
@@ -4222,7 +4406,8 @@ function Editor({ projectId }: { projectId: string }) {
             {
               label: 'Add to-do here',
               onSelect: () => addTodo({ doc: shownDoc, page: pdfMenu.at.page }, `${nameOf(pdfOf(shownDoc))}, page ${pdfMenu.at.page}`).catch(() => undefined)
-            }
+            },
+            { label: 'Send page to agent', onSelect: () => void sendPdfPage(projectId, shownDoc, pdfMenu.at, renderPage, readText) }
           ]}
         />
       )}
@@ -4313,6 +4498,7 @@ function Editor({ projectId }: { projectId: string }) {
         </Sheet>
       )}
 
+      {palette !== null && <CommandPalette start={palette} commands={paletteCommands()} places={palettePlaces()} onClose={() => setPalette(null)} />}
       {settingsOpen && <SettingsSheet projectId={projectId} section={settingsOpen === true ? undefined : settingsOpen} onClose={() => setSettingsOpen(false)} />}
 
       {jyutpingOpen && (

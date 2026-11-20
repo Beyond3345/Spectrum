@@ -941,10 +941,11 @@ test('sends reasoning_effort and retries without it when the model rejects it', 
 
 // ─── Fixes: data safety ───
 
-const visionLatex = (projectId, mode, name, contents, model = 'mock') => {
+const visionLatex = (projectId, mode, name, contents, model = 'mock', kind = '') => {
   const form = new FormData();
   form.append('projectId', projectId);
   form.append('mode', mode);
+  if (kind) form.append('kind', kind);
   if (model) form.append('llmConfig', JSON.stringify(llmConfig(model)));
   form.append('image', new Blob([contents]), name);
   return fetch(`${base}/api/vision/latex`, { method: 'POST', body: form }).then((r) => r.json());
@@ -964,6 +965,15 @@ test('image → LaTeX never replaces a project image and only keeps figures', as
   const noKey = await visionLatex(p.id, 'figure', 'other.png', 'X', '');
   assert.equal(noKey.ok, false);
   assert.deepEqual((await fs.readdir(path.join(p.path, 'assets'))).sort(), ['image-2.png', 'image.png']);
+
+  // a Typst document is given Typst, never LaTeX
+  mockCalls.length = 0;
+  assert.ok((await visionLatex(p.id, 'equation', 'image.png', 'EQUATION', 'mock', 'typst')).ok);
+  assert.match(mockCalls[0].messages[0].content, /^You are a Typst conversion engine/);
+  assert.match(mockCalls[0].messages[1].content[0].text, /Typst maths/);
+  const typstFigure = await visionLatex(p.id, 'figure', 'image.png', 'TYPST-FIGURE', 'mock', 'typst');
+  assert.match(mockCalls[1].messages[1].content[0].text, new RegExp(`#figure\\(image.*"/${typstFigure.assetPath}"|"/${typstFigure.assetPath}".*#figure`));
+  assert.match(mockCalls[1].messages[1].content[0].text, /alt: /);
 
   const plot = (await api('/api/plot/from-table', { method: 'POST', body: { projectId: p.id, tableLatex: 'a & b' } })).json;
   assert.equal(plot.ok, false);

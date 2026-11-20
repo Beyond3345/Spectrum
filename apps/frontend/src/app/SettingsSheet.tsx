@@ -49,6 +49,7 @@ import { resetPersonas, unsavedPersona } from '../editor/personas';
 import type { Persona } from '../editor/personas';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, errorText } from '../editor/shared';
 import { ZoteroSettings } from '../editor/ZoteroCite';
+import { EDITOR_KEYMAPS, editorKeymap } from '../editor/keymaps';
 import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
 import Segmented from './Segmented';
@@ -57,6 +58,7 @@ import Select from './Select';
 import Sheet from './Sheet';
 import Tabs from './Tabs';
 import { ParserFields } from './TransferPanel';
+import { keyFailure, selectSavedKey } from './keys';
 import GitHubSettings from './GitHubSettings';
 import AgentsPane from './AgentSettings';
 import DiagramFields from '../diagram/modes/structures/DiagramFields';
@@ -76,6 +78,7 @@ import {
   ERROR_HANDLING,
   LIVE_OUTPUT_ENGINES,
   ROLE_FIELDS,
+  AS_YOU_TYPE,
   autoCompileLabel,
   SYNC_HIGHLIGHTS,
   effortOptions,
@@ -134,7 +137,7 @@ const SCOPES = [
   ['project', 'This project']
 ] as const;
 
-const SECTION_GROUPS: [string, [Section, string, string][]][] = [
+export const SECTION_GROUPS: [string, [Section, string, string][]][] = [
   ['General', [
     ['appearance', 'Appearance', 'circle.lefthalf.filled'],
     ['editor', 'Editor', 'text.cursor'],
@@ -515,6 +518,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
         className={opts.action ? 'input grow' : 'input'}
         list={opts.list?.length ? `settings-${key}-list` : undefined}
         type={opts.secret ? 'password' : 'text'}
+        onFocus={opts.secret ? selectSavedKey : undefined}
         value={String(settings[key] ?? '')}
         placeholder={opts.placeholder}
         spellCheck={false}
@@ -786,6 +790,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
           {section === 'models' && (
             <>
               <h3 id="settings-mainTitle" className="form-section-title">Main model</h3>
+              {keyFailure() && <div className="field-hint error">Your API keys stay in this window’s storage, as before: {keyFailure()}</div>}
               <div className="field">
                 <label id="settings-llmProvider">Provider</label>
                 <Select
@@ -897,7 +902,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                     {needsKey && <>
                       <label htmlFor={`search-key-${provider}`}>{label} API key{optional ? ' (optional)' : ''}</label>
                       <input id={`search-key-${provider}`} className="input" type="password" autoComplete="off" spellCheck={false}
-                        value={providerKey(settings, provider)} onChange={(e) => update(providerKeyPatch(settings, provider, e.target.value))} />
+                        value={providerKey(settings, provider)} onFocus={selectSavedKey} onChange={(e) => update(providerKeyPatch(settings, provider, e.target.value))} />
                     </>}
                     {provider === 'serpapi' && <>
                       <label id="settings-serpEngine">SerpApi engine for references</label>
@@ -921,7 +926,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 return <div className="field" key={provider}>
                   <label htmlFor={`research-key-${provider}`}>{label} API key <span className="optional">Optional</span></label>
                   <input id={`research-key-${provider}`} className="input" type="password" autoComplete="off" spellCheck={false}
-                    value={providerKey(settings, provider)} onChange={(e) => update(providerKeyPatch(settings, provider, e.target.value))} />
+                    value={providerKey(settings, provider)} onFocus={selectSavedKey} onChange={(e) => update(providerKeyPatch(settings, provider, e.target.value))} />
                 </div>;
               })}
               {text('OpenAlex email', 'openalexEmail', { placeholder: 'you@example.com', hint: 'Sent with each OpenAlex request, so OpenAlex can contact you about heavy use.' })}
@@ -1002,6 +1007,13 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                   <Icon name="doc.text" /> Licences
                 </button>
               </div>
+              <label className="checkbox-row">
+                <input type="checkbox" role="switch" checked={settings.updateCheck} onChange={(e) => update({ updateCheck: e.target.checked })} />
+                <span>
+                  Tell me when a newer Spectrum is out
+                  <span className="field-hint">Once a day Spectrum asks its release page on GitHub for the latest version, sending nothing about you or your projects, and the projects page links to a newer one. Nothing is downloaded.</span>
+                </span>
+              </label>
             </>
           )}
         </div>
@@ -1394,6 +1406,13 @@ function EditorPane() {
         </div>
       )}
 
+      <h3 className="form-section-title">Keys</h3>
+      <div className="field">
+        <label id="settings-editorKeymap">Editing keys</label>
+        <Select labelId="settings-editorKeymap" value={settings.editorKeymap} options={EDITOR_KEYMAPS} onChange={(value) => update({ editorKeymap: editorKeymap(value) })} />
+        <div className="field-hint">Vim’s or Emacs’s keys in the source editor. In Vim, <code>:w</code> saves.</div>
+      </div>
+
       <h3 className="form-section-title">Theme</h3>
       <div className="field-hint section-hint">Any light theme goes with any dark one. With System, the editor switches between them with {OS_NAME}.</div>
       <div className="editor-theme-columns">
@@ -1605,6 +1624,7 @@ function EnginesPane() {
         <div className="field-hint">
           Auto reads a <code>% !TEX program</code> comment, uses XeLaTeX when the document needs Unicode fonts, and pdfLaTeX otherwise.
           When no TeX is installed, Auto uses the built-in Tectonic, which downloads each package the first time a document needs it.
+          A <code>% !TEX recipe</code> comment runs the document’s own steps in place of Spectrum’s passes, and <code>% !TEX options</code> adds options for the engine.
         </div>
         {warmUp && (
           <div className="field-hint" role="status">
@@ -1619,7 +1639,7 @@ function EnginesPane() {
         <Select
           labelId="settings-autoCompile"
           value={String(defaults.autoCompile)}
-          options={Array.from({ length: 11 }, (_, n): [string, string] => [String(n), autoCompileLabel(n)])}
+          options={[0, AS_YOU_TYPE, ...Array.from({ length: 10 }, (_, n) => n + 1)].map((n): [string, string] => [String(n), autoCompileLabel(n)])}
           onChange={(value) => set({ autoCompile: Number(value) })}
         />
         <div className="field-hint">Compiles the document showing once you stop typing for that long. A newer compile takes the place of one that’s out of date. The Compile button’s menu turns it on or off for each project, with this pause.</div>

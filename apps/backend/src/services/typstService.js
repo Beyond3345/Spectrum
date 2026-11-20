@@ -20,9 +20,16 @@ const PACKAGE_NOTE = '\n[spectrum] Typst downloads a package the first time a do
 const DIAGNOSTIC = /^(.*?):(\d+):(\d+): (error|warning): (.*)$/;
 const HINT = /^\s*(?:hint|help):\s*(.*)$/;
 const LABEL = /<\s*([A-Za-z0-9_:.-]+)\s*>/g;
-// what Typst's eval asks the compiled document for: each heading, and every label's page and number
+// what Typst's eval asks the compiled document for: each heading and each figure with its number, page and text, and
+// every label's page and number. A number is as the document prints it, without a trailing full stop or brackets ("A.1"
+// in an appendix, "2.1" for "(2.1)"); a numbering function
+// can't run outside the document, so a heading's is its counter and a figure's or equation's is the chapter's number
+// and its own, as the house templates' by-section prints it.
+// ponytail: another numbering function's figure number is guessed that way; Typst would need to compile to say
 const ELEMENTS = [
   '{',
+  '  let plain(c) = if c == none { "" } else if type(c) == str { c } else if c.func() == [ ].func() { " " } else if c.has("text") { plain(c.text) } else if c.has("children") { c.children.map(plain).sum(default: "") } else if c.has("body") { plain(c.body) } else { "" }',
+  '  let shown(e, c) = if e.numbering == none { "" } else if type(e.numbering) == str { numbering(e.numbering, ..c.at(e.location())).trim(regex("[.:)]"), at: end).trim("(", at: start) } else if e.func() == heading { c.at(e.location()).map(str).join(".") } else { (counter(heading).at(e.location()).first(), ..c.at(e.location())).map(str).join(".") }',
   '  let names = (NAMES)',
   '  let labelled = names.map(name => {',
   '    let found = query(selector(label(name)))',
@@ -30,15 +37,16 @@ const ELEMENTS = [
   '    let e = found.first()',
   '    let kind = e.func()',
   '    (label: name, func: repr(kind), page: e.location().page(), number: if kind == heading {',
-  '      if e.numbering == none { "" } else { counter(heading).at(e.location()).map(str).join(".") }',
+  '      shown(e, counter(heading))',
   '    } else if kind == figure {',
-  '      if e.numbering == none { "" } else { e.counter.at(e.location()).map(str).join(".") }',
+  '      shown(e, e.counter)',
   '    } else if kind == math.equation {',
-  '      if e.numbering == none { "" } else { counter(math.equation).at(e.location()).map(str).join(".") }',
+  '      shown(e, counter(math.equation))',
   '    } else { "" })',
   '  }).filter(item => item != none)',
   '  (',
-  '    headings: query(heading).map(h => (level: h.level, number: if h.numbering == none { "" } else { counter(heading).at(h.location()).map(str).join(".") }, page: h.location().page())),',
+  '    headings: query(heading).map(h => (level: h.level, number: shown(h, counter(heading)), page: h.location().page(), title: plain(h.body))),',
+  '    figures: query(figure).map(f => (supplement: plain(f.supplement), number: shown(f, f.counter), page: f.location().page(), caption: if f.caption == none { "" } else { plain(f.caption.body) })),',
   '    labelled: labelled',
   '  )',
   '}'
@@ -495,6 +503,31 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
   });
 }
 
+/**
+ * One page of a PDF as a PNG at ppi, on white: drawn by the built-in Typst, which reads a PDF's pages as images (0.14
+ * and later, so never a project's older pin). Works in a folder of its own beside the PDF, which an agent's isolation
+ * may write. Resolves { ok: true, data } with the PNG's bytes, or { ok: false, error }.
+ */
+export async function pdfPagePng(pdf, page = 1, ppi = 130) {
+  const executable = builtInTypst();
+  if (!executable) return { ok: false, error: 'Typst isn’t available in this copy of Spectrum, so the page can’t be drawn.' };
+  const dir = path.join(path.dirname(pdf), `page-${crypto.randomUUID()}`);
+  const chunks = [];
+  try {
+    await ensureDir(dir);
+    await fs.copyFile(pdf, path.join(dir, 'page.pdf'));
+    const source = `#set page(width: auto, height: auto, margin: 0pt, fill: white)\n#image("page.pdf", page: ${Number(page)})\n`;
+    const result = await runSpawn(executable, ['compile', '--root', dir, '--diagnostic-format', 'short', '--format', 'png', '--ppi', String(ppi), '-', path.join(dir, 'page.png')], dir, (chunk) => chunks.push(chunk.toString()), process.env, 60000, source);
+    if (result.code === 0) return { ok: true, data: await fs.readFile(path.join(dir, 'page.png')) };
+    const said = chunks.join('').match(/error: (.*)/)?.[1]?.replace(/ in page\.pdf/, '') || 'Typst couldn’t draw it.';
+    return { ok: false, error: /does not exist/.test(said) ? `There is no page ${page} (${said.replace(/^failed to load PDF \((.*)\)$/, '$1')}).` : `The page couldn’t be drawn: ${said}` };
+  } catch (err) {
+    return { ok: false, error: `The page couldn’t be drawn: ${err.message}` };
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
 // what Export offers: the file Typst writes and what it needs for it; PNG and SVG make one file per page
 export const TYPST_EXPORTS = {
   png: { ext: 'png', pages: true },
@@ -533,12 +566,18 @@ export async function exportTypst(projectRoot, absMain, mainFile, format, option
     );
     const files = (await fs.readdir(outDir)).sort();
     if (result.code !== 0 || !files.length) {
-      const errors = parseTypstDiagnostics(chunks.join(''), projectRoot, path.dirname(absMain)).filter((e) => e.severity === 'error');
+      const log = chunks.join('');
+      const diagnostics = parseTypstDiagnostics(log, projectRoot, path.dirname(absMain));
+      const errors = diagnostics.filter((e) => e.severity === 'error');
       const first = errors[0];
       // an error with no place in the source (a PDF standard the document breaks, a flag an older Typst lacks)
-      const unplaced = chunks.join('').split(/\r?\n/).find((line) => /error/i.test(line))?.replace(/^error:\s*/i, '');
+      const unplaced = log.split(/\r?\n/).find((line) => /error/i.test(line))?.replace(/^error:\s*/i, '');
       if (result.timedOut) return { ok: false, error: 'The export took too long and was stopped.' };
-      return { ok: false, error: first ? first.file + ':' + first.line + ': ' + first.message : unplaced || 'Typst made nothing to export.' };
+      const where = first ? first.file + ':' + first.line + ': ' + first.message : unplaced || 'Typst made nothing to export.';
+      // every place, for Logs and the editor's marks, as a compile's are, each missing alt text with what to write
+      for (const e of errors) if (/missing alt text/i.test(e.message)) e.message += '\nHint: PDF/UA-1 needs alt text on every image and equation, inline ones too: image("…", alt: "…"), figure(…, alt: "…") for a drawing, #math.equation(alt: "…", $ … $)';
+      const error = errors.length > 1 ? `${where} (and ${errors.length - 1} more, in Logs)` : where;
+      return { ok: false, error, errors: diagnostics, log };
     }
     if (files.length === 1) {
       return { ok: true, name: base + '.' + kind.ext, data: (await fs.readFile(path.join(outDir, files[0]))).toString('base64') };

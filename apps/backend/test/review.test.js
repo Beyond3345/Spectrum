@@ -27,7 +27,7 @@ const write = async (file, text) => {
 const { default: Fastify } = await import('fastify');
 const { registerReviewRoutes } = await import('../src/routes/review.js');
 const { createProject } = await import('../src/services/projectService.js');
-const { REVIEW_BUDGET, anchor, readReview } = await import('../src/services/reviewService.js');
+const { REVIEW_BUDGET, anchor, readReview, reviewParts } = await import('../src/services/reviewService.js');
 const { inlineInputs } = await import('../src/utils/texUtils.js');
 const app = Fastify();
 app.setErrorHandler(async (err, req, reply) => reply.code(err.statusCode || 500).send({ ok: false, error: err.message }));
@@ -287,6 +287,29 @@ test('a document over the budget is reviewed in parts, each told the summary so 
   assert.deepEqual(second.json.files, ['chapter.tex', 'last.tex']);
   assert.deepEqual(second.json.findings.map((f) => [f.file, f.line, f.anchored]), [['chapter.tex', cut.to + 2, true]]);
   assert.equal((await review({ projectId: p.id, doc: 'main.tex', part: 2 })).json.ok, false);
+});
+
+test('a long document’s parts begin at a top-level heading once a part is half full, and cut a section only when it is longer than that', () => {
+  const body = (n) => Array.from({ length: n }, (_, i) => `Line ${i} of the text, which runs on for a while.`);
+  const doc = (heading) => [heading('One'), ...body(30), heading('Two'), ...body(40), heading('Three'), ...body(50), '\\subsection{Not a place to cut}', ...body(10)];
+  const lines = doc((t) => `\\section{${t}}`);
+  const budget = 100 * 52;
+  const parts = reviewParts([{ path: 'paper.tex', lines }], budget);
+  assert.deepEqual(parts.map((p) => p.map((r) => [r.from, r.to])), [[[1, 72]], [[73, lines.length]]], 'part two begins at \\section{Three}');
+  assert.equal(lines[72], '\\section{Three}');
+  // Typst's = and Markdown's ## are headings too; a part never passes its budget
+  for (const heading of [(t) => `= ${t}`, (t) => `## ${t}`]) {
+    const typed = doc(heading);
+    const cut = reviewParts([{ path: 'paper', lines: typed }], budget);
+    assert.equal(typed[cut[1][0].from - 1], heading('Three'));
+  }
+  // one section longer than a part: cut between its lines, where the budget runs out
+  const long = ['\\section{Long}', ...body(300)];
+  const pieces = reviewParts([{ path: 'long.tex', lines: long }], budget);
+  assert.ok(pieces.length > 2);
+  for (const part of pieces) assert.ok(part.reduce((n, r) => n + long.slice(r.from - 1, r.to).reduce((m, l, i) => m + `${r.from + i}| ${l}\n`.length, 0), 0) <= budget);
+  const runs = pieces.flat();
+  assert.ok(runs.every((r, i) => (i ? r.from === runs[i - 1].to + 1 : r.from === 1)) && runs.at(-1).to === long.length, 'no line is left out or read twice');
 });
 
 test('a .pgf figure the document \\inputs isn’t sent, so it can’t push the rest over the budget', async () => {

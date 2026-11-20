@@ -462,10 +462,10 @@ export function runPreflight(input: PreflightInput): Finding[] {
     const named = new Set(bibNames.map((n) => lookup([folderOf(doc) + n, n].map(normalise)).path).filter(Boolean) as string[]);
     const entries = input.bib?.filter((e) => !named.size || named.has(e.file)) ?? [];
     const keys = new Set(entries.map((e) => e.key));
-    // [@key; see @other, p. 3], and @key in the text; @fig:… and the like are pandoc-crossref's references, not citations
+    // [@key; see @other, p. 3], and @key in the text; @fig:… (or Quarto's @fig-…) and the like are references, not citations
     const mdCites: (Place & { key: string })[] = [];
     for (const m of code.matchAll(/(?<![\w.@])-?@([A-Za-z0-9_][\w:.#$%&+?<>~/-]*?)(?=[.,;:!?]?(?:[\s\]};)]|$))/g))
-      if (!/^(?:fig|tbl|eq|sec|lst):/.test(m[1])) mdCites.push({ key: m[1], file: doc, line: lineOf(m.index!) });
+      if (!/^(?:fig|tbl|tab|eq|sec|lst)[:-]/.test(m[1])) mdCites.push({ key: m[1], file: doc, line: lineOf(m.index!) });
     // nocite: @* counts every entry as cited, and the keys it names are cited
     const nocite = /^nocite\s*:([\s\S]*?)(?=^\S|(?![\s\S]))/m.exec(front)?.[1] ?? '';
     for (const m of nocite.matchAll(/@([\w:.-]+)/g)) mdCites.push({ key: m[1], file: doc, line: 1 });

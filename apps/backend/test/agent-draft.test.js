@@ -7,6 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const native = ['darwin', 'win32'].includes(process.platform) && process.env.SPECTRUM_NATIVE_AGENT_TESTS === '1';
 const fixture = fileURLToPath(new URL('./fixtures/acp-draft-agent.mjs', import.meta.url));
+// a 1 by 1 PNG
+const DOT = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const wait = async (until, what) => {
   const deadline = Date.now() + 10000;
   while (!until()) {
@@ -40,7 +42,8 @@ test('review sessions keep iterating on the draft; apply and reject rebase it; c
     await fs.rm(path.join(run.home, 'acp-log.jsonl'), { force: true });
     await assert.rejects(readContext(run, { activePath: '../outside.tex' }), /Invalid path/);
     await assert.rejects(readContext(run, { research: 'missing' }), /research session/);
-    const context = await readContext(run, { activePath: 'main.tex', selection: 'original', log: 'main.tex:1: Undefined control sequence', todos: true });
+    await assert.rejects(readContext(run, { images: [{ type: 'image/svg+xml', data: DOT }] }), /PNG, JPEG/);
+    const context = await readContext(run, { activePath: 'main.tex', selection: 'original', log: 'main.tex:1: Undefined control sequence', todos: true, images: [{ type: 'image/png', data: DOT }] });
     await turn(run, 'draft one', { context });
     const changes = await pendingChanges(run);
     assert.equal(changes.length, 1);
@@ -53,7 +56,9 @@ test('review sessions keep iterating on the draft; apply and reject rebase it; c
     assert.match(blocks[0].text, /You are working in Spectrum/);
     assert.doesNotMatch(blocks[0].text, /Be blunt/, 'the persona went in the system prompt instead');
     assert.deepEqual(blocks[1], { type: 'resource_link', uri: pathToFileURL(path.join(run.workspace, 'main.tex')).href, name: 'main.tex' });
-    assert.deepEqual(blocks.slice(2).map((b) => [b.type, b.resource.uri.replace(/^file:.*#/, '#'), b.resource.text]), [
+    // and a picture as an image block, which this agent takes
+    assert.deepEqual(blocks.at(-1), { type: 'image', mimeType: 'image/png', data: DOT });
+    assert.deepEqual(blocks.slice(2, -1).map((b) => [b.type, b.resource.uri.replace(/^file:.*#/, '#'), b.resource.text]), [
       ['resource', '#selection', 'original'],
       ['resource', 'spectrum:compile-log', 'main.tex:1: Undefined control sequence'],
       ['resource', 'spectrum:todos', '- [ ] Cite the survey (main.tex:1)']
@@ -128,8 +133,11 @@ test('review sessions keep iterating on the draft; apply and reject rebase it; c
     await fs.writeFile(path.join(other.path, 'main.tex'), 'plain\n');
     const plain = await getAgentRun((await newAgentRun({ projectId: other.id, agentId: 'qoder', persona: { name: 'Critic', prompt: 'Be blunt.' } })).id);
     await plain.ready;
-    await turn(plain, 'answer', { context: await readContext(plain, { selection: 'plain' }) });
+    await turn(plain, 'answer', { context: await readContext(plain, { selection: 'plain', images: [{ type: 'image/png', data: DOT }] }) });
     const first = (await requests(plain)).filter((q) => q.method === 'session/prompt').at(-1).params.prompt;
+    // one that takes no images is told a picture was left out, and so is the user
+    assert.deepEqual(first.at(-1), { type: 'text', text: '[The user attached a picture, not sent: this agent does not take images. Say so in your answer.]' });
+    assert.ok(plain.events.some((e) => e.type === 'notice' && e.data.message === 'This agent doesn’t take images, so the picture wasn’t sent.'));
     assert.match(first[0].text, /persona “Critic”[\s\S]*Be blunt/);
     assert.deepEqual(first[1], { type: 'text', text: 'Selected text:\n<untrusted source="Selected text">\nplain\n</untrusted>' });
     assert.ok(!(await requests(plain)).find((q) => q.method === 'session/new').params.systemPrompt);

@@ -1,5 +1,5 @@
 import { callOpenAICompatible } from '../services/llmService.js';
-import { runToolAgent, languageLine, llmErrorMessage, namedMainFile, projectContext, projectNotes, userInstructions } from '../services/agentService.js';
+import { checkedImages, runToolAgent, languageLine, llmErrorMessage, namedMainFile, projectContext, projectNotes, userInstructions } from '../services/agentService.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { getRun, runOfThread, runSnapshot, startTurn, steerRun, stopRun, subscribeRun } from '../services/agentRunService.js';
 import { approveInstructions, instructionsStatus } from '../services/agentInstructions.js';
@@ -16,9 +16,11 @@ const CUT_OFF = 'The answer was cut off by the model’s output limit before it 
  * before the turn starts).
  */
 async function turnBody(body = {}) {
-  const { projectId, threadId, prompt, shown, selection, activePath, compileLog, llmConfig, model, reasoningEffort, searchConfig, history, instructions, skill, drafts, compile, planFirst, plan, eachFile } = body;
+  const { projectId, threadId, prompt, shown, selection, activePath, compileLog, llmConfig, model, reasoningEffort, searchConfig, history, instructions, skill, drafts, compile, planFirst, plan, eachFile, images } = body;
   return {
     projectId, threadId, prompt, shown, selection, activePath, compileLog, llmConfig, model, reasoningEffort, searchConfig, history, drafts, compile,
+    // pictures pasted or dropped into the message, or a page of the PDF sent to the agent
+    images: checkedImages(images),
     planFirst: planFirst === true,
     // the approved plan's steps as the thread has them, and whether the run pauses before each new file
     plan: Array.isArray(plan) ? plan : null,

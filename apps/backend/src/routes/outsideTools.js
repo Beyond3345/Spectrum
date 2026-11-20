@@ -21,7 +21,7 @@ import { DATA_RULE } from '../utils/outsideText.js';
  * What such an agent gets: the project's own tools. suggest_todo and load_skill are left out, as they need a session
  * Spectrum started (it shows the one's cards and copies the other's skills into the agent's home).
  */
-export const OUTSIDE_TOOLS = ['compile', 'get_log', 'project_map', 'bib_entries', 'bib_search', 'search_text', 'literature_search', 'fetch_bibtex', 'list_todos'];
+export const OUTSIDE_TOOLS = ['compile', 'view_pdf_page', 'preview_figure', 'get_log', 'project_map', 'bib_entries', 'bib_search', 'search_text', 'literature_search', 'fetch_bibtex', 'check_references', 'list_todos'];
 
 // project id → { token, compile }: in memory only, so a launch starts with none
 const grants = new Map();

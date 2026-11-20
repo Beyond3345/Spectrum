@@ -1,0 +1,18 @@
+{
+ "results": [
+  {
+   "id": "https://openalex.org/W2161003969",
+   "doi": "https://doi.org/10.3758/bf03200594",
+   "display_name": "Unprimed stem completion is only moderately predicted by word frequency and length",
+   "publication_year": 1997,
+   "type": "article",
+   "authorships": [
+    {
+     "author": {
+      "display_name": "Raymond J. Shaw"
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -1,6 +1,8 @@
 // A stand-in for Tinymist for test/tinymist.test.js: the LSP's framing on stdin and stdout, a line of JSON in
 // FAKE_TINYMIST_LOG for each message it gets, and just enough answers to show the bridge passes them on.
 import { appendFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 
 const log = (entry) => appendFileSync(process.env.FAKE_TINYMIST_LOG, `${JSON.stringify(entry)}\n`);
@@ -43,7 +45,17 @@ function handle({ id, method, params }) {
     const words = text.split(/\s+/).filter(Boolean).length;
     send({ method: 'tinymist/compileStatus', params: { status: 'compileSuccess', path: '/main.typ', pageCount: 1, wordsCount: { words, chars: text.length, cjkChars: 0, spaces: 0 } } });
   } else if (method === 'textDocument/hover') send({ id, result: { contents: `Hover at ${params.position.line}:${params.position.character}` } });
-  else if (method === 'workspace/executeCommand') send({ id, result: null });
+  else if (method === 'workspace/executeCommand' && params.command === 'tinymist.doStartPreview') {
+    // a preview: its page on one port, and on another a data plane that takes a WebSocket and says nothing
+    const page = http.createServer((req, res) => res.end('<!doctype html><title>Fake preview</title>')).listen(0, '127.0.0.1', () => {
+      const plane = http.createServer().listen(0, '127.0.0.1', () => send({ id, result: { dataPlanePort: plane.address().port, staticServerPort: page.address().port } }));
+      plane.on('upgrade', (req, socket) => {
+        log({ preview: 'connected', origin: req.headers.origin });
+        const accept = createHash('sha1').update(req.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+        socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+      });
+    });
+  } else if (method === 'workspace/executeCommand') send({ id, result: null });
   else if (method === 'shutdown') send({ id, result: null });
   else if (method === 'exit') process.exit(0);
   else if (id !== undefined && method) send({ id, error: { code: -32601, message: `No ${method}` } });

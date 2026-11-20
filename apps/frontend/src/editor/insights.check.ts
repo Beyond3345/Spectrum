@@ -227,7 +227,7 @@ const markdownDoc = [
   '---',
   '# Introduction {#sec:intro}',
   '',
-  'Some prose citing [@knuth84] and [see @lamport94].',
+  'Some prose citing [@knuth84] and [see @lamport94], as [@fig:flow] shows.',
   '',
   '![A flow diagram](figures/x.png){#fig:flow width=80%}',
   '',
@@ -239,7 +239,7 @@ const markdownDoc = [
   '',
   '$$',
   'E = m c^2',
-  '$$',
+  '$$ {#eq:energy}',
   '',
   '<!-- TODO: add a conclusion -->',
   ''
@@ -249,7 +249,7 @@ eq(markdownGot.headings.map((h) => [h.text, h.level, h.label ?? null, h.line]), 
 eq(markdownGot.figures.map((f) => [f.text, f.label, f.line]), [['A flow diagram', 'fig:flow', 12]], 'Markdown images as figures');
 eq(markdownGot.tables.map((t) => [t.text, t.label, t.line]), [['A · B', 'tab:results', 14]], 'Markdown pipe tables');
 eq(markdownGot.equations.map((e) => [e.text, e.line]), [['E = m c^2', 20]], 'Markdown $$ equations');
-eq(markdownGot.labels.map((l) => l.label), ['sec:intro', 'fig:flow', 'tab:results'], 'Markdown labels');
+eq(markdownGot.labels.map((l) => l.label), ['sec:intro', 'fig:flow', 'tab:results', 'eq:energy'], 'Markdown labels, an equation’s too');
 eq(markdownGot.citations.map((c) => [c.key, c.count, c.line]), [['knuth84', 1, 10], ['lamport94', 1, 10]], 'Markdown citations');
 eq(markdownGot.metadata, { title: 'A Markdown Paper', authors: ['Ada Lovelace', 'Charles Babbage'], keywords: ['markdown', 'writing'], date: '2026-10-25', abstract: 'A short abstract.' }, 'Markdown metadata');
 eq(
@@ -290,5 +290,15 @@ eq(
   { words: 20, wordsInText: 18, wordsInHeaders: 2, mathInline: 1, mathDisplay: 1 },
   'Markdown word count'
 );
+
+// a Markdown document across files: its include: files are scanned after it, each row at its own file
+const across = scanInsights([
+  { path: 'thesis/main.md', text: ['---', 'title: T', 'include: [ch/one.md]', '---', '', '# Start {#sec:start}', ''].join(NEWLINE) },
+  { path: 'thesis/ch/one.md', text: ['# One', '', '![A dot](dot.png){#fig:dot}', '', 'Cited [@knuth84].', ''].join(NEWLINE) },
+  { path: 'other.md', text: '# Not part of it' }
+], 'thesis/main.md');
+eq(across.headings.map((h) => [h.file, h.text]), [['thesis/main.md', 'Start'], ['thesis/ch/one.md', 'One']], 'Markdown headings across files');
+eq(across.labels.map((l) => [l.file, l.label, l.line]), [['thesis/main.md', 'sec:start', 6], ['thesis/ch/one.md', 'fig:dot', 3]], 'Markdown labels across files');
+eq(across.citations.map((c) => [c.file, c.key, c.line]), [['thesis/ch/one.md', 'knuth84', 5]], 'Markdown citations across files');
 
 console.log('insights: all checks passed');

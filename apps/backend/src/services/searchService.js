@@ -8,6 +8,7 @@ import { nativeWebSearch } from './llmService.js';
 import { extractJSON } from './transferAgent/utils.js';
 
 const TIMEOUT = 30_000;
+export const openAlexBase = () => (process.env.SPECTRUM_OPENALEX_BASE || 'https://api.openalex.org').replace(/\/+$/, '');
 
 export const SEARCH_PROVIDERS = ['llm', 'openalex', 'semanticscholar', 'serpapi', 'exa', 'tavily', 'brave', 'ddgs'];
 
@@ -111,7 +112,8 @@ export async function searchOpenAlex(query, limit = 5, apiKey = '', raw = false,
   });
   if (apiKey) params.set('api_key', apiKey);
   if (mailto) params.set('mailto', mailto);
-  const data = await getJson(`https://api.openalex.org/works?${params}`);
+  // tests point SPECTRUM_OPENALEX_BASE at a local stand-in
+  const data = await getJson(`${openAlexBase()}/works?${params}`);
   return (data.results || []).map((work) => {
     const words = [];
     for (const [word, positions] of Object.entries(work.abstract_inverted_index || {})) {

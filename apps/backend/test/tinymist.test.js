@@ -110,6 +110,7 @@ test('the bridge does the handshake, relays an editor’s messages and runs no c
   assert.deepEqual(start.args, ['lsp']);
   assert.equal(initialize.params.initializationOptions.exportPdf, 'never');
   assert.equal(initialize.params.initializationOptions.formatterMode, 'typstyle');
+  assert.deepEqual(initialize.params.initializationOptions.lint, { enabled: true, when: 'onType' });
   assert.deepEqual(received().find((m) => m.method === 'workspace/executeCommand').params, { command: 'tinymist.pinMain', arguments: [path.join(p.path, 'main.typ')] });
   await until(() => received().find((m) => m.id === 'config-1')?.result?.[0]?.exportPdf === 'never', 'answered the settings');
 
@@ -133,6 +134,16 @@ test('the bridge does the handshake, relays an editor’s messages and runs no c
   assert.equal((await editor.next((e) => e.data.method === 'tinymist/compileStatus', 'passed the status')).data.params.wordsCount.words, 3);
   assert.ok(!editor.events.some((e) => ['window/logMessage', 'tinymist/documentOutline'].includes(e.data.method)));
   assert.ok(received().filter((m) => m.method === 'workspace/executeCommand').every((m) => m.params.command === 'tinymist.pinMain'));
+
+  // the Live view: the preview's own page, which Tinymist serves, and nothing for a file outside the project
+  const live = await (await post(`/api/projects/${p.id}/tinymist/live`, { doc: 'main.typ', on: true })).json();
+  assert.match(live.url, /^http:\/\/127\.0\.0\.1:\d+\/$/);
+  assert.match(await (await fetch(live.url)).text(), /Fake preview/);
+  const started = received().filter((m) => m.params?.command === 'tinymist.doStartPreview');
+  assert.equal(started.length, 1);
+  assert.ok(started[0].params.arguments[0].includes('--invert-colors=never'));
+  assert.equal((await (await post(`/api/projects/${p.id}/tinymist/live`, { doc: 'main.typ', on: false })).json()).url, live.url, 'the same preview, not another');
+  assert.equal((await post(`/api/projects/${p.id}/tinymist/live`, { doc: '../x.typ', on: true })).status, 400);
 
   // when the editor goes, the file it had open goes back to the disk's text
   editor.close();
