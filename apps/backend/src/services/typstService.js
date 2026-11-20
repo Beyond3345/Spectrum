@@ -167,6 +167,11 @@ const NOTICE_MS = 500;
 const MARGIN_MS = 50;
 // a compile's diagnostics follow its status line at once: this long without more ends them
 const QUIET_MS = 30;
+// After its first compile Typst sets a watch on each file the document read, one at a time, and hears no change until
+// it is done (measured: Spectrum's handbook, 663 files, some 3 to 5 s; a 27-file thesis, none to speak of). A change it
+// misses within this long of that compile is put down to that, and the watcher is kept
+const WARM_MS = 2000;
+const WARM_PER_INPUT_MS = 15;
 const STATUS = /^\[[^\]]*\] (?:(compiling) \.\.\.|compiled (successfully|with warnings|with errors))/;
 
 // ended with the backend (or a test) however it exits normally; killAllChildren stops them at quit too
@@ -222,6 +227,7 @@ function startWatcher(root, key, executable, args, cwd, env) {
     const finish = () => {
       clearTimeout(quiet);
       w.compiling = false;
+      w.firstDone ??= Date.now();
       w.last = { outcome, startedAt: w.startedAt, finishedAt: Date.now(), log: lines.join('\n').replace(/^\n+|\n+$/g, '').slice(0, MAX_LOG_BYTES) };
       lines = null;
       wake();
@@ -278,6 +284,7 @@ async function lastChange(w) {
     return null;
   }
   if (!Array.isArray(inputs) || !inputs.length) return null;
+  w.inputs = inputs.length;
   let latest = 0;
   for (const rel of inputs) {
     const stat = await fs.stat(path.resolve(w.cwd, rel)).catch(() => null);
@@ -344,9 +351,14 @@ async function settle(w) {
         }
         if (changed === undefined) wait = 15;
         else {
-          // it missed a change (its folder was replaced, say): a new one next time
           if (Date.now() > changed + NOTICE_MS) {
-            stopWatcher(w);
+            // It missed a change, and this compile runs in a fresh Typst. While it was still setting its watches (see
+            // WARM_MS) that says nothing against it: it is kept, and hears the next change. Stopping it there would
+            // start another with the same deaf seconds ahead of it, compile after compile (Spectrum's handbook did).
+            // One that had its time and didn't hear a change made since is deaf (its folder was replaced, say): a
+            // new one next time
+            if (Date.now() < w.firstDone + Math.max(WARM_MS, (w.inputs || 0) * WARM_PER_INPUT_MS)) w.missed = changed;
+            else if (changed !== w.missed) stopWatcher(w);
             return null;
           }
           wait = Math.min(wait, changed + NOTICE_MS - Date.now());
