@@ -701,10 +701,12 @@ export const confinableTeX = (version) => /MiKTeX/i.test(version) || Number(Stri
 /**
  * Why a Windows preview of a draft isn't compiled, or null: version is pdflatex's --version, null when there is none
  * (Auto then compiles with Tectonic, as the user's own compile does). Its engines and helpers are the user's own compile's.
- * ponytail: Typst's own sandboxing on Windows is unexplored, and Markdown goes through pandoc on either engine
+ * Typst reads nothing outside its --root (the draft's copy) but fonts and packages, and runs nothing, on any system.
+ * ponytail: Markdown stays refused: pandoc reads any image or bibliography a draft names, which no TeX limit reaches
  */
 export function windowsPreviewRefusal(main, engine, version) {
-  if (/\.(typ|md|markdown)$/i.test(main)) return 'Preview PDF on Windows supports LaTeX drafts only for now.';
+  if (/\.(md|markdown)$/i.test(main)) return 'Preview PDF on Windows doesn’t compile Markdown drafts yet. Review its changes as text.';
+  if (/\.typ$/i.test(main)) return null;
   if (engine !== 'tectonic' && version != null && !confinableTeX(version)) return 'Preview PDF on Windows needs MiKTeX, or TeX Live 2025 or earlier: later TeX Live can’t limit what a compile reads, so the draft isn’t compiled. Review its changes as text.';
   return null;
 }
@@ -748,7 +750,7 @@ const reviewCompiles = new Set();
 /**
  * A folder as a PDF: { ok, pdf (base64, or null), log }, compiled into this computer's cache (under `name`), never into
  * the folder. On macOS inside isolation, where it can read nothing but the folder and TeX, the folder read-only and the
- * project (root) out of reach. On Windows as the user's own compile is there, with the same engines and helpers
+ * project (root) out of reach. On Windows a link-free copy of the folder, as the user's own compile is there, with the same engines and helpers
  * (Biber, latexmk, the index and glossary tools, Tectonic), but with no shell escape and TeX told to read and write
  * only below the folder (MiKTeX's AllowUnsafeInputFiles, TeX Live's openin_any before 2026), and with no preview where
  * TeX can't be told: TeX Live 2026 and later, and a MiKTeX whose own settings win over the preview's. The helpers are
@@ -764,12 +766,17 @@ async function compileIsolated({ root, workspace, name, main, engine, choices, c
   await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
   if (process.platform === 'win32') {
     // TeX's limits, checked where TeX runs: Tectonic (the user's own compile's engine when no TeX is installed) has none
-    const tex = engine === 'tectonic' || windowsPreviewRefusal(main, engine, null) ? null : await findExecutable('pdflatex');
+    const tex = engine === 'tectonic' || /\.(typ|md|markdown)$/i.test(main) ? null : await findExecutable('pdflatex');
     const version = tex ? (await execFileAsync(tex, ['--version'], { timeout: 20000, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout : null;
     const refused = windowsPreviewRefusal(main, engine, version);
     if (refused) return { ok: false, pdf: null, log: refused };
     if (/MiKTeX/i.test(version) && !(await mikTeXConfined())) return { ok: false, pdf: null, log: 'Spectrum couldn’t confirm that MiKTeX will limit what the compile reads, writes and runs (a setting in MiKTeX’s own configuration may take precedence), so the draft isn’t compiled. Review its changes as text.' };
-    const result = await compileFolder({ root: workspace, mainFile: main, engine, untrusted: true, buildDir: out, env: PREVIEW_TEX_ENV });
+    // outside isolation, so never the agent's own folder, where a link it made could lead TeX elsewhere: a copy made by
+    // the isolated reader, which refuses links and leaves hidden names out
+    const draft = await cachePath(root, 'agent-preview', `${name}-draft`);
+    await fs.rm(draft, { recursive: true, force: true });
+    for (const [rel, bytes] of Object.entries(await workspaceFiles(workspace))) await writeFileAtomic(safeJoin(draft, rel), bytes);
+    const result = await compileFolder({ root: draft, mainFile: main, engine, untrusted: true, buildDir: out, env: PREVIEW_TEX_ENV });
     return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
   }
   const { entry, env, reads } = await toolsLaunch();
