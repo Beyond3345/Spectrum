@@ -11,6 +11,7 @@ import { biberCache, biberDownload, builtInTectonic, installBiber, tectonicBiber
 import { SANDBOX_EXEC, blockedNotes, compileSandbox, confinement } from './compileSandbox.js';
 import { isTrusted } from './trustService.js';
 import { documentRecipe } from './buildRecipe.js';
+import { FORMAT_ENGINES, formatKey, preambleOf, prepareFormat, readyFormat, refuseFormat } from './preambleFormat.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
 import { cachePath, getProjectRoot } from './projectService.js';
@@ -69,6 +70,8 @@ const BIBTEX_BACKEND = /backend\s*=\s*bibtex/;
 const needsBiber = (tex) => BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex);
 // Tectonic's bundle or a package couldn't be fetched (the bundle's own panic says it isn't cached)
 const TECTONIC_DOWNLOAD = /failed to download|failure downloading|couldn't get it from the internet/i;
+// what a format that doesn't suit the pass ends in: pdfTeX's own errors, never a document's
+const FORMAT_FAULT = /pdfTeX error|\(pdf backend\)|Fatal format file error/i;
 const ENGINE_NAMES = { pdflatex: 'pdfLaTeX', xelatex: 'XeLaTeX', lualatex: 'LuaLaTeX', tectonic: 'Tectonic', latexmk: 'Latexmk' };
 // the built-in Tectonic's LaTeX (2021-11-15) can't load xjyutping 2, which needs 2023-11-01
 const XJYUTPING_ENGINE_ERROR = 'Jyutping (xjyutping) needs XeLaTeX or LuaLaTeX from a TeX installation, and the built-in Tectonic’s LaTeX is too old for it. Install MacTeX, TeX Live or MiKTeX, or choose its folder in Settings › Engines › LaTeX.';
@@ -129,8 +132,9 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
       // draft: images drawn as boxes, which the first line passes to graphicx; the file it inputs still names the job.
       // ponytail: a name TeX would read as code (with %, # or braces) keeps its images
       const input = draft && !/[\\{}%#&~^$]/.test(mainFile) ? `${DRAFT_IMAGES}\\input{${mainFile}}` : mainFile;
-      // extra: the document's own options (buildRecipe.js), last before the file
-      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, shell, `-output-directory=${outDir}`, ...(options.extra ?? []), input] };
+      // extra: the document's own options (buildRecipe.js), last before the file; format: the precompiled preamble's
+      // (preambleFormat.js)
+      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, shell, `-output-directory=${outDir}`, ...(options.format ? [`-fmt=${options.format}`] : []), ...(options.extra ?? []), input] };
     }
     case 'latexmk':
       // -norc: a project's own latexmkrc is Perl, which could run anything. ponytail: in draft mode latexmk draws
@@ -227,6 +231,8 @@ const jobs = new AsyncLocalStorage();
 export const currentJob = () => jobs.getStore();
 const running = new Map();
 const stopped = () => jobs.getStore()?.stopped === true;
+/** fn() as work of Spectrum's own behind a compile, at low priority: no compile's Stop ends it, quitting does. */
+export const inBackground = (fn, searchPath) => jobs.run({ stopped: false, children: new Set(), searchPath, lowPriority: true }, fn);
 
 // Stops asked for before their compile had started (the editor saves first), kept for a minute
 const stoppedEarly = new Set();
@@ -767,7 +773,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // as seen from the main file's folder and from the project root.
   // Other documents' kept .aux go in it too, where TeX looks first, for \externaldocument to find.
   const others = new Map(); // where each copy went, and its mtime then
-  for (const item of await listFilesRecursive(projectRoot)) {
+  const projectFiles = await listFilesRecursive(projectRoot);
+  for (const item of projectFiles) {
     if (item.type === 'dir') {
       await ensureDir(path.join(outDir, item.path));
       const fromMain = path.relative(mainDir, path.join(projectRoot, item.path));
@@ -799,7 +806,16 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   if (held) await fs.writeFile(path.join(held, LATEXMK_COPIES), JSON.stringify([...others]));
 
   const input = copy ? slashed(copy.main) : `./${mainName}`;
-  const { cmd, args } = buildCommand(engine, slashed(outDir), input, { ...options, extra: recipe.options });
+  // The precompiled preamble (preambleFormat.js), for a full pdfLaTeX compile of the document as it is, with Spectrum's
+  // own passes: not a draft, a copy with the page colour's or Jyutping's lines, a Markdown document's LaTeX, nor one
+  // with a recipe or engine options of its own. format: one made and tried for the preamble as it is now, or null
+  const preamble = options.precompile && FORMAT_ENGINES.includes(engine) && multiPass && cache && !options.draft && !copy && !options.markdownSource && !recipe.options.length ? preambleOf(tex) : null;
+  const shell = options.untrusted ? '-no-shell-escape' : options.trusted ? '-shell-escape' : '-shell-restricted';
+  const formatOf = preamble && { preamble, dir: path.join(cache, 'build-files', doc, `${engine}.format`), key: await formatKey({ preamble, mainName, shell, env: texEnv, files: projectFiles }), projectRoot };
+  const format = formatOf && !options.noFormat ? await readyFormat(formatOf) : null;
+  if (format) pushLog(Buffer.from(`[spectrum] This compile starts from a format of the preamble, made when the preamble last changed. The preamble’s own log, from then:\n${format.log}\n`));
+  const commandFor = (dir, fmt) => buildCommand(engine, slashed(dir), input, { ...options, extra: recipe.options, format: fmt && slashed(fmt) });
+  const { cmd, args } = commandFor(outDir, format?.file);
   // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
   const limit = PASS_TIMEOUT_MS[engine] || DEFAULT_PASS_TIMEOUT_MS;
   if (engine === 'tectonic') {
@@ -811,7 +827,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // MiKTeX asks before installing a missing package, in a window the hidden engine never shows, so the
   // compile would sit until its time limit; this installs it without asking. ponytail: latexmk's own
   // engine runs still ask; pass -pdflatex="pdflatex --enable-installer %O %S" if that bites
-  if (WINDOWS && multiPass && /[\\/]miktex[\\/]/i.test((await findExecutable(cmd)) || '')) args.unshift('--enable-installer');
+  const miktex = WINDOWS && multiPass && /[\\/]miktex[\\/]/i.test((await findExecutable(cmd)) || '');
+  if (miktex) args.unshift('--enable-installer');
   // the generated file's base for a Markdown document (main.md.tex), so the engine's log and PDF keep its name
   const base = path.basename(absMain, path.extname(absMain));
   // the whole log of the pass just run, which the log sent back may have cut short
@@ -879,6 +896,14 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   } catch (err) {
     await clean();
     return { ok: false, error: `${engine} isn’t available: ${err.message}` };
+  }
+  // a pass that started from the format and ended in an error of pdfTeX's own, or made no PDF: once more without it,
+  // and where that compiles, the format is never used again
+  if (format && !retry && pass.code !== 0 && !pass.timedOut && !stopped() && (FORMAT_FAULT.test(logChunks.join('')) || !(await exists(path.join(outDir, `${base}.pdf`))))) {
+    await clean();
+    const again = await compileWith(engine, projectRoot, absMain, mainFile, { ...options, noFormat: true });
+    if (again.status === 0) await refuseFormat(formatOf);
+    return again;
   }
   if (retry) {
     // a kept file TeX choked on (one from an older package version, say) never locks the document out
@@ -957,6 +982,10 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   } finally {
     // only a build without errors is built on, as for the other engines
     await clean(code === 0);
+  }
+  // a format for this preamble, made and tried behind this compile, for the next one
+  if (formatOf && !format && !options.noFormat && code === 0) {
+    prepareFormat({ ...formatOf, mainDir, mainName, base, shell, env: texEnv, trusted: !!options.trusted, store, passArgs: commandFor, first: miktex ? ['--enable-installer'] : [] });
   }
   const pdfPath = docPath(projectRoot, absPdf);
   return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0, ...(pdfStale && { pdfStale }), ...notice };
@@ -1118,7 +1147,7 @@ async function auxWithInputs(outDir, rel, seen = new Set()) {
 }
 
 /** The files of the kind a compile keeps in outDir, with their bytes, to tell whether a pass changed any. */
-async function keptFiles(outDir) {
+export async function keptFiles(outDir) {
   const files = new Map();
   for (const { path: rel, type } of await listFilesRecursive(outDir)) {
     if (type === 'file' && keptFile(rel) && !rel.endsWith(BIB_RECORD)) files.set(rel, await fs.readFile(path.join(outDir, rel)));

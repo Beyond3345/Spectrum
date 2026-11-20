@@ -311,3 +311,185 @@ test('the system check never holds the server up, and runs a program that worked
     await app.close();
   }
 });
+
+// ─── the precompiled preamble ───
+
+const { formatsSettled, pdfObjects, preambleOf, samePages } = await import('../src/services/preambleFormat.js');
+const FROM_FORMAT = /This compile starts from a format of the preamble/;
+const fmtDir = (p) => path.join(dataDir, 'cache', p.id, 'build-files', 'main.tex', 'pdflatex.format');
+const fmtState = async (p) => JSON.parse(await fs.readFile(path.join(fmtDir(p), 'state.json'), 'utf8').catch(() => 'null'))?.status ?? null;
+const pre = (p, options = {}) => compile(p, { precompile: true, ...options });
+// a compile, then the format it asked for behind it made and tried
+const preSettled = async (p, options) => {
+  const result = await pre(p, options);
+  await formatsSettled();
+  return result;
+};
+const notes = (body, preamble = '') => [
+  '\\documentclass{article}',
+  '\\usepackage{amsmath,graphicx,xcolor}',
+  '\\usepackage[hidelinks]{hyperref}',
+  preamble,
+  '\\begin{document}',
+  '\\tableofcontents',
+  '\\section{One}\\label{one}',
+  body,
+  '\\end{document}',
+  ''
+].join('\n');
+const pages = (result) => Buffer.from(result.pdf, 'base64');
+
+test('the preamble of a main file ends at its \\begin{document}, and some files have none to precompile', () => {
+  assert.equal(preambleOf('\\documentclass{article}\n\\usepackage{x}\n\\begin{document}\nHi\n\\end{document}\n'), '\\documentclass{article}\n\\usepackage{x}\n');
+  assert.equal(preambleOf('\\documentclass{article}\n% \\begin{document}\n\\newcommand{\\x}{1\\%}\\begin{document}Hi'), '\\documentclass{article}\n% \\begin{document}\n\\newcommand{\\x}{1\\%}');
+  assert.equal(preambleOf('\\documentclass{article}\n\\input{body}\n'), null, 'the document begins in another file');
+  assert.equal(preambleOf('\\input{preamble}\n\\begin{document}Hi\\end{document}'), null, 'no \\documentclass of its own');
+  assert.equal(preambleOf('%&myformat\n\\documentclass{article}\\begin{document}Hi\\end{document}'), null, 'a format of its own');
+});
+
+test('a format of the preamble is made behind the first compile and used from the next, with the same pages and files', { skip: needs('pdflatex') }, async () => {
+  const p = await newProject({ 'main.tex': notes('Words \\textcolor{blue}{in blue} and $a^2+b^2$, see Section~\\ref{one}.') });
+  const first = await pre(p);
+  assert.equal(first.status, 0, first.log);
+  assert.doesNotMatch(first.log, FROM_FORMAT, 'none yet');
+  await formatsSettled();
+  assert.equal(await fmtState(p), 'ready');
+  const second = await pre(p);
+  assert.equal(second.status, 0, second.log);
+  assert.match(second.log, FROM_FORMAT);
+  assert.equal(passes(second.log), 2, 'the banner of the pass the format was made in, and one pass');
+  assert.match(second.log, /\(preloaded format=main /);
+  // the preamble's own log comes with it, so its warnings are still listed
+  assert.match(second.log, /hyperref\.sty/);
+  // the same pages as a compile without it, and the same kept files
+  const plain = await compile(p, { precompile: false });
+  assert.doesNotMatch(plain.log, FROM_FORMAT);
+  assert.ok(samePages(pages(second), pages(plain)), 'the pages match');
+  assert.ok(pdfObjects(pages(second)).size > 5);
+  // an edit to the text still starts from the format, and is in the PDF
+  await write(p, 'main.tex', notes('Other words, see Section~\\ref{one}.'));
+  const edit = await pre(p);
+  assert.match(edit.log, FROM_FORMAT);
+  assert.ok(!samePages(pages(edit), pages(second)), 'the new text is there');
+  assert.ok(samePages(pages(edit), pages(await compile(p, { precompile: false }))));
+  // SyncTeX still knows the lines of the main file
+  assert.ok(existsSync(path.join(dataDir, 'cache', p.id, 'synctex')));
+});
+
+test('a format is not used once anything it was made from has changed, and another is made', { skip: needs('pdflatex') }, async () => {
+  const body = 'Words \\mine{} and \\theirs{}.';
+  const p = await newProject({
+    'main.tex': notes(body, '\\usepackage{mystyle}\n\\input{macros}'),
+    'mystyle.sty': '\\ProvidesPackage{mystyle}\n\\newcommand{\\mine}{first}\n',
+    'macros.tex': '\\newcommand{\\theirs}{first}\n'
+  });
+  const usedNext = async (what, options) => {
+    assert.match((await pre(p, options)).log, FROM_FORMAT, `used: ${what}`);
+  };
+  // after a change: the compile right after it runs the whole preamble, and is right; the one after that has a new format
+  const remade = async (what, options) => {
+    const after = await preSettled(p, options);
+    assert.equal(after.status, 0, after.log);
+    assert.doesNotMatch(after.log, FROM_FORMAT, `not used after ${what}`);
+    assert.ok(samePages(pages(after), pages(await compile(p, { ...options, precompile: false }))), `right after ${what}`);
+    await usedNext(what, options);
+  };
+  await preSettled(p);
+  await usedNext('nothing changed');
+
+  await write(p, 'main.tex', notes(body, '\\usepackage{mystyle}\n\\input{macros}\n\\newcommand{\\more}{more}'));
+  await remade('a changed preamble');
+  await write(p, 'mystyle.sty', '\\ProvidesPackage{mystyle}\n\\newcommand{\\mine}{second}\n');
+  await remade('a changed package of the project’s');
+  await write(p, 'macros.tex', '\\newcommand{\\theirs}{second}\n');
+  await remade('a changed file the preamble inputs');
+  await write(p, 'hyperref.cfg', '% found before TeX’s own\n');
+  await remade('a new file TeX would find first');
+  await setTrusted(p.id, p.path, true);
+  await remade('the project trusted');
+  await setTrusted(p.id, p.path, false);
+  await remade('the project confined again');
+
+  // never for what a format wasn't made for: a draft, the page colour, another engine, the document's own options
+  assert.doesNotMatch((await pre(p, { draft: true })).log, FROM_FORMAT);
+  assert.doesNotMatch((await pre(p, { pageColour: '#fdf6e3' })).log, FROM_FORMAT);
+  if (tools.xelatex) assert.doesNotMatch((await pre(p, { engine: 'xelatex' })).log, FROM_FORMAT);
+  await formatsSettled();
+  assert.ok(!existsSync(path.join(dataDir, 'cache', p.id, 'build-files', 'main.tex', 'xelatex.format')));
+  await usedNext('after those');
+  const source = await fs.readFile(path.join(p.path, 'main.tex'), 'utf8');
+  await write(p, 'main.tex', '% !TEX options = -8bit\n' + source);
+  assert.doesNotMatch((await preSettled(p)).log, FROM_FORMAT);
+  assert.doesNotMatch((await pre(p)).log, FROM_FORMAT, 'with engine options of its own');
+  await write(p, 'main.tex', '% !TEX recipe = pdflatex; pdflatex\n' + source);
+  assert.doesNotMatch((await preSettled(p)).log, FROM_FORMAT);
+  assert.doesNotMatch((await pre(p)).log, FROM_FORMAT, 'with a recipe of its own');
+  // Recompile from scratch clears it with the other kept files
+  await write(p, 'main.tex', source);
+  await preSettled(p);
+  await usedNext('back to Spectrum’s own passes');
+  assert.doesNotMatch((await pre(p, { fresh: true })).log, FROM_FORMAT);
+});
+
+test('a preamble a format can’t carry is found out before the format is ever used', { skip: needs('pdflatex') }, async () => {
+  // a colour set in the preamble is lost in a format: the two trial passes differ, twice, and that is the end of it
+  const red = await newProject({ 'main.tex': notes('Red from the preamble.', '\\color{red}') });
+  for (let i = 0; i < 3; i += 1) {
+    const result = await preSettled(red);
+    assert.doesNotMatch(result.log, FROM_FORMAT);
+    assert.ok(samePages(pages(result), pages(await compile(red, { precompile: false }))));
+  }
+  assert.equal(await fmtState(red), 'differs');
+  // an image put in a box in the preamble is a PDF object the format doesn't hold
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const boxed = await newProject({ 'main.tex': notes('Logo \\usebox\\logo.', '\\newsavebox\\logo\\sbox\\logo{\\includegraphics{dot.png}}') });
+  await fs.writeFile(path.join(boxed.path, 'dot.png'), PNG);
+  assert.equal((await preSettled(boxed)).status, 0);
+  assert.equal(await fmtState(boxed), 'refused');
+  assert.doesNotMatch((await pre(boxed)).log, FROM_FORMAT);
+});
+
+test('a pass that fails with an error of pdfTeX’s own under a format runs again without it, and the format is dropped', { skip: needs('pdflatex') }, async () => {
+  const p = await newProject({ 'main.tex': notes('Words.') });
+  await preSettled(p);
+  assert.match((await pre(p)).log, FROM_FORMAT);
+  // a format that no longer suits the engine (as after an update the key didn't see)
+  await fs.writeFile(path.join(fmtDir(p), 'main.fmt'), 'not a format');
+  const saved = await pre(p);
+  assert.equal(saved.status, 0, saved.log);
+  assert.doesNotMatch(saved.log, FROM_FORMAT);
+  assert.equal(await fmtState(p), 'refused');
+  // an error of the document's own is the document's: the format stays
+  const q = await newProject({ 'main.tex': notes('Words.') });
+  await preSettled(q);
+  await write(q, 'main.tex', notes('Words \\undefinedthing.'));
+  const broken = await pre(q);
+  assert.notEqual(broken.status, 0);
+  assert.match(broken.log, FROM_FORMAT);
+  assert.equal(passes(broken.log.split('The preamble’s own log')[1]), 2, 'the format’s own pass and the one it was made in, and no third');
+  assert.equal(await fmtState(q), 'ready');
+});
+
+test('an edit saved while a format is being made neither spoils it nor gets into it', { skip: needs('pdflatex') }, async () => {
+  const doc = (word, body) => notes(`${body} \\word.`, `\\newcommand{\\word}{${word}}`);
+  // the text edited while the format is made and tried: it is tried on the project as it was, and is ready
+  const p = await newProject({ 'main.tex': doc('old', 'First words') });
+  assert.equal((await pre(p)).status, 0);
+  await write(p, 'main.tex', doc('old', 'Second words'));
+  await formatsSettled();
+  assert.equal(await fmtState(p), 'ready');
+  const next = await pre(p);
+  assert.match(next.log, FROM_FORMAT);
+  assert.ok(samePages(pages(next), pages(await compile(p, { precompile: false }))));
+
+  // the preamble edited while it is made: whichever preamble the copy caught, no format ever holds another's
+  const q = await newProject({ 'main.tex': doc('old', 'Words') });
+  assert.equal((await pre(q)).status, 0);
+  await write(q, 'main.tex', doc('new', 'Words'));
+  await formatsSettled();
+  for (const word of ['old', 'new', 'old']) {
+    await write(q, 'main.tex', doc(word, 'Words'));
+    const result = await preSettled(q);
+    assert.ok(samePages(pages(result), pages(await compile(q, { precompile: false }))), `the pages of “${word}”`);
+  }
+});

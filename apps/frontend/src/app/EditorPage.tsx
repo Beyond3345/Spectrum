@@ -1887,6 +1887,7 @@ function Editor({ projectId }: { projectId: string }) {
         haltOnError: options.haltOnError,
         bibTool: options.bibTool,
         draft: options.draft,
+        precompile: options.precompile,
         fresh: opts.fresh,
         texFolder: settings.texFolder || undefined,
         xjyutpingFolder: settings.xjyutpingFolder || undefined,

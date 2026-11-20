@@ -284,6 +284,44 @@ test('a compile is confined and has restricted shell escape until its project is
   assert.equal(existsSync(process.env.OUTSIDE_FILE), false, 'confined again');
 });
 
+test('what a compile keeps to be quicker is made inside the same confinement: latexmk’s folder, and a format of the preamble', { skip }, async () => {
+  const { formatsSettled } = await import('../src/services/preambleFormat.js');
+  const p = await project('Kept');
+  // a latexmk that tries the copy kept beside its folder, the folder above it and a file elsewhere
+  await fs.writeFile(path.join(tmp, 'bin', 'latexmk'), [
+    '#!/bin/sh',
+    'for a in "$@"; do case "$a" in -outdir=*) out="${a#-outdir=}";; esac; done',
+    'for f in "$out.last/main.aux" "$out/../planted.txt" "$OUTSIDE_FILE"; do if echo x > "$f"; then echo "WROTE $f"; fi; done 2>/dev/null',
+    'echo kept > "$out/main.aux"',
+    'echo "This is fake TeX" > "$out/main.log"',
+    "printf '%%PDF-1.4\\n%%%%EOF\\n' > \"$out/main.pdf\"",
+    ''
+  ].join('\n'), { mode: 0o755 });
+  await fs.rm(process.env.OUTSIDE_FILE, { force: true });
+  const folder = path.join(DATA_DIR, 'cache', p.id, 'build-files', 'main.tex', 'latexmk');
+  for (let i = 0; i < 3; i += 1) {
+    const result = await compile(p, { engine: 'latexmk' });
+    assert.ok(result.ok, result.error || result.log);
+    assert.doesNotMatch(result.log, /WROTE/);
+    // its own folder it writes, and that is what the next compile builds on
+    assert.equal(await fs.readFile(path.join(folder, 'main.aux'), 'utf8'), 'kept\n');
+  }
+  assert.equal(existsSync(process.env.OUTSIDE_FILE), false);
+  assert.equal(existsSync(path.join(folder, '..', 'planted.txt')), false);
+
+  // the passes that make and try a format run behind the compile, and are confined too (the stand-in pdflatex tries
+  // to write outside on every run, and makes no format, so none is ever used)
+  for (let i = 0; i < 2; i += 1) {
+    const result = await compile(p, { precompile: true });
+    assert.ok(result.ok, result.error || result.log);
+    await formatsSettled();
+    assert.equal(existsSync(process.env.OUTSIDE_FILE), false, 'confined behind the compile too');
+    assert.doesNotMatch(result.log, /-fmt=/);
+  }
+  const state = JSON.parse(await fs.readFile(path.join(DATA_DIR, 'cache', p.id, 'build-files', 'main.tex', 'pdflatex.format', 'state.json'), 'utf8'));
+  assert.equal(state.status, 'refused');
+});
+
 test('trust is kept in the data folder, and a copied, moved or replaced folder doesn’t inherit it', async () => {
   const p = await createProject({ name: 'Mine', populate: (root) => fs.writeFile(path.join(root, 'main.tex'), 'x') });
   const before = await fs.readdir(path.join(p.path, '.spectrum'));

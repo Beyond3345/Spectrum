@@ -24,7 +24,7 @@ const docOrMain = async (root, doc) => doc ?? ((await readMeta(root)).mainFile |
 export function registerCompileRoutes(fastify) {
   // the options are each optional: an editor from before them compiles as it always did
   fastify.post('/api/compile', async (req) => {
-    const { projectId, mainFile = 'main.tex', engine = 'pdflatex', compileId, haltOnError, bibTool = 'auto', draft, fresh, texFolder, xjyutpingFolder, checkpoint, typstInputs, typstVersion, markdownEngine, pageColour } = req.body || {};
+    const { projectId, mainFile = 'main.tex', engine = 'pdflatex', compileId, haltOnError, bibTool = 'auto', draft, fresh, texFolder, xjyutpingFolder, checkpoint, typstInputs, typstVersion, markdownEngine, pageColour, precompile } = req.body || {};
     if (!projectId) {
       return { ok: false, error: 'Missing projectId.' };
     }
@@ -57,6 +57,8 @@ export function registerCompileRoutes(fastify) {
       haltOnError: haltOnError === true,
       bibTool,
       draft: draft === true,
+      // Precompile the preamble (Settings › Engines › LaTeX): preambleFormat.js
+      precompile: precompile === true,
       fresh: fresh === true,
       texFolder: typeof texFolder === 'string' ? texFolder : undefined,
       // a folder holding the user's own xjyutping, used in place of Spectrum's when it holds the package

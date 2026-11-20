@@ -286,6 +286,8 @@ export interface CompileOptions {
   draft?: boolean;
   /** TexLab's syntax check before compiling (the editor runs it) */
   syntaxCheck?: boolean;
+  /** a pdfLaTeX pass starts from a format of the preamble, once one made behind a compile gave the same pages */
+  precompile?: boolean;
   /** the Typst version a Typst project pins ('' is the built-in one) */
   typstVersion?: string;
   /** the PDF engine a Markdown project compiles through */
@@ -771,6 +773,8 @@ export function compileProject(payload: {
   haltOnError?: boolean;
   bibTool?: BibTool;
   draft?: boolean;
+  /** Precompile the preamble (Settings › Engines › LaTeX) */
+  precompile?: boolean;
   fresh?: boolean;
   texFolder?: string;
   checkpoint?: boolean;
