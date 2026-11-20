@@ -1,17 +1,28 @@
 // The network gate for isolated processes: a host on the list is reached and one off it refused, with stand-in
-// servers on this computer named through the gate itself. No network. The native half runs Spectrum's own Node inside
-// the macOS profile.
-import { test } from 'node:test';
+// servers on this computer named through the gate itself. No network. The native half runs Spectrum's own Node, a
+// fixture agent and a fixture MCP server inside the macOS profile.
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { promises as fs, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import https from 'node:https';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import tls from 'node:tls';
-import { cleanHost, cleanHosts, helloName, hostAllowed, nameStandIn, openGate, thisComputer } from '../src/services/agentNetwork.js';
-import { sandboxProfile, spawnAgentProcess } from '../src/services/agentSandbox.js';
+import { fileURLToPath } from 'node:url';
+
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'spectrum-agent-network-')));
+Object.assign(process.env, { SPECTRUM_DATA_DIR: path.join(tmp, 'data'), SPECTRUM_PROJECTS_DIR: path.join(tmp, 'projects') });
+const { cleanHost, cleanHosts, helloName, hostAllowed, nameStandIn, openGate, thisComputer, SCHOLARLY_HOSTS } = await import('../src/services/agentNetwork.js');
+const { sandboxProfile, spawnAgentProcess } = await import('../src/services/agentSandbox.js');
+const { PROFILES, agentConfigs, agentEntry, allowAgentHost, agentHome, launchOptions, networkOf, profileFor, recordTest, saveAgentConfig } = await import('../src/services/agentProfiles.js');
+const fixtures = fileURLToPath(new URL('./fixtures/', import.meta.url));
+after(async () => {
+  const { shutdownAgents } = await import('../src/services/agentSessionService.js');
+  await shutdownAgents();
+  rmSync(tmp, { recursive: true, force: true });
+});
 
 const native = process.platform === 'darwin' && process.env.SPECTRUM_NATIVE_AGENT_TESTS === '1';
 
@@ -119,17 +130,24 @@ test('a profile with a gate opens that port and nothing else of the network', ()
   assert.doesNotMatch(offline, /network-outbound/);
 });
 
-test('inside isolation, a program reaches a listed host through the gate and nothing else', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.', timeout: 60000 }, async () => {
-  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-network-')));
-  const key = path.join(root, 'key.pem'), cert = path.join(root, 'home', 'stand-in.pem');
-  await fs.mkdir(path.join(root, 'home', 'tmp'), { recursive: true }); await fs.mkdir(path.join(root, 'work'));
-  // a certificate for the stand-ins, made here and trusted only by the script below
-  execFileSync('/usr/bin/openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-subj', '/CN=listed.test', '-days', '2', '-addext', 'subjectAltName=DNS:listed.test,DNS:unlisted.test'], { stdio: 'ignore' });
-  const server = https.createServer({ key: await fs.readFile(key), cert: await fs.readFile(cert) }, (req, res) => res.end(`stand-in for ${req.headers.host}`));
+/** HTTPS stand-ins on this computer for names, with a certificate made here (left at cert for whoever must trust it): { port, close }. */
+async function standIns(names, cert, answer = (req, res) => res.end(`stand-in for ${req.headers.host}`)) {
+  const key = path.join(tmp, `key-${names[0]}.pem`);
+  await fs.mkdir(path.dirname(cert), { recursive: true });
+  execFileSync('/usr/bin/openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-subj', `/CN=${names[0]}`, '-days', '2', '-addext', `subjectAltName=${names.map((n) => `DNS:${n}`).join(',')}`], { stdio: 'ignore' });
+  const server = https.createServer({ key: await fs.readFile(key), cert: await fs.readFile(cert) }, answer);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const port = server.address().port;
-  nameStandIn('listed.test', port);
-  nameStandIn('unlisted.test', port);
+  for (const name of names) nameStandIn(name, server.address().port);
+  return { port: server.address().port, close: () => { for (const name of names) nameStandIn(name); server.closeAllConnections(); return new Promise((resolve) => server.close(resolve)); } };
+}
+const skip = !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.';
+
+test('inside isolation, a program reaches a listed host through the gate and nothing else', { skip, timeout: 60000 }, async () => {
+  const root = path.join(tmp, 'program');
+  await fs.mkdir(path.join(root, 'home', 'tmp'), { recursive: true }); await fs.mkdir(path.join(root, 'work'));
+  const cert = path.join(root, 'home', 'stand-in.pem');
+  const standIn = await standIns(['listed.test', 'unlisted.test'], cert);
+  const port = standIn.port;
   try {
     const script = `
       const net = require('node:net'), { spawnSync } = require('node:child_process');
@@ -138,7 +156,7 @@ test('inside isolation, a program reaches a listed host through the gate and not
       (async () => console.log(JSON.stringify({
         listed: await get('https://listed.test/'),
         unlisted: await get('https://unlisted.test/'),
-        plain: (await get('http://listed.test/')).slice(0, 3),
+        plain: (await get('http://listed.test/')).startsWith('200'),
         curl: spawnSync('/usr/bin/curl', ['-sS', '--cacert', process.env.NODE_EXTRA_CA_CERTS, 'https://listed.test/']).stdout.toString(),
         curlUnlisted: spawnSync('/usr/bin/curl', ['-sS', '-o', '/dev/null', '-w', '%{http_connect}', 'https://unlisted.test/']).stdout.toString(),
         standIn: await socket(${port}, '127.0.0.1'),
@@ -153,10 +171,123 @@ test('inside isolation, a program reaches a listed host through the gate and not
     child.stdout.on('data', (c) => output += c); child.stderr.on('data', (c) => errors += c);
     assert.equal(await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', resolve); }), 0, errors);
     assert.deepEqual(JSON.parse(output), {
-      listed: '200 stand-in for listed.test', unlisted: 'failed', plain: '403',
+      listed: '200 stand-in for listed.test', unlisted: 'failed', plain: false,
       curl: 'stand-in for listed.test', curlUnlisted: '403',
       standIn: 'EPERM', elsewhere: 'EPERM', resolver: 'EPERM', lookup: 'ENOTFOUND'
     });
     assert.deepEqual([...new Set(refused)], ['unlisted.test']);
-  } finally { nameStandIn('listed.test'); nameStandIn('unlisted.test'); await new Promise((resolve) => server.close(resolve)); await fs.rm(root, { recursive: true, force: true }); }
+  } finally { await standIn.close(); }
+});
+
+test('each agent has its provider’s hosts; only one whose documentation is sure starts held to them', () => {
+  for (const p of PROFILES.filter((p) => !p.planned)) {
+    assert.ok(p.hosts.length && p.hosts.every((h) => cleanHost(h) === h), `${p.id} names its provider’s hosts`);
+  }
+  assert.deepEqual(PROFILES.filter((p) => p.network === 'hosts').map((p) => p.id), ['claude']);
+  const claude = networkOf(profileFor('claude'));
+  assert.deepEqual({ mode: claude.mode, provider: claude.provider, tools: claude.tools, hosts: claude.hosts }, { mode: 'hosts', provider: ['api.anthropic.com'], tools: SCHOLARLY_HOSTS, hosts: [] });
+  assert.equal(claude.enforced, process.platform === 'darwin');
+  // the two the owner's tests left as they are: any host, with the list ready
+  for (const id of ['deepseek', 'codex']) assert.equal(networkOf(profileFor(id)).mode, 'any', id);
+  assert.deepEqual(networkOf(profileFor('deepseek')).provider, ['api.deepseek.com']);
+  // a saved choice that is no choice, and hosts that are no hosts, fall back
+  assert.deepEqual(networkOf(profileFor('codex'), { network: { mode: 'everything', hosts: ['x.example.com', 'localhost', 5] } }), { ...networkOf(profileFor('codex')), hosts: ['x.example.com'] });
+});
+
+test('an agent’s network setting: saved only where it differs, a list checked, a Test kept for an added host', async () => {
+  const fixture = path.join(fixtures, 'acp-agent.mjs');
+  await saveAgentConfig('qoder', { command: process.execPath, args: [fixture], runtimePaths: [fixtures] });
+  const home = await agentHome('qoder');
+  const launch = () => launchOptions('qoder', { workspace: path.join(home, 'tmp'), home });
+  let options = await launch();
+  assert.equal(options.network, 'any');
+  assert.equal(options.hosts, undefined, 'on any host there is no list, and so no gate');
+  assert.equal((await agentConfigs()).qoder.network, undefined, 'the profile’s own choice is not saved');
+  await recordTest('qoder', { ok: true, code: 'ready', program: options.program }, { setup: options.setup });
+
+  await assert.rejects(saveAgentConfig('qoder', { network: { mode: 'hosts', hosts: ['fine.example.com', 'not a host'] } }), /“not a host” is not a host name/);
+  await assert.rejects(saveAgentConfig('qoder', { network: { mode: 'sometimes' } }), /Invalid network settings/);
+  await saveAgentConfig('qoder', { network: { mode: 'hosts', hosts: ['https://Models.Example.com/v1'] } });
+  assert.deepEqual((await agentConfigs()).qoder.network, { mode: 'hosts', hosts: ['models.example.com'] });
+  assert.equal((await agentConfigs()).qoder.test, undefined, 'held to a list, it is to be tested again');
+  options = await launch();
+  if (process.platform === 'darwin') {
+    assert.equal(options.network, 'hosts');
+    assert.deepEqual(await options.hosts(), [...profileFor('qoder').hosts, ...SCHOLARLY_HOSTS, 'models.example.com']);
+    await recordTest('qoder', { ok: true, code: 'ready', program: options.program }, { setup: options.setup });
+    // a host allowed from a session: on the list at once, and the Test stands
+    assert.equal(await allowAgentHost('qoder', 'Extra.Example.com:443'), 'extra.example.com');
+    assert.ok((await options.hosts()).includes('extra.example.com'));
+    assert.equal((await agentConfigs()).qoder.test?.code, 'ready');
+    assert.equal((await launch()).setup, options.setup);
+  } else assert.equal(options.network, 'any', 'only macOS can hold an agent to a list');
+  await assert.rejects(allowAgentHost('qoder', '127.0.0.1'), /not a host name/);
+  const entry = await agentEntry('qoder');
+  assert.equal(entry.network.mode, 'hosts');
+  assert.ok(entry.network.hosts.includes('models.example.com'));
+  // other settings keep the list, and back on any host only the added hosts stay saved
+  await saveAgentConfig('qoder', { runtimePaths: [fixtures] });
+  assert.equal((await agentConfigs()).qoder.network.mode, 'hosts');
+  await saveAgentConfig('qoder', { network: { mode: 'any' } });
+  assert.equal((await agentConfigs()).qoder.network.mode, undefined);
+  assert.ok((await agentConfigs()).qoder.network.hosts.includes('models.example.com'));
+  assert.equal((await launch()).hosts, undefined);
+});
+
+test('Claude Agent held to its list leaves out its telemetry and update checks; on any host it starts as before', async () => {
+  const fixture = path.join(fixtures, 'acp-agent.mjs');
+  await saveAgentConfig('claude', { command: process.execPath, args: [fixture], runtimePaths: [fixtures] });
+  const home = await agentHome('claude');
+  const listed = await launchOptions('claude', { workspace: path.join(home, 'tmp'), home });
+  assert.equal(listed.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, process.platform === 'darwin' ? '1' : undefined);
+  await saveAgentConfig('claude', { network: { mode: 'any' } });
+  const open = await launchOptions('claude', { workspace: path.join(home, 'tmp'), home });
+  assert.equal(open.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, undefined);
+  assert.equal(open.hosts, undefined);
+});
+
+test('a session’s agent held to its list: Spectrum’s tools reach the scholarly sites, a refused host is shown once and allowed in one step', { skip, timeout: 120000 }, async () => {
+  const { createProject } = await import('../src/services/projectService.js');
+  const { newAgentRun, getAgentRun, promptAgent, allowSessionHost } = await import('../src/services/agentSessionService.js');
+  const fixture = path.join(fixtures, 'acp-tools-agent.mjs');
+  const found = await fs.readFile(path.join(fixtures, 'scholarly', 'openalex-search-attention.json'));
+  const asked = [];
+  const cert = path.join(tmp, 'session-stand-in.pem');
+  const standIn = await standIns(['api.openalex.org', 'unlisted.test'], cert, (req, res) => { asked.push(`${req.headers.host}${req.url.split('?')[0]}`); res.end(req.headers.host === 'api.openalex.org' ? found : 'stand-in'); });
+  try {
+    const project = await createProject({ name: 'Network fixture' });
+    await fs.writeFile(path.join(project.path, 'main.tex'), '\\documentclass{article}\n\\begin{document}\nText.\n\\end{document}\n');
+    await saveAgentConfig('qoder', { command: process.execPath, args: [fixture], runtimePaths: [fixtures], network: { mode: 'hosts', hosts: [] } });
+    const run = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'qoder' })).id);
+    await run.ready;
+    await fs.copyFile(cert, path.join(run.home, 'stand-in.pem'));
+    const log = async () => (await fs.readFile(path.join(run.home, 'acp-log.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+    const network = () => run.events.filter((e) => e.type === 'network').map((e) => e.data);
+
+    await promptAgent(run, 'SEARCH-THE-STAND-IN then REACH-HOST unlisted.test');
+    await run.task;
+    assert.equal(run.status, 'completed', JSON.stringify(run.events.filter((e) => ['state', 'notice'].includes(e.type))));
+    // the tools server, started by the agent with the environment Spectrum named, went through the gate
+    const { tools } = (await log()).find((q) => q.tools);
+    assert.match(tools.results?.literature_search?.content[0].text || JSON.stringify(tools), /Attention Is All You Need/);
+    assert.deepEqual(asked, ['api.openalex.org/works']);
+    // the host off the list: refused, and said once however often it is asked for
+    assert.notEqual((await log()).find((q) => q.reach).result, 200);
+    assert.deepEqual(network(), [{ host: 'unlisted.test' }]);
+    await promptAgent(run, 'REACH-HOST unlisted.test');
+    await run.task;
+    assert.deepEqual(network(), [{ host: 'unlisted.test' }]);
+
+    // allowed for the agent: reached on the next try by the same running agent, which is told
+    assert.equal(await allowSessionHost(run, 'unlisted.test'), 'unlisted.test');
+    assert.deepEqual(network().at(-1), { host: 'unlisted.test', allowed: true });
+    assert.deepEqual((await agentConfigs()).qoder.network.hosts, ['unlisted.test']);
+    await promptAgent(run, 'REACH-HOST unlisted.test');
+    await run.task;
+    const entries = await log();
+    assert.equal(entries.filter((q) => q.reach).at(-1).result, 200);
+    assert.equal(entries.filter((q) => q.method === 'initialize').length, 1, 'the agent was not started again');
+    assert.match(JSON.stringify(entries.filter((q) => q.method === 'session/prompt').at(-1).params.prompt), /The user now allows you to reach unlisted\.test/);
+    assert.equal(asked.at(-1), 'unlisted.test/');
+  } finally { await standIn.close(); }
 });

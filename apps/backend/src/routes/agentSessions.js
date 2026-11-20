@@ -1,5 +1,5 @@
 import { listAgents, saveAgentConfig, importAgentLogin } from '../services/agentProfiles.js';
-import { changeAdapter, closeAgentRun, testAgent, getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
+import { changeAdapter, closeAgentRun, testAgent, getAgentRun, listAgentRuns, newAgentRun, previewDraft, promptAgent, readContext, stopAgentRun, answerAgentRequest, allowSessionHost, setAgentOption, reviewAgentChanges, pendingChanges, runSnapshot, subscribeAgent } from '../services/agentSessionService.js';
 import { agentRecoveries, recoverAgentApply } from '../services/agentWorkspace.js';
 import { previewProposal } from '../services/agentSessionService.js';
 import { mutateProjectRoot } from '../services/projectService.js';
@@ -36,6 +36,8 @@ export function registerAgentSessionRoutes(fastify) {
   fastify.post('/api/agent-sessions/:id/close', async (req) => { closeAgentRun(await getAgentRun(req.params.id)); return { ok: true }; });
   fastify.post('/api/agent-sessions/:id/stop', async (req) => { await stopAgentRun(await getAgentRun(req.params.id)); return { ok: true }; });
   fastify.post('/api/agent-sessions/:id/answer', async (req) => { answerAgentRequest(await getAgentRun(req.params.id), req.body?.requestId, req.body?.answer); return { ok: true }; });
+  // a host the session's agent was refused, allowed for that agent from now on
+  fastify.post('/api/agent-sessions/:id/allow-host', async (req) => ({ ok: true, host: await allowSessionHost(await getAgentRun(req.params.id), req.body?.host) }));
   fastify.post('/api/agent-sessions/:id/option', async (req) => ({ ok: true, ...(await setAgentOption(await getAgentRun(req.params.id), req.body?.configId, req.body?.value)) }));
   fastify.get('/api/agent-sessions/:id/changes', async (req) => {
     const run = await getAgentRun(req.params.id);

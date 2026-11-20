@@ -15,7 +15,7 @@ import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileServi
 import { builtInTectonic, builtInTypst } from './engineService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { checkedImages, openTodos, suggestedTodo } from './agentService.js';
-import { AGENT_DIR, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter } from './agentProfiles.js';
+import { AGENT_DIR, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter, allowAgentHost } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, isolationAvailable } from './agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, workspaceFiles, applyWorkspaceChanges, captureAgentProposal, fileHash, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
@@ -308,6 +308,24 @@ function requestUser(r, kind, params) {
   });
 }
 
+/** A host off the agent's list was asked for: said once a session, until the user allows it. */
+function refusedHost(r, host) {
+  r.refused ||= new Set();
+  if (r.refused.has(host) || r.status === 'closed') return;
+  r.refused.add(host);
+  emit(r, 'network', { host });
+  void persist(r);
+}
+/** The user allows the session's agent a host it was refused: for that agent, in every session, from its next try. */
+export async function allowSessionHost(r, value) {
+  const host = await allowAgentHost(r.agentId, value);
+  r.refused?.delete(host);
+  emit(r, 'network', { host, allowed: true });
+  r.notes.push(`The user now allows you to reach ${host}. If you needed it, try again.`);
+  void persist(r);
+  return host;
+}
+
 export function answerAgentRequest(r, requestId, answer) {
   const pending = r.pending.get(requestId);
   if (!pending) throw new Error('That request is no longer waiting for an answer.');
@@ -342,6 +360,8 @@ async function connect(r) {
   if (installing.has(r.agentId)) throw new Error(`${profile.name}’s adapter is being changed. Try again when it finishes.`);
   r.processOptions = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] });
   r.limits = limitsOf(r.processOptions, await skillsKey(r));
+  // an agent held to its list: a host off it is shown in the session, where the user can allow it
+  if (r.processOptions.hosts) r.processOptions.onRefused = (host) => refusedHost(r, host);
   await syncAgentSkills(r).catch((err) => emit(r, 'notice', { message: `The project’s skills weren’t copied for the agent: ${err.message}` }));
   const tools = await toolsServer(r).catch((err) => { emit(r, 'notice', { message: `Spectrum’s tools aren’t available to the agent this turn: ${err.message}` }); return null; });
   if (tools) r.processOptions.runtimePaths = [...r.processOptions.runtimePaths, ...tools.reads];
@@ -349,6 +369,8 @@ async function connect(r) {
   r.connectionAbort.signal.throwIfAborted();
   r.child = await spawnAgentProcess(r.processOptions);
   if (r.cancelled || r.connectionAbort.signal.aborted) { killAgentProcess(r.child); throw new Error('Task cancelled.'); }
+  // the tools server starts with the environment Spectrum names, so it is told of the agent's gate here
+  if (tools && r.child.gateEnv) tools.server.env.push(...Object.entries(r.child.gateEnv).map(([name, value]) => ({ name, value })));
   let stderr = '';
   const redact = (text) => hide(text, r.processOptions.secrets);
   r.child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-12000); r.diagnostic = redact(stderr); });

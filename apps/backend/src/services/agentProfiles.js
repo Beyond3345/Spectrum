@@ -8,6 +8,7 @@ import { DATA_DIR } from '../config/constants.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 import { resolveExecutable, isolationAvailable, SYSTEM_READS } from './agentSandbox.js';
 import { safeJoin } from '../utils/pathUtils.js';
+import { SCHOLARLY_HOSTS, cleanHost, cleanHosts } from './agentNetwork.js';
 // each adapter's whole tree, every package pinned with its checksum (npm install --package-lock-only from the version)
 import codexLock from '../data/adapters/codex/package-lock.json' with { type: 'json' };
 import claudeLock from '../data/adapters/claude/package-lock.json' with { type: 'json' };
@@ -28,23 +29,25 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  * pinned to its version and npm checksum, with its size for each Mac; needs: a program the adapter starts, passed to it
  * in env, or the app it drives; app: the agent's desktop app, by name, and bin: the agent program inside the Mac app,
  * when it carries one; experimental, windows and planned: why the agent is experimental, off on Windows or not yet
- * startable.
+ * startable. hosts: the hosts its provider needs, which an agent held to a list reaches besides the scholarly sites of
+ * Spectrum's tools and the ones the user adds; network: 'hosts' where its documentation names those hosts and says it
+ * honours the proxy variables, so it starts held to the list, else it starts on any host with the list ready.
  */
 export const PROFILES = [
-  { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', unsupported: 'OpenCode 2 does not run inside Spectrum’s isolation: its agent mode starts a private server on a port it chooses itself, which isolation does not open. Spectrum never runs an agent outside isolation.' },
-  { id: 'codex', name: 'Codex', command: 'codex-acp', args: [], url: 'https://github.com/agentclientprotocol/codex-acp', keys: ['OPENAI_API_KEY'], login: ['.codex/auth.json'], signIn: 'codex login', adapter: { package: '@agentclientprotocol/codex-acp', version: '2.7.0', bin: 'dist/index.js', integrity: 'sha512-fFFU/tV5DltBzN4cZIh5tJEWGTZFXbwHU7I5RxPkmrGraw3jhAIuvTeudYwK3wAbV311WgIi7qONl2I8uRV2jw==', official: true, publisher: ACP_PROJECT, size: { arm64: '370 MB', x64: '395 MB' } }, windows: NODE_ON_WINDOWS },
+  { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', hosts: ['api.openai.com', 'api.anthropic.com', 'openrouter.ai', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'opencode.ai', 'models.dev'], keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', unsupported: 'OpenCode 2 does not run inside Spectrum’s isolation: its agent mode starts a private server on a port it chooses itself, which isolation does not open. Spectrum never runs an agent outside isolation.' },
+  { id: 'codex', name: 'Codex', command: 'codex-acp', args: [], url: 'https://github.com/agentclientprotocol/codex-acp', hosts: ['api.openai.com', 'chatgpt.com', 'auth.openai.com'], keys: ['OPENAI_API_KEY'], login: ['.codex/auth.json'], signIn: 'codex login', adapter: { package: '@agentclientprotocol/codex-acp', version: '2.7.0', bin: 'dist/index.js', integrity: 'sha512-fFFU/tV5DltBzN4cZIh5tJEWGTZFXbwHU7I5RxPkmrGraw3jhAIuvTeudYwK3wAbV311WgIi7qONl2I8uRV2jw==', official: true, publisher: ACP_PROJECT, size: { arm64: '370 MB', x64: '395 MB' } }, windows: NODE_ON_WINDOWS },
   // never “Claude Code”: an API key only, with the claude.ai sign-in hidden (Anthropic's Agent SDK terms)
-  { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
-  { id: 'gemini', name: 'Gemini CLI', command: 'gemini', args: ['--acp'], url: 'https://github.com/google-gemini/gemini-cli', keys: ['GEMINI_API_KEY'], login: ['.gemini/settings.json', '.gemini/oauth_creds.json', '.gemini/google_accounts.json'], signIn: 'gemini', then: 'Choose Sign in with Google.', install: 'npm install -g @google/gemini-cli' },
-  { id: 'copilot', name: 'GitHub Copilot CLI', command: 'copilot', args: ['--acp'], url: 'https://github.com/github/copilot-cli', keys: ['GH_TOKEN'], login: [], install: 'npm install -g @github/copilot' },
-  { id: 'cursor', name: 'Cursor', command: 'cursor-agent', alt: ['agent'], args: ['acp'], url: 'https://cursor.com/docs/cli/acp', keys: ['CURSOR_API_KEY'], login: [], install: 'curl https://cursor.com/install -fsS | bash' },
-  { id: 'kimi', name: 'Kimi Code', command: 'kimi', args: ['acp'], url: 'https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-acp.html', keys: ['KIMI_API_KEY'], login: ['.kimi-code/config.toml', '.kimi-code/credentials.json', '.kimi/config.toml', '.kimi/credentials.json'], signIn: 'kimi', then: 'Type /login.', install: 'npm install -g @moonshot-ai/kimi-code', app: { name: 'Kimi Code' } },
-  { id: 'hermes', name: 'Hermes', command: 'hermes', args: ['acp'], url: 'https://hermes-agent.nousresearch.com/docs/user-guide/features/acp', keys: ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'], login: ['.hermes/config.yaml', '.hermes/auth.json', '.hermes/.env'], signIn: 'hermes model', install: 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash' },
-  { id: 'qoder', name: 'Qoder', command: 'qoder', alt: ['qodercli'], args: ['--acp'], url: 'https://docs.qoder.com/cli/acp', keys: ['QODER_PERSONAL_ACCESS_TOKEN'], login: [], install: 'npm install -g @qoder-ai/qodercli', app: { name: 'Qoder' }, experimental: 'The ACP registry has paused Qoder because its ACP start failed in some releases. Test checks the version you have.' },
-  { id: 'pi', name: 'Pi', command: 'pi-acp', args: [], url: 'https://github.com/svkozak/pi-acp', keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY'], login: ['.pi/agent/auth.json', '.pi/agent/models.json', '.pi/agent/settings.json'], signIn: 'pi', then: 'Type /login.', adapter: { package: 'pi-acp', version: '0.0.34', bin: 'dist/index.js', integrity: 'sha512-MrCp37UbpUzkTkzTIMJQf1RYrT+kr4fgGDGFoLmBN26UupuCZp0XxVIY+7XYsMo3yDnzDeZUJ0jPyM3Si6Bkkg==', official: false, publisher: 'svkozak', size: { arm64: '7 MB', x64: '7 MB' } }, needs: { name: 'Pi', command: 'pi', install: 'npm install -g @earendil-works/pi-coding-agent', env: 'PI_ACP_PI_COMMAND' }, experimental: 'Uses a community adapter. Pi edits files and runs commands itself, so Spectrum does not show them as they happen, and Spectrum’s tools do not reach it.', windows: NODE_ON_WINDOWS },
-  { id: 'deepseek', name: 'DeepSeek Harness', command: 'dsh', args: ['--profile', 'acp'], url: 'https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/acp', keys: ['DEEPSEEK_API_KEY'], login: [], install: 'npm install -g @deepseek-ai/dsh@next', app: { name: 'DeepSeek Harness', bin: 'Contents/Resources/runtime/cli/bin/dsh' } },
+  { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', hosts: ['api.anthropic.com'], network: 'hosts', keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
+  { id: 'gemini', name: 'Gemini CLI', command: 'gemini', args: ['--acp'], url: 'https://github.com/google-gemini/gemini-cli', hosts: ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'oauth2.googleapis.com', 'www.googleapis.com'], keys: ['GEMINI_API_KEY'], login: ['.gemini/settings.json', '.gemini/oauth_creds.json', '.gemini/google_accounts.json'], signIn: 'gemini', then: 'Choose Sign in with Google.', install: 'npm install -g @google/gemini-cli' },
+  { id: 'copilot', name: 'GitHub Copilot CLI', command: 'copilot', args: ['--acp'], url: 'https://github.com/github/copilot-cli', hosts: ['api.github.com', 'api.githubcopilot.com', '*.githubcopilot.com', 'copilot-proxy.githubusercontent.com'], keys: ['GH_TOKEN'], login: [], install: 'npm install -g @github/copilot' },
+  { id: 'cursor', name: 'Cursor', command: 'cursor-agent', alt: ['agent'], args: ['acp'], url: 'https://cursor.com/docs/cli/acp', hosts: ['*.cursor.sh', 'cursor.com', '*.cursor.com'], keys: ['CURSOR_API_KEY'], login: [], install: 'curl https://cursor.com/install -fsS | bash' },
+  { id: 'kimi', name: 'Kimi Code', command: 'kimi', args: ['acp'], url: 'https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-acp.html', hosts: ['api.kimi.com', 'www.kimi.com', 'api.moonshot.cn', 'api.moonshot.ai'], keys: ['KIMI_API_KEY'], login: ['.kimi-code/config.toml', '.kimi-code/credentials.json', '.kimi/config.toml', '.kimi/credentials.json'], signIn: 'kimi', then: 'Type /login.', install: 'npm install -g @moonshot-ai/kimi-code', app: { name: 'Kimi Code' } },
+  { id: 'hermes', name: 'Hermes', command: 'hermes', args: ['acp'], url: 'https://hermes-agent.nousresearch.com/docs/user-guide/features/acp', hosts: ['openrouter.ai', 'api.openai.com', 'api.anthropic.com'], keys: ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'], login: ['.hermes/config.yaml', '.hermes/auth.json', '.hermes/.env'], signIn: 'hermes model', install: 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash' },
+  { id: 'qoder', name: 'Qoder', command: 'qoder', alt: ['qodercli'], args: ['--acp'], url: 'https://docs.qoder.com/cli/acp', hosts: ['*.qoder.sh', '*.qoder.com'], keys: ['QODER_PERSONAL_ACCESS_TOKEN'], login: [], install: 'npm install -g @qoder-ai/qodercli', app: { name: 'Qoder' }, experimental: 'The ACP registry has paused Qoder because its ACP start failed in some releases. Test checks the version you have.' },
+  { id: 'pi', name: 'Pi', command: 'pi-acp', args: [], url: 'https://github.com/svkozak/pi-acp', hosts: ['api.openai.com', 'api.anthropic.com', 'openrouter.ai'], keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY'], login: ['.pi/agent/auth.json', '.pi/agent/models.json', '.pi/agent/settings.json'], signIn: 'pi', then: 'Type /login.', adapter: { package: 'pi-acp', version: '0.0.34', bin: 'dist/index.js', integrity: 'sha512-MrCp37UbpUzkTkzTIMJQf1RYrT+kr4fgGDGFoLmBN26UupuCZp0XxVIY+7XYsMo3yDnzDeZUJ0jPyM3Si6Bkkg==', official: false, publisher: 'svkozak', size: { arm64: '7 MB', x64: '7 MB' } }, needs: { name: 'Pi', command: 'pi', install: 'npm install -g @earendil-works/pi-coding-agent', env: 'PI_ACP_PI_COMMAND' }, experimental: 'Uses a community adapter. Pi edits files and runs commands itself, so Spectrum does not show them as they happen, and Spectrum’s tools do not reach it.', windows: NODE_ON_WINDOWS },
+  { id: 'deepseek', name: 'DeepSeek Harness', command: 'dsh', args: ['--profile', 'acp'], url: 'https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/acp', hosts: ['api.deepseek.com'], keys: ['DEEPSEEK_API_KEY'], login: [], install: 'npm install -g @deepseek-ai/dsh@next', app: { name: 'DeepSeek Harness', bin: 'Contents/Resources/runtime/cli/bin/dsh' } },
   // the adapter's own default lets ZCode act without asking, so it always starts in build mode
-  { id: 'zcode', name: 'ZCode', command: 'zcode-acp-server', args: [], url: 'https://github.com/william0wang/zcode-acp', keys: [], login: ['.zcode/v2/config.json', '.zcode/v2/credentials.json'], appSignIn: true, adapter: { package: 'zcode-acp-server', version: '0.76.3', bin: 'dist/cli.js', integrity: 'sha512-ClEiDU4z+TQLGM0RselWe7qw7m5WuRQoapoKng/L1Bkpbdkn/k5k5/BCU4INVHSyvF374Wvyny10GX56axuctQ==', official: false, publisher: 'william0wang', size: { arm64: '330 MB', x64: '330 MB' } }, needs: { name: 'ZCode', command: 'zcode', app: 'ZCode', install: 'Install the ZCode app from Z.ai.', env: 'ZCODE_BIN' }, experimental: 'Uses a community adapter that drives ZCode’s internal app server. The adapter also installs about 330 MB of packages from other publishers, including a community DeepSeek harness. Spectrum always starts it in build mode, as its own default lets it act without asking.', windows: NODE_ON_WINDOWS },
+  { id: 'zcode', name: 'ZCode', command: 'zcode-acp-server', args: [], url: 'https://github.com/william0wang/zcode-acp', hosts: ['api.z.ai', 'open.bigmodel.cn'], keys: [], login: ['.zcode/v2/config.json', '.zcode/v2/credentials.json'], appSignIn: true, adapter: { package: 'zcode-acp-server', version: '0.76.3', bin: 'dist/cli.js', integrity: 'sha512-ClEiDU4z+TQLGM0RselWe7qw7m5WuRQoapoKng/L1Bkpbdkn/k5k5/BCU4INVHSyvF374Wvyny10GX56axuctQ==', official: false, publisher: 'william0wang', size: { arm64: '330 MB', x64: '330 MB' } }, needs: { name: 'ZCode', command: 'zcode', app: 'ZCode', install: 'Install the ZCode app from Z.ai.', env: 'ZCODE_BIN' }, experimental: 'Uses a community adapter that drives ZCode’s internal app server. The adapter also installs about 330 MB of packages from other publishers, including a community DeepSeek harness. Spectrum always starts it in build mode, as its own default lets it act without asking.', windows: NODE_ON_WINDOWS },
   { id: 'workbuddy', name: 'WorkBuddy', command: '', args: [], url: 'https://open.workbuddy.cn/en/docs/openapi', keys: [], login: [], planned: 'Planned. WorkBuddy needs a registered application secret that cannot live in a desktop app, so it will connect through its official platform with remote support in a later release.' }
 ];
 
@@ -67,9 +70,11 @@ export function updateConfig(id, change) {
   return next;
 }
 const withoutTest = ({ test, ...entry }) => entry;
+// a host added to the list changes nothing a Test found; a list taken up or given up does
+const forTest = ({ test, network, ...entry }) => ({ ...entry, ...(network?.mode && { networkMode: network.mode }) });
 const withoutProgram = ({ program, ...test }) => test;
 /** An entry's setup, which launchOptions() hands on so a result is recorded only against the setup it started with. */
-const setupOf = (entry) => { const setup = withoutTest(entry); return JSON.stringify(setup, Object.keys(setup).sort()); };
+const setupOf = (entry) => { const setup = forTest(entry); return JSON.stringify(setup, Object.keys(setup).sort()); };
 /**
  * A Test's result, or a session's (`ready`, or `sign-in` when the agent asked for authentication). Dropped when the
  * setup changed since launch; a session's is kept only when it says something new, so its Test's time stays.
@@ -93,6 +98,24 @@ export function profileFor(id) {
 }
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/**
+ * Where an agent may connect: mode 'hosts' (its provider's hosts, the scholarly sites of Spectrum's tools and the ones
+ * the user added) or 'any' (every public HTTPS host), the user's choice or else the profile's; enforced: whether this
+ * platform can hold an agent to a list (macOS; the Windows worker opens every public address or none).
+ */
+export function networkOf(profile, saved = {}) {
+  const mode = ['hosts', 'any'].includes(saved.network?.mode) ? saved.network.mode : profile.network || 'any';
+  return { mode, provider: profile.hosts || [], tools: SCHOLARLY_HOSTS, hosts: cleanHosts(saved.network?.hosts), enforced: process.platform === 'darwin' };
+}
+/** Adds host to the ones the user allows the agent, and gives the host as saved. */
+export async function allowAgentHost(id, value) {
+  profileFor(id);
+  const host = cleanHost(value);
+  if (!host) throw Object.assign(new Error('That is not a host name.'), { statusCode: 400 });
+  await updateConfig(id, (entry) => ({ ...entry, network: { ...entry.network, hosts: cleanHosts([...entry.network?.hosts || [], host]) } }));
+  return host;
+}
 /**
  * The program the user chose: an absolute path, or a name other than the profile's own. 1.10.4 and 2.0 saved the
  * default name (codex-acp, agent, opencode) with every setup, which is no choice.
@@ -236,6 +259,8 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   }
   if (found.needs && !found.needs.found) throw new Error(`${profile.name} needs ${found.needs.name}, which was not found. Install it, then try again.`);
   const keyEnv = saved.keyEnv || profile.key;
+  const network = networkOf(profile, saved);
+  const listed = network.enforced && network.mode === 'hosts';
   const args = [...found.args, ...(saved.args || profile.args)];
   // Advanced can't take it away
   if (id === 'claude' && !args.includes('--hide-claude-auth')) args.push('--hide-claude-auth');
@@ -244,12 +269,17 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
     ...(id === 'zcode' && { ZCODE_ACP_MODE: 'build' }),
     // Claude Code keeps its own temporary files in /tmp/claude-<uid>, which isolation does not open: its private home's instead
     ...(id === 'claude' && { CLAUDE_CODE_TMPDIR: path.join(agentHomeDir, 'tmp') }),
+    // held to its list, Claude Code leaves out what the list would refuse anyway: telemetry, error reports, update checks
+    ...(id === 'claude' && listed && { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }),
     ...(found.needs?.env && found.needs.path && { [found.needs.env]: found.needs.path })
   };
   const options = {
     command: found.command, args, workspace, home: agentHomeDir, runtimeExecutable: found.command,
     runtimePaths: [...new Set([...(saved.runtimePaths || []), ...found.reads, ...found.needs?.reads || []])], forbiddenRoots, env,
-    program: found.program, secrets: [saved.apiKey].filter(Boolean), setup: setupOf(saved)
+    program: found.program, secrets: [saved.apiKey].filter(Boolean), setup: setupOf(saved),
+    // the list as it is at each connection, so a host the user allows works without a restart
+    network: listed ? 'hosts' : 'any',
+    ...(listed && { hosts: async () => { const now = networkOf(profile, (await agentConfigs())[id]); return [...now.provider, ...now.tools, ...now.hosts]; } })
   };
   return options;
 }
@@ -291,7 +321,7 @@ export async function agentEntry(id, config, isolated) {
   const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, test, configured });
   return {
     id, name: p.name, url: p.url, experimental: p.experimental, support: p.support, planned: p.planned, unavailable: p.unavailable,
-    command: chosen, args: saved.args || p.args, runtimePaths: saved.runtimePaths || [], keyEnv,
+    command: chosen, args: saved.args || p.args, runtimePaths: saved.runtimePaths || [], keyEnv, network: networkOf(p, saved),
     keyEnvs: [...p.keys, ...(keyEnv && !p.keys.includes(keyEnv) ? [keyEnv] : [])], hasKey: !!saved.apiKey,
     canImport: !!p.login.length, installed: !!found, supported: isolated && !p.unavailable,
     ...(found && { program: found.program, source: found.source, where: found.where, reads: found.reads }),
@@ -325,10 +355,18 @@ export async function saveAgentConfig(id, value) {
     const apiKey = value.apiKey === undefined ? (keyEnv === (old.keyEnv || profile.key) ? old.apiKey || '' : '') : String(value.apiKey);
     if (keyEnv && !PROVIDER_KEYS.includes(keyEnv)) throw new Error('Choose a supported provider credential variable.');
     if (apiKey.length > 8192 || /[\r\n\0]/.test(apiKey)) throw new Error('Invalid API key.');
+    const was = networkOf(profile, old);
+    const mode = value.network?.mode ?? was.mode;
+    const hosts = value.network?.hosts ?? was.hosts;
+    if (!['hosts', 'any'].includes(mode) || !Array.isArray(hosts) || hosts.length > 100) throw new Error('Invalid network settings.');
+    const notHost = hosts.find((h) => !cleanHost(h));
+    if (notHost !== undefined) throw new Error(`“${String(notHost).slice(0, 80)}” is not a host name. Give a name such as api.example.com, or *.example.com for every host below one.`);
+    // the profile's own choice isn't saved, so a later Spectrum's takes its place
+    const network = { ...(mode !== (profile.network || 'any') && { mode }), ...(hosts.length && { hosts: cleanHosts(hosts) }) };
     // the profile's own arguments aren't saved, so a later Spectrum's take their place
-    const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv, ...(old.loginCopied && { loginCopied: old.loginCopied }) };
+    const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv, ...(old.loginCopied && { loginCopied: old.loginCopied }), ...(Object.keys(network).length && { network }) };
     // a Test's result no longer holds once any of these changes
-    const unchanged = command === chosenCommand(profile, old) && same(args ?? profile.args, old.args ?? profile.args) && same(runtimePaths, old.runtimePaths ?? []) && apiKey === (old.apiKey || '') && keyEnv === (old.keyEnv || profile.key);
+    const unchanged = command === chosenCommand(profile, old) && same(args ?? profile.args, old.args ?? profile.args) && same(runtimePaths, old.runtimePaths ?? []) && apiKey === (old.apiKey || '') && keyEnv === (old.keyEnv || profile.key) && mode === was.mode;
     return unchanged && old.test ? { ...next, test: old.test } : next;
   });
 }
