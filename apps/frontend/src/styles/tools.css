@@ -854,6 +854,36 @@ a.research-title:hover {
   gap: 4px;
 }
 
+/* Research’s claims ledger: each claim with its rating, the source’s words and where they were found */
+.claims-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.claims-head,
+.claims-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.claim-text {
+  color: var(--text);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.claim-quote {
+  margin: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 /* --------------------------------------------------------------------------
    The bottom card's history
    -------------------------------------------------------------------------- */

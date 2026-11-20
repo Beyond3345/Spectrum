@@ -294,6 +294,8 @@ const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
   arxiv_bibtex: ['fetch', 'Get BibTeX from arXiv', 'Get BibTeX for'],
   fetch_bibtex: ['fetch', 'Get BibTeX', 'Get BibTeX for'],
   check_references: ['search', 'Check the references against their sources'],
+  read_source: ['read', 'Read a paper', 'Read'],
+  record_claim: ['other', 'Record a checked claim', 'Record the claim at'],
   load_skill: ['read', 'Load a skill', 'Load the skill'],
   read_skill_file: ['read', 'Read a skill’s file', 'Read the skill file'],
   list_todos: ['read', 'List the to-dos'],

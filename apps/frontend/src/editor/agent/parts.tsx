@@ -137,12 +137,13 @@ export const TASKS: AgentTask[] = [
     label: 'Verify claims',
     icon: 'checkmark.seal',
     skill: 'spectrum-verify-claims',
-    prompt: 'Check the claims in the open file against the sources they cite. For each, say whether its source supports it fully, partly or not at all, with a short note on the evidence. Don’t rewrite the text.'
+    prompt: 'Check the claims in the open file against the sources they cite. Run check_references on the keys first, read each source with read_source, and record every claim with record_claim, with the source’s own words for a rating that says what it says. Don’t rewrite the text.'
   }
 ];
 
 /** A task handed to the workspace from elsewhere (Research's Deep research, Draft related work and Verify claims). */
-export type TaskRequest = { prompt: string; skill: string; persona?: string; research?: string; n: number };
+/** plan: the task starts with Plan on, so its first turn only reads and ends with a plan to approve. */
+export type TaskRequest = { prompt: string; skill: string; persona?: string; research?: string; plan?: boolean; n: number };
 
 /** The task's persona, a starter's id (Settings › Personas), while the user still has it. */
 export const taskPersona = (personas: { id: string }[], task: { persona?: string }) => personas.find((p) => p.id === task.persona)?.id;

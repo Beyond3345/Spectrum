@@ -3481,7 +3481,7 @@ function Editor({ projectId }: { projectId: string }) {
             </div>
             {/* mounted while hidden, so a search running keeps its answer */}
             <div className="sidebar-list" hidden={sidebarTab !== 'research'}>
-              <ResearchPanel filter={sidebarTab === 'research' ? filter : ''} onAgentTask={openAgentTask} />
+              <ResearchPanel filter={sidebarTab === 'research' ? filter : ''} onAgentTask={openAgentTask} todos={todos} />
             </div>
             {sidebarTab === 'todos' && (
               <div className="sidebar-list">
