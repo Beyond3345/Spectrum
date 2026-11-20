@@ -61,6 +61,7 @@ import {
   base64Bytes,
   UNREACHABLE
 } from '../api/client';
+import { StreamSource } from '../api/stream';
 import type { CompileDiagnostic, CompileEngine, CompileOptions, CompileResult, Engines, FileItem, FileOrderMap, JyutpingSettings, PdfNote, PdfPoint, ProjectMeta, TodoLink, VersionMeta, VersionReason } from '../api/client';
 import Icon from './Icon';
 import { radioKeys, radioTab } from './Segmented';
@@ -2755,7 +2756,7 @@ function Editor({ projectId }: { projectId: string }) {
   // files added, removed or renamed outside the app (Finder, another editor, a git pull, a sync client) show in the
   // list as they happen, and loaded files changed there are checked against the editor's text
   useEffect(() => {
-    const events = new EventSource(`/api/projects/${projectId}/events`);
+    const events = new StreamSource(`/api/projects/${projectId}/events`);
     events.addEventListener('tree', () => refreshTree().catch(() => undefined));
     events.addEventListener('changed', (e) => {
       const { paths, all } = JSON.parse((e as MessageEvent<string>).data) as { paths?: string[]; all?: boolean };

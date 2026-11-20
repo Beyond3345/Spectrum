@@ -17,6 +17,7 @@ import {
   setLocalAgentOption,
   stopLocalAgentSession
 } from '../../api/client';
+import { StreamSource } from '../../api/stream';
 import type { AgentChange, AgentEvent, AgentPersona, AgentPromptContext, AgentUserRequest, LocalAgent, LocalAgentSession } from '../../api/client';
 import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
@@ -191,7 +192,7 @@ export default function LocalAgentTab({
   useEffect(() => {
     if (!session || !listening) return;
     const id = session.id;
-    const source = new EventSource(`/api/agent-sessions/${id}/events?after=${latestEvents.current[latestEvents.current.length - 1]?.id || 0}`);
+    const source = new StreamSource(`/api/agent-sessions/${id}/events?after=${latestEvents.current[latestEvents.current.length - 1]?.id || 0}`);
     source.onmessage = (message) => {
       const e = JSON.parse(message.data) as AgentEvent;
       setEvents((old) => addEvent(old, e));
@@ -216,7 +217,7 @@ export default function LocalAgentTab({
       }
     };
     source.onerror = () => {
-      /* EventSource retries with Last-Event-ID; completion is a protocol event. */
+      /* the stream retries with Last-Event-ID; completion is a protocol event. */
     };
     return () => source.close();
   }, [session?.id, listening]);

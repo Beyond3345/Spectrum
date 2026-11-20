@@ -2,6 +2,7 @@
 // the backend only accepts requests from this machine.
 
 import type { BibRecord, Finding } from '../editor/preflight/run';
+import { StreamSource } from './stream';
 
 // ─── Shared types ───
 
@@ -539,7 +540,7 @@ export function importArxivSSE(
     const params = new URLSearchParams({ arxivIdOrUrl: payload.arxivIdOrUrl });
     if (payload.projectName) params.set('projectName', payload.projectName);
     if (payload.parentDir) params.set('parentDir', payload.parentDir);
-    const es = new EventSource(`/api/projects/import-arxiv-sse?${params.toString()}`);
+    const es = new StreamSource(`/api/projects/import-arxiv-sse?${params.toString()}`);
     signal?.addEventListener('abort', () => {
       es.close();
       reject(new DOMException('Aborted', 'AbortError'));
@@ -807,7 +808,7 @@ export function stopCompile(compileId: string) {
  * running first, then output text, the earlier text too when it was opened late, and Spectrum's status line. Returns the close.
  */
 export function watchCompile(compileId: string, on: { engine: (engine: string) => void; output: (text: string) => void; status?: (text: string) => void }) {
-  const es = new EventSource(`/api/compile/${encodeURIComponent(compileId)}/log`);
+  const es = new StreamSource(`/api/compile/${encodeURIComponent(compileId)}/log`);
   es.addEventListener('engine', (e) => on.engine(JSON.parse((e as MessageEvent).data)));
   es.addEventListener('output', (e) => on.output(JSON.parse((e as MessageEvent).data)));
   // Spectrum's own line while it downloads something for the compile (Biber), '' once it's done

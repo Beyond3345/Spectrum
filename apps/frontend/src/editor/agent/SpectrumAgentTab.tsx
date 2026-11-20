@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { reviewSitting } from '../reviewHunks';
 import { ApiError, addAgentMemory, agentRunEventsUrl, approveAgentInstructions, continueAgentRun, deleteAgentMemory, editAgentMemory, findAgentRun, getAgentInstructions, getAgentMemory, getChat, getResearch, listChats, startAgentTurn, steerAgentRun, stopAgentRun } from '../../api/client';
+import { StreamSource } from '../../api/stream';
 import type { AgentEvent, AgentInstructions, AgentMemory, AgentRunResult, AgentUserRequest, ChatSummary, ChatThread, ResearchSession } from '../../api/client';
 import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
@@ -318,7 +319,7 @@ export default function SpectrumAgentTab({
   useEffect(() => {
     if (!attached) return;
     const { runId, base } = attached;
-    const source = new EventSource(agentRunEventsUrl(runId));
+    const source = new StreamSource(agentRunEventsUrl(runId));
     let held: AgentEvent[] = [];
     let frame = 0;
     let over = false;
@@ -369,8 +370,8 @@ export default function SpectrumAgentTab({
       else frame ||= requestAnimationFrame(() => void flush());
     };
     source.onerror = () => {
-      // EventSource connects again by itself; once the backend no longer has the run (it was restarted), it gives up
-      if (source.readyState !== EventSource.CLOSED || over) return;
+      // the stream connects again by itself; once the backend no longer has the run (it was restarted), it gives up
+      if (source.readyState !== StreamSource.CLOSED || over) return;
       append(base, chatMessage('assistant', 'Request failed: the agent’s run was lost when Spectrum’s backend stopped. What the thread had saved is kept.', { error: true, resume: 'failed' }));
       end();
     };
