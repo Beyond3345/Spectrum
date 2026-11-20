@@ -279,7 +279,7 @@ The agent works for up to 25 steps. In them it can,
 - compile the project with its changes on a copy and read the errors at their lines, in LaTeX, Typst and Markdown,
 - search the literature, fetch a paper's BibTeX and, where web search is set up, search the web (@sec-assistant-search),
 - read and suggest to-dos and load skills and
-- ask you a question, show a plan before it starts (@sec-assistant-plan) and suggest a line for `AGENTS.md` (@sec-assistant-instructions).
+- ask you a question, show a plan before it starts (@sec-assistant-plan) and suggest a line to remember (@sec-assistant-memory).
 
 Its tools are the ones a local agent gets from Spectrum (@sec-assistant-external), with its own for the project's files. Nothing in your project changes until you apply a change: the agent writes its proposed changes over a copy of the project, and its compile builds that copy. After changing a source file it compiles, fixes the first error and compiles again, three times at most, and says in its answer whether the document builds. The compile card says how it went in its title, such as "Compiled the draft: builds" or the number of errors. #ui[Fix with AI] in the Logs and Review tabs does the same (@sec-assistant-review).
 
@@ -346,15 +346,23 @@ The chip under the message box shows where the file stands,
 - #ui[Using AGENTS.md] when the agent is given the file, which opens it and
 - #ui[AGENTS.md not used] when the file has not been approved, as described below.
 
-The file is yours, and the agent never writes it by itself. When you state a lasting rule in a conversation, the agent can suggest it as a line for the file. The suggestion appears as a card (@fig-assistant-instructions), and only #ui[Add] on the card puts the line in, under a heading "Remembered" at the end of the file. This is all the memory the Spectrum agent has: every remembered line is a line of `AGENTS.md`, which you can read, change and delete in the editor. A suggested line is at most 300 characters and a turn can suggest three, and no line is added once the file would pass 20,000 characters.
-
-#shot("figures/03-assistant/agent-instructions.png", [Two lines the agent suggested for `AGENTS.md`. The first has been added, and the chip says the file is in use.], width: 65%) <fig-assistant-instructions>
-
-A project can come from elsewhere, such as a clone from GitHub, an imported archive or a folder someone shared, and an `AGENTS.md` that came with it is text you have not seen. Spectrum therefore gives the file to the agent only as you approved it on this computer. Two things approve it: your own save of the file in the editor, and a line you add with #ui[Add] on a suggestion's card. Nothing else does. A file that arrived with the project is not given to the agent, and neither is one changed by a pull, a sync from another computer, an agent working in the project's folder or an agent's change that you applied in the review, even though you applied it yourself. A line above the message box then says so (@fig-assistant-instructions-ask). #ui[Read it] opens the file, and #ui[Use it], which is available once the file has been opened, approves it as it is. The approval is kept on this computer and outside the project's folder, so it cannot arrive with a project. Until then the agent can still read the file as it reads any file of the project, which is as material and never as instructions.
+The file is yours, and the agent never writes it by itself. A project can come from elsewhere, such as a clone from GitHub, an imported archive or a folder someone shared, and an `AGENTS.md` that came with it is text you have not seen. Spectrum therefore gives the file to the agent only as you approved it on this computer. Your own save of the file in the editor approves it, and nothing else does. A file that arrived with the project is not given to the agent, and neither is one changed by a pull, a sync from another computer, an agent working in the project's folder or an agent's change that you applied in the review, even though you applied it yourself. A line above the message box then says so (@fig-assistant-instructions-ask). #ui[Read it] opens the file, and #ui[Use it], which is available once the file has been opened, approves it as it is. The approval is kept on this computer and outside the project's folder, so it cannot arrive with a project. Until then the agent can still read the file as it reads any file of the project, which is as material and never as instructions.
 
 #shot("figures/03-assistant/agent-instructions-ask.png", [An `AGENTS.md` that changed outside Spectrum. The agent is not given it until it has been read and #ui[Use it] is pressed.], width: 65%) <fig-assistant-instructions-ask>
 
 This check is the Spectrum agent's. A local agent that reads `AGENTS.md` by itself reads the file in its copy of the project as it is.
+
+=== What the agent remembers <sec-assistant-memory>
+
+The Spectrum agent also has a memory for each project, kept apart from `AGENTS.md`. When you state a lasting rule or preference in a conversation, such as "write units with `\qty` from now on", the agent can suggest it as a line to remember. The suggestion appears as a card (@fig-assistant-instructions), and only #ui[Add] on the card keeps the line. The agent never adds a line by itself.
+
+#shot("figures/03-assistant/agent-instructions.png", [Two lines the agent suggested to remember. The first has been added, and the #ui[Memory] chip counts it.], width: 65%) <fig-assistant-instructions>
+
+The #ui[Memory] chip under the message box, beside the `AGENTS.md` chip, shows how many lines are kept and opens the list (@fig-assistant-memory). Each line has a pencil to edit it and a bin to delete it, and #ui[Add a line] adds one of your own. The Spectrum agent and #ui[Fix with AI] are given every line with each request, as your remembered notes for the project, after `AGENTS.md`. A project keeps 30 lines at most and each line is at most 300 characters, and a turn can suggest three.
+
+#shot("figures/03-assistant/agent-memory.png", [The lines the agent remembers for a project, with the pencil to edit and the bin to delete each one.], width: 65%) <fig-assistant-memory>
+
+The memory is kept by Spectrum on this computer and never in the project's folder. Since only your own #ui[Add] or typing writes it, a line cannot arrive with a pull or a sync, and the memory needs no approval as `AGENTS.md` does. It also stays on this computer: another computer that syncs the project has its own memory for it. Local agents are not given this memory, since they keep their own.
 
 === When a run does not finish <sec-assistant-unfinished>
 

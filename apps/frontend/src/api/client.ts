@@ -1306,7 +1306,7 @@ export type AgentRunResult = {
   ask?: AgentAsk;
   /** the approved plan's steps as the turn left them */
   plan?: AgentPlanEntry[];
-  /** lines the agent suggests for the project's AGENTS.md */
+  /** lines the agent suggests to remember for the project */
   instructions?: string[];
 };
 
@@ -1372,6 +1372,13 @@ export type AgentInstructions = { exists: boolean; approved: boolean; hash?: str
 export const getAgentInstructions = (projectId: string) => request<{ ok: boolean } & AgentInstructions>(`/api/projects/${projectId}/agent-instructions`);
 /** Approves the file as it was shown (its hash). 409 when it changed since. */
 export const approveAgentInstructions = (projectId: string, hash: string) => request<{ ok: boolean } & AgentInstructions>(`/api/projects/${projectId}/agent-instructions/approve`, json('POST', { hash }));
+/** What the Spectrum agent remembers for the project, kept by Spectrum on this computer; each call answers with the lines as they are now */
+export type AgentMemory = { lines: { id: string; text: string }[]; max: { lines: number; chars: number } };
+const memoryUrl = (projectId: string, line?: string) => `/api/projects/${projectId}/agent-memory${line ? `/${encodeURIComponent(line)}` : ''}`;
+export const getAgentMemory = (projectId: string) => request<{ ok: boolean } & AgentMemory>(memoryUrl(projectId));
+export const addAgentMemory = (projectId: string, text: string) => request<{ ok: boolean } & AgentMemory>(memoryUrl(projectId), json('POST', { text }));
+export const editAgentMemory = (projectId: string, line: string, text: string) => request<{ ok: boolean } & AgentMemory>(memoryUrl(projectId, line), json('PUT', { text }));
+export const deleteAgentMemory = (projectId: string, line: string) => request<{ ok: boolean } & AgentMemory>(memoryUrl(projectId, line), json('DELETE'));
 
 export function callLLM(payload: {
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[];

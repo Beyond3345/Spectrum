@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, agentRunEventsUrl, approveAgentInstructions, continueAgentRun, findAgentRun, getAgentInstructions, getChat, getResearch, listChats, startAgentTurn, steerAgentRun, stopAgentRun } from '../../api/client';
-import type { AgentEvent, AgentInstructions, AgentRunResult, AgentUserRequest, ChatSummary, ChatThread, ResearchSession } from '../../api/client';
+import { ApiError, addAgentMemory, agentRunEventsUrl, approveAgentInstructions, continueAgentRun, deleteAgentMemory, editAgentMemory, findAgentRun, getAgentInstructions, getAgentMemory, getChat, getResearch, listChats, startAgentTurn, steerAgentRun, stopAgentRun } from '../../api/client';
+import type { AgentEvent, AgentInstructions, AgentMemory, AgentRunResult, AgentUserRequest, ChatSummary, ChatThread, ResearchSession } from '../../api/client';
 import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
@@ -14,12 +14,12 @@ import { resolveInstructions } from '../personas';
 import { untrusted } from '../../../../backend/src/utils/outsideText.js';
 import { docLanguage } from '../../../../backend/src/utils/docLanguage.js';
 import { CHATS_CHANGED, errorText, isDeletion, patchesToChanges, relativeTime } from '../shared';
-import { AgentComposer, ChangesTray, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
+import { AgentComposer, ChangesTray, MemorySheet, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
 import type { ContextKind, Draft, Memory, PlanActions, TaskRequest, TrayChange, TrayPart } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
 import { RESUME_HINT, RUNNING, addRunEvent, askAnswer, closeChanges, metaOf, openChanges, planOf, planPrompt, resumeNote, runView, storedChanges, threadItems } from './transcript';
 import type { Checkpoint, ThreadMeta as Meta } from './transcript';
-import { INSTRUCTIONS_FILE, hasInstruction, starterInstructions, withInstruction } from './instructions';
+import { INSTRUCTIONS_FILE, starterInstructions } from './instructions';
 import AgentHeader, { useTurnChoice } from './AgentHeader';
 import type { TurnChoice } from './usage';
 
@@ -120,9 +120,12 @@ export default function SpectrumAgentTab({
   const [planOn, setPlanOn] = useState(false);
   const planRef = useRef(planOn);
   planRef.current = planOn;
-  // the project's AGENTS.md: whether the agent is given it, and its text for the suggested lines
-  const [rules, setRules] = useState<(AgentInstructions & { text: string | null }) | null>(null);
+  // the project's AGENTS.md: whether the agent is given it
+  const [rules, setRules] = useState<AgentInstructions | null>(null);
   const [rulesRead, setRulesRead] = useState('');
+  // what the agent remembers for the project, and whether its sheet is open
+  const [remembered, setRemembered] = useState<AgentMemory | null>(null);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const tabRef = useRef<HTMLDivElement>(null);
   const [applying, setApplying] = useState(false);
   const [reviewing, setReviewing] = useState(false);
@@ -190,8 +193,12 @@ export default function SpectrumAgentTab({
   const refreshRules = async () => {
     const a = latest.current;
     const status = await getAgentInstructions(a.projectId).catch(() => null);
-    if (status) setRules({ ...status, text: status.exists ? await a.ensureFileContent(INSTRUCTIONS_FILE).catch(() => null) : null });
+    if (status) setRules(status);
   };
+  // the memory changes only through this tab (or another window's): read when the workspace is shown
+  useEffect(() => {
+    if (active) void getAgentMemory(api.projectId).then(setRemembered, () => undefined);
+  }, [api.projectId, active]);
   // read again when the workspace is shown, a turn ends or a change is applied: each may have changed the file
   useEffect(() => {
     if (active) void refreshRules();
@@ -479,21 +486,25 @@ export default function SpectrumAgentTab({
     }
   };
 
-  /** A line the agent suggested, added to AGENTS.md on the user's click (made with the line when there is no file yet). */
-  const addRule = async (line: string) => {
+  /** A change to the project's memory, from a suggestion card's Add or the Memory sheet; resolves whether it was made. */
+  const changeMemory = async (change: (projectId: string) => Promise<AgentMemory>, failed: string, done?: string) => {
     const a = latest.current;
     try {
-      const status = await getAgentInstructions(a.projectId);
-      if (status.exists && !status.approved) throw new Error(`Read ${INSTRUCTIONS_FILE} and choose Use it first.`);
-      const text = status.exists ? await a.ensureFileContent(INSTRUCTIONS_FILE) : '# Instructions for agents\n';
-      if (!hasInstruction(text, line)) await a.writeProjectFile(INSTRUCTIONS_FILE, withInstruction(text, line));
-      a.notify(`Added to ${INSTRUCTIONS_FILE}`, 'success');
+      setRemembered(await change(a.projectId));
+      if (done) a.notify(done, 'success');
+      return true;
     } catch (err) {
-      a.notify(`Couldn’t add the line: ${errorText(err)}`, 'error');
+      a.notify(`${failed}: ${errorText(err)}`, 'error');
+      return false;
     }
-    await refreshRules();
   };
-  const memory: Memory = { text: rules?.text ?? null, add: addRule, ...(rules?.exists && !rules.approved && { blocked: `${INSTRUCTIONS_FILE} is not in use yet: read it and choose Use it first.` }) };
+  const memory: Memory = {
+    lines: remembered?.lines ?? null,
+    max: remembered?.max,
+    add: (text) => changeMemory((id) => addAgentMemory(id, text), 'Couldn’t add the line', 'Remembered for this project'),
+    edit: (line, text) => changeMemory((id) => editAgentMemory(id, line, text), 'Couldn’t save the line'),
+    remove: (line) => changeMemory((id) => deleteAgentMemory(id, line), 'Couldn’t delete the line')
+  };
 
   /** The AGENTS.md chip: opens the file, or offers to make one to start from. */
   const openRules = async () => {
@@ -740,11 +751,15 @@ export default function SpectrumAgentTab({
               >
                 <Icon name="list.clipboard" /> {!rules?.exists ? `Add ${INSTRUCTIONS_FILE}` : rules.approved ? `Using ${INSTRUCTIONS_FILE}` : `${INSTRUCTIONS_FILE} not used`}
               </button>
+              <button className={`chip ${remembered?.lines.length ? 'active' : ''}`} title="What the Spectrum agent remembers for this project: see, edit and add lines" onClick={() => setMemoryOpen(true)}>
+                <Icon name="bookmark" /> Memory{remembered?.lines.length ? ` · ${remembered.lines.length}` : ''}
+              </button>
             </>
           }
           onSend={(text, opts) => void send(text, { ...opts, plan: planRef.current })}
         />
       </div>
+      {memoryOpen && <MemorySheet memory={memory} onClose={() => setMemoryOpen(false)} />}
     </div>
   );
 }

@@ -1,12 +1,13 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { listSkills, restoreVersion } from '../../api/client';
-import type { AgentUserRequest, Skill, SuggestedTodo, TodoLink } from '../../api/client';
+import type { AgentMemory, AgentUserRequest, Skill, SuggestedTodo, TodoLink } from '../../api/client';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
 import { TAG_COLOURS } from '../../app/appearance';
 import type { TagColour } from '../../app/settings';
-import { confirmDialog } from '../../app/Dialogs';
+import { confirmDialog, promptDialog } from '../../app/Dialogs';
+import Sheet from '../../app/Sheet';
 import SplitDiffView, { DiffCount, countChanges } from '../SplitDiffView';
 import HunkList, { PdfCompare, reviewPdfs } from '../HunkReview';
 import type { Pdf, ReviewKeys } from '../HunkReview';
@@ -17,7 +18,6 @@ import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
 import { Markdown, VERSIONS_CHANGED, errorText } from '../shared';
 import type { AgentCommand, Checkpoint, Item, PlanEntry, ToolCall } from './transcript';
-import { INSTRUCTIONS_FILE, hasInstruction } from './instructions';
 
 // The pieces both agent tabs are made of: transcript cards, plan strip, changes tray and review, composer.
 
@@ -285,29 +285,87 @@ function TodoCard({ todo, todos }: { todo: SuggestedTodo; todos: TodosState }) {
 }
 
 /**
- * The project's AGENTS.md as the Spectrum agent's cards need it: its text (null: there is none), why a line cannot be
- * added now, and the way to add one.
+ * What the Spectrum agent remembers for the project, as its cards and the Memory sheet need it: the lines (null until
+ * they are read) and the user's changes, each resolving whether it was made.
  */
-export type Memory = { text: string | null; blocked?: string; add(line: string): Promise<void> };
+export type Memory = {
+  lines: AgentMemory['lines'] | null;
+  max?: AgentMemory['max'];
+  add(text: string): Promise<boolean>;
+  edit(id: string, text: string): Promise<boolean>;
+  remove(id: string): Promise<boolean>;
+};
 
-/** A line the agent suggests for AGENTS.md: added only by this button. */
-function InstructionCard({ text, memory }: { text: string; memory?: Memory }) {
+/** A line the agent suggests to remember: kept only by this button. */
+function MemoryCard({ text, memory }: { text: string; memory?: Memory }) {
   const [busy, setBusy] = useState(false);
-  const added = !!memory && hasInstruction(memory.text || '', text);
+  const added = !!memory?.lines?.some((l) => l.text === text.trim());
   return (
     <div className="agent-card">
       <Icon name="text.badge.plus" />
       <div className="grow">
-        <div className="agent-card-label">Suggested instruction for {INSTRUCTIONS_FILE}</div>
+        <div className="agent-card-label">Suggested to remember</div>
         <div>{text}</div>
-        {memory?.blocked && !added && <div className="field-hint">{memory.blocked}</div>}
       </div>
       {memory && (
-        <button className="btn small" disabled={added || busy || !!memory.blocked} title={`Adds this line to ${INSTRUCTIONS_FILE}, which agents read with every request in this project`} onClick={() => { setBusy(true); void memory.add(text).finally(() => setBusy(false)); }}>
+        <button className="btn small" disabled={added || busy} title="Spectrum remembers this line for the project and gives it to the Spectrum agent with every request" onClick={() => { setBusy(true); void memory.add(text).finally(() => setBusy(false)); }}>
           {added ? 'Added' : 'Add'}
         </button>
       )}
     </div>
+  );
+}
+
+/** What the Spectrum agent remembers for the project: each line to edit or delete, and a line of the user's own to add. */
+export function MemorySheet({ memory, onClose }: { memory: Memory; onClose(): void }) {
+  const lines = memory.lines || [];
+  const full = !!memory.max && lines.length >= memory.max.lines;
+  const ask = (title: string, defaultValue = '') =>
+    promptDialog({ title, defaultValue, placeholder: 'Spelling: Australian English', message: `One line${memory.max ? `, up to ${memory.max.chars} characters` : ''}.`, confirmLabel: defaultValue ? 'Save' : 'Add' });
+  const add = async () => {
+    const text = await ask('Remember a line');
+    if (text?.trim()) await memory.add(text);
+  };
+  const edit = async (id: string, old: string) => {
+    const text = await ask('Edit the line', old);
+    if (text?.trim() && text.trim() !== old) await memory.edit(id, text);
+  };
+  return (
+    <Sheet
+      title="Memory"
+      width={520}
+      onClose={onClose}
+      actions={
+        <>
+          <button className="btn" disabled={full} title={full ? `Spectrum remembers ${memory.max?.lines} lines at most for a project. Delete one first.` : undefined} onClick={() => void add()}>
+            <Icon name="plus" /> Add a line
+          </button>
+          <button className="btn primary" onClick={onClose}>
+            Done
+          </button>
+        </>
+      }
+    >
+      <div className="field-hint">What the Spectrum agent remembers for this project. Spectrum keeps it on this computer, apart from the project’s files, and gives it to the agent with every request. Local agents keep their own memory.</div>
+      <div className="kv-list" role="list">
+        {lines.map((line) => (
+          <div key={line.id} className="kv-row persona-row" role="listitem">
+            <span className="persona-text">{line.text}</span>
+            <button className="icon-btn small" title="Edit" aria-label={`Edit “${line.text}”`} onClick={() => void edit(line.id, line.text)}>
+              <Icon name="pencil" />
+            </button>
+            <button className="icon-btn small" title="Delete" aria-label={`Delete “${line.text}”`} onClick={() => void memory.remove(line.id)}>
+              <Icon name="trash" />
+            </button>
+          </div>
+        ))}
+        {!lines.length && (
+          <div className="kv-row">
+            <span>Nothing is remembered yet. Add a line, or press Add on a line the agent suggests.</span>
+          </div>
+        )}
+      </div>
+    </Sheet>
   );
 }
 
@@ -417,7 +475,7 @@ export function Transcript({
   onAnswer?: (request: AgentUserRequest, answer: unknown) => Promise<void>;
   /** the Spectrum agent's plan card's buttons */
   plan?: PlanActions;
-  /** the project's AGENTS.md, for the lines the Spectrum agent suggests */
+  /** the project's memory, for the lines the Spectrum agent suggests */
   memory?: Memory;
 }) {
   return (
@@ -453,7 +511,7 @@ export function Transcript({
         ) : item.type === 'plan' ? (
           plan ? <PlanCard key={item.key} steps={item.steps} actions={plan} /> : null
         ) : item.type === 'instruction' ? (
-          <InstructionCard key={item.key} text={item.text} memory={memory} />
+          <MemoryCard key={item.key} text={item.text} memory={memory} />
         ) : item.type === 'notice' ? (
           <div className={`agent-note ${item.error ? 'error' : ''}`} key={item.key} role={item.error ? 'alert' : undefined}>
             {item.text}
