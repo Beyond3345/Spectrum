@@ -7,7 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { APP_VERSION } from '../config/constants.js';
 import * as tools from './tools.js';
-import { DATA_RULE, SKILL_RULE, skillText, untrusted } from '../utils/outsideText.js';
+import { DATA_RULE, SKILL_RULE } from '../utils/outsideText.js';
 
 const arg = (name) => {
   const i = process.argv.indexOf(name);
@@ -40,18 +40,6 @@ const ctx = {
   suggestTodo: (todo) => tools.suggestTodo(state, todo),
   loadSkill: tools.loadHomeSkill
 };
-// every answer as JSON text inside a marker naming the tool it came from (a skill's as a skill): what a paper's
-// abstract, a .bib field or a log says is never the user speaking; a failure as the tool's error, for the agent to read
-for (const tool of tools.TOOLS) {
-  server.registerTool(tool.name, { description: tool.description, inputSchema: tool.schema, annotations: { readOnlyHint: tool.readOnly } }, async (input) => {
-    try {
-      const result = await tool.run(ctx, input || {});
-      const text = typeof result === 'string' ? result : JSON.stringify(result);
-      return { content: [{ type: 'text', text: tool.name === 'load_skill' ? skillText(input?.id, text) : untrusted(tool.name, text) }] };
-    } catch (err) {
-      return { isError: true, content: [{ type: 'text', text: untrusted(tool.name, err.message) }] };
-    }
-  });
-}
+tools.serveTools(server, ctx);
 
 await server.connect(new StdioServerTransport());
