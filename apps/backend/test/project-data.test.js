@@ -145,6 +145,20 @@ test('to-dos are saved one file each and checked', async () => {
   }
   assert.equal((await api(`${url}/b`, 'DELETE')).status, 200);
   assert.deepEqual((await api(url)).json.todos.map((t) => t.id), ['a', 'c']);
+
+  // a note, since 2.6: kept as sent, up to 4000 characters, and a to-do written before it loads as it was
+  const noted = todo('n', { note: 'Line one\nline two', link: { key: 'Knuth1984' } });
+  assert.deepEqual((await api(`${url}/n`, 'PUT', noted)).json.todo, noted);
+  assert.deepEqual((await api(url)).json.todos.find((t) => t.id === 'n'), noted);
+  assert.equal((await api(`${url}/n`, 'PUT', todo('n', { note: 'x'.repeat(4000) }))).status, 200);
+  for (const note of ['x'.repeat(4001), 5, ['a']]) assert.equal((await api(`${url}/n`, 'PUT', todo('n', { note }))).status, 400, String(note).slice(0, 20));
+  // taking the note off is a save without it
+  await api(`${url}/n`, 'PUT', todo('n'));
+  assert.deepEqual(await readJson(path.join(p.path, '.spectrum', 'todos', 'n.json')), todo('n'));
+  const old = '{\n  "id": "o",\n  "text": "From 2.5",\n  "done": false,\n  "createdAt": "2026-10-20T00:00:00.000Z",\n  "updatedAt": "2026-10-20T00:00:00.000Z"\n}';
+  await fs.writeFile(path.join(p.path, '.spectrum', 'todos', 'o.json'), old);
+  assert.deepEqual((await api(url)).json.todos.find((t) => t.id === 'o'), JSON.parse(old));
+  assert.equal(await fs.readFile(path.join(p.path, '.spectrum', 'todos', 'o.json'), 'utf8'), old);
 });
 
 test('PDF notes are saved one file each and listed per document', async () => {
