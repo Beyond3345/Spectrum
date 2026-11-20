@@ -85,7 +85,10 @@ test('project settings keep only valid compile choices, and null puts one back t
   assert.equal((await readJson(path.join(p.path, '.spectrum', 'project.json'))).compile, undefined);
 
   assert.deepEqual((await api(url, 'PATCH', { compile: { engine: null, autoCompile: 0 } })).json.settings, { compile: { autoCompile: 0, haltOnError: true, bibTool: 'biber', draft: false, syntaxCheck: false } });
-  for (const compile of [{ engine: 'word' }, { autoCompile: 11 }, { autoCompile: 1.5 }, { haltOnError: 'yes' }, { bibTool: 'biblatex' }, { draft: 1 }, { syntaxCheck: 'on' }, { shellEscape: true }, { constructor: true }]) {
+  // As you type, a Typst document's pause
+  assert.equal((await api(url, 'PATCH', { compile: { autoCompile: 0.3 } })).json.settings.compile.autoCompile, 0.3);
+  assert.equal((await api(url, 'PATCH', { compile: { autoCompile: 0 } })).status, 200);
+  for (const compile of [{ engine: 'word' }, { autoCompile: 11 }, { autoCompile: 1.5 }, { autoCompile: 0.5 }, { haltOnError: 'yes' }, { bibTool: 'biblatex' }, { draft: 1 }, { syntaxCheck: 'on' }, { shellEscape: true }, { constructor: true }]) {
     assert.equal((await api(url, 'PATCH', { compile })).status, 400, JSON.stringify(compile));
   }
   assert.equal((await api(url, 'PATCH', { zotero: { key: 'x' } })).status, 400);

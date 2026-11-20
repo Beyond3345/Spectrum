@@ -91,10 +91,10 @@ const unfit = (rel) => {
 const UNFIT = 'That name can’t be used on Windows or in a sync app. Choose another one.';
 
 // What each of a project's compile settings may be; null takes it back to the app's default. autoCompile: seconds after
-// the last edit, 0 for off
+// the last edit, 0 for off, 0.3 for as you type (a Typst document; the others wait a second)
 const COMPILE_SETTINGS = {
   engine: (v) => SUPPORTED_ENGINES.includes(v),
-  autoCompile: (v) => Number.isInteger(v) && v >= 0 && v <= 10,
+  autoCompile: (v) => (Number.isInteger(v) || v === 0.3) && v >= 0 && v <= 10,
   haltOnError: (v) => typeof v === 'boolean',
   bibTool: (v) => BIB_TOOLS.includes(v),
   draft: (v) => typeof v === 'boolean',

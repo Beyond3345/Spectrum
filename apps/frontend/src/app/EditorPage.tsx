@@ -78,7 +78,7 @@ import { withDeletionCheck } from './github';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
 import { FILE_MANAGER } from './platform';
-import { BIB_TOOLS, COMPILE_ENGINES, effectiveCompile, effectiveEffort, languageName, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
+import { AS_YOU_TYPE, BIB_TOOLS, COMPILE_ENGINES, autoPauseMs, effectiveCompile, effectiveEffort, languageName, llmConfigFor, loadSettings, updateSettings, useProviders, useSettings } from './settings';
 import type { CompileDefaults, LiveOutputEngine } from './settings';
 import { PDF_PAGE_FILLS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, useDarkMode } from './appearance';
 import { EDITOR_SHORTCUTS, FIND_NEXT, FIND_PREVIOUS, editorBasics, formatShortcut, matchesShortcut, matchesZoomIn, shortcutKey, withShortcut } from './shortcuts';
@@ -1829,7 +1829,8 @@ function Editor({ projectId }: { projectId: string }) {
         fresh: opts.fresh,
         texFolder: settings.texFolder || undefined,
         xjyutpingFolder: settings.xjyutpingFolder || undefined,
-        checkpoint: settings.checkpointOnCompile,
+        // not at every pause of As you type
+        checkpoint: settings.checkpointOnCompile && !(opts.auto && options.autoCompile === AS_YOU_TYPE),
         // the app's default only, read now: the backend takes the project's pin from its settings file first, so a
         // pin cleared a moment ago can't come back from this render
         typstVersion: loadSettings().compileDefaults.typstVersion || undefined,
@@ -2947,10 +2948,10 @@ function Editor({ projectId }: { projectId: string }) {
     return afterChange(1500, () => saveNow());
   }, [dirty, editorValue]);
 
-  // auto compile, the chosen pause after the last keystroke
+  // auto compile, the chosen pause after the last keystroke (As you type: a moment, for a Typst document)
   useEffect(() => {
     if (!compileOptions.autoCompile || !editedRef.current) return;
-    return afterChange(compileOptions.autoCompile * 1000, () => actions.current.autoCompile());
+    return afterChange(autoPauseMs(compileOptions.autoCompile, docKind(editedDocRef.current || compileTarget) === 'typst'), () => actions.current.autoCompile());
   }, [editorValue, compileOptions.autoCompile]);
 
   // PDF follows the open file: another document's .tex, or a chapter whose % !TEX root names one, shows that
@@ -3210,7 +3211,7 @@ function Editor({ projectId }: { projectId: string }) {
     ];
   };
   // On keeps the project's pause, else the app's (Settings › Engines › LaTeX sets its length), else 2 s
-  const autoPause = compileOptions.autoCompile || settings.compileDefaults.autoCompile || 2;
+  const autoPause = [compileOptions.autoCompile, settings.compileDefaults.autoCompile].find((n) => n >= 1) || 2;
   const compileKind = docKind(compileTarget) ?? 'latex';
   // TeX compiles a LaTeX document and Markdown through LaTeX; Typst has no bibliography tool or draft mode
   const usesTeX = compileKind === 'latex' || (compileKind === 'markdown' && compileOptions.markdownEngine !== 'typst');
@@ -3240,7 +3241,7 @@ function Editor({ projectId }: { projectId: string }) {
       : []),
     ...(compileKind === 'markdown' ? compileChoice('markdownEngine', 'PDF engine (this project)', [['latex', 'LaTeX'], ['typst', 'Typst']]) : []),
     ...(usesTeX ? compileChoice('engine', 'Compiler (this project)', COMPILE_ENGINES) : typstVersionChoices),
-    ...compileChoice('autoCompile', 'Auto compile', [[0, 'Off'], [autoPause, 'On']], (n) => (n ? 'On' : 'Off')),
+    ...compileChoice('autoCompile', 'Auto compile', [[0, 'Off'], [autoPause, 'On'], ...(compileKind === 'typst' ? [[AS_YOU_TYPE, 'As you type'] as [number, string]] : [])], (n) => (n === AS_YOU_TYPE ? 'As you type' : n ? 'On' : 'Off')),
     // Markdown's citations are pandoc's citeproc, never BibTeX or Biber
     ...(compileKind === 'latex' ? compileChoice('bibTool', 'Bibliography tool', BIB_TOOLS) : []),
     ...(usesTeX
