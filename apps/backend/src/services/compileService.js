@@ -983,8 +983,16 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     if (!options.markdownSource) await keepSynctex(projectRoot, doc, moved, mainDir, copy?.root);
     // only a build without errors is read back; after one with errors the next compile starts from nothing. A draft
     // leaves the last full compile's: its .idx kept beside the old .ind would keep makeindex from running again
-    if (multiPass && !options.draft) await (code === 0 ? keepBuild(outDir, store, others, await passLog()) : fs.rm(store, { recursive: true, force: true })).catch(() => {});
-    await keepAux(outDir, auxStore(cache, doc), others, !held);
+    if (only) {
+      // A chapter alone leaves the kept files as the last full compile made them, but for the chapter's own .aux (a
+      // label added in it is there for the next compile). The main .aux of such a pass would carry on what it was
+      // missing: biblatex notes there that it asked for Biber, and asks again in every later pass until the .bbl
+      // changes, which the right .bbl never does
+      if (code === 0) await fs.copyFile(path.join(outDir, `${only}.aux`), path.join(store, `${only}.aux`)).catch(() => {});
+    } else {
+      if (multiPass && !options.draft) await (code === 0 ? keepBuild(outDir, store, others, await passLog()) : fs.rm(store, { recursive: true, force: true })).catch(() => {});
+      await keepAux(outDir, auxStore(cache, doc), others, !held);
+    }
     if (held && code === 0) {
       // what filecontents wrote would be found before the source's new text, as in the other engines' kept files
       for (const [, name] of (await passLog()).matchAll(FILECONTENTS)) if (!name.includes('..')) await fs.rm(path.join(held, name), { force: true }).catch(() => {});

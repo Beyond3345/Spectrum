@@ -548,12 +548,18 @@ test('Only the open chapter typesets that chapter in one pass with the others’
   assert.match(again.log, ONLY);
   assert.doesNotMatch(again.log, /Reference `sec:new' on page \d+ undefined/);
 
-  // and the next full compile is the whole document again, as one from scratch makes it
+  // and the next full compile is the whole document again, as one from scratch makes it: nothing a chapter's pass
+  // was missing is carried into it (biblatex would go on asking for Biber, pass after pass)
   const whole = await compile(p);
   assert.equal(whole.status, 0, whole.log);
   assert.doesNotMatch(whole.log, /Only chapters/);
+  assert.doesNotMatch(whole.log.slice(whole.log.lastIndexOf('This is pdfTeX')), /Please \(re\)run Biber/);
+  const settled = await compile(p);
+  assert.equal(passes(settled.log), 1, settled.log);
+  assert.equal(biberRuns(settled.log), 0);
+  assert.doesNotMatch(settled.log, /Please \(re\)run Biber|undefined references/);
   assert.equal(pageCount(whole), all + 0);
-  assert.ok(Buffer.from(whole.pdf, 'base64').equals(await fs.readFile(path.join(p.path, 'main.pdf'))));
+  assert.ok(Buffer.from(settled.pdf, 'base64').equals(await fs.readFile(path.join(p.path, 'main.pdf'))));
   const scratch = await compile(p, { fresh: true });
   assert.ok(samePages(pages(whole), pages(scratch)), 'the same pages as from scratch');
 });
@@ -579,11 +585,18 @@ test('Only the open chapter compiles the whole document when it can’t be right
   // from scratch, and the engines that choose their own passes
   await wholeAfter('from scratch', { onlyFile: 'chapters/two.tex', fresh: true });
   if (tools.latexmk) await wholeAfter('latexmk', { onlyFile: 'chapters/two.tex', engine: 'latexmk' });
-  // after a compile with errors nothing is kept, so the next is whole again
+  // a chapter's compile with errors keeps nothing of itself and leaves the last full compile's files, so its fix is
+  // a chapter's compile again; a full compile with errors clears them, and the next is whole
   await write(p, 'chapters/two.tex', chapter('two', '\\undefinedthing'));
   assert.notEqual((await compile(p, { onlyFile: 'chapters/two.tex' })).status, 0);
   await write(p, 'chapters/two.tex', chapter('two'));
-  await wholeAfter('after errors', { onlyFile: 'chapters/two.tex' });
+  const fixed = await compile(p, { onlyFile: 'chapters/two.tex' });
+  assert.match(fixed.log, ONLY);
+  assert.equal(fixed.status, 0, fixed.log);
+  await write(p, 'chapters/two.tex', chapter('two', '\\undefinedthing'));
+  assert.notEqual((await compile(p)).status, 0);
+  await write(p, 'chapters/two.tex', chapter('two'));
+  await wholeAfter('after a full compile with errors', { onlyFile: 'chapters/two.tex' });
   // with the precompiled preamble on, a chapter alone is a pass of its own without the format, and still right
   await preSettled(p);
   const withFormat = await pre(p);
