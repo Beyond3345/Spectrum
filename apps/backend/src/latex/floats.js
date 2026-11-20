@@ -432,8 +432,11 @@ const typstPath = (path) => JSON.stringify('/' + path.replace(/^\/+/, ''));
 
 const percent = (fraction) => Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%';
 
-/** A Typst image at a size: Typst can't crop, so a trim is left out; a scale reflows, so the text makes room. */
-function typstImage(path, size, fraction = 1) {
+/**
+ * A Typst image at a size: Typst can't crop, so a trim is left out; a scale reflows, so the text makes room. alt: what
+ * it shows, read by screen readers, which PDF/UA-1 export needs.
+ */
+function typstImage(path, size, fraction = 1, alt = '') {
   const s = size ?? { mode: 'line', fraction, width: 0, height: 0, scale: 1 };
   const args =
     s.mode === 'width'
@@ -445,12 +448,13 @@ function typstImage(path, size, fraction = 1) {
           : s.mode === 'scale'
             ? ''
             : 'width: ' + percent(s.fraction);
-  const image = 'image(' + typstPath(path) + (args ? ', ' + args : '') + ')';
+  const described = oneLine(alt) ? ', alt: "' + oneLine(alt).replace(/[\\"]/g, '\\$&') + '"' : '';
+  const image = 'image(' + typstPath(path) + (args ? ', ' + args : '') + described + ')';
   return s.mode === 'scale' ? 'scale(' + Math.round((+s.scale || 1) * 100) + '%, reflow: true, ' + image + ')' : image;
 }
 
 /** A Typst figure: #figure(image("/path", width: 80%), caption: [caption]) <label>. */
-export const figureTypst = (o) => typstFloat(typstImage(o.path, o.size, o.width), o.caption, o.label, o.markup, typstPlacement(o.placement, o.span));
+export const figureTypst = (o) => typstFloat(typstImage(o.path, o.size, o.width, o.alt), o.caption, o.label, o.markup, typstPlacement(o.placement, o.span));
 
 /**
  * Several images in a Typst grid. Sub-figures are the house #subfigure from docs/TYPST_STYLE.md, each with its own label,
@@ -462,9 +466,9 @@ export function figureSetTypst(f) {
   const grid = (cells) => 'grid(columns: ' + n + ', gutter: 1em, align: ' + (f.align === 'top' ? 'top' : f.align === 'centre' ? 'horizon' : 'bottom') + ', ' + cells.join(', ') + ')';
   // a label attaches to the figure before it in markup, so each cell is markup holding its labelled figure
   const labelled = (func) =>
-    f.panels.map((panel) => '[#' + func + '(' + typstImage(panel.path, f.size) + ', caption: [' + typstText(panel.caption, f.markup) + '])' + (panel.label.trim() ? ' <' + panel.label.trim() + '>' : '') + ']');
+    f.panels.map((panel) => '[#' + func + '(' + typstImage(panel.path, f.size, 1, panel.alt) + ', caption: [' + typstText(panel.caption, f.markup) + '])' + (panel.label.trim() ? ' <' + panel.label.trim() + '>' : '') + ']');
   if (f.labels === 'separate') return '#' + grid(labelled('figure'));
-  return typstFloat(grid(f.labels === 'sub' ? labelled('subfigure') : f.panels.map((panel) => typstImage(panel.path, f.size))), f.caption, f.label, f.markup, typstPlacement(f.placement, f.span));
+  return typstFloat(grid(f.labels === 'sub' ? labelled('subfigure') : f.panels.map((panel) => typstImage(panel.path, f.size, 1, panel.alt))), f.caption, f.label, f.markup, typstPlacement(f.placement, f.span));
 }
 
 /** A Typst diagram file included as a figure: #figure(include "/diagrams/x.typ", caption: [caption]) <label>. */

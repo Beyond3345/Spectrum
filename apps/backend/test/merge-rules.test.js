@@ -53,6 +53,11 @@ test('project.json and settings.json merge key by key, one level into a group, a
   assert.deepEqual(rules.mergeMeta(ignoredBase, { languageToolIgnored: {} }, ignoredBase), { languageToolIgnored: {} });
   // a project's language list changed on both sides keeps this computer's
   assert.deepEqual(rules.mergeMeta({}, { language: { languages: ['en-AU', 'zh-TW'] } }, { language: { languages: ['en-GB'] } }), { language: { languages: ['en-AU', 'zh-TW'] } });
+  // a to-do's note (2.6) merges like its text: a note added on one computer and a tick on the other keep both, and
+  // one taken off where the other left it stays off
+  const todo = { id: 't', text: 'Fix', done: false };
+  assert.deepEqual(rules.mergeMeta(todo, { ...todo, note: 'See p. 3' }, { ...todo, done: true }), { ...todo, note: 'See p. 3', done: true });
+  assert.deepEqual(rules.mergeMeta({ ...todo, note: 'a' }, todo, { ...todo, note: 'a', text: 'Fix it' }), { ...todo, text: 'Fix it' });
 });
 
 test('a chat keeps every message from both sides, and a session every search', () => {

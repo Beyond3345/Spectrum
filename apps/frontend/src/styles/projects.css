@@ -1064,3 +1064,68 @@ button.badge {
 .move-notice-row {
   color: var(--text-secondary);
 }
+
+/* Get started (GetStarted.tsx): the first-run checklist above the projects */
+.get-started {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 720px;
+  margin: 12px 20px 8px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+
+.panel-body:has(.get-started) .empty-state {
+  min-height: 0;
+}
+
+.get-started-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 4px 4px;
+}
+
+.get-started-title {
+  font-weight: 600;
+}
+
+.get-started-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+}
+
+.get-started-tick {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--text-tertiary);
+}
+
+.get-started-row.done .get-started-tick {
+  color: var(--green);
+}
+
+.get-started-body {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.get-started-name {
+  font-weight: 500;
+}
+
+.get-started-row.done .get-started-name {
+  color: var(--text-secondary);
+}
+
+.get-started-text {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}

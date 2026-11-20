@@ -45,7 +45,15 @@ The Windows version is a preview, and it differs from the macOS version as follo
 
 == Setting up <sec-start-setup>
 
-Spectrum opens on the projects page, with nothing in it the first time. There is no setup assistant: the application works straight away with the built-in engines, and the rest is set in the Settings window (@sec-start-settings). A short pass through Settings before the first project is still worthwhile.
+Spectrum opens on the projects page, with nothing in it the first time. The application works straight away with the built-in engines, and #ui[Get started], above the projects on Home and All projects, says what it will use (@fig-start-get-started). It has three rows,
+
+- the TeX that compiles LaTeX documents: TeX Live or MiKTeX when one is found on the computer, or else the built-in Tectonic,
+- a model for the AI features, which are optional, and
+- a first project, started from a template (@sec-start-templates).
+
+Each row ticks itself once it is done, and its button opens the place to do it: #menu[Settings][Engines], #menu[Settings][Models] or the template gallery. The card goes once every row is ticked, while its cross hides it for good on that computer. The rest is set in the Settings window (@sec-start-settings), and a short pass through it before the first project is still worthwhile.
+
+#shot("figures/01-getting-started/get-started.png", [Get started on the first run. TeX Live 2026 was found, so its row is ticked, while no model is set up and there is no project yet.], width: 80%) <fig-start-get-started>
 
 #howto[set up Spectrum before the first project][
 + Open Settings with #key("⌘", ",")

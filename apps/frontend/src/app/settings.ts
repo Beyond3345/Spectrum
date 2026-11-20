@@ -361,7 +361,11 @@ function cleanPersonas(value: unknown): Persona[] {
   });
 }
 
-export const autoCompileLabel = (seconds: number) => (seconds ? `After a pause of ${seconds} s` : 'Off');
+// Auto compile's "As you type": a Typst document compiles at this pause, on its kept typst watch; any other waits a second
+export const AS_YOU_TYPE = 0.3;
+export const autoCompileLabel = (seconds: number) => (seconds === AS_YOU_TYPE ? 'As you type (Typst; 1 s for others)' : seconds ? `After a pause of ${seconds} s` : 'Off');
+/** Auto compile's pause in ms for a document (typst: a Typst one), 0 for off. */
+export const autoPauseMs = (seconds: number, typst: boolean) => (seconds === AS_YOU_TYPE && !typst ? 1000 : seconds * 1000);
 
 /** Each compile setting from `value` where it's one Spectrum knows, else from `fallback`. */
 function cleanCompile(value: unknown, fallback: CompileDefaults): CompileDefaults {
@@ -369,7 +373,7 @@ function cleanCompile(value: unknown, fallback: CompileDefaults): CompileDefault
   const seconds = Number(v.autoCompile);
   return {
     engine: COMPILE_ENGINES.find(([engine]) => engine === v.engine)?.[0] ?? fallback.engine,
-    autoCompile: Number.isInteger(seconds) && seconds >= 0 && seconds <= 10 ? seconds : fallback.autoCompile,
+    autoCompile: (Number.isInteger(seconds) || seconds === AS_YOU_TYPE) && seconds >= 0 && seconds <= 10 ? seconds : fallback.autoCompile,
     haltOnError: typeof v.haltOnError === 'boolean' ? v.haltOnError : fallback.haltOnError,
     bibTool: BIB_TOOLS.find(([tool]) => tool === v.bibTool)?.[0] ?? fallback.bibTool,
     draft: typeof v.draft === 'boolean' ? v.draft : fallback.draft,

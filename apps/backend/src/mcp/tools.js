@@ -6,6 +6,7 @@ import { compileFolder, unwrap } from '../services/compileService.js';
 import { pdfPagePng } from '../services/typstService.js';
 import { parseBibEntries, texIncludesBib } from '../services/referenceService.js';
 import { fetchBibtex, literatureSearch } from '../services/researchTools.js';
+import { checkReferences, checkSummary } from '../services/referenceCheck.js';
 import { SKILL_ID, readFrontMatter, skillBody } from '../services/skillService.js';
 import { withoutComments } from '../latex/text.js';
 import { DOC_LANGUAGES, docKind } from '../utils/docLanguage.js';
@@ -108,7 +109,8 @@ async function bibEntries(root, files) {
   const bibs = named.length || all.some(loaded) ? all.filter(loaded) : all;
   const entries = [];
   for (const file of bibs) {
-    for (const entry of parseBibEntries(await fs.readFile(path.join(root, file), 'utf8').catch(() => ''))) entries.push({ ...entry, file });
+    const text = await fs.readFile(path.join(root, file), 'utf8').catch(() => '');
+    for (const entry of parseBibEntries(text)) entries.push({ ...entry, file, line: lineOf(text, entry.at) });
   }
   return { bibs, entries };
 }
@@ -156,10 +158,15 @@ export async function projectMap(root, state) {
   };
 }
 
+/** Every entry of the project's bibliography as read: { key, type, fields, file, line }. */
+export async function projectBibEntries(root, state) {
+  const main = await mainFile(root, state);
+  return (await bibEntries(root, main ? await documentFiles(root, main) : [])).entries;
+}
+
 /** Every entry of the project's bibliography, briefly. */
 export async function listBibEntries(root, state) {
-  const main = await mainFile(root, state);
-  const { entries } = await bibEntries(root, main ? await documentFiles(root, main) : []);
+  const entries = await projectBibEntries(root, state);
   return entries.map(({ key, type, fields, file }) => ({ key, type, title: fields.title, author: fields.author, year: fields.year || fields.date, ...(fields.doi && { doi: fields.doi }), file }));
 }
 
@@ -278,16 +285,20 @@ const MATCHER = new vm.Script('lines.flatMap((line, i) => (test(line) ? [i] : []
 
 /**
  * The lines of the project's text files that hold the query: plain text (any case unless caseSensitive), or with
- * regex a regular expression. Returns { matches: [{ file, line, text }], more? }, the first 100. path: a file or a
- * folder to look in. Hidden and secret files are never read, nor is anything through a link. A regular expression that
- * takes over a second on one file is stopped, as one written to never finish would hold the app.
+ * regex a regular expression; wholeWord only where no letter, digit or _ touches it on either side. Returns
+ * { matches: [{ file, line, text }], more? }, the first 100. path: a file or a folder to look in. Hidden and secret
+ * files are never read, nor is anything through a link. A regular expression that takes over a second on one file is
+ * stopped, as one written to never finish would hold the app. The editor's Search in the sidebar comes here too.
  */
-export async function searchText(root, { query, regex = false, caseSensitive = false, path: within = '' } = {}) {
+export async function searchText(root, { query, regex = false, caseSensitive = false, wholeWord = false, path: within = '' } = {}) {
   if (typeof query !== 'string' || !query) throw new Error('Give text to search for.');
   let test;
-  if (regex) {
+  if (regex || wholeWord) {
     let re;
-    try { re = new RegExp(query, caseSensitive ? 'u' : 'iu'); } catch (err) { throw new Error(`Not a regular expression: ${err.message}`); }
+    const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+      re = new RegExp(wholeWord ? `(?<![\\p{L}\\p{N}_])(?:${source})(?![\\p{L}\\p{N}_])` : source, caseSensitive ? 'u' : 'iu');
+    } catch (err) { throw new Error(`Not a regular expression: ${err.message}`); }
     test = (line) => re.test(line);
   } else {
     const needle = caseSensitive ? query : query.toLowerCase();
@@ -447,8 +458,8 @@ export const TOOLS = [
   },
   {
     name: 'search_text',
-    description: 'Find text in the project’s files: file, line and the line for each match. Plain text in any case, or a regular expression with regex. path: a file or folder to look in.',
-    schema: { query: z.string(), regex: z.boolean().optional(), caseSensitive: z.boolean().optional(), path: z.string().optional() },
+    description: 'Find text in the project’s files: file, line and the line for each match. Plain text in any case, or a regular expression with regex; wholeWord for whole words only. path: a file or folder to look in.',
+    schema: { query: z.string(), regex: z.boolean().optional(), caseSensitive: z.boolean().optional(), wholeWord: z.boolean().optional(), path: z.string().optional() },
     readOnly: true,
     run: async (ctx, input) => searchText(await ctx.root(), input),
     show: (r) => ({ text: r.matches.length ? r.matches.slice(0, 20).map((m) => `${m.file}:${m.line}: ${m.text}`).join('\n') : 'No match.' })
@@ -462,10 +473,18 @@ export const TOOLS = [
   },
   {
     name: 'fetch_bibtex',
-    description: 'BibTeX for a DOI, an arXiv id or link, or else the best match for a title.',
-    schema: { id: z.string() },
+    description: 'BibTeX for a DOI, an arXiv id or link, or else for a title (the title alone in id, with the first author’s surname and the year when you know them). Returns the BibTeX, how well the work found matches (exact or close) and what was found; a title with no close match is refused with the nearest works listed.',
+    schema: { id: z.string(), author: z.string().optional(), year: z.union([z.string(), z.number()]).optional() },
     readOnly: true,
-    run: (ctx, { id }) => fetchBibtex(id)
+    run: (ctx, { id, author, year }) => fetchBibtex(id, { author, year })
+  },
+  {
+    name: 'check_references',
+    description: 'Check the bibliography against the sources, by code: each entry’s DOI in Crossref or doi.org, its arXiv id in arXiv, or its title in OpenAlex, comparing title, first author and year and reading retractions. Returns the keys found as they are, and for each other entry its status (differs, not-found, retracted, unchecked), what differs, the record read and where. keys: only these entries. Slow for a long bibliography: check the keys you need.',
+    schema: { keys: z.array(z.string()).max(300).optional() },
+    readOnly: true,
+    run: async (ctx, { keys }) => checkSummary(await checkReferences(await ctx.root(), { keys, state: ctx.state })),
+    show: (r) => ({ text: [`${r.found.length} of ${r.checked} found as they are`, ...r.problems.map((p) => `${p.key} (${p.at}): ${p.status}${p.differences ? `, ${p.differences.map((d) => d.field).join(', ')} differ` : ''}${p.retraction ? `, ${p.retraction}` : ''}`)].join('\n') })
   },
   {
     name: 'list_todos',

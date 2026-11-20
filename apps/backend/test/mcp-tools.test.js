@@ -181,6 +181,12 @@ test('search_text finds plain text and regular expressions with file and line, a
   assert.deepEqual(await found({ query: 'method', caseSensitive: true }), ['main.tex:3', 'sections/two.tex:2']);
   assert.deepEqual(await found({ query: '^the \\w+ section$', regex: true }), ['main.tex:2']);
   assert.deepEqual(await found({ query: 'method', path: 'sections' }), ['sections/two.tex:2']);
+  // whole words: a letter, digit or _ on either side is part of another word; the query is text, not an expression
+  await write(path.join(where, 'words.tex'), '\\labelx{a}\n\\label{b}\nmethods\n(method)\n');
+  assert.deepEqual(await found({ query: 'method', wholeWord: true, path: 'words.tex' }), ['words.tex:4']);
+  assert.deepEqual(await found({ query: '\\label', wholeWord: true, path: 'words.tex' }), ['words.tex:2']);
+  assert.deepEqual(await found({ query: '(method)', wholeWord: true, path: 'words.tex' }), ['words.tex:4']);
+  await fs.rm(path.join(where, 'words.tex'));
   assert.deepEqual(await found({ query: 'method', path: 'main.tex' }), ['main.tex:2', 'main.tex:3']);
   assert.deepEqual(await found({ query: 'secret' }), [], 'nothing hidden, and nothing through a link');
   await assert.rejects(tools.searchText(where, { query: '(', regex: true }), /Not a regular expression/);
@@ -242,7 +248,7 @@ test('the server answers over stdio with every tool', async () => {
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [server, '--root', root, '--state', state], env: { HOME: home, PATH: process.env.PATH }, stderr: 'pipe' }));
   try {
     const listed = (await client.listTools()).tools.map((t) => t.name).sort();
-    assert.deepEqual(listed, ['bib_entries', 'bib_search', 'compile', 'fetch_bibtex', 'get_log', 'list_todos', 'literature_search', 'load_skill', 'preview_figure', 'project_map', 'search_text', 'suggest_todo', 'view_pdf_page']);
+    assert.deepEqual(listed, ['bib_entries', 'bib_search', 'check_references', 'compile', 'fetch_bibtex', 'get_log', 'list_todos', 'literature_search', 'load_skill', 'preview_figure', 'project_map', 'search_text', 'suggest_todo', 'view_pdf_page']);
     // the registry's every tool, and no other
     assert.deepEqual(listed, tools.TOOLS.map((t) => t.name).sort());
     // each answer inside a marker naming its tool (a skill's as a skill), with the line on how to treat them in the

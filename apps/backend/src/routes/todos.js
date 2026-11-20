@@ -7,6 +7,8 @@ import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 // rather than one replacing the other. 1.10.4 never looks in either folder.
 export const ITEM_ID = /^[A-Za-z0-9_-]{1,64}$/;
 export const MAX_TEXT = 2000;
+// a to-do's note, since 2.6 (MAX_NOTE in the editor's todos.ts); 2.5 passes it through as a field it doesn't know
+const MAX_NOTE = 4000;
 
 export const isText = (value, max) => typeof value === 'string' && value.length <= max;
 const isCount = (value) => Number.isInteger(value) && value > 0;
@@ -77,6 +79,7 @@ export function registerTodoRoutes(fastify) {
     const { id, text, done, createdAt, updatedAt, link, ...rest } = req.body || {};
     if (id !== req.params.tid) throw httpError('The to-do’s id doesn’t match the address.', 400);
     if (!isText(text, MAX_TEXT)) throw httpError(`A to-do’s text is at most ${MAX_TEXT} characters.`, 400);
+    if (rest.note != null && !isText(rest.note, MAX_NOTE)) throw httpError(`A to-do’s note is at most ${MAX_NOTE} characters.`, 400);
     if (typeof done !== 'boolean' || !isText(createdAt, 40) || !isText(updatedAt, 40)) throw httpError('Invalid to-do.', 400);
     const todo = { ...rest, id, text, done, createdAt, updatedAt, ...(link != null && { link: todoLink(link) }) };
     // in the project files' lock, which a GitHub pull holds while it merges to-dos, with the folder looked up there

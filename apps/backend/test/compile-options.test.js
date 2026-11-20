@@ -482,6 +482,16 @@ test('the system check, texcount and a transfer’s compiles look in the TeX fol
   const check = (await app.inject({ url: `/api/system/check?${new URLSearchParams({ texFolder: bin })}` })).json();
   await app.close();
   assert.equal(check.tools.texcount, path.join(bin, 'texcount'));
+  // Get started names the TeX by where it really is, as MacTeX's texbin links into texlive/2026
+  const linked = path.join(tmp, 'texbin');
+  await fs.mkdir(linked);
+  await fs.symlink(path.join(bin, 'pdflatex'), path.join(linked, 'pdflatex'));
+  const viaLink = Fastify();
+  registerSystemRoutes(viaLink);
+  const real = (await viaLink.inject({ url: `/api/system/check?${new URLSearchParams({ texFolder: linked })}` })).json();
+  await viaLink.close();
+  assert.equal(real.tools.pdflatex, path.join(linked, 'pdflatex'));
+  assert.equal(real.texReal, await fs.realpath(path.join(bin, 'pdflatex')));
   assert.equal((await projectStats(p.path, 'main.tex', bin)).wordsInText, 42);
   const { compileResult } = await compileTarget({ targetProjectId: p.id, targetMainFile: 'main.tex', engine: 'pdflatex', texFolder: bin });
   assert.match(compileResult.log, /the folder’s TeX ran/);

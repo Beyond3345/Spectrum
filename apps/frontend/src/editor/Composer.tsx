@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { docLanguage, translatePrompt } from '../../../backend/src/utils/docLanguage.js';
-import { addReference, getChat, resolveReferences, runAgent, visionToLatex } from '../api/client';
+import { addReference, getAgentInstructions, getChat, resolveReferences, runAgent, visionToLatex } from '../api/client';
 import type { ChatMessage, ChatMode, ChatThread, ReferenceResult } from '../api/client';
 import Icon from '../app/Icon';
 import Select from '../app/Select';
@@ -14,6 +14,7 @@ import type { VisionMode } from './shared';
 import { chatMessage, isEditChat, useChatThread } from './chatThread';
 import { resolveInstructions } from './personas';
 import { PersonaPicker } from './agent/parts';
+import { INSTRUCTIONS_FILE } from './agent/instructions';
 import ChatsList from './ChatsList';
 
 type QuickAction = 'polish' | 'rewrite' | 'structure' | 'translate';
@@ -106,6 +107,12 @@ export default function Composer({
   const hasSelection = Boolean(api.selectionText);
   const translateScope: TranslateScope = scope === 'selection' && !hasSelection ? 'file' : scope;
   const personaId = thread ? thread.persona : newPersona;
+  // whether the project's AGENTS.md is approved, so every request here is given it: read as the panel opens and after
+  // each request (the approval itself lives in the Spectrum agent tab)
+  const [rulesOn, setRulesOn] = useState(false);
+  useEffect(() => {
+    if (open && !busy) void getAgentInstructions(api.projectId).then((s) => setRulesOn(s.approved), () => setRulesOn(false));
+  }, [api.projectId, open, busy]);
 
   // open the chat picked in the Chats list
   useEffect(() => {
@@ -320,13 +327,15 @@ export default function Composer({
     const extra = input.trim();
     const label = VISION_MODES.find(([v]) => v === visionMode)?.[1] || visionMode;
     setInput('');
-    const base = append(threadRef.current, msg('user', `Image → LaTeX (${label}): ${file.name}${extra ? `\n\n${extra}` : ''}`));
+    // a Typst document gets Typst
+    const typst = docKind(api.activePath) === 'typst';
+    const base = append(threadRef.current, msg('user', `Image → ${typst ? 'Typst' : 'LaTeX'} (${label}): ${file.name}${extra ? `\n\n${extra}` : ''}`));
     markBusy(base.id, true);
     try {
-      const res = await visionToLatex({ projectId: api.projectId, file, mode: visionMode, prompt: extra || VISION_HINTS[visionMode], llmConfig: api.llm.vision });
+      const res = await visionToLatex({ projectId: api.projectId, file, mode: visionMode, prompt: extra || (typst ? undefined : VISION_HINTS[visionMode]), llmConfig: api.llm.vision, kind: typst ? 'typst' : null });
       if (!res.ok) throw new Error(res.error || 'The image couldn’t be read.');
       const latex = (res.latex || '').trim();
-      append(base, msg('assistant', `\`\`\`latex\n${latex}\n\`\`\``, { latex }));
+      append(base, msg('assistant', `\`\`\`${typst ? 'typst' : 'latex'}\n${latex}\n\`\`\``, { latex }));
       if (res.assetPath) await latest.current.refreshTree();
     } catch (err) {
       append(base, msg('assistant', `Couldn’t convert the image: ${errorText(err)}`, { error: true }));
@@ -617,6 +626,18 @@ export default function Composer({
                 </button>
               )}
               <PersonaPicker value={personaId} onChange={choosePersona} onManage={onManagePersonas} />
+              {rulesOn && (
+                <button
+                  className="chip active"
+                  title={`Every request here is given your ${INSTRUCTIONS_FILE} as your standing instructions for this project, with what Spectrum remembers for it. Click to open it.`}
+                  aria-label={INSTRUCTIONS_FILE}
+                  onClick={() => void api.openFile(INSTRUCTIONS_FILE)}
+                >
+                  {/* its icon alone beside Use selection, so the bar keeps its room */}
+                  <Icon name="list.clipboard" />
+                  {!hasSelection && ` ${INSTRUCTIONS_FILE}`}
+                </button>
+              )}
             </>
           )}
           {mode === 'references' && (

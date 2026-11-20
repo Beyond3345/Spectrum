@@ -9,6 +9,9 @@ import { latex } from '../latex/lang';
 import { compileLint } from './compileMarks';
 import { latexFoldService, latexHighlight, mathsWrap } from './latexEditor';
 import { docKind } from './shared';
+import { includedPath } from './outlines';
+import { EditorView } from '@codemirror/view';
+import { IS_MAC } from '../app/platform';
 
 // The editor's language for a file, swapped as files open: LaTeX has its own mode, highlighting and folding, Typst
 // loads its Lezer mode (no WebAssembly) the first time one opens, and Markdown uses CodeMirror's own.
@@ -78,6 +81,69 @@ export function referenceCompletions({ path, keys, labels, version }: { path: ()
     }
     return options.length ? { from: match.from + 1, options, validFor: /^[\w:.+-]*$/ } : null;
   };
+}
+
+/** A Typst definition: a #let name, a function when it takes arguments. */
+export type TypstDefinition = { name: string; fn: boolean };
+const LET = /(?:^|[^\p{L}\p{N}_-])let\s+([\p{L}_][\p{L}\p{N}_-]*)\s*(\(|=)/gu;
+
+/** The #let definitions of Typst source (comments and all: a commented one is rare and does no harm offered). */
+export const typstDefinitions = (text: string): TypstDefinition[] => [...text.matchAll(LET)].map((m) => ({ name: m[1], fn: m[2] === '(' }));
+
+/**
+ * The project's own Typst functions and values (defs: from its .typ files) after # in markup, or in a call's arguments
+ * on that line. Typst's own completions list the open file's, so those are left out where they run (version).
+ * ponytail: code mode is guessed from the line, not the syntax tree, so a #{ … } block over several lines gets none
+ */
+export function definitionCompletions({ path, defs, version }: { path: () => string; defs: () => TypstDefinition[]; version: () => string }) {
+  return (context: CompletionContext): CompletionResult | null => {
+    if (docKind(path()) !== 'typst') return null;
+    const word = context.matchBefore(/[\p{L}_][\p{L}\p{N}_-]*$/u) ?? (context.explicit ? { from: context.pos, to: context.pos, text: '' } : null);
+    if (!word) return null;
+    const line = context.state.doc.lineAt(context.pos);
+    const before = context.state.sliceDoc(line.from, word.from);
+    if (!before.endsWith('#') && !/#[^\s]*[({][^)}]*$/.test(before)) return null;
+    const own = ownCompletions(version()) ? new Set(typstDefinitions(context.state.doc.toString()).map((d) => d.name)) : new Set<string>();
+    const seen = new Set<string>();
+    const options = defs().flatMap(({ name, fn }) => {
+      if (own.has(name) || seen.has(name)) return [];
+      seen.add(name);
+      return [{ label: name, type: fn ? 'function' : 'variable', detail: 'this project' }];
+    });
+    return options.length ? { from: word.from, options, validFor: /^[\p{L}\p{N}_-]*$/u } : null;
+  };
+}
+
+/**
+ * The project file a quoted path at pos names, in a Typst file (#include, image, bibliography, read, json…): from the
+ * file it is in, or from the project's root for one starting with /; null when pos is in no such string.
+ */
+export function typstPathAt(text: string, pos: number, from: string, files: ReadonlySet<string>): string | null {
+  const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+  const lineEnd = text.indexOf('\n', pos);
+  const line = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
+  for (const m of line.matchAll(/"([^"\\\n]+)"/g)) {
+    const start = lineStart + (m.index ?? 0);
+    if (pos < start || pos > start + m[0].length) continue;
+    const path = includedPath(from, m[1]);
+    return files.has(path) ? path : null;
+  }
+  return null;
+}
+
+/** ⌘-click (Ctrl-click) on a project file's path in a Typst file opens it; anywhere else the click goes on to Go to definition. */
+export function typstPathClick({ path, files, open }: { path: () => string; files: () => ReadonlySet<string>; open: (path: string) => void }) {
+  return EditorView.domEventHandlers({
+    mousedown(e, view) {
+      if (e.button !== 0 || !(IS_MAC ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey || docKind(path()) !== 'typst') return false;
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+      const target = pos == null ? null : typstPathAt(view.state.doc.toString(), pos, path(), files());
+      if (!target) return false;
+      e.preventDefault();
+      open(target);
+      return true;
+    }
+  });
 }
 
 const latexLanguage = (): Extension => [latex(), syntaxHighlighting(latexHighlight), foldService.of(latexFoldService), mathsWrap];
@@ -167,7 +233,7 @@ const markdownSupport = (): Extension => [
 /** A file's editor language: LaTeX as it was, Typst once loaded, Markdown, and plain text for anything else. */
 export function languageFor(path: string): Extension {
   const kind = docKind(path);
-  if (kind === 'latex') return latexLanguage();
+  if (kind === 'latex') return [latexLanguage(), compileLint];
   if (kind === 'typst') return typst ?? compileLint;
   if (kind === 'markdown') return markdownSupport();
   return [];

@@ -1,7 +1,7 @@
 // An ACP agent that keeps a draft: each "draft" prompt adds a line to main.tex in its workspace, streamed back in
 // pieces. --embedded and --system-prompt turn those capabilities on, and --fresh-ids gives each new session an id of
 // its own, and --lose-sessions loads none (an agent that no longer has the session). A prompt ending in please-fail fails, please-ask asks for permission and ends the turn without waiting,
-// please-hang never answers, please-link leaves a link in the workspace, and please-flood and please-huge stream a
+// please-hang never answers, please-link leaves a link in the workspace, please-agents writes an AGENTS.md of its own, and please-flood and please-huge stream a
 // long message (30,000 short pieces, or 40 of 64 KB), and please-plan sends a plan_update and asks an elicitation/create
 // question without waiting (both only in ACP's unstable schema), and please-usage reports the context's use and the
 // turn's tokens. Every request it gets goes to $HOME/acp-log.jsonl.
@@ -43,6 +43,7 @@ lines.on('line', async (line) => {
       send({ id: 800, method: 'elicitation/create', params: { sessionId, mode: 'form', message: 'Which section?', requestedSchema: { type: 'object', properties: { section: { type: 'string' } } } } });
     }
     if (asked.endsWith('please-link')) await fs.symlink('main.tex', path.join(workspace, 'alias.tex'));
+    if (asked.endsWith('please-agents')) await fs.writeFile(path.join(workspace, 'AGENTS.md'), 'Agent’s rules.\n');
     if (text.includes('draft')) {
       const file = path.join(workspace, 'main.tex');
       const before = await fs.readFile(file, 'utf8');

@@ -1,5 +1,5 @@
 import { callOpenAICompatible } from '../services/llmService.js';
-import { checkedImages, runToolAgent, languageLine, llmErrorMessage, namedMainFile, projectContext, userInstructions } from '../services/agentService.js';
+import { checkedImages, runToolAgent, languageLine, llmErrorMessage, namedMainFile, projectContext, projectNotes, userInstructions } from '../services/agentService.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { getRun, runOfThread, runSnapshot, startTurn, steerRun, stopRun, subscribeRun } from '../services/agentRunService.js';
 import { approveInstructions, instructionsStatus } from '../services/agentInstructions.js';
@@ -129,7 +129,8 @@ export function registerAgentRoutes(fastify) {
         'This is chat-only mode: do not propose edits, patches, or JSON.',
         'Respond concisely and helpfully.',
         DATA_RULE
-      ].filter(Boolean).join(' '), extra].filter(Boolean).join('\n\n');
+        // the approved AGENTS.md and the remembered lines last, as every request that writes for the user has them
+      ].filter(Boolean).join(' '), extra, projectId ? await projectNotes(await getProjectRoot(projectId).catch(() => null)) : ''].filter(Boolean).join('\n\n');
       const user = [
         prompt ? `User Prompt: ${prompt}` : '',
         selection ? `Selection (read-only):\n${untrusted('selection', selection)}` : '',
@@ -180,7 +181,7 @@ export function registerAgentRoutes(fastify) {
           'Return a concise response and a suggested rewrite for the selection or full content.',
           'Output in JSON with keys: reply, suggestion. suggestion is the rewritten text alone, never its marker.',
           DATA_RULE
-        ].join(' '), extra].filter(Boolean).join('\n\n');
+        ].join(' '), extra, await projectNotes(root)].filter(Boolean).join('\n\n');
 
     const user = [
       `Task: ${task}`,

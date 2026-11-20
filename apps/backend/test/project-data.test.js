@@ -85,7 +85,10 @@ test('project settings keep only valid compile choices, and null puts one back t
   assert.equal((await readJson(path.join(p.path, '.spectrum', 'project.json'))).compile, undefined);
 
   assert.deepEqual((await api(url, 'PATCH', { compile: { engine: null, autoCompile: 0 } })).json.settings, { compile: { autoCompile: 0, haltOnError: true, bibTool: 'biber', draft: false, syntaxCheck: false } });
-  for (const compile of [{ engine: 'word' }, { autoCompile: 11 }, { autoCompile: 1.5 }, { haltOnError: 'yes' }, { bibTool: 'biblatex' }, { draft: 1 }, { syntaxCheck: 'on' }, { shellEscape: true }, { constructor: true }]) {
+  // As you type, a Typst document's pause
+  assert.equal((await api(url, 'PATCH', { compile: { autoCompile: 0.3 } })).json.settings.compile.autoCompile, 0.3);
+  assert.equal((await api(url, 'PATCH', { compile: { autoCompile: 0 } })).status, 200);
+  for (const compile of [{ engine: 'word' }, { autoCompile: 11 }, { autoCompile: 1.5 }, { autoCompile: 0.5 }, { haltOnError: 'yes' }, { bibTool: 'biblatex' }, { draft: 1 }, { syntaxCheck: 'on' }, { shellEscape: true }, { constructor: true }]) {
     assert.equal((await api(url, 'PATCH', { compile })).status, 400, JSON.stringify(compile));
   }
   assert.equal((await api(url, 'PATCH', { zotero: { key: 'x' } })).status, 400);
@@ -145,6 +148,20 @@ test('to-dos are saved one file each and checked', async () => {
   }
   assert.equal((await api(`${url}/b`, 'DELETE')).status, 200);
   assert.deepEqual((await api(url)).json.todos.map((t) => t.id), ['a', 'c']);
+
+  // a note, since 2.6: kept as sent, up to 4000 characters, and a to-do written before it loads as it was
+  const noted = todo('n', { note: 'Line one\nline two', link: { key: 'Knuth1984' } });
+  assert.deepEqual((await api(`${url}/n`, 'PUT', noted)).json.todo, noted);
+  assert.deepEqual((await api(url)).json.todos.find((t) => t.id === 'n'), noted);
+  assert.equal((await api(`${url}/n`, 'PUT', todo('n', { note: 'x'.repeat(4000) }))).status, 200);
+  for (const note of ['x'.repeat(4001), 5, ['a']]) assert.equal((await api(`${url}/n`, 'PUT', todo('n', { note }))).status, 400, String(note).slice(0, 20));
+  // taking the note off is a save without it
+  await api(`${url}/n`, 'PUT', todo('n'));
+  assert.deepEqual(await readJson(path.join(p.path, '.spectrum', 'todos', 'n.json')), todo('n'));
+  const old = '{\n  "id": "o",\n  "text": "From 2.5",\n  "done": false,\n  "createdAt": "2026-10-20T00:00:00.000Z",\n  "updatedAt": "2026-10-20T00:00:00.000Z"\n}';
+  await fs.writeFile(path.join(p.path, '.spectrum', 'todos', 'o.json'), old);
+  assert.deepEqual((await api(url)).json.todos.find((t) => t.id === 'o'), JSON.parse(old));
+  assert.equal(await fs.readFile(path.join(p.path, '.spectrum', 'todos', 'o.json'), 'utf8'), old);
 });
 
 test('PDF notes are saved one file each and listed per document', async () => {
@@ -456,4 +473,15 @@ test('a checkpoint shows and compares Typst and Markdown source as text', async 
   assert.equal((await readVersionFile(p.path, version.id, 'notes.markdown')).content, '# Notes\n');
   await fs.writeFile(path.join(p.path, 'main.typ'), '= Review\nTypst prose, revised.\n');
   assert.deepEqual((await compareWithCurrent(p.path, version.id)).find((c) => c.path === 'main.typ'), { path: 'main.typ', status: 'modified', added: 1, removed: 1, binary: false });
+});
+
+test('Search in the sidebar finds a phrase in the project’s text, with its file and line, as search_text does', async () => {
+  const p = await newProject('Thesis', { 'main.tex': '\\documentclass{article}\n\\input{chapters/intro}\n', 'chapters/intro.tex': 'The quick brown fox\nquickly\n', '.spectrum/notes.txt': 'quick brown\n' });
+  const search = async (query) => (await api(`/api/projects/${p.id}/search?${new URLSearchParams(query)}`)).json;
+  assert.deepEqual(await search({ q: 'quick brown' }), { ok: true, matches: [{ file: 'chapters/intro.tex', line: 1, text: 'The quick brown fox' }] });
+  assert.deepEqual((await search({ q: 'quick', word: '1' })).matches.map((m) => m.line), [1]);
+  assert.deepEqual((await search({ q: 'QUICK', case: '1' })).matches, []);
+  assert.deepEqual((await search({ q: '^quick\\w+$', regex: '1' })).matches.map((m) => m.line), [2]);
+  assert.match((await search({ q: '(', regex: '1' })).error, /Not a regular expression/);
+  assert.match((await search({ q: '' })).error, /Give text/);
 });

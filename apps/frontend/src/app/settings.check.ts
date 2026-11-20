@@ -1,6 +1,6 @@
 // Self-check for where model requests and keys go. Run (it imports React, so bundle it first):
 // npx esbuild apps/frontend/src/app/settings.check.ts --bundle --platform=node --log-level=warning | node
-import { DEFAULT_SETTINGS, composerDefaults, effectiveCompile, followSettingsNow, followSharedSettings, keysBackFromOlder, llmConfigFor, loadSettings, presetForEndpoint, presetPatch, rolePatch, searchConfigFor, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
+import { AS_YOU_TYPE, DEFAULT_SETTINGS, autoPauseMs, composerDefaults, effectiveCompile, followSettingsNow, followSharedSettings, keysBackFromOlder, llmConfigFor, loadSettings, presetForEndpoint, presetPatch, rolePatch, searchConfigFor, searchProviderPatch, sharedPart, takeInShared, withShared } from './settings';
 import { NO_FOLDERS } from './folders';
 import type { AppSettings } from './settings';
 import type { ProviderPreset } from '../api/client';
@@ -210,6 +210,9 @@ eq(effectiveCompile(undefined, defaults), defaults, 'no project choices: the def
 eq(effectiveCompile({ engine: 'xelatex', draft: true }, defaults), { ...defaults, engine: 'xelatex', draft: true }, 'the project’s own');
 eq(effectiveCompile({ engine: null, autoCompile: 11, bibTool: 'makeindex' } as never, defaults), defaults, 'null and unknown values');
 eq(effectiveCompile({ autoCompile: 0 }, defaults).autoCompile, 0, 'off in the project, on by default');
+eq(effectiveCompile({ autoCompile: AS_YOU_TYPE }, defaults).autoCompile, AS_YOU_TYPE, 'as you type is kept');
+eq(effectiveCompile({ autoCompile: 0.5 }, defaults).autoCompile, 3, 'another fraction is not');
+eq([autoPauseMs(AS_YOU_TYPE, true), autoPauseMs(AS_YOU_TYPE, false), autoPauseMs(2, true), autoPauseMs(0, true)], [300, 1000, 2000, 0], 'as you type is Typst’s alone');
 eq(DEFAULT_SETTINGS.compileDefaults.syntaxCheck, true, 'the syntax check is on unless turned off');
 eq(effectiveCompile({ syntaxCheck: false, haltOnError: true }, defaults), defaults, 'error handling and the syntax check are the app’s, whatever a project kept from before');
 

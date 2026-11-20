@@ -5,7 +5,7 @@ import Icon from '../app/Icon';
 import Segmented from '../app/Segmented';
 import { toast } from '../app/Toast';
 import { PROJECT_DATA_CHANGED, errorText } from './shared';
-import { findLine, scanTodos } from './todos';
+import { MAX_NOTE, emptyText, findLine, scanTodos, sortTodos, todoCounts, todoMatches, withNote } from './todos';
 import { useEditor } from './EditorContext';
 import { sendLocated } from './agent/handoff';
 import type { Located } from './agent/handoff';
@@ -110,15 +110,19 @@ export function useTodos({
     }
   };
 
-  const remove = async (todo: Todo) => {
+  /** Deletes to-dos (one, or every done one), with Undo; a failed delete puts that one back. */
+  const remove = async (gone: Todo[]) => {
     changesRef.current += 1;
-    setMine((prev) => (prev || []).filter((t) => t.id !== todo.id));
-    try {
-      await deleteTodo(projectId, todo.id);
-      toast('Deleted the to-do', { action: { label: 'Undo', onClick: () => save(todo) } });
-    } catch (err) {
-      setMine((prev) => [...(prev || []), todo]);
-      notify(`Couldn’t delete the to-do: ${errorText(err)}`, 'error');
+    const ids = new Set(gone.map((t) => t.id));
+    setMine((prev) => (prev || []).filter((t) => !ids.has(t.id)));
+    const results = await Promise.allSettled(gone.map((t) => deleteTodo(projectId, t.id)));
+    const kept = gone.filter((_, i) => results[i].status === 'rejected');
+    const deleted = gone.filter((_, i) => results[i].status === 'fulfilled');
+    if (deleted.length) toast(deleted.length === 1 ? 'Deleted the to-do' : `Deleted ${deleted.length} to-dos`, { action: { label: 'Undo', onClick: () => deleted.forEach(save) } });
+    if (kept.length) {
+      setMine((prev) => [...(prev || []), ...kept]);
+      const err = (results.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason;
+      notify(`Couldn’t delete ${kept.length === 1 ? 'the to-do' : `${kept.length} to-dos`}: ${errorText(err)}`, 'error');
     }
   };
 
@@ -135,20 +139,21 @@ export function useTodos({
   };
 
   // the open ones: yours not ticked, and every mark still in the source
-  const open = (mine || []).filter((t) => !t.done).length + source.length;
+  const { open } = todoCounts(mine || [], source);
   return { mine, source, open, reload, save, remove, add, lineOf };
 }
 
 /** A link of a kind this version knows; a later version's other kinds are kept but not shown. */
 const knownLink = (link?: TodoLink): link is TodoLink => !!link && ('file' in link || 'doc' in link || 'key' in link);
 
+
 type Show = 'open' | 'done' | 'all';
-type Whose = 'all' | 'mine' | 'source';
+type Group = 'mine' | 'source';
 
 /**
- * The sidebar's To-dos tab: an add box, the filters, then your own to-dos (tick, edit, delete, and the line, page
- * or reference each links to) and the ones in the source, which go to their line. A source to-do is done once
- * its mark is taken out of the source.
+ * The sidebar's To-dos tab: an add box with +, Open, Done and All with their counts, then your own to-dos (tick,
+ * edit, a note, delete, and the line, page or reference each links to) and the ones in the source, which go to their
+ * line. Each group folds away. A source to-do is done once its mark is taken out of the source.
  */
 export default function TodosList({
   todos,
@@ -164,146 +169,284 @@ export default function TodosList({
 }) {
   const [draft, setDraft] = useState('');
   const [show, setShow] = useState<Show>('open');
-  const [whose, setWhose] = useState<Whose>('all');
-  const [editing, setEditing] = useState<string | null>(null);
+  const [folded, setFolded] = useState<Partial<Record<Group, boolean>>>({});
+  // the to-do being edited, and whether its note was asked for
+  const [editing, setEditing] = useState<{ id: string; note: boolean } | null>(null);
+  // the notes shown in full
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const [added, setAdded] = useState(0);
+  const field = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const { mine, source, reload, save, remove, add, lineOf } = todos;
   const api = useEditor();
   /** A to-do for the agent, at the line or the page it links to. */
   const located = (todo: Todo): Located => {
     const link = knownLink(todo.link) ? todo.link : null;
-    if (link && 'file' in link) return { kind: 'To-do', text: todo.text, file: link.file, line: lineOf(link) };
-    if (link && 'doc' in link) return { kind: 'To-do', text: todo.text, doc: link.doc, page: link.page };
-    return { kind: 'To-do', text: link ? `${todo.text} (the reference ${link.key})` : todo.text };
+    // its note, which says more of what is to be done
+    const text = `${todo.text}${link && 'key' in link ? ` (the reference ${link.key})` : ''}${todo.note ? `\nNote: ${todo.note}` : ''}`;
+    if (link && 'file' in link) return { kind: 'To-do', text, file: link.file, line: lineOf(link) };
+    if (link && 'doc' in link) return { kind: 'To-do', text, doc: link.doc, page: link.page };
+    return { kind: 'To-do', text };
   };
 
   // opening the tab reads them again
   useEffect(reload, []);
 
   const linkLabel = (link: TodoLink) =>
-    'file' in link ? `${nameOf(link.file)}:${lineOf(link)}` : 'doc' in link ? `${link.doc === mainFile ? '' : `${nameOf(link.doc).replace(/\.tex$/i, '')} `}p. ${link.page}` : link.key;
+    'file' in link
+      ? `${nameOf(link.file)}:${lineOf(link)}`
+      : 'doc' in link
+        ? link.doc === mainFile
+          ? `Page ${link.page}`
+          : `${nameOf(link.doc).replace(/\.tex$/i, '')}, page ${link.page}`
+        : link.key;
   const linkTitle = (link: TodoLink) =>
     'file' in link ? `${link.file}, line ${lineOf(link)}` : 'doc' in link ? `${link.doc.replace(/\.tex$/i, '.pdf')}, page ${link.page}` : `Go to ${link.key}`;
 
   const needle = filter.trim().toLowerCase();
-  const matches = (...texts: string[]) => !needle || texts.some((t) => t.toLowerCase().includes(needle));
-  const shownMine =
-    whose === 'source'
-      ? []
-      : (mine || [])
-          .filter((t) => (show === 'all' || t.done === (show === 'done')) && matches(t.text, knownLink(t.link) ? linkLabel(t.link) : ''))
-          .sort((a, b) => Number(a.done) - Number(b.done) || a.createdAt.localeCompare(b.createdAt));
-  const shownSource = whose === 'mine' || show === 'done' ? [] : source.filter((t) => matches(t.text, t.file));
+  const counts = todoCounts(mine || [], source);
+  const shownMine = sortTodos(
+    (mine || []).filter((t) => (show === 'all' || t.done === (show === 'done')) && todoMatches(needle, t, knownLink(t.link) ? linkLabel(t.link) : ''))
+  );
+  const shownSource = show === 'done' ? [] : source.filter((t) => todoMatches(needle, t, t.file));
+  const shownDone = shownMine.filter((t) => t.done);
 
-  const commit = (todo: Todo, text: string) => {
-    setEditing(null);
-    const trimmed = text.trim();
-    if (trimmed && trimmed !== todo.text) save({ ...todo, text: trimmed, updatedAt: new Date().toISOString() });
+  // a new one is scrolled to, at the end of the open ones
+  useEffect(() => {
+    const newest = shownMine.filter((t) => !t.done).reduce<Todo | null>((a, t) => (!a || t.createdAt > a.createdAt ? t : a), null);
+    if (added && newest) list.current?.querySelector(`[data-todo="${newest.id}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [added]);
+
+  const submit = () => {
+    const text = draft.trim();
+    field.current?.focus();
+    if (!text) return;
+    setDraft('');
+    if (show === 'done') setShow('open');
+    setFolded((f) => ({ ...f, mine: false }));
+    setAdded((n) => n + 1);
+    // what was typed comes back when it couldn't be saved
+    add(text).then((saved) => saved || setDraft((d) => d || text));
   };
+
+  /** Ends an edit: saves what changed; from the keyboard, the focus goes back to the to-do's tick box. */
+  const finish = (todo: Todo, next: Todo | null, keyboard: boolean) => {
+    setEditing(null);
+    if (next) save(next);
+    if (keyboard) requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(`[data-todo="${todo.id}"] input[type='checkbox']`)?.focus());
+  };
+
+  const groupTitle = (group: Group, label: string, count: number) => (
+    <button
+      className="sidebar-section-title todo-group-head"
+      aria-expanded={!folded[group]}
+      onClick={() => setFolded((f) => ({ ...f, [group]: !f[group] }))}
+    >
+      <span>
+        {label} <span className="todo-count">{count}</span>
+      </span>
+      <Icon name="chevron.right" className={`disclosure ${folded[group] ? '' : 'open'}`} />
+    </button>
+  );
 
   return (
     <div className="todos">
-      <input
-        className="input todo-add"
-        value={draft}
-        placeholder="Add a to-do"
-        aria-label="Add a to-do"
-        maxLength={2000}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          const text = draft.trim();
-          if (e.key !== 'Enter' || !text) return;
-          setDraft('');
-          // what was typed comes back when it couldn't be saved
-          add(text).then((saved) => saved || setDraft((d) => d || text));
-        }}
-      />
-      <div className="todo-filters">
-        <Segments<Show> label="Show" value={show} onChange={setShow} items={[['open', 'Open'], ['done', 'Done'], ['all', 'All']]} />
-        <Segments<Whose> label="Whose" value={whose} onChange={setWhose} items={[['all', 'All'], ['mine', 'Mine'], ['source', 'Source']]} />
+      <div className="todos-head">
+        <form
+          className="todo-add"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <input
+            ref={field}
+            value={draft}
+            placeholder="Add a to-do"
+            aria-label="Add a to-do"
+            maxLength={2000}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && draft && (e.stopPropagation(), setDraft(''))}
+          />
+          <button type="submit" className={`icon-btn small ${draft.trim() ? 'ready' : ''}`} title="Add to-do (Return)" aria-label="Add to-do">
+            <Icon name="plus" />
+          </button>
+        </form>
+        <Segmented<Show>
+          label="Show"
+          className="fill"
+          value={show}
+          onChange={setShow}
+          options={(
+            [
+              ['open', 'Open', counts.open],
+              ['done', 'Done', counts.done],
+              ['all', 'All', counts.all]
+            ] as const
+          ).map(([value, label, n]) => [
+            value,
+            <>
+              {label} <span className="todo-count">{n}</span>
+            </>,
+            `${label}, ${n}`
+          ])}
+        />
       </div>
 
-      {shownMine.length > 0 && (
-        <div className="todo-group" role="list" aria-label="Mine">
-          <div className="todo-group-title">Mine</div>
-          {shownMine.map((todo) => (
-            <div key={todo.id} role="listitem" className={`todo-row ${todo.done ? 'done' : ''}`}>
-              <input
-                type="checkbox"
-                checked={todo.done}
-                aria-label={todo.done ? `Mark “${todo.text}” as not done` : `Mark “${todo.text}” as done`}
-                onChange={() => save({ ...todo, done: !todo.done, updatedAt: new Date().toISOString() })}
-              />
-              <div className="todo-body">
-                {editing === todo.id ? (
-                  <input
-                    className="input todo-edit"
-                    autoFocus
-                    defaultValue={todo.text}
-                    aria-label="To-do"
-                    maxLength={2000}
-                    onBlur={(e) => commit(todo, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commit(todo, e.currentTarget.value);
-                      else if (e.key === 'Escape') setEditing(null);
-                    }}
-                  />
-                ) : (
-                  <span className="todo-text" onDoubleClick={() => setEditing(todo.id)}>
-                    {todo.text}
-                  </span>
-                )}
-                {knownLink(todo.link) && (
-                  <button className="todo-link" title={linkTitle(todo.link)} onClick={() => onOpen(todo.link!)}>
-                    <Icon name={'file' in todo.link ? 'doc.text' : 'doc' in todo.link ? 'doc.richtext' : 'tag'} />
-                    <span>{linkLabel(todo.link)}</span>
+      <div className="todo-items" ref={list}>
+        {shownMine.length > 0 && (
+          <div className="todo-group">
+            {groupTitle('mine', 'Mine', shownMine.length)}
+            {!folded.mine && (
+              <>
+                <div role="list" aria-label="Mine" className="todo-list">
+                  {shownMine.map((todo) => {
+                    const edit = editing?.id === todo.id;
+                    const full = opened.has(todo.id);
+                    return (
+                      <div key={todo.id} role="listitem" data-todo={todo.id} className={`todo-row ${todo.done ? 'done' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={todo.done}
+                          aria-label={todo.done ? `Mark “${todo.text}” as not done` : `Mark “${todo.text}” as done`}
+                          onChange={() => save({ ...todo, done: !todo.done, updatedAt: new Date().toISOString() })}
+                        />
+                        <div className="todo-body">
+                          {edit ? (
+                            <TodoEditor todo={todo} note={editing.note} onClose={(next, keyboard) => finish(todo, next, keyboard)} />
+                          ) : (
+                            <>
+                              <span className="todo-text" onDoubleClick={() => setEditing({ id: todo.id, note: false })}>
+                                {todo.text}
+                              </span>
+                              {todo.note && (
+                                <button
+                                  className={`todo-note ${full ? 'open' : ''}`}
+                                  aria-expanded={full}
+                                  title={full ? 'Show less' : 'Show the whole note'}
+                                  onClick={() => setOpened((o) => (o.has(todo.id) ? new Set([...o].filter((id) => id !== todo.id)) : new Set([...o, todo.id])))}
+                                  onDoubleClick={() => setEditing({ id: todo.id, note: true })}
+                                >
+                                  <span>{todo.note}</span>
+                                </button>
+                              )}
+                            </>
+                          )}
+                          {knownLink(todo.link) && (
+                            <button className="todo-link" title={linkTitle(todo.link)} onClick={() => onOpen(todo.link!)}>
+                              <Icon name={'file' in todo.link ? 'doc.text' : 'doc' in todo.link ? 'doc.richtext' : 'tag'} />
+                              <span>{linkLabel(todo.link)}</span>
+                            </button>
+                          )}
+                        </div>
+                        {!edit && (
+                          <div className="todo-actions">
+                            {!todo.note && (
+                              <button className="icon-btn small" title="Add a note" aria-label={`Add a note to “${todo.text}”`} onClick={() => setEditing({ id: todo.id, note: true })}>
+                                <Icon name="note.text.badge.plus" />
+                              </button>
+                            )}
+                            <button className="icon-btn small" title="Send to agent" aria-label={`Send “${todo.text}” to the agent`} onClick={() => void sendLocated([located(todo)], api.ensureFileContent)}>
+                              <Icon name="paperplane" />
+                            </button>
+                            <button className="icon-btn small" title="Edit" aria-label={`Edit “${todo.text}”`} onClick={() => setEditing({ id: todo.id, note: false })}>
+                              <Icon name="pencil" />
+                            </button>
+                            <button className="icon-btn small destructive" title="Delete" aria-label={`Delete “${todo.text}”`} onClick={() => remove([todo])}>
+                              <Icon name="trash" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {shownDone.length > 0 && (
+                  <button className="btn small ghost todo-clear" onClick={() => remove(shownDone)}>
+                    Clear done
                   </button>
                 )}
-              </div>
-              <button className="icon-btn small todo-action" title="Send to agent" aria-label="Send the to-do to the agent" onClick={() => void sendLocated([located(todo)], api.ensureFileContent)}>
-                <Icon name="paperplane" />
-              </button>
-              <button className="icon-btn small todo-action" title="Edit" aria-label="Edit to-do" onClick={() => setEditing(todo.id)}>
-                <Icon name="pencil" />
-              </button>
-              <button className="icon-btn small todo-action destructive" title="Delete" aria-label="Delete to-do" onClick={() => remove(todo)}>
-                <Icon name="trash" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+              </>
+            )}
+          </div>
+        )}
 
-      {shownSource.length > 0 && (
-        <div className="todo-group">
-          <div className="todo-group-title">In the source</div>
-          {shownSource.map((todo) => (
-            <button
-              key={`${todo.file}:${todo.line}:${todo.text}`}
-              className="todo-row source"
-              title={`${todo.kind === todo.kind.toUpperCase() ? todo.kind : `\\${todo.kind}`} in ${todo.file}, line ${todo.line}`}
-              onClick={() => onOpen({ file: todo.file, line: todo.line })}
-            >
-              <span className="todo-mark" />
-              <span className="todo-body">
-                <span className="todo-text">{todo.text}</span>
-                <span className="todo-where">
-                  {nameOf(todo.file)}:{todo.line}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+        {shownSource.length > 0 && (
+          <div className="todo-group">
+            {groupTitle('source', 'In the source', shownSource.length)}
+            {!folded.source &&
+              shownSource.map((todo) => (
+                <button
+                  key={`${todo.file}:${todo.line}:${todo.text}`}
+                  className="todo-row source"
+                  title={`${todo.kind === todo.kind.toUpperCase() ? todo.kind : `\\${todo.kind}`} in ${todo.file}, line ${todo.line}`}
+                  onClick={() => onOpen({ file: todo.file, line: todo.line })}
+                >
+                  <span className="todo-mark" />
+                  <span className="todo-body">
+                    <span className="todo-text">{todo.text}</span>
+                    <span className="todo-where">
+                      {nameOf(todo.file)}:{todo.line}
+                    </span>
+                  </span>
+                </button>
+              ))}
+          </div>
+        )}
 
-      {!shownMine.length && !shownSource.length && mine && (
-        <div className="sidebar-hint todo-empty">
-          {mine.length || source.length ? 'No matching to-dos' : 'Nothing to do yet. Add one above, or right-click a line in the editor or a page of the PDF.'}
-        </div>
-      )}
+        {!shownMine.length && !shownSource.length && mine && (
+          <div className="sidebar-hint todo-empty">{emptyText({ total: counts.all, show, search: filter.trim() })}</div>
+        )}
+      </div>
     </div>
   );
 }
 
-function Segments<T extends string>({ label, value, onChange, items }: { label: string; value: T; onChange(value: T): void; items: [T, string][] }) {
-  return <Segmented label={label} value={value} options={items} onChange={onChange} />;
+/**
+ * A to-do's text, and its note when it has one or one was asked for. Return in the text, or ⌘ or Ctrl Return in the
+ * note, saves; Esc puts both back; clicking away saves.
+ */
+function TodoEditor({ todo, note, onClose }: { todo: Todo; note: boolean; onClose(next: Todo | null, keyboard: boolean): void }) {
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  const closed = useRef(false);
+
+  useEffect(() => {
+    const el = (note ? noteRef : textRef).current;
+    el?.focus();
+    el?.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+
+  const close = (keep: boolean, keyboard: boolean) => {
+    if (closed.current) return;
+    closed.current = true;
+    // a to-do is one line; emptied, it keeps what it was
+    const text = textRef.current!.value.replace(/\s+/g, ' ').trim() || todo.text;
+    const next = withNote({ ...todo, text }, noteRef.current?.value ?? todo.note ?? '');
+    const changed = keep && (next.text !== todo.text || next.note !== todo.note);
+    onClose(changed ? { ...next, updatedAt: new Date().toISOString() } : null, keyboard);
+  };
+
+  return (
+    <div
+      className="todo-editor"
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && close(true, false)}
+      onKeyDown={(e) => {
+        if (e.nativeEvent.isComposing) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          close(false, true);
+        } else if (e.key === 'Enter' && (e.target === textRef.current || e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          close(true, true);
+        }
+      }}
+    >
+      <textarea ref={textRef} className="input todo-edit" rows={1} defaultValue={todo.text} aria-label="To-do" maxLength={2000} />
+      {(note || todo.note) && (
+        <textarea ref={noteRef} className="input todo-note-edit" rows={2} defaultValue={todo.note} placeholder="Note" aria-label="Note" maxLength={MAX_NOTE} />
+      )}
+    </div>
+  );
 }

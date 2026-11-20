@@ -8,6 +8,7 @@ import { agentHidden, agentHiddenNameSource, safeJoin } from '../utils/pathUtils
 import { HIDDEN_ENTRIES, writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 import { mergeText } from '../utils/merge3.js';
 import { createVersion } from './versionService.js';
+import { withheldInstructions } from './agentInstructions.js';
 
 const MAX_FILE = 50 * 1024 * 1024;
 const MAX_PROJECT = 500 * 1024 * 1024;
@@ -73,8 +74,15 @@ export async function workspaceFiles(root) {
   } finally { clearTimeout(timer); killAgentProcess(child); await fs.rm(home, { recursive: true, force: true }); }
 }
 
+/**
+ * Makes a session's baseline, and an Isolated session's copy. { workspace, withheld }: withheld, the AGENTS.md files the
+ * user has not approved (withheldInstructions), which an Isolated copy leaves out; a direct session's agent reads them
+ * in the project itself.
+ */
 export async function initialiseWorkspace(root, runDir, mode) {
   const files = await workspaceFiles(root);
+  const withheld = await withheldInstructions(root, files);
+  if (mode !== 'direct') for (const rel of withheld) delete files[rel];
   const baseDir = path.join(runDir, 'baseline');
   const workspace = mode === 'direct' ? root : path.join(runDir, 'work');
   await fs.mkdir(baseDir, { recursive: true, mode: 0o700 });
@@ -90,9 +98,10 @@ export async function initialiseWorkspace(root, runDir, mode) {
     const exposed = skipped.filter((rel) => !agentHidden(rel));
     if (exposed.length) throw new Error(`The complete project could not be backed up: ${exposed.slice(0, 3).join(', ')}${exposed.length > 3 ? ' and others' : ''} couldn’t be read or are over 50 MB. Direct editing was not started: choose Isolated, or fix those files.`);
   }
-  return fs.realpath(workspace);
+  return { workspace: await fs.realpath(workspace), withheld };
 }
 
+/** The changes to review. A file an Isolated copy holds back (run.withheld) is none: what the agent writes by that name is not offered, so it can never replace or delete the user's file. */
 export async function workspaceChanges(run) {
   const before = Object.assign(Object.create(null), JSON.parse(await fs.readFile(path.join(run.dir, 'baseline.json'), 'utf8')));
   let after, manifest;
@@ -105,7 +114,9 @@ export async function workspaceChanges(run) {
     if (fileHash(after[rel]) !== hash) throw new Error(`The saved proposal for “${rel}” is damaged. Nothing was applied.`);
   }
   const changes = [];
+  const held = new Set(run.mode === 'review' ? run.withheld : []);
   for (const rel of [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()) {
+    if (held.has(rel)) continue;
     const bytes = after[rel] ?? null;
     const nextHash = fileHash(bytes);
     if ((before[rel] ?? null) === nextHash) continue;
@@ -227,10 +238,16 @@ export async function rebaseChange(run, rel, bytes, writeDraft, baseline = bytes
  */
 export async function refreshDraft(run, writeDraft) {
   await captureAgentProposal(run);
+  const live = await workspaceFiles(run.root);
+  // AGENTS.md the user has not approved leaves the copy, whatever it holds by that name (the agent's own included), and
+  // one approved since, or no longer there, comes back as the user's file
+  const withheld = await withheldInstructions(run.root, live);
+  for (const rel of new Set([...withheld, ...(run.withheld || [])])) await rebaseChange(run, rel, withheld.includes(rel) ? null : live[rel] ?? null, writeDraft(rel));
+  for (const rel of withheld) delete live[rel];
+  run.withheld = withheld;
   const manifest = async (name) => Object.assign(Object.create(null), JSON.parse(await fs.readFile(path.join(run.dir, name), 'utf8')));
   const baseline = await manifest('baseline.json');
   const proposal = await manifest('proposal.json');
-  const live = await workspaceFiles(run.root);
   for (const rel of new Set([...Object.keys(live), ...Object.keys(baseline)])) {
     const before = baseline[rel] ?? null;
     if (before === (proposal[rel] ?? null) && before !== fileHash(live[rel] ?? null)) await rebaseChange(run, rel, live[rel] ?? null, writeDraft(rel));

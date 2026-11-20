@@ -251,6 +251,119 @@
   font-size: 12.5px;
 }
 
+/* Search's In text, under the matching file names */
+.sidebar-list:has(.text-search) .file-tree {
+  min-height: 0;
+}
+
+.text-search {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.text-search-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 4px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.text-search-count {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-search-options {
+  display: flex;
+  gap: 2px;
+}
+
+.text-search-option {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: 600 11.5px var(--font-mono);
+}
+
+.text-search-option:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.text-search-option.active {
+  background: var(--accent-soft);
+  color: var(--accent-on-soft);
+}
+
+.text-search-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 8px 0 10px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.text-search-folder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.text-search-line {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  min-height: 24px;
+  padding: 0 8px 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 24px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.text-search-line:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.text-search-number {
+  flex: none;
+  min-width: 26px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.text-search-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.text-search-text mark {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--yellow) 40%, transparent);
+  color: var(--text);
+}
+
 /* --------------------------------------------------------------------------
    Outline
    -------------------------------------------------------------------------- */
@@ -1061,6 +1174,16 @@ button.compile-status:hover {
 .pdf-body > .empty-state {
   position: absolute;
   inset: 0;
+}
+
+/* the Live view: Tinymist's preview page of a Typst document, in place of the PDF */
+.pdf-body > .typst-live {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg-pdf);
 }
 
 /* over the PDF and its sidebar, pill and find bar while Tectonic compiles */

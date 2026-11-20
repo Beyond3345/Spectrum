@@ -1,0 +1,219 @@
+{
+ "results": [
+  {
+   "id": "https://openalex.org/W2626778328",
+   "doi": "https://doi.org/10.48550/arxiv.1706.03762",
+   "display_name": "Attention Is All You Need",
+   "publication_year": 2017,
+   "type": "preprint",
+   "cited_by_count": 151778,
+   "authorships": [
+    {
+     "author": {
+      "display_name": "Ashish Vaswani"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Noam Shazeer"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Niki Parmar"
+     }
+    }
+   ],
+   "primary_location": {
+    "landing_page_url": "http://arxiv.org/abs/1706.03762",
+    "source": {
+     "display_name": "arXiv (Cornell University)",
+     "type": "repository"
+    }
+   },
+   "biblio": {
+    "volume": "30",
+    "issue": null,
+    "first_page": "5998",
+    "last_page": "6008"
+   },
+   "open_access": {
+    "is_oa": true,
+    "oa_status": "green",
+    "oa_url": "https://arxiv.org/pdf/1706.03762",
+    "any_repository_has_fulltext": true
+   }
+  },
+  {
+   "id": "https://openalex.org/W3163652268",
+   "doi": "https://doi.org/10.1109/icassp39728.2021.9413901",
+   "display_name": "Attention Is All You Need In Speech Separation",
+   "publication_year": 2021,
+   "type": "conference-paper",
+   "cited_by_count": 1006,
+   "authorships": [
+    {
+     "author": {
+      "display_name": "Cem Subakan"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Mirco Ravanelli"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Samuele Cornell"
+     }
+    }
+   ],
+   "primary_location": {
+    "landing_page_url": "https://doi.org/10.1109/icassp39728.2021.9413901",
+    "source": {
+     "display_name": "IEEE International Conference on Acoustics Speech and Signal Processing",
+     "type": "conference"
+    }
+   },
+   "biblio": {
+    "volume": null,
+    "issue": null,
+    "first_page": "21",
+    "last_page": "25"
+   },
+   "open_access": {
+    "is_oa": true,
+    "oa_status": "green",
+    "oa_url": "https://arxiv.org/pdf/2010.13154",
+    "any_repository_has_fulltext": true
+   }
+  },
+  {
+   "id": "https://openalex.org/W2997150500",
+   "doi": "https://doi.org/10.1609/aaai.v34i07.6693",
+   "display_name": "Channel Attention Is All You Need for Video Frame Interpolation",
+   "publication_year": 2020,
+   "type": "conference-paper",
+   "cited_by_count": 410,
+   "authorships": [
+    {
+     "author": {
+      "display_name": "Myungsub Choi"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Heewon Kim"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Bohyung Han"
+     }
+    }
+   ],
+   "primary_location": {
+    "landing_page_url": "https://doi.org/10.1609/aaai.v34i07.6693",
+    "source": {
+     "display_name": "Proceedings of the AAAI Conference on Artificial Intelligence",
+     "type": "conference"
+    }
+   },
+   "biblio": {
+    "volume": "34",
+    "issue": "07",
+    "first_page": "10663",
+    "last_page": "10671"
+   },
+   "open_access": {
+    "is_oa": true,
+    "oa_status": "diamond",
+    "oa_url": "https://doi.org/10.1609/aaai.v34i07.6693",
+    "any_repository_has_fulltext": true
+   }
+  },
+  {
+   "id": "https://openalex.org/W4415754031",
+   "doi": "https://doi.org/10.1201/9781003561460-19",
+   "display_name": "Attention Is All You Need",
+   "publication_year": 2025,
+   "type": "book-chapter",
+   "cited_by_count": 27,
+   "authorships": [
+    {
+     "author": {
+      "display_name": "J. M. Bishop"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Gabriel Seiberth"
+     }
+    }
+   ],
+   "primary_location": {
+    "landing_page_url": "https://doi.org/10.1201/9781003561460-19",
+    "source": {
+     "display_name": "Routledge eBooks",
+     "type": "ebook platform"
+    }
+   },
+   "biblio": {
+    "volume": null,
+    "issue": null,
+    "first_page": "151",
+    "last_page": "163"
+   },
+   "open_access": {
+    "is_oa": false,
+    "oa_status": "closed",
+    "oa_url": null,
+    "any_repository_has_fulltext": false
+   }
+  },
+  {
+   "id": "https://openalex.org/W4390678101",
+   "doi": "https://doi.org/10.1093/bib/bbad467",
+   "display_name": "Attention is all you need: utilizing attention in AI-enabled drug discovery",
+   "publication_year": 2023,
+   "type": "review",
+   "cited_by_count": 412,
+   "authorships": [
+    {
+     "author": {
+      "display_name": "Yang Zhang"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Caiqi Liu"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Mujiexin Liu"
+     }
+    }
+   ],
+   "primary_location": {
+    "landing_page_url": "https://doi.org/10.1093/bib/bbad467",
+    "source": {
+     "display_name": "Briefings in Bioinformatics",
+     "type": "journal"
+    }
+   },
+   "biblio": {
+    "volume": "25",
+    "issue": "1",
+    "first_page": null,
+    "last_page": null
+   },
+   "open_access": {
+    "is_oa": true,
+    "oa_status": "hybrid",
+    "oa_url": "https://academic.oup.com/bib/article-pdf/25/1/bbad467/55123365/bbad467.pdf",
+    "any_repository_has_fulltext": true
+   }
+  }
+ ]
+}

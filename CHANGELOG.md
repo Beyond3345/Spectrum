@@ -2,12 +2,29 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.7.0 (not released)
+
+### Added
+
+- Search in the sidebar finds text in the project's files too, with Match case, Whole words and Regular expression, and a click opens the line with the match selected
+- A LaTeX compile's errors are underlined in the source, at the command TeX stopped after or along the line, beside TexLab's own
+- A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
+- Go to a file or heading (⌘P) opens a project file or an Outline heading by its name
+- Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
+
+### Changed
+
+- Tools opens on Logs when the last compile had errors
+- The agents' text search can match whole words
+
 ## 2.6.0 (21 November 2026)
 
 ### Security
 
 - `AGENTS.md` reaches the Spectrum agent only as you approved it on this computer. A file that came with a project, or was changed by a pull, a sync, an agent in the folder or an agent's change you applied, is not used until you have read it and chosen Use it
 - A local agent stops when Spectrum is force-quit or crashes, and leaves nothing running when it exits
+- An Isolated session of a local agent leaves out an `AGENTS.md` you have not approved, and says so with the way to approve it. Once approved, it reaches the agent with its next task, and a file changed by a pull leaves the copy again. `AGENTS.md` files in folders, `AGENTS.override.md` and `AGENTS.local.md` are always left out, and what an agent writes by those names meanwhile is never offered for review
+- A Direct session says when the agent can read an `AGENTS.md` you have not approved
 - The Spectrum agent compiles on a copy of the project, confined like every compile and never trusted. Nothing in the project changes until you apply a change
 - Review's PDF before and after is compiled on copies, in the agents' isolation
 - Agent Client Protocol SDK 2.8.0, Codex adapter 2.7.0 and Claude Agent adapter 0.108.1
@@ -23,8 +40,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The Spectrum agent can show a plan before it changes anything: untick or edit its steps, then Approve and run, Approve and ask before each file or Keep planning. Plan, under the message box, asks for one, and the agent plans by itself before a larger task. The approved steps stay at the top of the thread and are ticked as it works
 - The Spectrum agent asks a question when a request is unclear, with answers to choose from. A plan or a question waits in the thread, through a reload and a restart, with no request to the model open
 - `AGENTS.md` at the top of a project holds your standing instructions for the Spectrum agent
+- The assistant's chat, Polish, Rewrite, Restructure and Translate are given your approved `AGENTS.md`. An `AGENTS.md` chip shows when the file is in use
 - The Spectrum agent can suggest a line to remember for a project, which is kept only when you press Add. Memory, under the message box, lists what it remembers for the project, to edit, delete or add to
-- The remembered lines go to the Spectrum agent and Fix with AI with every request. They are kept on this computer, apart from the project's files and from `AGENTS.md`
+- The remembered lines go to the Spectrum agent, Fix with AI and the assistant with every request. They are kept on this computer, apart from the project's files and from `AGENTS.md`
 - Each agent tab shows what a turn used: tokens and the share served from the cache, and for a local agent how full its context is and the cost it reports
 - The Spectrum agent shows what a thread cost: the figure OpenRouter reports, in US dollars, or an estimate from the prices you type in Settings › Models for any of the provider's models. Spectrum keeps no price list of its own
 - A price can be typed in any of 14 currencies. Each cost is shown in its own currency, with a symbol no other currency shares such as US$, A$, HK$ and CN¥, and two currencies are never added together
@@ -38,6 +56,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A long review is grouped under the document's headings, with counts, and an agent's change of line endings is offered as a change of its own
 - Local agents stay running between turns of an Isolated session, so a follow-up starts at once
 - Local agents get a `search_text` tool from Spectrum
+- To-dos: a + button at the end of the add box adds what is typed, as Return does
+- To-dos: a to-do can carry a note of a few lines, shown in two lines until clicked and found by the search
+- To-dos: Clear done deletes the ticked to-dos, with Undo
 - Each local agent's card says how far it is supported: Supported (Claude Agent, DeepSeek Harness), In progress (Codex), Untested or Not supported (OpenCode)
 - The AI review reads a long document in parts, with a progress line and Stop, and ties each point to its own file and line
 - Review checks a Markdown document's citations, bibliography, images and links
@@ -52,6 +73,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A later message in a Spectrum agent thread keeps what the agent read earlier, so it does not read the same files again
 - Requests to Claude and OpenAI models ask for prompt caching, and the Spectrum agent's instructions are about 2 KB shorter
 - A busy provider's wait is shown while the Spectrum agent waits
+- To-dos: Open, Done and All show their counts in one row, and Mine and In the source fold away under their titles. The add box and the filters stay at the top while the list scrolls
+- To-dos: Edit, Add a note and Delete sit over the end of the row, so a long to-do uses the sidebar's width. Each filter's empty list says why, and a page link reads Page 2
 - A connection that drops before the provider answers is tried again twice, and the error names the cause: name not found, refused, dropped, timed out or certificate
 - A pasted key with a character no request can carry says so instead of “Couldn’t reach”, and a line break or invisible space at either end is trimmed
 - AI autocomplete gives up its request when you type, move the cursor or press Esc, and asks again after a pause
@@ -68,6 +91,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Reloading the page shows a Spectrum agent run that is still going
 - Logs no longer offers Fix with AI or the generated text when pandoc is missing or too old
 - A long unbroken line in an agent's answer wraps
+- To-dos: Esc puts an edit back instead of saving it
 - Run folders a crash left in the cache are removed at the start
 
 ## 2.5.2 (20 November 2026)

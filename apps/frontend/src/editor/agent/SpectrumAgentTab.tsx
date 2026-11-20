@@ -563,6 +563,8 @@ export default function SpectrumAgentTab({
       setNewPersona(taskPersona(api.settings.personas, task) ?? picked.current);
     }
     setDraft({ text: task.prompt, skill: task.skill, research: task.research, images: task.images, n: task.n });
+    // Deep research: a plan to approve before it searches and reads
+    if (task.plan) setPlanOn(true);
   }, [task?.n]);
 
   const trayChanges = useMemo(() => tray.map(trayOf), [tray]);

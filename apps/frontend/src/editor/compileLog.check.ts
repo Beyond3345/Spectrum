@@ -193,8 +193,7 @@ eq(
       { severity: 'warning', message: 'unknown font family', file: 'main.typ', line: 3, column: 12 },
       { severity: 'error', message: 'at the end', file: 'main.typ', line: 4, column: 1 },
       { severity: 'error', message: 'other file', file: 'ch.typ', line: 1, column: 0 },
-      { severity: 'error', message: 'past the end', file: 'main.typ', line: 9, column: 0 },
-      { severity: 'error', message: 'LaTeX: no column', file: 'main.typ', line: 1 }
+      { severity: 'error', message: 'past the end', file: 'main.typ', line: 9, column: 0 }
     ],
     'main.typ',
     doc
@@ -202,6 +201,36 @@ eq(
   [['foo', 'error'], ['fnt', 'error'], ['"No Such"', 'warning'], ['', 'error']],
   'compile marks underline the token Typst points at, in the open file only'
 );
+// TeX's: what it had read of the line kept from its "l.N …" line, the command at its end marked, else the line's text
+const texLog = [
+  './chapters/intro.tex:3: Undefined control sequence.',
+  'l.3 The gain is \\gainval',
+  '                       {} here.',
+  './chapters/intro.tex:5: Missing $ inserted.',
+  'l.5 The value x_',
+  '                {1} is small.',
+  '! Undefined control sequence.',
+  'l.7 ...s is a long line that TeX shortened at the start \\oops',
+  ''
+].join('\n');
+eq(parseCompileLog(texLog).map((e) => [e.line, e.context]), [[3, 'The gain is \\gainval'], [5, 'The value x_'], [7, '...s is a long line that TeX shortened at the start \\oops']], 'what TeX had read');
+const tex = Text.of(['\\section{Intro}', '', 'The gain is \\gainval{} here.', '', '  The value x_{1} is small.', '', 'This is a long line that TeX shortened at the start \\oops and more.', 'Overfull here']);
+eq(
+  compileMarks(
+    [
+      { severity: 'error', message: 'Undefined control sequence \\gainval.', file: 'intro.tex', line: 3, context: 'The gain is \\gainval' },
+      { severity: 'error', message: 'Missing $ inserted.', file: 'intro.tex', line: 5, context: 'The value x_' },
+      { severity: 'error', message: 'Undefined control sequence \\oops.', file: 'intro.tex', line: 7, context: '...s is a long line that TeX shortened at the start \\oops' },
+      { severity: 'warning', message: 'Overfull \\hbox', file: 'intro.tex', line: 8 },
+      { severity: 'error', message: 'text since changed', file: 'intro.tex', line: 1, context: 'Something \\gone' }
+    ],
+    'intro.tex',
+    tex
+  ).map((d) => [tex.sliceString(d.from, d.to), d.severity]),
+  [['\\gainval', 'error'], ['The value x_{1} is small.', 'error'], ['\\oops', 'error'], ['Overfull here', 'warning'], ['\\section{Intro}', 'error']],
+  'TeX’s marks: the command it stopped after, else the line'
+);
+
 // the marks move with the text typed before them, and the next compile's replace them
 let state = EditorState.create({ doc: 'a #foo', extensions: compileLint });
 state = state.update({ effects: setCompileMarks.of([{ from: 3, to: 6, severity: 'error', message: 'm' }]) }).state;

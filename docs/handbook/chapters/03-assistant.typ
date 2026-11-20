@@ -87,6 +87,8 @@ In #ui[Assistant] mode the panel opens on "How can I help with your paper?" (@fi
 
 The model is told which language the open file is written in, LaTeX, Typst or Markdown, with that language's conventions, so an answer about a `.typ` file is written in Typst and not in LaTeX. This applies to every request in this chapter.
 
+When the project has an `AGENTS.md` that you have approved (@sec-assistant-instructions), every request from this panel is given it as well, a question and a rewrite alike, followed by the lines Spectrum remembers for the project (@sec-assistant-memory). A rule such as "Spelling: Australian English" therefore applies to #ui[Polish] and #ui[Translate] too. The file shapes how the model writes and is not a task of its own, so a rewrite still comes back as the rewritten text. While the file is in use, an #ui[AGENTS.md] chip beside the persona picker opens it. AI autocomplete is given neither, to keep it quick.
+
 A provider that is busy does not end a request. When it answers that it is overloaded or limiting requests, Spectrum waits and sends the request again, twice at most. It waits for as long as the provider asks, up to 20 seconds, or else for one second and then three. A rejected key, a wrong address and an account with no credit left are not sent again, since waiting does not mend them, and the message says which it was. A connection that drops before the provider answers, as one through a VPN sometimes does, is tried again in the same way. If it still fails, the message names the cause, such as a server name that was not found, a connection that was refused, dropped or timed out, or a certificate that could not be trusted. When an answer stops at the model's output limit, the panel says "The answer was cut off by the model's output limit." under it, and #ui[Continue] asks the model to go on from where it stopped.
 
 #shot("figures/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The bar at the bottom holds the image menu (+), the persona and the reasoning effort.], width: 85%) <fig-assistant-empty>
@@ -159,7 +161,7 @@ Before it writes the first change you accept, Spectrum saves a "Before AI change
 
 #shot("figures/03-assistant/image-menu.png", [The image menu under #ui[+].], width: 40%) <fig-assistant-image-menu>
 
-After choosing a picture, the reply shows the LaTeX in a code block with #ui[Insert at cursor], which puts it into the open file as a block. Anything typed in the message box before choosing the picture is sent with it as an extra instruction.
+After choosing a picture, the reply shows the LaTeX in a code block with #ui[Insert at cursor], which puts it into the open file as a block. In a Typst document each kind asks for Typst instead: maths between `$`, a `#table`, a `#figure` with alt text, an algorithm as a numbered list in a figure and text with Typst's marks escaped. Anything typed in the message box before choosing the picture is sent with it as an extra instruction.
 
 === AI autocomplete
 
@@ -359,7 +361,7 @@ The comparison is always against your file as it is now, with the left side labe
 
 === Standing instructions in AGENTS.md <sec-assistant-instructions>
 
-Things an agent should know about one project, such as its spelling, the journal's style or a folder it must never touch, are kept in a file named `AGENTS.md` at the top of the project. The Spectrum agent is given this file with every request as your standing instructions for the project, up to its first 20,000 characters. #ui[Fix with AI] is given it too. Most local agents read a file of this name by themselves from their copy of the project. A persona (@sec-assistant-personas) applies to every project, while `AGENTS.md` applies to the one it is in.
+Things an agent should know about one project, such as its spelling, the journal's style or a folder it must never touch, are kept in a file named `AGENTS.md` at the top of the project. The Spectrum agent is given this file with every request as your standing instructions for the project, up to its first 20,000 characters. #ui[Fix with AI] and the assistant panel (@sec-assistant-panel) are given it too. Most local agents read a file of this name by themselves from their copy of the project. A persona (@sec-assistant-personas) applies to every project, while `AGENTS.md` applies to the one it is in.
 
 The chip under the message box shows where the file stands,
 
@@ -371,7 +373,7 @@ The file is yours, and the agent never writes it by itself. A project can come f
 
 #shot("figures/03-assistant/agent-instructions-ask.png", [An `AGENTS.md` that changed outside Spectrum. The agent is not given it until it has been read and #ui[Use it] is pressed.], width: 65%) <fig-assistant-instructions-ask>
 
-This check is the Spectrum agent's. A local agent that reads `AGENTS.md` by itself reads the file in its copy of the project as it is.
+The same check decides what a local agent reads. An Isolated session's copy of the project (@sec-assistant-external) leaves out an `AGENTS.md` you have not approved, and the session says so when it starts, pointing to the chip and #ui[Use it]. Once you approve the file, it reaches the agent's copy with its next task, and a file that a pull changes leaves the copy again by the next task. Some agents also read an `AGENTS.md` in a folder below the top, or a file named `AGENTS.override.md` or `AGENTS.local.md`. These cannot be approved, so an Isolated copy always leaves them out. An agent that writes a file by one of these names in its copy while yours is left out is told that it will not be offered, and the review never shows it, so it cannot replace or delete your file. A Direct session works in the project's folder itself, where Spectrum cannot hide a file, and says so when it starts.
 
 === What the agent remembers <sec-assistant-memory>
 
@@ -379,7 +381,7 @@ The Spectrum agent also has a memory for each project, kept apart from `AGENTS.m
 
 #shot("figures/03-assistant/agent-instructions.png", [Two lines the agent suggested to remember. The first has been added, and the #ui[Memory] chip counts it.], width: 65%) <fig-assistant-instructions>
 
-The #ui[Memory] chip under the message box, beside the `AGENTS.md` chip, shows how many lines are kept and opens the list (@fig-assistant-memory). Each line has a pencil to edit it and a bin to delete it, and #ui[Add a line] adds one of your own. The Spectrum agent and #ui[Fix with AI] are given every line with each request, as your remembered notes for the project, after `AGENTS.md`. A project keeps 30 lines at most and each line is at most 300 characters, and a turn can suggest three.
+The #ui[Memory] chip under the message box, beside the `AGENTS.md` chip, shows how many lines are kept and opens the list (@fig-assistant-memory). Each line has a pencil to edit it and a bin to delete it, and #ui[Add a line] adds one of your own. The Spectrum agent, #ui[Fix with AI] and the assistant panel are given every line with each request, as your remembered notes for the project, after `AGENTS.md`. A project keeps 30 lines at most and each line is at most 300 characters, and a turn can suggest three.
 
 #shot("figures/03-assistant/agent-memory.png", [The lines the agent remembers for a project, with the pencil to edit and the bin to delete each one.], width: 65%) <fig-assistant-memory>
 
@@ -445,13 +447,13 @@ An isolated agent keeps working on its copy while changes wait, so you can go on
 
 In an Isolated session the agent stays running for five minutes after a task, so the next message starts at once, and at most three such agents wait at a time. It stops when you open another session or close the project, and Spectrum starts it again when it is needed. A Direct session's agent stops after each task instead, since anything it left running would write into the project outside the task's checkpoint. Either way, a local agent also stops when Spectrum is force-quit or crashes, and does not run on by itself. A very long output from an agent, such as a whole log, keeps its first and last 100 KB with a line saying how many characters were left out between, so that it does not push the earlier turns out of the session.
 
-On macOS, a local agent also gets Spectrum's tools from a small server it starts inside its isolation: `compile`, `get_log`, `project_map`, `bib_entries`, `bib_search`, `search_text`, `literature_search`, `fetch_bibtex`, `list_todos`, `suggest_todo` and `load_skill`. For a Markdown document, `compile` and `get_log` give each error at its line of the `.md` file, as the Logs tab does, and not at a line of the file pandoc generated. Each tool's answer reaches the agent marked with the tool it came from, as text to read and not an instruction. Local agents on Windows get no Spectrum tools yet, as #menu[Settings][Agents] says there. Keys, working copies, session mappings and transcripts stay on this computer.
+On macOS, a local agent also gets Spectrum's tools from a small server it starts inside its isolation: `compile`, `get_log`, `project_map`, `bib_entries`, `bib_search`, `search_text`, `literature_search`, `fetch_bibtex`, `check_references`, `list_todos`, `suggest_todo` and `load_skill`. For a Markdown document, `compile` and `get_log` give each error at its line of the `.md` file, as the Logs tab does, and not at a line of the file pandoc generated. Each tool's answer reaches the agent marked with the tool it came from, as text to read and not an instruction. Local agents on Windows get no Spectrum tools yet, as #menu[Settings][Agents] says there. Keys, working copies, session mappings and transcripts stay on this computer.
 
 == Review <sec-assistant-review>
 
 Review checks the document that #ui[Compile] builds before it goes anywhere. It is in #menu[Tools][Review], and one press of #ui[Review] saves the open file, compiles when the PDF is older than the source and runs each group of checks that is ticked (@fig-assistant-review-options). A failed build does not stop the review.
 
-#shot("figures/03-assistant/review-options.png", [The top of #menu[Tools][Review]. #ui[AI review] is unticked and says "Set up a model in #menu[Settings][Models] first" until a model is set up.], width: 75%) <fig-assistant-review-options>
+#shot("figures/03-assistant/review-options.png", [The top of #menu[Tools][Review] with #ui[References exist] ticked. #ui[AI review] is unticked and says "Set up a model in #menu[Settings][Models] first" until a model is set up.], width: 75%) <fig-assistant-review-options>
 
 #figure(
   table(
@@ -463,12 +465,17 @@ Review checks the document that #ui[Compile] builds before it goes anywhere. It 
     [#ui[Privacy and blind review]], [Lines that look like keys or passwords, `\todo` notes, `TODO` comments and highlighted text, and with #ui[Anonymous review] on, the authors, `\thanks`, the acknowledgements and the PDF's Author field],
     [#ui[Accessibility]], [The PDF's title, language, tags and bookmarks, small text, pages with no text, alt text, heading levels that skip and vague link text],
     [#ui[Submission readiness]], [The PDF version, encryption, fonts that are not embedded, Type 3 fonts, absolute paths, file names that clash by letter case, image formats pdfLaTeX cannot include, the abstract and the keywords],
+    [#ui[References exist]], [Each entry of the bibliography looked up in the source its DOI, arXiv ID or title names and compared with it: the entries retracted, not found or with a title, first author or year that differs. Off until ticked, as it goes to Crossref, doi.org, arXiv and OpenAlex],
     [#ui[AI review]], [One read of the whole document by the main model, with the files it includes, which returns a summary, strengths, a score, its confidence and points marked Major, Minor or Note, each tied to a line],
   ),
   caption: [The groups of checks in Review. A Typst document runs Compile and layout and Privacy and blind review. A Markdown document also runs References and assets, which checks its citations against the `.bib` its front matter names, entries never cited, missing images and links to files that are not in the project, each at its line of the `.md`. Accessibility and Submission readiness run for LaTeX only.],
 ) <tab-assistant-review>
 
 The results are listed under each group with a count and a summary line, such as "0 errors · 1 warning" (@fig-assistant-review-results). A row jumps to its line in the source or to its page in the PDF, and #ui[Dismiss] (the cross) hides it. #ui[Fix with AI] on a row asks the main model for a fix that opens as changes to review (@sec-assistant-changes), and the paper plane sends the row to the agent workspace instead (@sec-assistant-handoff). The fix is compiled on a copy of the project first, and the row then says "Builds." or "Still fails at" with the first error left. Until a model is set up, it opens #menu[Settings][Models] instead. A group that needs the PDF or the log and has neither says #ui[Compile first] rather than reporting no problems.
+
+#ui[References exist] needs no model. Each entry with a DOI is looked up in Crossref, or at doi.org when Crossref does not know it, an entry with an arXiv ID in arXiv and an entry with a title alone in OpenAlex. The title, the first author and the year are compared with the record found, so a different case, an accent or a missing subtitle is no difference, but another year or author is. A retraction is read from the updates Crossref lists for the work, which include Retraction Watch's, from OpenAlex and from a title its publisher marked "RETRACTED". Only the entries with a problem are listed, each with the evidence for it: the record that was read, the fields that differ side by side, the date of the retraction and links to the record and its notice (@fig-assistant-review-exist). A correction or an expression of concern is listed under the entry too, and a DOI that is itself a retraction notice is named as one. #ui[Fix with AI] on an entry that differs proposes the record's details for it, and the entries found as they are are a count at the end that opens to show them. A long bibliography takes a while, as Crossref is asked one entry at a time, and only the first 300 entries are checked in one run.
+
+#shot("figures/03-assistant/review-references-exist.png", [#ui[References exist] for a bibliography with a retracted paper, an entry whose year differs from its record, a title no source knows, a DOI no registry knows and a web page with nothing to look up.], width: 60%) <fig-assistant-review-exist>
 
 The AI review reads the main file and every file it brings in with `\input`, `\include` or `#include`. A document longer than about 160,000 characters of source, roughly 25,000 words, is read in parts, one request each, and each part is told the summary of the parts before it. A part ends before a top-level heading (`\part`, `\chapter` or `\section`, a Typst `=` or `==` and a Markdown `#` or `##`) or a new file once it is at least half full, so a section is read whole where it fits, and only a section longer than a part is split between lines. The status line shows the part being read, such as "AI review, part 2 of 4, chapters/ch3.tex:252 to chapters/ch6.tex:2", and each point is tied to its own file and line. #ui[Stop] ends the review after the parts already read, and the limits of the review say how far it got. A very large thesis takes one request for each part, so a 900 KB thesis is about six requests and takes about six times as long as a paper.
 
@@ -505,9 +512,15 @@ Each question is kept as a session in the project's `.spectrum/research` folder,
 The tab has four further tools, each of which needs a model,
 
 - #ui[Find citations for selection], which finds up to five papers that support the selected passage and, with #ui[Add to .bib and cite], adds the ticked ones and cites them after the selection (when the model cannot be reached, the results are a plain search of the passage's words and a line above them says why),
-- #ui[Deep research], which opens the agent workspace with a task that searches further, follows references and writes notes and a reading list,
+- #ui[Deep research], which opens the agent workspace with #ui[Plan] on and a task that first proposes a plan (the questions, the sources to search and how many papers to read in full) for you to approve or change, then searches further, follows references, reads the papers and writes notes and a reading list,
 - #ui[Draft related work], which opens the workspace with a task that cites only keys already in the `.bib` and
-- #ui[Verify claims], which opens the workspace with the Critical reviewer persona to check each claim in the open file against its sources without changing the text.
+- #ui[Verify claims], which opens the workspace with the Critical reviewer persona to check the references and then each claim in the open file against its sources, without changing the text.
+
+The Spectrum agent reads a paper with its `read_source` tool. The text comes from the paper's open copy, found through arXiv or through OpenAlex's list of open-access copies, or from a PDF in the project, such as one #ui[Get PDF] saved in `research/papers/`. It is read a few pages at a time, each under its page number, and when there is no open copy the agent gets the abstract alone and is told so. The agent never chooses the address itself, and the text reaches it marked as material to read, not instructions. Each step's card says what was read and where, such as "Read: full text, pages 1–3 of 12, from https://arxiv.org/pdf/1706.03762", and a note the agent writes in `research/notes/` starts with the same line.
+
+Verify claims keeps what it found as evidence in #ui[Claims checked], which appears in the #ui[Research] tab once a claim is recorded (@fig-assistant-claims). Before a claim is kept, Spectrum checks that it is at the line given and that its keys are in the bibliography, and for a claim rated Supported, Partly supported or Unsupported, that the quote is in the source word for word. It finds the quote's page itself, and a quote it cannot find is refused, so the agent has to read the page again. Each row shows the rating, the keys, the source's words, where they were found (#ui[Full text, page 2] or #ui[Abstract only], which opens the source) and a note, with the claim's line to jump to, a to-do for it and a delete. #ui[Problems first] lists the Unsupported claims and those that need a source at the top, and #ui[Copy as table] copies the whole ledger as a Markdown table, ready for `research/claims.md`. The claims are kept in the project's `.spectrum/research/claims` folder, one file each, and go to GitHub with the research sessions.
+
+#shot("figures/03-assistant/research-claims.png", [#ui[Claims checked] after Verify claims, with the problems first. The Unsupported claim was checked against an abstract only, and the Supported one has its quote from page 2 of the paper.], width: 30%) <fig-assistant-claims>
 
 #menu[Settings][Search] holds the keys and emails Research uses under #ui[Research sources]: the OpenAlex and Semantic Scholar keys, an email for OpenAlex, an NCBI key for PubMed and the email Unpaywall asks for with #ui[Get PDF]. Each source works without them, and they stay on this computer.
 
