@@ -8,6 +8,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 - `AGENTS.md` reaches the Spectrum agent only as you approved it on this computer. A file that came with a project, or was changed by a pull, a sync, an agent in the folder or an agent's change you applied, is not used until you have read it and chosen Use it
 - A local agent stops when Spectrum is force-quit or crashes, and leaves nothing running when it exits
+- An Isolated session of a local agent leaves out an `AGENTS.md` you have not approved, and says so with the way to approve it. Once approved, it reaches the agent with its next task, and a file changed by a pull leaves the copy again. `AGENTS.md` files in folders, `AGENTS.override.md` and `AGENTS.local.md` are always left out, and what an agent writes by those names meanwhile is never offered for review
+- A Direct session says when the agent can read an `AGENTS.md` you have not approved
 - The Spectrum agent compiles on a copy of the project, confined like every compile and never trusted. Nothing in the project changes until you apply a change
 - Review's PDF before and after is compiled on copies, in the agents' isolation
 - Agent Client Protocol SDK 2.8.0, Codex adapter 2.7.0 and Claude Agent adapter 0.108.1
@@ -23,8 +25,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The Spectrum agent can show a plan before it changes anything: untick or edit its steps, then Approve and run, Approve and ask before each file or Keep planning. Plan, under the message box, asks for one, and the agent plans by itself before a larger task. The approved steps stay at the top of the thread and are ticked as it works
 - The Spectrum agent asks a question when a request is unclear, with answers to choose from. A plan or a question waits in the thread, through a reload and a restart, with no request to the model open
 - `AGENTS.md` at the top of a project holds your standing instructions for the Spectrum agent
+- The assistant's chat, Polish, Rewrite, Restructure and Translate are given your approved `AGENTS.md`. An `AGENTS.md` chip shows when the file is in use
 - The Spectrum agent can suggest a line to remember for a project, which is kept only when you press Add. Memory, under the message box, lists what it remembers for the project, to edit, delete or add to
-- The remembered lines go to the Spectrum agent and Fix with AI with every request. They are kept on this computer, apart from the project's files and from `AGENTS.md`
+- The remembered lines go to the Spectrum agent, Fix with AI and the assistant with every request. They are kept on this computer, apart from the project's files and from `AGENTS.md`
 - Each agent tab shows what a turn used: tokens and the share served from the cache, and for a local agent how full its context is and the cost it reports
 - The Spectrum agent shows what a thread cost: the figure OpenRouter reports, in US dollars, or an estimate from the prices you type in Settings › Models for any of the provider's models. Spectrum keeps no price list of its own
 - A price can be typed in any of 14 currencies. Each cost is shown in its own currency, with a symbol no other currency shares such as US$, A$, HK$ and CN¥, and two currencies are never added together
