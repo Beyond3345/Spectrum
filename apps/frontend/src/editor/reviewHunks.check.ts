@@ -1,6 +1,6 @@
 // Self-check for reviewing a change one part at a time. Run:
 // npx esbuild apps/frontend/src/editor/reviewHunks.check.ts --bundle --platform=node --log-level=warning | node
-import { build, editText, editedLines, hunksOf, renames, review, sections, settle, target, toLines, where } from './reviewHunks';
+import { build, editText, editedLines, hunksOf, renames, review, reviewSitting, sections, settle, target, toLines, where } from './reviewHunks';
 import type { Hunk, Review } from './reviewHunks';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -163,4 +163,37 @@ eq(review('', 'same\n', 'same\n').hunks, [], 'both made the same file');
 // build is what every result comes from: hunks left out keep the file's lines
 eq(build(['a\n', 'b\n', 'c\n'], hunksOf('a\nb\nc\n', 'A\nb\nC\n'), (h) => (h.start ? h.lines : undefined)), 'a\nb\nC\n', 'build');
 
-console.log('reviewHunks checks passed');
+// a review sitting: one checkpoint before its first apply, or one before each with the setting on
+void (async () => {
+  let saved = 0;
+  let written = 0;
+  let failing = false;
+  const save = async () => {
+    if (failing) throw new Error('The checkpoint couldn’t be saved.');
+    return ++saved;
+  };
+  // an apply as the review makes one: the checkpoint when due, then the write
+  const apply = async (sitting: ReturnType<typeof reviewSitting>, every = false) => {
+    await sitting.checkpoint(every, save);
+    written++;
+  };
+  const sitting = reviewSitting();
+  for (let i = 0; i < 20; i++) await apply(sitting);
+  eq([saved, written], [1, 20], 'twenty applies in one sitting save one checkpoint');
+  const next = reviewSitting();
+  await apply(next);
+  await apply(next);
+  eq(saved, 2, 'a new sitting saves a new one');
+  const every = reviewSitting();
+  for (let i = 0; i < 20; i++) await apply(every, true);
+  eq(saved, 22, 'with a checkpoint before every applied change, twenty');
+  failing = true;
+  const broken = reviewSitting();
+  written = 0;
+  const err = await apply(broken).then(() => '', (e: Error) => e.message);
+  eq([err, written], ['The checkpoint couldn’t be saved.', 0], 'a checkpoint that fails stops the apply');
+  failing = false;
+  await apply(broken);
+  eq([saved, written], [23, 1], 'and the next apply of that sitting saves it');
+  console.log('reviewHunks checks passed');
+})();

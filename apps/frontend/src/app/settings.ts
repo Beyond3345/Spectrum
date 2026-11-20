@@ -127,6 +127,8 @@ export type AppSettings = {
   /** a checkpoint after each successful compile, and a notice when one can't be saved */
   checkpointOnCompile: boolean;
   checkpointNotice: boolean;
+  /** a "Before AI changes" checkpoint before each change applied in a review, not one per review */
+  checkpointEveryApply: boolean;
   /** switching to another document's .tex shows that document's PDF, and Compile builds it */
   pdfFollowsFile: boolean;
   editorFontSize: number;
@@ -267,6 +269,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   liveOutput: { tectonic: true, pdflatex: false, xelatex: false, lualatex: false, latexmk: false, markdown: false },
   checkpointOnCompile: true,
   checkpointNotice: true,
+  checkpointEveryApply: false,
   pdfFollowsFile: true,
   editorFontSize: 13,
   projectsDir: '',
@@ -442,6 +445,7 @@ function parse(raw: string | null): AppSettings {
     ) as AppSettings['liveOutput'];
     merged.checkpointOnCompile = merged.checkpointOnCompile !== false;
     merged.checkpointNotice = merged.checkpointNotice !== false;
+    merged.checkpointEveryApply = merged.checkpointEveryApply === true;
     merged.pdfFollowsFile = merged.pdfFollowsFile !== false;
     merged.zoteroCompletion = merged.zoteroCompletion !== false;
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system';

@@ -244,3 +244,22 @@ export function renames(changes: { path: string; kind: string; binary?: boolean;
   }
   return moved;
 }
+
+/**
+ * A review sitting, from when a review opens until it closes. Only its first apply saves a "Before AI changes"
+ * checkpoint, so restoring that one brings back the project as it was before the sitting's first change; with
+ * every (Settings › Checkpoints) each apply saves its own. checkpoint runs save when one is due: a save that fails
+ * throws, so nothing is applied, and the sitting's next apply tries again. undefined: none was due.
+ */
+export function reviewSitting() {
+  let saved = false;
+  return {
+    async checkpoint<T>(every: boolean, save: () => Promise<T>): Promise<T | undefined> {
+      if (saved && !every) return undefined;
+      const result = await save();
+      saved = true;
+      return result;
+    }
+  };
+}
+export type Sitting = ReturnType<typeof reviewSitting>;

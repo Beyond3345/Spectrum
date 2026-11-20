@@ -247,6 +247,8 @@ try {
   stored({ modelPrices: [1] }, null);
   eq(loadSettings().modelPrices, {}, 'prices that are not a list of models are none');
   eq(DEFAULT_SETTINGS.modelPrices, {}, 'no prices until typed');
+  stored({ checkpointEveryApply: 'yes' }, null);
+  eq([DEFAULT_SETTINGS.checkpointEveryApply, loadSettings().checkpointEveryApply, 'checkpointEveryApply' in sharedPart(loadSettings())], [false, false, false], 'one checkpoint per review unless switched on, checked on load, kept to this computer');
   for (const junk of [null, 'not json', '"dark"', 'null', '{"dark":"yes","minimap":1}']) {
     stored({ theme: junk ? 'dark' : 'system', editorFontSize: 10 + String(junk).length }, junk);
     eq([loadSettings().composerDark, loadSettings().composerMinimap], [false, false], `old choices that can’t be read (${junk}) are off`);

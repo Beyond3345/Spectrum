@@ -100,6 +100,8 @@ import GrammarPanel, { grammarMarks } from '../editor/GrammarPanel';
 import { ignoreSpelling, misspeltAt, recheckSpelling, spellChecker } from '../editor/spellcheck';
 import type { ToolsTab } from '../editor/ToolsPanel';
 import ReviewChangesSheet from '../editor/ReviewChangesSheet';
+import { reviewSitting } from '../editor/reviewHunks';
+import type { Sitting } from '../editor/reviewHunks';
 import AgentWorkspace, { STATUS_TEXT } from '../editor/agent/AgentWorkspace';
 import type { AgentStatus } from '../editor/agent/LocalAgentTab';
 import SyncBanners from '../editor/SyncBanners';
@@ -585,6 +587,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [focusSignal, setFocusSignal] = useState(0);
   const [pending, setPending] = useState<PendingChange[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
+  // from when the review opens until it closes
+  const reviewSittingNow = useMemo(reviewSitting, [reviewOpen]);
   // true: Settings at its first section; a section's name: open at that one
   const [settingsOpen, setSettingsOpen] = useState<boolean | SettingsSection>(false);
   const [preview, setPreview] = useState('');
@@ -1443,7 +1447,8 @@ function Editor({ projectId }: { projectId: string }) {
     }
   };
 
-  const acceptChanges = async (list: PendingChange[]) => {
+  /** sitting: the review's, which saves one checkpoint before its first apply (none: one before this apply) */
+  const acceptChanges = async (list: PendingChange[], sitting?: Sitting) => {
     const rebased = await Promise.all(list.map(rebase));
     const stale = rebased.filter((r) => !r.ok).map((r) => r.change);
     const ready = rebased.filter((r) => r.ok).map((r) => r.change);
@@ -1457,7 +1462,11 @@ function Editor({ projectId }: { projectId: string }) {
       );
     }
     if (!ready.length) return { applied: [], stale, checkpoint: null };
-    const { version } = await createVersion('before-ai');
+    const save = async () => (await createVersion('before-ai')).version;
+    await saveNow();
+    // a deletion has one of its own, which holds the file as it is now, edits since the sitting's first apply included
+    const every = settings.checkpointEveryApply || ready.some(isDeletion);
+    const version = (await (sitting ? sitting.checkpoint(every, save) : save())) ?? null;
     for (const change of ready) {
       if (!isDeletion(change)) {
         await writeProjectFile(change.filePath, change.proposed, true);
@@ -4203,7 +4212,7 @@ function Editor({ projectId }: { projectId: string }) {
       {reviewOpen && (
         <ReviewChangesSheet
           changes={pending}
-          onAccept={acceptChanges}
+          onAccept={(list) => acceptChanges(list, reviewSittingNow)}
           onReject={(list) => setPending((prev) => prev.filter((p) => !list.some((c) => c.filePath === p.filePath)))}
           onRevise={(change) => replacePending([change])}
           onClose={() => setReviewOpen(false)}

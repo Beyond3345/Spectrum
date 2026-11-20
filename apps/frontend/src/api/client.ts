@@ -2060,13 +2060,15 @@ export const previewLocalAgentDraft = (id: string, options: { mainFile?: string;
   const query = new URLSearchParams(Object.entries(options).filter(([, v]) => v) as [string, string][]).toString();
   return request<{ ok: boolean; pdf: string | null; log: string }>(`/api/agent-sessions/${id}/preview${query ? `?${query}` : ''}`);
 };
-export const reviewLocalAgentChanges = (id: string, action: 'apply' | 'reject', changes: AgentChange[]) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action, paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])) }));
+/** checkpoint false: an apply saves no "Before applying agent changes" checkpoint, its review sitting having one */
+export const reviewLocalAgentChanges = (id: string, action: 'apply' | 'reject', changes: AgentChange[], checkpoint = true) =>
+  request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action, paths: changes.map((c) => c.path), expected: Object.fromEntries(changes.map((c) => [c.path, c.afterHash])), checkpoint }));
 /**
  * One file's change settled in part: content (null: no file), when given, is written to the project while its file still
  * has the hash `current`; original and proposed (null: no file) are what is left to review, which the agent's copy then holds.
  */
-export const settleLocalAgentChange = (id: string, change: AgentChange, part: { content?: string | null; original: string | null; proposed: string | null }) =>
-  request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action: 'part', path: change.path, expected: change.afterHash, current: change.currentHash ?? null, ...part }));
+export const settleLocalAgentChange = (id: string, change: AgentChange, part: { content?: string | null; original: string | null; proposed: string | null }, checkpoint = true) =>
+  request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/review`, json('POST', { action: 'part', path: change.path, expected: change.afterHash, current: change.currentHash ?? null, ...part, checkpoint }));
 /**
  * The project compiled on a copy, in isolation: as it is (which: 'before'), or with files laid over it (content null:
  * without that file), for the PDF before and after the changes in a review. compile: the app's defaults, as a new session takes.

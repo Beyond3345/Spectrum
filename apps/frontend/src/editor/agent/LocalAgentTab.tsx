@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { reviewSitting } from '../reviewHunks';
 import {
   answerLocalAgent,
   closeLocalAgentSession,
@@ -82,6 +83,8 @@ export default function LocalAgentTab({
   const [error, setError] = useState('');
   const [working, setWorking] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  // a review sitting, from when the review opens until it closes: its first apply saves the checkpoint
+  const sitting = useMemo(reviewSitting, [reviewing]);
   const [draft, setDraft] = useState<Draft | null>(null);
   // a new session's first message, sent once the agent is connected
   const queued = useRef<{ text: string; skill?: string; research?: string; persona: AgentPersona | null; context: AgentPromptContext } | null>(null);
@@ -293,7 +296,11 @@ export default function LocalAgentTab({
     setError('');
     try {
       await latest.current.prepareAgent();
-      const r = await reviewLocalAgentChanges(session.id, action, changes.filter((c) => list.some((l) => l.path === c.path)));
+      const picked = changes.filter((c) => list.some((l) => l.path === c.path));
+      const send = (checkpoint: boolean) => reviewLocalAgentChanges(session.id, action, picked, checkpoint);
+      // a deletion has one of its own, which holds the file as it is now
+      const every = latest.current.settings.checkpointEveryApply || picked.some((c) => c.kind === 'deleted');
+      const r = action === 'apply' ? ((await sitting.checkpoint(every, () => send(true))) ?? (await send(false))) : await send(false);
       setChanges(r.changes);
       if (action === 'apply') {
         await latest.current.reloadProject();
@@ -321,7 +328,10 @@ export default function LocalAgentTab({
       await latest.current.prepareAgent();
       // where the change makes or removes the file, no text is no file
       const none = (text: string) => (change.kind !== 'modified' && !text ? null : text);
-      const r = await settleLocalAgentChange(session.id, change, { ...(part.content !== undefined && { content: none(part.content) }), original: none(part.original), proposed: none(part.proposed) });
+      const send = (checkpoint: boolean) => settleLocalAgentChange(session.id, change, { ...(part.content !== undefined && { content: none(part.content) }), original: none(part.original), proposed: none(part.proposed) }, checkpoint);
+      // only what writes to the project saves a checkpoint
+      const every = latest.current.settings.checkpointEveryApply || change.kind === 'deleted';
+      const r = part.content !== undefined ? ((await sitting.checkpoint(every, () => send(true))) ?? (await send(false))) : await send(false);
       setChanges(r.changes);
       if (part.content !== undefined) {
         await latest.current.reloadProject();
