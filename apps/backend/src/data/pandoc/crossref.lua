@@ -248,18 +248,23 @@ local function mermaid(el)
   local code = el.text:gsub('%s+', ' '):gsub('^ ', ''):gsub(' $', '')
   local name = pandoc.utils.sha1(code) .. '.png'
   local file = io.open(mermaid_dir .. '/' .. name, 'rb')
+  local caption = el.attributes.caption
+  local inlines = caption and pandoc.utils.blocks_to_inlines(pandoc.read(caption, 'markdown').blocks)
+  -- a figure of its code when it has no picture, so its label and number still hold
+  local id = el.identifier
+  local function figure(content) return pandoc.Figure(content, { long = { pandoc.Plain(inlines) } }, pandoc.Attr(id)) end
   if not file then
     warn('A Mermaid diagram is printed as its code: compile in the editor to draw it, or correct the error it shows.')
-    return nil
+    if not caption then return nil end
+    el.identifier = ''
+    el.attributes.caption = nil
+    return figure(el)
   end
   file:close()
   local src = is_typst() and '/.spectrum/mermaid/' .. name or mermaid_dir .. '/' .. name
-  local caption = el.attributes.caption
-  local image = pandoc.Image(caption and {} or { pandoc.Str('Diagram') }, src)
+  local image = pandoc.Image(caption and inlines or { pandoc.Str('Diagram') }, src)
   if not caption then return pandoc.Para({ image }) end
-  local inlines = pandoc.utils.blocks_to_inlines(pandoc.read(caption, 'markdown').blocks)
-  image.caption = inlines
-  return pandoc.Figure(pandoc.Plain({ image }), { long = { pandoc.Plain(inlines) } }, pandoc.Attr(el.identifier))
+  return figure(pandoc.Plain({ image }))
 end
 
 function Pandoc(doc)

@@ -81,6 +81,9 @@ export async function bibliographyArgs(projectRoot, meta) {
   return files.flatMap((file) => ['--bibliography', file]);
 }
 
+/** Whether the front matter asks for slides: slides: true, yes or beamer. */
+export const isSlides = (meta) => /^(?:true|yes|beamer)$/i.test(String([meta.slides].flat()[0] ?? ''));
+
 /** pandoc's --csl: APA 7, unless the front matter names a style of its own, which pandoc then reads. */
 export const cslArgs = (meta) => (named(meta.csl) || named(meta['citation-style']) || !existsSync(APA_CSL) ? [] : ['--csl', APA_CSL]);
 
@@ -387,7 +390,8 @@ export async function markdownToLatex({ projectRoot, absMain, mainFile, generate
   const font = cjkFont(source, meta);
   const args = [
     ...(sandboxed ? [absMain, '--from=markdown'] : [generatedFile + '.json', '--from=json']),
-    '--to=latex', '--standalone', ...crossrefArgs(), '--citeproc',
+    // slides: true (or beamer) in the front matter makes Beamer slides, a ## heading a slide
+    isSlides(meta) ? '--to=beamer' : '--to=latex', '--standalone', ...crossrefArgs(), '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
     ...cslArgs(meta),
     ...(font ? cjkLatexArgs(font) : []),
@@ -540,11 +544,12 @@ export function rootRelativeImages(text, projectRoot, mdDir) {
 /** Compiles a .md main file through pandoc and the project's PDF engine ('latex' or 'typst'), else options.markdownEngine, the app's. */
 export async function compileMarkdown(projectRoot, absMain, mainFile, engine, options = {}) {
   const settings = await readProjectSettings(projectRoot);
-  const kind = (settings.compile?.markdownEngine || options.markdownEngine) === 'typst' ? 'typst' : 'latex';
-  const problem = await pandocProblem(kind);
-  if (problem) return { ok: false, ...problem, generated: kind };
   const source = await fs.readFile(absMain, 'utf8').catch(() => null);
   if (source === null) return { ok: false, error: 'The main file “' + mainFile + '” doesn’t exist.' };
+  // slides are Beamer's, so they go through LaTeX whatever the PDF engine
+  const kind = (settings.compile?.markdownEngine || options.markdownEngine) === 'typst' && !isSlides(parseFrontMatter(source).meta) ? 'typst' : 'latex';
+  const problem = await pandocProblem(kind);
+  if (problem) return { ok: false, ...problem, generated: kind };
   const cache = options.scratch ? options.buildDir || path.join(os.tmpdir(), 'spectrum-build') : await cachePath(projectRoot);
   const generatedDir = path.join(cache, 'generated');
   const made = kind === 'typst'

@@ -493,7 +493,28 @@ test('a ```mermaid block becomes the picture the editor saved for it, found by i
   assert.match(made.text, /\\includegraphics\[[^\]]*\]\{[^}]*media\/[0-9a-f]+\.png\}\}\s*\\caption\{The flow\}\\label\{fig:flow\}/);
   assert.match(made.text, /graph LR/);
   assert.match(made.log, /A Mermaid diagram is printed as its code/);
+  // a captioned block with no picture yet is a figure of its code, so its label still holds
+  const other = path.join(root, 'other.md');
+  writeFileSync(other, 'See @fig:other.\n\n```{.mermaid caption="Not drawn" #fig:other}\ngraph TD\n  P --> Q\n```\n');
+  const undrawn = await markdownToLatex({ projectRoot: root, absMain: other, mainFile: 'other.md', generatedDir: path.join(tmp, 'mermaid-other') });
+  assert.match(undrawn.text, /See Figure~\\ref\{fig:other\}/);
+  assert.match(undrawn.text, /P \{-\}\{-\}\\textgreater\{\} Q[\s\S]*\\caption\{Not drawn\}\\label\{fig:other\}/);
   // a LaTeX project made from the .md keeps its blocks as code
   const converted = await markdownToLatex({ projectRoot: root, absMain, mainFile: 'main.md', generatedDir: path.join(tmp, 'mermaid-converted'), sandboxed: true });
   assert.match(converted.text, /graph TD/);
+});
+
+test('slides: true makes Beamer slides, through LaTeX whatever the PDF engine', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  const { isSlides } = await import('../src/services/markdownService.js');
+  assert.deepEqual([true, 'true', 'beamer', 'yes', 'no', '', undefined].map((slides) => isSlides({ slides })), [true, true, true, true, false, false, false]);
+  const dir = path.join(tmp, 'slides');
+  await fs.mkdir(dir, { recursive: true });
+  const absMain = path.join(dir, 'main.md');
+  await fs.writeFile(absMain, '---\ntitle: A talk\nslides: true\n---\n\n## First slide\n\n- One point\n');
+  const made = await markdownToLatex({ projectRoot: dir, absMain, mainFile: 'main.md', generatedDir: path.join(dir, 'generated') });
+  assert.equal(made.ok, true, made.error || made.log);
+  assert.match(made.text, /\\documentclass\[[^\]]*\]\{beamer\}/);
+  assert.match(made.text, /\\begin\{frame\}\{First slide\}/);
 });

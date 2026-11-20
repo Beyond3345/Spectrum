@@ -136,6 +136,19 @@ test('the Typst and Markdown starters are self-contained', async () => {
   assert.match(markdown, /\[@Knuth1984\]/);
   assert.ok(existsSync(path.join(shippedDir, 'markdown-article', 'figures', 'example.png')));
   assert.ok(existsSync(path.join(shippedDir, 'markdown-article', 'refs.bib')));
+  // the other Markdown starters: each with front matter, every label it refers to there, every image and .bib it names
+  const starters = shipped.templates.filter((t) => /\.md$/.test(t.mainFile)).map((t) => t.id);
+  assert.deepEqual(starters, ['markdown-article', 'markdown-report', 'markdown-maths-notes', 'markdown-slides']);
+  for (const id of starters) {
+    const text = await fs.readFile(path.join(shippedDir, id, 'main.md'), 'utf8');
+    assert.match(text, /^---\ntitle: /, id);
+    const labels = new Set([...text.matchAll(/[{\s]#((?:fig|tbl|eq|sec):[\w-]+)/g)].map((m) => m[1]));
+    for (const [, ref] of text.matchAll(/@((?:fig|tbl|eq|sec):[\w-]+)/g)) assert.ok(labels.has(ref), `${id}: @${ref} has its label`);
+    for (const [, file] of text.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) assert.ok(existsSync(path.join(shippedDir, id, file)), `${id}: ${file}`);
+    const bib = /^bibliography: (.+)$/m.exec(text)?.[1];
+    if (bib) assert.ok(existsSync(path.join(shippedDir, id, bib)), `${id}: ${bib}`);
+  }
+  assert.match(await fs.readFile(path.join(shippedDir, 'markdown-slides', 'main.md'), 'utf8'), /^slides: true$/m);
 });
 
 test('seeding an existing install adds new templates, refreshes shipped entries and keeps uploads', async () => {
