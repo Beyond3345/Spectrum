@@ -493,8 +493,11 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
 
   useEffect(() => {
     if (check || checkError) return;
-    systemCheck(settings.texFolder || undefined).then(setCheck).catch((err) => setCheckError(err instanceof Error ? err.message : String(err)));
+    systemCheck(settings.texFolder || undefined, checkAgain.current).then(setCheck).catch((err) => setCheckError(err instanceof Error ? err.message : String(err)));
+    checkAgain.current = false;
   }, [check, checkError]);
+  // Check again runs every program afresh; opening the sheet takes what the backend already found
+  const checkAgain = useRef(false);
 
   const recheck = () => {
     setCheck(null);
@@ -994,7 +997,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 <div className="kv-row"><span>Default projects folder</span><code>{settings.projectsDir || check?.projectsDir || '…'}</code></div>
               </div>
               <div>
-                <button className="btn small" onClick={recheck} disabled={!check && !checkError}>
+                <button className="btn small" onClick={() => { checkAgain.current = true; recheck(); }} disabled={!check && !checkError}>
                   <Icon name="arrow.clockwise" /> Check again
                 </button>
               </div>

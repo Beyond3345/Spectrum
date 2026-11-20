@@ -268,3 +268,46 @@ test('latexmk runs Biber from its kept folder, again only for a changed .bib', {
   assert.equal(bib.status, 0, bib.log);
   assert.equal(biberRuns(bib.log), 1);
 });
+
+// ─── the system check ───
+
+test('the system check never holds the server up, and runs a program that worked again only when asked or when its file changed', { skip: process.platform === 'win32' ? 'shell scripts stand in for the programs' : false }, async () => {
+  const { registerSystemRoutes } = await import('../src/routes/system.js');
+  const { default: Fastify } = await import('fastify');
+  const bin = path.join(tmp, 'slow bin');
+  const ran = path.join(tmp, 'biber-runs.txt');
+  await fs.mkdir(bin);
+  const biber = (exit) => fs.writeFile(path.join(bin, 'biber'), `#!/bin/sh\necho run >> "${ran}"\nsleep 1\necho "biber version: 2.21"\nexit ${exit}\n`, { mode: 0o755 });
+  await biber(0);
+  const runs = async () => (await fs.readFile(ran, 'utf8').catch(() => '')).split('\n').filter(Boolean).length;
+  const app = Fastify();
+  registerSystemRoutes(app);
+  app.get('/quick', async () => ({ ok: true }));
+  const check = (more = {}) => app.inject({ url: `/api/system/check?${new URLSearchParams({ texFolder: bin, ...more })}` }).then((res) => res.json());
+  try {
+    // another request is answered while Biber is still being tried
+    const started = Date.now();
+    const first = check();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await app.inject({ url: '/quick' });
+    const quick = Date.now() - started;
+    assert.ok(quick < 700, `a request beside the check took ${quick} ms`);
+    assert.deepEqual((await first).problems, {});
+    assert.equal(await runs(), 1);
+    // it worked, so opening Settings again doesn't run it
+    assert.equal((await check()).tools.biber, path.join(bin, 'biber'));
+    assert.equal(await runs(), 1);
+    // Check again does, and so does a Biber that changed
+    await check({ fresh: '1' });
+    assert.equal(await runs(), 2);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await biber(3);
+    assert.match((await check()).problems.biber, /Installed but not working/);
+    assert.equal(await runs(), 3);
+    // one that failed is tried every time, as the user may just have put it right
+    await check();
+    assert.equal(await runs(), 4);
+  } finally {
+    await app.close();
+  }
+});

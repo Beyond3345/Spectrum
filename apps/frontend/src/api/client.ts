@@ -2008,9 +2008,10 @@ export interface SystemCheck {
   platform: string;
 }
 
-/** texFolder: Settings › Engines › LaTeX's TeX folder, looked in first */
-export function systemCheck(texFolder?: string) {
-  return request<SystemCheck>(`/api/system/check${texFolder ? `?${new URLSearchParams({ texFolder })}` : ''}`);
+/** texFolder: Settings › Engines › LaTeX's TeX folder, looked in first. fresh: run every probe again (Check again). */
+export function systemCheck(texFolder?: string, fresh = false) {
+  const query = new URLSearchParams({ ...(texFolder && { texFolder }), ...(fresh && { fresh: '1' }) }).toString();
+  return request<SystemCheck>(`/api/system/check${query ? `?${query}` : ''}`);
 }
 
 /** Keys moved out of the window into the keychain: their references, in order. keep: the references still in use. */

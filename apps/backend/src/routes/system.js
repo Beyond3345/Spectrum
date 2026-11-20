@@ -1,4 +1,6 @@
-import { spawn, spawnSync } from 'child_process';
+import { execFile, spawn } from 'child_process';
+import path from 'path';
+import { stat } from 'fs/promises';
 import { realpath } from 'fs/promises';
 import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
 import { findExecutable, texPath } from '../services/compileService.js';
@@ -10,6 +12,27 @@ import { updateNotice } from '../services/updateService.js';
 
 const TOOLS = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic', 'bibtex', 'biber', 'texcount'];
 
+// The check's slow part is running programs to see that they work (Biber alone takes a second): each runs beside the
+// others and never holds the server up, and one that worked isn't run again while its file is as it was. One that
+// failed is tried each time, since the user may just have put it right.
+const worked = new Map();
+async function probed(file, args, again = false) {
+  const about = await stat(file).catch(() => null);
+  const key = JSON.stringify([file, args, about?.size, about?.mtimeMs]);
+  if (!again && worked.has(key)) return worked.get(key);
+  const result = await new Promise((resolve) => execFile(file, args, { timeout: 20_000, windowsHide: true }, (error, stdout, stderr) => resolve({
+    ok: !error,
+    // no such program (or one that never answered), as against one that ran and failed
+    missing: error?.code === 'ENOENT' || !!error?.killed,
+    stdout: String(stdout),
+    stderr: String(stderr),
+    message: error?.message
+  })));
+  if (result.ok) worked.set(key, result);
+  else worked.delete(key);
+  return result;
+}
+
 export function registerSystemRoutes(fastify) {
   // a newer Spectrum, asked of the release page at most once a day (updateService.js); the page asks only while the
   // user's setting is on
@@ -17,28 +40,33 @@ export function registerSystemRoutes(fastify) {
 
   // What's installed on this machine, so the UI can explain a failing compile or plot.
   // texFolder: Settings › Engines › LaTeX's TeX folder, looked in first as a compile does
+  // ?fresh=1 (Check again) runs every probe again
   fastify.get('/api/system/check', async (req) => {
     const searchPath = await texPath(req.query?.texFolder);
+    const again = !!req.query?.fresh;
     const tools = {};
     for (const name of TOOLS) tools[name] = await findExecutable(name, searchPath);
-    // Being on PATH isn't enough: TeX Live 2026's universal biber unpacks itself with an
-    // lipo call that macOS 27 rejects, so actually run the tools that are known to break.
-    const problems = {};
-    for (const name of ['biber', 'tectonic']) {
-      if (!tools[name]) continue;
-      const run = spawnSync(tools[name], ['--version'], { timeout: 20_000, encoding: 'utf8', windowsHide: true });
-      if (run.error || run.status !== 0) {
-        const detail = `${run.stderr || run.stdout || run.error?.message || ''}`.trim().split(/\r?\n/)[0];
-        problems[name] = `Installed but not working${detail ? `: ${detail.slice(0, 160)}` : ''}`;
-      }
-    }
     // where the TeX found really is (MacTeX's /Library/TeX/texbin links into /usr/local/texlive/2026), for Get started
     const tex = tools.pdflatex || tools.latexmk || tools.xelatex || tools.lualatex;
     const texReal = tex ? await realpath(tex).catch(() => tex) : null;
     const python = resolvePythonExecutable();
-    const probe = spawnSync(python, ['-c', 'import matplotlib'], { timeout: 20_000, windowsHide: true });
-    // for the DDGS web search provider
-    const ddgs = !probe.error && spawnSync(python, ['-c', 'import ddgs'], { timeout: 20_000, windowsHide: true }).status === 0;
+    const pythonFile = (path.isAbsolute(python) ? python : await findExecutable(python)) || python;
+    // Being on PATH isn't enough: TeX Live 2026's universal biber unpacks itself with an
+    // lipo call that macOS 27 rejects, so actually run the tools that are known to break.
+    const problems = {};
+    const [, , probe, ddgsProbe] = await Promise.all([
+      ...['biber', 'tectonic'].map(async (name) => {
+        if (!tools[name]) return;
+        const run = await probed(tools[name], ['--version'], again);
+        if (run.ok) return;
+        const detail = `${run.stderr || run.stdout || run.message || ''}`.trim().split(/\r?\n/)[0];
+        problems[name] = `Installed but not working${detail ? `: ${detail.slice(0, 160)}` : ''}`;
+      }),
+      probed(pythonFile, ['-c', 'import matplotlib'], again),
+      // for the DDGS web search provider
+      probed(pythonFile, ['-c', 'import ddgs'], again)
+    ]);
+    const ddgs = !probe.missing && ddgsProbe.ok;
     return {
       ok: true,
       dataDir: DATA_DIR,
@@ -46,7 +74,7 @@ export function registerSystemRoutes(fastify) {
       tools,
       texReal,
       problems,
-      python: { path: python, found: !probe.error, matplotlib: probe.status === 0, ddgs },
+      python: { path: python, found: !probe.missing, matplotlib: probe.ok, ddgs },
       platform: process.platform
     };
   });
