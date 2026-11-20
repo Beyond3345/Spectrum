@@ -76,6 +76,7 @@ import {
   ERROR_HANDLING,
   LIVE_OUTPUT_ENGINES,
   ROLE_FIELDS,
+  AS_YOU_TYPE,
   autoCompileLabel,
   SYNC_HIGHLIGHTS,
   effortOptions,
@@ -1619,7 +1620,7 @@ function EnginesPane() {
         <Select
           labelId="settings-autoCompile"
           value={String(defaults.autoCompile)}
-          options={Array.from({ length: 11 }, (_, n): [string, string] => [String(n), autoCompileLabel(n)])}
+          options={[0, AS_YOU_TYPE, ...Array.from({ length: 10 }, (_, n) => n + 1)].map((n): [string, string] => [String(n), autoCompileLabel(n)])}
           onChange={(value) => set({ autoCompile: Number(value) })}
         />
         <div className="field-hint">Compiles the document showing once you stop typing for that long. A newer compile takes the place of one that’s out of date. The Compile button’s menu turns it on or off for each project, with this pause.</div>

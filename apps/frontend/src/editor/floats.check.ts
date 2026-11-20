@@ -694,6 +694,9 @@ eq(
   'Typst: separate figures each with a label'
 );
 eq(figureTypst({ path: 'a.png', width: 0.5, caption: '', label: '', size: { ...share, mode: 'scale' } }), '#figure(scale(50%, reflow: true, image("/a.png")))', 'Typst scale');
+// alt text, which PDF/UA-1 export needs on every image
+eq(figureTypst({ path: 'a.png', width: 1, caption: '', label: '', alt: ' A "cat" on a\nmat \\ ' }), '#figure(image("/a.png", width: 100%, alt: "A \\"cat\\" on a mat \\\\"))', 'Typst alt text, quoted on one line');
+eq(figureSetTypst({ ...pair, panels: pair.panels.map((p, i) => ({ ...p, alt: i ? '' : 'Front view' })) }).match(/alt: "[^"]*"/g), ['alt: "Front view"'], 'Typst: alt text on each panel that has one');
 eq(figureMarkdown({ path: 'a.png', width: 0.5, caption: 'C', label: '', size: { ...share, mode: 'height' } }), '![C](a.png){height=40mm}', 'Markdown height');
 
 Promise.all([

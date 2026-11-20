@@ -211,15 +211,16 @@ const TOC_LEVELS = ['chapter', 'section', 'subsection', 'subsubsection'];
 const typstCache = new Map();
 
 /**
- * A Typst document's labels and headings, from Typst's own eval of its last compile's PDF: { labels, headings, auxAt,
- * stale }, shaped as documentLabels' are. auxAt is the PDF's time; with no PDF there is nothing to read yet. fallback:
+ * A Typst document's labels and headings, from Typst's own eval of its last compile's PDF: { labels, headings, figures,
+ * auxAt, stale }, shaped as documentLabels' are, with each heading's title and the figures' supplement, number, page and
+ * caption. auxAt is the PDF's time; with no PDF there is nothing to read yet. fallback:
  * the app's default Typst version, for a project that pins none.
  */
 export async function typstDocumentLabels(root, doc, fallback = '') {
   const abs = safeJoin(root, doc);
   const absPdf = path.join(path.dirname(abs), path.basename(abs, path.extname(abs)) + '.pdf');
   const at = await fs.stat(absPdf).catch(() => null);
-  if (!at) return { labels: {}, headings: [], auxAt: null, stale: true };
+  if (!at) return { labels: {}, headings: [], figures: [], auxAt: null, stale: true };
   const rel = path.relative(root, abs).split(path.sep).join('/');
   // ponytail: keyed by the fallback, not the pin it may stand behind; a new pin comes with a new compile's PDF anyway
   const key = JSON.stringify([root, rel, fallback]);
@@ -231,10 +232,13 @@ export async function typstDocumentLabels(root, doc, fallback = '') {
   const headings = (elements?.headings ?? []).map((heading) => ({
     level: TOC_LEVELS[Math.min(Math.max(Number(heading.level) || 1, 1), TOC_LEVELS.length) - 1],
     number: String(heading.number ?? ''),
-    page: String(heading.page ?? '')
+    page: String(heading.page ?? ''),
+    title: String(heading.title ?? '')
   }));
+  // in reading order, for the outline's numbers
+  const figures = (elements?.figures ?? []).map((figure) => ({ supplement: String(figure.supplement ?? ''), number: String(figure.number ?? ''), page: String(figure.page ?? ''), caption: String(figure.caption ?? '') }));
   const source = await fs.stat(abs).catch(() => null);
-  const value = { labels, headings, auxAt: Math.round(at.mtimeMs), stale: !!source && source.mtimeMs > at.mtimeMs };
+  const value = { labels, headings, figures, auxAt: Math.round(at.mtimeMs), stale: !!source && source.mtimeMs > at.mtimeMs };
   typstCache.set(key, { at: at.mtimeMs, value });
   return value;
 }

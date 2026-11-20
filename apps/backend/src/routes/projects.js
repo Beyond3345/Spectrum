@@ -92,10 +92,10 @@ const unfit = (rel) => {
 const UNFIT = 'That name can’t be used on Windows or in a sync app. Choose another one.';
 
 // What each of a project's compile settings may be; null takes it back to the app's default. autoCompile: seconds after
-// the last edit, 0 for off
+// the last edit, 0 for off, 0.3 for as you type (a Typst document; the others wait a second)
 const COMPILE_SETTINGS = {
   engine: (v) => SUPPORTED_ENGINES.includes(v),
-  autoCompile: (v) => Number.isInteger(v) && v >= 0 && v <= 10,
+  autoCompile: (v) => (Number.isInteger(v) || v === 0.3) && v >= 0 && v <= 10,
   haltOnError: (v) => typeof v === 'boolean',
   bibTool: (v) => BIB_TOOLS.includes(v),
   draft: (v) => typeof v === 'boolean',
@@ -469,7 +469,7 @@ export function registerProjectRoutes(fastify) {
 
   // PNG, SVG, HTML, PDF/A or PDF/UA from a .typ document, sent back to download; the project and its PDF stay as they are
   // typstVersion: the app's default, which a project that pins none exports with
-  fastify.post('/api/projects/:id/export/typst', async (req) => {
+  fastify.post('/api/projects/:id/export/typst', async (req, reply) => {
     const root = await getProjectRoot(req.params.id);
     const doc = path.posix.normalize(String(req.body?.doc || '').replace(/\\/g, '/'));
     if (!/\.typ$/i.test(doc) || doc.startsWith('../') || path.posix.isAbsolute(doc)) throw httpError('Choose a Typst document.', 400);
@@ -481,7 +481,8 @@ export function registerProjectRoutes(fastify) {
     // Compile with page colour's '#rrggbb', which the pages get as they do in the compile
     const pageColour = /^#[0-9a-f]{6}$/i.test(String(req.body?.pageColour)) ? req.body.pageColour : undefined;
     const made = await exportTypst(root, abs, doc, format, { typstVersion, pageColour });
-    if (!made.ok) throw httpError(made.error, 422);
+    // with every diagnostic and the log, for Logs
+    if (!made.ok) return reply.code(422).send(made);
     return made;
   });
 

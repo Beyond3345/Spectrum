@@ -256,7 +256,9 @@ export interface ProjectStats {
   /** a file the document reads is newer than the kept .aux */
   stale?: boolean;
   /** the contents' entries from the kept .aux files, in order; number '' for an unnumbered one */
-  headings?: { level: string; number: string; page: string }[];
+  headings?: { level: string; number: string; page: string; title?: string }[];
+  /** a Typst document's figures in order, their numbers as printed */
+  figures?: { supplement: string; number: string; page: string; caption: string }[];
 }
 
 /** doc: the project-relative document; sent as mainFile too, which texcount counts from (looked for in texFolder first) */
@@ -987,6 +989,11 @@ export function tinymistPdf(projectId: string, at: { file: string; line: number;
   return request<({ ok: true } & PdfPoint) | { ok: false }>(`/api/projects/${projectId}/tinymist/pdf`, json('POST', { ...at, doc }));
 }
 
+/** The Live view of a Typst document: the address of Tinymist's preview page, kept running while on. */
+export function tinymistLive(projectId: string, doc: string, on: boolean) {
+  return request<{ ok: true; url: string }>(`/api/projects/${projectId}/tinymist/live`, json('POST', { doc, on }));
+}
+
 // ─── Review ───
 
 /** When doc's PDF and the newest file it reads were written (ms; null: none), and with bib the project's .bib entries. */
@@ -1561,10 +1568,13 @@ export async function visionToLatex(payload: {
   mode: 'equation' | 'table' | 'figure' | 'algorithm' | 'ocr';
   prompt?: string;
   llmConfig?: Partial<LLMConfig>;
+  /** the document's language: Typst gets Typst, anything else LaTeX */
+  kind?: string | null;
 }) {
   const form = new FormData();
   form.append('projectId', payload.projectId);
   form.append('mode', payload.mode);
+  if (payload.kind) form.append('kind', payload.kind);
   if (payload.prompt) form.append('prompt', payload.prompt);
   if (payload.llmConfig) form.append('llmConfig', JSON.stringify(payload.llmConfig));
   form.append('image', payload.file);

@@ -18,7 +18,7 @@ On #ui[Files] the search looks through the text of the project as well as the na
 
 #shot("figures/02-writing/text-search.png", [Search on the Files tab. No file is named "quick", while #ui[In text] lists the three lines that hold it, in two chapters.], width: 42%) <fig-writing-search>
 
-Below the files, #ui[Outline] lists the headings of the document, with the figures and tables by their captions, and a click on one moves the cursor to it. For LaTeX the outline follows `\input` and `\include` across the whole document and, with TexLab running (@sec-writing-lsp), shows the section numbers of the last compile. For Typst it follows `#include`, and for Markdown it lists the headings. The heading the cursor is in is shown in bold.
+Below the files, #ui[Outline] lists the headings of the document, with the figures and tables by their captions, and a click on one moves the cursor to it. For LaTeX the outline follows `\input` and `\include` across the whole document and, with TexLab running (@sec-writing-lsp), shows the section numbers of the last compile. For Typst it follows `#include` to any depth and shows the numbers of the last compile as the PDF prints them, such as "A.1" in an appendix or "Table 4.1", and opening a chapter keeps the whole document's outline. For Markdown it lists the headings. The heading the cursor is in is shown in bold.
 
 === The toolbar
 
@@ -92,7 +92,7 @@ Above the three tabs, #ui[Open Logs when a compile fails] opens Tools › Logs i
 
 Typst 0.15.1 is built into Spectrum, so a Typst document needs nothing installed. The Typst tab installs older versions of Typst (0.14, 0.13 and 0.12) and removes them again, and #ui[Default version] chooses the one a project uses when it does not pin its own. A project pins a version in the Compile button's menu, which saves it with the project, so the document compiles the same way on another computer. The tab also downloads Tinymist, Typst's language server (@sec-writing-lsp).
 
-A Typst document can be downloaded in more forms than a PDF. The download button in the PDF's header offers PDF, PDF/A-2b for archiving, PDF/UA-1 for accessibility, PNG or SVG with one image per page and HTML, which is experimental (@fig-writing-typst-menus).
+A Typst document can be downloaded in more forms than a PDF. The download button in the PDF's header offers PDF, PDF/A-2b for archiving, PDF/UA-1 for accessibility, PNG or SVG with one image per page and HTML, which is experimental (@fig-writing-typst-menus). PDF/UA-1 needs alt text, a short description read aloud by screen readers, on every image and every equation, inline ones too. When a download fails, each place Typst names is listed in Tools › Logs and marked in the editor, as a compile's errors are, with what to write: `image("…", alt: "…")` for an image, `figure(…, alt: "…")` for a drawing and `#math.equation(alt: "…", $ … $)` for an equation. The figure card asks for the alt text of an image (@sec-writing-figures).
 
 #shots(("figures/02-writing/compile-menu-typst.png", "figures/02-writing/typst-download.png"), [For a Typst document the Compile button's menu pins a Typst version, left, and the download button offers the forms Typst can write, right.]) <fig-writing-typst-menus>
 
@@ -125,7 +125,7 @@ The arrow beside #ui[Compile] opens its menu (@fig-writing-compile), which chang
 - #ui[Compiler (this project)], which is Auto, pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or Tectonic (built in), for a LaTeX document or Markdown through LaTeX,
 - #ui[Typst version (this project)], for a Typst document, in place of the compiler,
 - #ui[PDF engine (this project)], for a Markdown document: LaTeX or Typst,
-- #ui[Auto compile], which is Off, the default, or On. On compiles the document once you stop typing for the pause set in #menu[Settings][Engines], from 1 to 10 seconds. A newer automatic compile takes the place of one that is out of date,
+- #ui[Auto compile], which is Off, the default, or On. On compiles the document once you stop typing for the pause set in #menu[Settings][Engines], from 1 to 10 seconds. A newer automatic compile takes the place of one that is out of date. A Typst document also has #ui[As you type], which compiles 0.3 seconds after typing stops, since its kept Typst compiles a change in a fraction of a second, and saves no checkpoint at each pause,
 - #ui[Bibliography tool], which is Auto, BibTeX or Biber. Auto follows a `% !BIB program = biber` comment in the main file and otherwise runs the tool the document's bibliography package needs and
 - #ui[Fast draft mode], which compiles in one pass with each image drawn as a box of its size, for quick previews. Numbers and references can lag behind until a full compile.
 
@@ -224,27 +224,28 @@ TexLab's own completion, building and formatting are left off, so Spectrum's com
 
 === Tinymist
 
-Tinymist 0.15.10 is downloaded from #menu[Settings][Engines][Typst] (about 31 MB, checked against its SHA-256), and then starts for each open project. In `.typ` files it gives the editor completion for the document's own functions, packages, labels and citations, hovers with signatures and documentation, Go to definition, Find references and Rename as TexLab does, errors as they are typed, #ui[Format document] with typstyle (#key("⌥", "⇧", "F"), or from the editor's right-click menu) and a word count of the PDF in Document insights.
+Tinymist 0.15.10 is downloaded from #menu[Settings][Engines][Typst] (about 31 MB, checked against its SHA-256), and then starts for each open project. In `.typ` files it gives the editor completion for the document's own functions, packages, labels and citations, hovers with signatures and documentation, Go to definition, Find references and Rename as TexLab does, errors as they are typed with its linter's warnings beside them, such as a variable that is never used, #ui[Format document] with typstyle (#key("⌥", "⇧", "F"), or from the editor's right-click menu) and a word count of the PDF in Document insights. Without Tinymist, completion after `#` still lists the functions and values the project's other `.typ` files define with `#let`, and a click with #key("⌘") held on a quoted path, such as `#include "chapters/one.typ"` or `image("/figures/a.png")`, opens that file.
 
-Tinymist has Typst 0.15.1 inside it. In a project on that version, its errors take the place of the last compile's marks, and a double click jumps between the PDF and the source exactly. A project pinned to another version keeps the compile's marks and the word matching for its jumps, since Tinymist would judge its code by the rules of 0.15. #ui[Remove Tinymist] in the same place takes it away again.
+Tinymist has Typst 0.15.1 inside it. In a project on that version, its errors take the place of the last compile's marks, and a double click jumps between the PDF and the source exactly. #ui[Live], in the PDF's header, then shows Tinymist's own preview in the PDF's place, which lays out the text as it is typed, before it is saved. #ui[Live] again goes back to the PDF, for find, notes, links and presentation mode. A project pinned to another version keeps the compile's marks and the word matching for its jumps, since Tinymist would judge its code by the rules of 0.15. #ui[Remove Tinymist] in the same place takes it away again.
 
 == Floats <sec-writing-floats>
 
 A float is a figure or table that LaTeX places where it fits. The Floats panel inserts figures and tables at the cursor, writing the environment, caption and label for you. #ui[Insert figure] and #ui[Insert table] in the toolbar open it at the figure or the table card, and so do #ui[Figure…] and #ui[Table…] in Insert (+). Each card ends with #ui[What these options mean], which explains its options in the panel.
 
-=== Figures
+=== Figures <sec-writing-figures>
 
 The figure card takes an image that is dropped on the card or on the editor, pasted or chosen with a click (@fig-writing-figure). It saves the image in the project's `figures` folder, adding `-2` to the name when that name is taken, and inserts it as a figure with a caption, a label and a size. PNG, JPEG, PDF and EPS go in as they are, HEIC photos are converted to JPEG, and GIF, WebP, BMP, TIFF and SVG are converted to PNG. Its options are,
 
 - #ui[Layout], which is Single, Side by side or Grid, for several images under one caption as sub-figures,
 - #ui[File name], #ui[Caption] and #ui[Label], which is made from the file name,
 - #ui[Size by], which is a share of the line width (Full, ¾, Half, Third or Custom), a width, a height, a box to fit in or a scale. A tall image is kept within the page,
+- #ui[Alt text], in a Typst document, which says what the image shows for someone who cannot see it, and which PDF/UA-1 needs. Side by side and grid figures have a field for each image,
 - #ui[Crop edges], which trims the image's edges with `trim` and `clip` and
 - #ui[Placement] and #ui[Span both columns], which @tab-writing-placement describes.
 
 #shots(("figures/02-writing/floats-figure.png", "figures/02-writing/floats-table.png"), [The figure card with an image chosen, left, and the table card with a filled grid, right. Booktabs draws the heavier rules at the top and bottom of the table.]) <fig-writing-figure>
 
-Below the card, #ui[Project figures] lists the images already in the project, ready to insert. #ui[Image → LaTeX] turns a picture of an equation, a table or other content into LaTeX with the vision model (@ch-assistant).
+Below the card, #ui[Project figures] lists the images already in the project, ready to insert. #ui[Image → LaTeX] turns a picture of an equation, a table or other content into LaTeX with the vision model (@ch-assistant). In a Typst document it is #ui[Image → Typst] and writes Typst: maths between `$`, a `#table`, a `#figure` with alt text.
 
 === Tables
 
@@ -256,7 +257,7 @@ The table card builds a table from a grid (@fig-writing-figure). #key("Tab") mov
 - #ui[Header row], #ui[Line breaks in cells] (with `makecell`), #ui[Notes under the table] (with `threeparttable`) and #ui[Escape special characters], which makes `&`, `%`, `#`, `_` and a price's `$` print as themselves while commands still work and
 - #ui[Float], with #ui[Placement], #ui[Span both columns], #ui[Caption] and #ui[Label]. A table inserted with no caption gets `Caption.` to fill in and a label made from its header row.
 
-#ui[Source] shows the LaTeX the card will insert, which can be edited before #ui[Insert table] or copied with #ui[Copy] (@fig-writing-table-source). In a Typst document the table is a `#table` with its lines as `table.hline` and `table.vline`, a `\\` in a cell is Typst's line break and the notes are set in smaller text under the table inside its figure, with a `\tnote{a}` in a cell raised as #super[a]. In a Markdown document it is a pipe table, which has no lines of its own and no line breaks or notes. The packages a float needs, such as `graphicx`, `float`, `booktabs` and `tabularx`, are added before `\begin{document}` when the project does not load them yet. #ui[Table → chart], below the card, plots a table selected in the editor with matplotlib (@fig-writing-table-chart). #ui[Write the code] asks the main model (@ch-assistant) for the plotting code and shows it, and nothing runs until #ui[Run this code]. #ui[Edit] lets you change the code first. The code runs on its own, in the isolation the local agents use: it is given the table, it can write only to a folder of its own, it cannot read the project or your other files or reach the network, and it is stopped after two minutes. Spectrum then saves the chart in `assets/plots`, as a PNG or, when the file name ends in `.pdf`, `.svg` or `.jpg`, in that form, and inserts it as a figure after the table. When the code fails, the card says on which line and why, and #ui[Write it again with this error] asks the model for code that works. Charts need Python 3 with matplotlib on the computer.
+#ui[Source] shows the LaTeX the card will insert, which can be edited before #ui[Insert table] or copied with #ui[Copy] (@fig-writing-table-source). In a Typst document the table is a `#table` with its lines as `table.hline` and `table.vline`, a `\\` in a cell is Typst's line break and the notes are set in smaller text under the table inside its figure, with a `\tnote{a}` in a cell raised as #super[a]. In a Markdown document it is a pipe table, which has no lines of its own and no line breaks or notes. The packages a float needs, such as `graphicx`, `float`, `booktabs` and `tabularx`, are added before `\begin{document}` when the project does not load them yet. #ui[Table → chart], below the card, plots a table selected in the editor with matplotlib (@fig-writing-table-chart), a LaTeX `tabular` or a Typst `#table`. #ui[Write the code] asks the main model (@ch-assistant) for the plotting code and shows it, and nothing runs until #ui[Run this code]. #ui[Edit] lets you change the code first. The code runs on its own, in the isolation the local agents use: it is given the table, it can write only to a folder of its own, it cannot read the project or your other files or reach the network, and it is stopped after two minutes. Spectrum then saves the chart in `assets/plots`, as a PNG or, when the file name ends in `.pdf`, `.svg` or `.jpg`, in that form, and inserts it as a figure after the table, in the document's own language. When the code fails, the card says on which line and why, and #ui[Write it again with this error] asks the model for code that works. Charts need Python 3 with matplotlib on the computer.
 
 #shot("figures/02-writing/table-chart.png", [Table → chart with the model's code shown. It runs only when #ui[Run this code] is clicked.], width: 55%) <fig-writing-table-chart>
 

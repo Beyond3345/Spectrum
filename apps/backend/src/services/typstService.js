@@ -20,9 +20,16 @@ const PACKAGE_NOTE = '\n[spectrum] Typst downloads a package the first time a do
 const DIAGNOSTIC = /^(.*?):(\d+):(\d+): (error|warning): (.*)$/;
 const HINT = /^\s*(?:hint|help):\s*(.*)$/;
 const LABEL = /<\s*([A-Za-z0-9_:.-]+)\s*>/g;
-// what Typst's eval asks the compiled document for: each heading, and every label's page and number
+// what Typst's eval asks the compiled document for: each heading and each figure with its number, page and text, and
+// every label's page and number. A number is as the document prints it, without a trailing full stop or brackets ("A.1"
+// in an appendix, "2.1" for "(2.1)"); a numbering function
+// can't run outside the document, so a heading's is its counter and a figure's or equation's is the chapter's number
+// and its own, as the house templates' by-section prints it.
+// ponytail: another numbering function's figure number is guessed that way; Typst would need to compile to say
 const ELEMENTS = [
   '{',
+  '  let plain(c) = if c == none { "" } else if type(c) == str { c } else if c.func() == [ ].func() { " " } else if c.has("text") { plain(c.text) } else if c.has("children") { c.children.map(plain).sum(default: "") } else if c.has("body") { plain(c.body) } else { "" }',
+  '  let shown(e, c) = if e.numbering == none { "" } else if type(e.numbering) == str { numbering(e.numbering, ..c.at(e.location())).trim(regex("[.:)]"), at: end).trim("(", at: start) } else if e.func() == heading { c.at(e.location()).map(str).join(".") } else { (counter(heading).at(e.location()).first(), ..c.at(e.location())).map(str).join(".") }',
   '  let names = (NAMES)',
   '  let labelled = names.map(name => {',
   '    let found = query(selector(label(name)))',
@@ -30,15 +37,16 @@ const ELEMENTS = [
   '    let e = found.first()',
   '    let kind = e.func()',
   '    (label: name, func: repr(kind), page: e.location().page(), number: if kind == heading {',
-  '      if e.numbering == none { "" } else { counter(heading).at(e.location()).map(str).join(".") }',
+  '      shown(e, counter(heading))',
   '    } else if kind == figure {',
-  '      if e.numbering == none { "" } else { e.counter.at(e.location()).map(str).join(".") }',
+  '      shown(e, e.counter)',
   '    } else if kind == math.equation {',
-  '      if e.numbering == none { "" } else { counter(math.equation).at(e.location()).map(str).join(".") }',
+  '      shown(e, counter(math.equation))',
   '    } else { "" })',
   '  }).filter(item => item != none)',
   '  (',
-  '    headings: query(heading).map(h => (level: h.level, number: if h.numbering == none { "" } else { counter(heading).at(h.location()).map(str).join(".") }, page: h.location().page())),',
+  '    headings: query(heading).map(h => (level: h.level, number: shown(h, counter(heading)), page: h.location().page(), title: plain(h.body))),',
+  '    figures: query(figure).map(f => (supplement: plain(f.supplement), number: shown(f, f.counter), page: f.location().page(), caption: if f.caption == none { "" } else { plain(f.caption.body) })),',
   '    labelled: labelled',
   '  )',
   '}'
@@ -533,12 +541,18 @@ export async function exportTypst(projectRoot, absMain, mainFile, format, option
     );
     const files = (await fs.readdir(outDir)).sort();
     if (result.code !== 0 || !files.length) {
-      const errors = parseTypstDiagnostics(chunks.join(''), projectRoot, path.dirname(absMain)).filter((e) => e.severity === 'error');
+      const log = chunks.join('');
+      const diagnostics = parseTypstDiagnostics(log, projectRoot, path.dirname(absMain));
+      const errors = diagnostics.filter((e) => e.severity === 'error');
       const first = errors[0];
       // an error with no place in the source (a PDF standard the document breaks, a flag an older Typst lacks)
-      const unplaced = chunks.join('').split(/\r?\n/).find((line) => /error/i.test(line))?.replace(/^error:\s*/i, '');
+      const unplaced = log.split(/\r?\n/).find((line) => /error/i.test(line))?.replace(/^error:\s*/i, '');
       if (result.timedOut) return { ok: false, error: 'The export took too long and was stopped.' };
-      return { ok: false, error: first ? first.file + ':' + first.line + ': ' + first.message : unplaced || 'Typst made nothing to export.' };
+      const where = first ? first.file + ':' + first.line + ': ' + first.message : unplaced || 'Typst made nothing to export.';
+      // every place, for Logs and the editor's marks, as a compile's are, each missing alt text with what to write
+      for (const e of errors) if (/missing alt text/i.test(e.message)) e.message += '\nHint: PDF/UA-1 needs alt text on every image and equation, inline ones too: image("…", alt: "…"), figure(…, alt: "…") for a drawing, #math.equation(alt: "…", $ … $)';
+      const error = errors.length > 1 ? `${where} (and ${errors.length - 1} more, in Logs)` : where;
+      return { ok: false, error, errors: diagnostics, log };
     }
     if (files.length === 1) {
       return { ok: true, name: base + '.' + kind.ext, data: (await fs.readFile(path.join(outDir, files[0]))).toString('base64') };
