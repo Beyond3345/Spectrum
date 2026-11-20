@@ -1781,7 +1781,7 @@ function EnginesPane() {
   );
 }
 
-/** Settings › Checkpoints: the one after each compile, the notice when one can't be saved, and clearing out old ones. */
+/** Settings › Checkpoints: the one after each compile, the notice when one can't be saved, one before every applied AI change, and clearing out old ones. */
 function CheckpointsPane() {
   const [settings, update] = useSettings();
   return (
@@ -1802,6 +1802,16 @@ function CheckpointsPane() {
         <span>
           Warn me when a checkpoint fails to save
           <span className="field-hint">Says when saving fails, or when a file was too large or unreadable to keep, rather than failing quietly.</span>
+        </span>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.checkpointEveryApply} onChange={(e) => update({ checkpointEveryApply: e.target.checked })} />
+        <span>
+          Save a checkpoint before every change I apply
+          <span className="field-hint">
+            When you review AI changes, one “Before AI changes” checkpoint covers every change you apply until you close the review. Turn this on to save one
+            before each change instead.
+          </span>
         </span>
       </label>
       <h3 className="form-section-title">Clearing out</h3>

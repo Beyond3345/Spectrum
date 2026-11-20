@@ -3,6 +3,7 @@ import type { CompileOptions, CompileResult, LLMConfig, TexlabDiagnostic, Versio
 import type { AppSettings } from '../app/settings';
 import type { Section as SettingsSection } from '../app/SettingsSheet';
 import type { TypstWords } from './lsp/tinymist';
+import type { Sitting } from './reviewHunks';
 
 export interface PendingChange {
   filePath: string;
@@ -83,10 +84,11 @@ export interface EditorApi {
   /** queue for review (replaces same-path entries); open: also show the review sheet */
   proposeChanges(changes: PendingChange[], opts?: { open?: boolean }): void;
   /**
-   * Writes reviewed changes after a "Before AI changes" checkpoint. stale: those whose file changed since in a way
-   * they can't be merged with, as they would now replace it; they aren't written.
+   * Writes reviewed changes after a "Before AI changes" checkpoint, the review sitting's first only unless the setting
+   * asks for one each time. stale: those whose file changed since in a way they can't be merged with, as they would
+   * now replace it; they aren't written. checkpoint: null where none was saved.
    */
-  applyChanges(changes: PendingChange[]): Promise<{ applied: PendingChange[]; stale: PendingChange[]; checkpoint: VersionMeta | null }>;
+  applyChanges(changes: PendingChange[], sitting?: Sitting): Promise<{ applied: PendingChange[]; stale: PendingChange[]; checkpoint: VersionMeta | null }>;
   /** doc, or the document compiled last; says how it ended ('busy': another compile was running) */
   compile(doc?: string): Promise<'idle' | 'running' | 'ok' | 'failed' | 'stopped' | 'busy'>;
   /** saves the open file */

@@ -122,7 +122,7 @@ After a save, a notice says "Saved checkpoint 2" with #ui[Rename], which names i
 Spectrum also saves a checkpoint by itself at four times. Each is marked in the list with a badge,
 
 - #ui[After compile], after a compile that succeeds, when the source has changed since the last checkpoint,
-- #ui[Before AI changes], before changes from the assistant or an agent are applied,
+- #ui[Before AI changes], before the first change from the assistant or an agent is applied in a review,
 - #ui[Before restore], before a checkpoint is restored and
 - #ui[Before template change], before a Quick switch.
 
@@ -157,10 +157,11 @@ A comparison lists the changed files on the left, each marked #ui[Changed], #ui[
 
 === Settings
 
-#menu[Settings][Checkpoints] has two switches and the clearing out menu (@fig-references-settings-checkpoints),
+#menu[Settings][Checkpoints] has three switches and the clearing out menu (@fig-references-settings-checkpoints),
 
 - #ui[Save a checkpoint when a compile succeeds], on by default, which saves the #ui[After compile] checkpoints described above,
-- #ui[Warn me when a checkpoint fails to save], on by default, which says when saving fails or when a file was too large (over 50 MB) or could not be read and
+- #ui[Warn me when a checkpoint fails to save], on by default, which says when saving fails or when a file was too large (over 50 MB) or could not be read,
+- #ui[Save a checkpoint before every change I apply], off by default, which saves a #ui[Before AI changes] checkpoint before each change accepted in a review, in place of one for the whole review, and
 - #ui[Delete automatic checkpoints older than…], for every project on the computer.
 
 #shot("figures/04-references/settings-checkpoints.png", [#menu[Settings][Checkpoints].], width: 65%) <fig-references-settings-checkpoints>

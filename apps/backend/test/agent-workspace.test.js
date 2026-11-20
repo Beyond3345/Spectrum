@@ -7,6 +7,7 @@ import { SECRET_NAME, agentHiddenName, agentHiddenNameSource } from '../src/util
 import { secretLooking } from '../src/services/gitService.js';
 import { sandboxProfile } from '../src/services/agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, captureAgentProposal, applyWorkspaceChanges, agentRecoveries, recoverAgentApply, rebaseChange } from '../src/services/agentWorkspace.js';
+import { listVersions } from '../src/services/versionService.js';
 
 test('review snapshots preserve bytes, reject stale proposals, and protect concurrent edits', async () => {
   const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-review-')));
@@ -79,6 +80,47 @@ test('a change the user made too (the same file deleted, or made with the same t
     // the draft already holds them
     for (const { path: rel, bytes } of applied) await rebaseChange(run, rel, bytes, () => assert.fail('the draft was written'));
     assert.deepEqual(await workspaceChanges(run), []);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test('a review sitting saves one checkpoint before its first apply, or one before each with checkpoint left on', async () => {
+  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-sitting-')));
+  try {
+    // twenty files the agent changed, applied one at a time as the review applies them
+    const sitting = async (name, checkpointEach) => {
+      const root = path.join(dir, name);
+      const runDir = path.join(dir, `${name}-run`);
+      await fs.mkdir(root); await fs.mkdir(runDir);
+      for (let i = 0; i < 20; i++) await fs.writeFile(path.join(root, `f${i}.tex`), `mine ${i}\n`);
+      const run = { root, dir: runDir, mode: 'review', busy: false };
+      run.workspace = await initialiseWorkspace(root, runDir, 'review');
+      for (let i = 0; i < 20; i++) await fs.writeFile(path.join(run.workspace, `f${i}.tex`), `agent ${i}\n`);
+      await captureAgentProposal(run);
+      const changes = await workspaceChanges(run);
+      for (let i = 0; i < 20; i++) {
+        const rel = `f${i}.tex`;
+        await applyWorkspaceChanges(run, [rel], { [rel]: changes.find((c) => c.path === rel).afterHash }, {}, checkpointEach || i === 0);
+      }
+      return { root, versions: await listVersions(root) };
+    };
+    const one = await sitting('one', false);
+    assert.equal(one.versions.length, 1, 'one checkpoint for the sitting');
+    assert.equal((await fs.readFile(path.join(one.root, 'f19.tex'), 'utf8')), 'agent 19\n');
+    assert.equal((await sitting('each', true)).versions.length, 20, 'one before every applied change');
+
+    // a checkpoint that can't be saved stops the apply: nothing is written
+    const root = path.join(dir, 'broken');
+    const runDir = path.join(dir, 'broken-run');
+    await fs.mkdir(root); await fs.mkdir(runDir);
+    await fs.writeFile(path.join(root, 'main.tex'), 'mine\n');
+    const run = { root, dir: runDir, mode: 'review', busy: false };
+    run.workspace = await initialiseWorkspace(root, runDir, 'review');
+    await fs.writeFile(path.join(run.workspace, 'main.tex'), 'agent\n');
+    await captureAgentProposal(run);
+    const [change] = await workspaceChanges(run);
+    await fs.writeFile(path.join(root, '.spectrum'), 'not a folder');
+    await assert.rejects(applyWorkspaceChanges(run, ['main.tex'], { 'main.tex': change.afterHash }));
+    assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'mine\n');
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 

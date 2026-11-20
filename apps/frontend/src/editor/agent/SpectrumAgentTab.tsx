@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { reviewSitting } from '../reviewHunks';
 import { ApiError, agentRunEventsUrl, approveAgentInstructions, continueAgentRun, findAgentRun, getAgentInstructions, getChat, getResearch, listChats, startAgentTurn, steerAgentRun, stopAgentRun } from '../../api/client';
 import type { AgentEvent, AgentInstructions, AgentRunResult, AgentUserRequest, ChatSummary, ChatThread, ResearchSession } from '../../api/client';
 import type { Section } from '../../app/SettingsSheet';
@@ -126,6 +127,8 @@ export default function SpectrumAgentTab({
   const tabRef = useRef<HTMLDivElement>(null);
   const [applying, setApplying] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  // a review sitting, from when the review opens until it closes: its first apply saves the checkpoint
+  const sitting = useMemo(reviewSitting, [reviewing]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const skills = useSkills(api.projectId, active);
   const personaId = thread ? thread.persona : newPersona;
@@ -406,7 +409,7 @@ export default function SpectrumAgentTab({
         mark(owner, picked.map((c) => c.filePath), 'rejected');
         return;
       }
-      const { applied, stale, checkpoint } = await latest.current.applyChanges(picked);
+      const { applied, stale, checkpoint } = await latest.current.applyChanges(picked, sitting);
       // a file changed since: its proposal now shows against the file as it is
       setTray((old) => old.filter((c) => !applied.some((d) => d.filePath === c.filePath)).map((c) => stale.find((s) => s.filePath === c.filePath) || c));
       if (applied.length) {
@@ -432,7 +435,7 @@ export default function SpectrumAgentTab({
     try {
       let saved: Checkpoint | undefined;
       if (part.content !== undefined) {
-        const { applied, checkpoint } = await latest.current.applyChanges([{ ...change, original: part.mine, proposed: part.content }]);
+        const { applied, checkpoint } = await latest.current.applyChanges([{ ...change, original: part.mine, proposed: part.content }], sitting);
         // the file is no longer what the review showed (applyChanges said so): the review reads it again
         if (!applied.length) return setTray((old) => [...old]);
         if (checkpoint) saved = { id: checkpoint.id, number: checkpoint.number, label: checkpoint.label, createdAt: checkpoint.createdAt };
