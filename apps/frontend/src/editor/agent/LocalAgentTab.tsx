@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { reviewSitting } from '../reviewHunks';
 import {
+  allowLocalAgentHost,
   answerLocalAgent,
   closeLocalAgentSession,
   createLocalAgentSession,
@@ -463,7 +464,7 @@ export default function LocalAgentTab({
               }}
             />
           )}
-          <Transcript items={view.items} terminals={view.terminals} todos={todos} onAnswer={session ? (request, answer) => answerLocalAgent(session.id, request.requestId, answer).then(() => undefined) : undefined} />
+          <Transcript items={view.items} terminals={view.terminals} todos={todos} onAnswer={session ? (request, answer) => answerLocalAgent(session.id, request.requestId, answer).then(() => undefined) : undefined} agentName={session ? agentName(session.agentId) : undefined} onAllowHost={session ? (host) => allowLocalAgentHost(session.id, host).then(() => void window.dispatchEvent(new Event(AGENTS_CHANGED))) : undefined} />
           {session && RUNNING.includes(session.status) && (
             <div className="composer-msg assistant composer-thinking">
               <span className="spinner" /> {session.status === 'starting' ? 'Connecting to the agent…' : session.status === 'stopping' ? 'Stopping…' : 'Agent working…'}

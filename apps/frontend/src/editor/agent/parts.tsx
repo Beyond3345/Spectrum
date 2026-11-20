@@ -289,6 +289,41 @@ function TodoCard({ todo, todos }: { todo: SuggestedTodo; todos: TodosState }) {
   );
 }
 
+/** A host isolation refused the agent, with the one step that allows it for that agent. */
+function NetworkCard({ host, allowed, agent = 'the agent', onAllow }: { host: string; allowed: boolean; agent?: string; onAllow?: (host: string) => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <div className="agent-card">
+      <Icon name="globe" />
+      <div className="grow">
+        <div className="agent-card-label">{allowed ? 'Host allowed' : 'Host refused'}</div>
+        <div>
+          {allowed ? `${agent} may reach ` : `Isolation refused ${agent} the host `}
+          <span className="mono">{host}</span>
+          {allowed ? ' from now on, and is told so with its next task.' : ', which is not on its list.'}
+        </div>
+        {!allowed && <div className="field-hint">Allow it only if you would trust that host with what the agent can read: its copy of your project and its own sign-in.</div>}
+        {error && <div className="field-hint error">{error}</div>}
+      </div>
+      {!allowed && onAllow && (
+        <button
+          className="btn small"
+          disabled={busy}
+          title={`Adds ${host} to the hosts ${agent} may reach, in every session. Settings › Agents lists them.`}
+          onClick={() => {
+            setBusy(true);
+            setError('');
+            void onAllow(host).catch((err) => setError(errorText(err))).finally(() => setBusy(false));
+          }}
+        >
+          Allow for {agent}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
  * What the Spectrum agent remembers for the project, as its cards and the Memory sheet need it: the lines (null until
  * they are read) and the user's changes, each resolving whether it was made.
@@ -472,8 +507,13 @@ export function Transcript({
   todos,
   onAnswer,
   plan,
-  memory
+  memory,
+  agentName,
+  onAllowHost
 }: {
+  /** a local agent's name, and what allows it a host it was refused */
+  agentName?: string;
+  onAllowHost?: (host: string) => Promise<void>;
   items: Item[];
   terminals?: Record<string, string>;
   todos: TodosState;
@@ -518,6 +558,8 @@ export function Transcript({
           plan ? <PlanCard key={item.key} steps={item.steps} actions={plan} /> : null
         ) : item.type === 'instruction' ? (
           <MemoryCard key={item.key} text={item.text} memory={memory} />
+        ) : item.type === 'network' ? (
+          <NetworkCard key={item.key} host={item.host} allowed={item.allowed} agent={agentName} onAllow={onAllowHost} />
         ) : item.type === 'notice' ? (
           <div className={`agent-note ${item.error ? 'error' : ''}`} key={item.key} role={item.error ? 'alert' : undefined}>
             {item.text}

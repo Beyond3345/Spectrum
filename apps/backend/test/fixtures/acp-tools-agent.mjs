@@ -1,16 +1,21 @@
 // An ACP agent that, asked to, starts the MCP servers its session was given, as a real agent would inside its own
-// isolation, calls Spectrum's tools and logs what they answered to $HOME/acp-log.jsonl.
+// isolation, calls Spectrum's tools and logs what they answered to $HOME/acp-log.jsonl. Asked to "reach" a host, it
+// asks that host for a page over HTTPS and logs what came of it.
 import readline from 'node:readline';
-import { appendFileSync } from 'node:fs';
+import https from 'node:https';
+import { appendFileSync, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 const lines = readline.createInterface({ input: process.stdin });
 const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const log = (entry) => appendFileSync(path.join(process.env.HOME, 'acp-log.jsonl'), `${JSON.stringify(entry)}\n`);
 let servers = [];
+// a test's stand-in servers answer with a certificate the test left in the home
+const standInCa = path.join(process.env.HOME, 'stand-in.pem');
+const reach = (host) => new Promise((resolve) => https.get(`https://${host}/`, { rejectUnauthorized: false }, (res) => { res.resume(); resolve(res.statusCode); }).on('error', (err) => resolve(err.code || err.message)));
 
 async function callTools(server, calls) {
-  const child = spawn(server.command, server.args, { env: Object.fromEntries(server.env.map((e) => [e.name, e.value])), stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(server.command, server.args, { env: { ...Object.fromEntries(server.env.map((e) => [e.name, e.value])), ...(existsSync(standInCa) && { NODE_EXTRA_CA_CERTS: standInCa }) }, stdio: ['pipe', 'pipe', 'pipe'] });
   let stderr = '';
   child.stderr.on('data', (c) => { stderr += c; });
   const waiting = new Map();
@@ -39,7 +44,12 @@ lines.on('line', async (line) => {
   else if (m.method === 'session/prompt') {
     if (servers.length) {
       const calls = [['project_map', {}], ['list_todos', {}], ['suggest_todo', { text: 'Cite the method', link: { file: 'main.tex', line: 3 } }], ['load_skill', { id: 'spectrum-latex' }]];
-      if (m.params.prompt[0].text.includes('compile')) calls.push(['compile', {}]);
+      const asked = m.params.prompt.map((p) => p.text || '').join('\n');
+      if (asked.includes('compile')) calls.push(['compile', {}]);
+      // words no instruction of Spectrum's holds, so no other test ever searches or reaches
+      if (asked.includes('SEARCH-THE-STAND-IN')) calls.push(['literature_search', { query: 'attention is all you need' }]);
+      const host = asked.match(/REACH-HOST (\S+)/)?.[1];
+      if (host) log({ reach: host, result: await reach(host) });
       log({ tools: await callTools(servers[0], calls) });
     }
     send({ id: m.id, result: { stopReason: 'end_turn' } });

@@ -2186,6 +2186,11 @@ textarea.skill-file-text {
   overflow-wrap: anywhere;
 }
 
+/* an MCP server's hosts, under its row */
+.mcp-hosts {
+  margin-top: 6px;
+}
+
 .agent-section > h4 {
   margin: 0;
   font-size: 12px;

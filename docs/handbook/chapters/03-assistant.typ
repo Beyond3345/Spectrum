@@ -418,16 +418,16 @@ For a local agent the meter shows what the agent reports: how full its context i
 A Model Context Protocol (MCP) server is a program that gives an agent more tools, such as a search of a reference service or a lab's own data. The Spectrum agent can use the ones you add under #ui[MCP servers] in #menu[Settings][Agents] (@fig-assistant-settings-mcp). A server is added by a name and the command that starts it, such as `npx -y` and the server's package, and it is used as follows,
 
 #howto[give the agent an MCP server's tools][
-+ Type a #ui[Name] and the command, then press #ui[Add]
++ Type a #ui[Name] and the command and, below them, the hosts the server may reach if it needs any, then press #ui[Add]
 + Press #ui[Check], which starts the server and lists its tools
 + Switch it #ui[On]
 ]
 
 A server is added off, and it can be switched on only once it has been checked. Each tool is listed as #ui[only reads] or #ui[asks you first]. The agent sees a server's tools as the server's name and the tool's, such as `notes__lookup`, and what a tool answers reaches it marked as material from that tool, never as your instructions. A tool that the server does not mark as only reading may change something outside the project, so the first time the agent calls it in a thread the turn ends with a question card, and the tool runs only after #ui[Allow]. If a server's list of tools changes after you checked it, the agent gets none of its tools, with a note saying so, until you check it again.
 
-#shot("figures/03-assistant/settings-agents-mcp.png", [#menu[Settings][Agents] with a server named notes checked and on. Below it, the two automations that follow an applied change.], width: 70%) <fig-assistant-settings-mcp>
+#shot("figures/03-assistant/settings-agents-mcp.png", [#menu[Settings][Agents] with a server named notes checked and on. It may reach one host, and it asked for another when it was checked. Below it, the two automations that follow an applied change.], width: 70%) <fig-assistant-settings-mcp>
 
-A server runs inside the same isolation as a local agent (@sec-assistant-external), in a folder of its own in Spectrum's data, and never sees the project. It can reach the internet over HTTPS but not a service on this computer, and it is stopped after five minutes without use. Servers that are reached by an address rather than started by a command are not supported yet.
+A server runs inside the same isolation as a local agent (@sec-assistant-external), in a folder of its own in Spectrum's data, and never sees the project. It reaches no service on this computer, and on macOS it reaches only the hosts listed for it, over HTTPS, in the way @sec-assistant-network describes for an agent. A server that was given no host reaches none. Since a server started with `npx` or `uvx` downloads its package first, it needs its package registry on the list, which is `registry.npmjs.org` for `npx`, and `pypi.org` with `files.pythonhosted.org` for `uvx`. When a server asks for a host that is not on its list, a line under it names the host after #ui[Check], with #ui[Allow] to add it, and a tool whose call was refused a host says so in its answer. Ticking #ui[Any host] opens every public host to the server over HTTPS instead. On Windows no list is enforced yet and a server reaches any public address. The server is stopped after five minutes without use. Servers that are reached by an address rather than started by a command are not supported yet.
 
 == External agents <sec-assistant-external>
 
@@ -446,6 +446,7 @@ Opening a card shows its set-up (@fig-assistant-agent-card), in the following pa
 - #ui[Program], where the agent was found, with #ui[Choose the program…] for one Spectrum could not find and #ui[Test], which starts the agent in isolation without a prompt,
 - #ui[Sign-in], with the command to run in Terminal and #ui[Copy existing login], which copies a login you already have into the agent's private home,
 - #ui[API key], an alternative to signing in, kept in Spectrum's private data,
+- #ui[Network], which chooses whether the agent reaches only the hosts on its list or any host (@sec-assistant-network),
 - #ui[Setup guide], a link to the agent's own instructions and
 - #ui[Advanced], with the launcher arguments as a JSON list and the runtime folders the agent may read its installed libraries from.
 
@@ -464,11 +465,37 @@ The menu at the left of the #ui[Local agents] header chooses how an agent may to
 
 In either mode, and for the Spectrum agent too, some files of a project are kept from every agent: Spectrum's own `.spectrum` folder, `.git`, `.claude`, and the files that look like secrets by their names. These are `.env` files, `.netrc`, `.npmrc` and `.pypirc`, private keys such as `id_rsa`, and files ending in `.pem`, `.key`, `.p12`, `.pfx`, `.keystore`, `.jks` or `.ppk`. It is the same list that the GitHub backup leaves out (@ch-references), so a file that is not uploaded is not shown to an agent either.
 
-An isolated agent keeps working on its copy while changes wait, so you can go on prompting and apply or reject each change when you like. What you apply becomes the agent's new starting point, and what you reject is put back to your version in the agent's copy, which the agent is told with its next task. The isolated agent can reach public HTTPS and DNS (on Windows, any public address) but not local services, so local models and MCP servers set up outside Spectrum are not available to it. A project with symbolic links, files over 50 MB, or more than 500 MB or 10,000 files is refused rather than copied incompletely.
+An isolated agent keeps working on its copy while changes wait, so you can go on prompting and apply or reject each change when you like. What you apply becomes the agent's new starting point, and what you reject is put back to your version in the agent's copy, which the agent is told with its next task. An agent reaches no service on this computer, so local models and MCP servers set up outside Spectrum are not available to it, and where it may connect on the internet is chosen for each agent (@sec-assistant-network). A project with symbolic links, files over 50 MB, or more than 500 MB or 10,000 files is refused rather than copied incompletely.
 
 In an Isolated session the agent stays running for five minutes after a task, so the next message starts at once, and at most three such agents wait at a time. It stops when you open another session or close the project, and Spectrum starts it again when it is needed. A Direct session's agent stops after each task instead, since anything it left running would write into the project outside the task's checkpoint. Either way, a local agent also stops when Spectrum is force-quit or crashes, and does not run on by itself. A very long output from an agent, such as a whole log, keeps its first and last 100 KB with a line saying how many characters were left out between, so that it does not push the earlier turns out of the session.
 
 On macOS, a local agent also gets Spectrum's tools from a small server it starts inside its isolation: `compile`, `get_log`, `project_map`, `bib_entries`, `bib_search`, `search_text`, `literature_search`, `fetch_bibtex`, `check_references`, `list_todos`, `suggest_todo` and `load_skill`. For a Markdown document, `compile` and `get_log` give each error at its line of the `.md` file, as the Logs tab does, and not at a line of the file pandoc generated. Each tool's answer reaches the agent marked with the tool it came from, as text to read and not an instruction. Local agents on Windows get no Spectrum tools yet, as #menu[Settings][Agents] and the #ui[Local agents] tab say there. Keys, working copies, session mappings and transcripts stay on this computer.
+
+=== Where an agent may connect <sec-assistant-network>
+
+An agent that reads the project and can also reach any site could be led to send the project somewhere, for example by an instruction hidden in a PDF, a `.bib` file or a web page that it reads. The #ui[Network] part of each agent's card in #menu[Settings][Agents] therefore has two choices (@fig-assistant-agent-network),
+
+- #ui[Listed hosts only] holds the agent to a list made of its provider's hosts, the sites that Spectrum's tools need and the hosts you add, where the tools need the scholarly sites they search and check references against and the two sites a compile downloads Typst packages and Tectonic's TeX files from, while
+- #ui[Any host] lets it reach every public host over HTTPS, as every agent did before version 2.7.
+
+Claude Agent starts on #ui[Listed hosts only], since its documentation names the hosts it needs and says that it honours the proxy settings the list relies on. Every other agent starts on #ui[Any host] with its list ready, and its card says why: Spectrum could not be sure from the agent's own documentation that it works when held to a list. A host is added by typing its name, such as `api.example.com`, or `*.example.com` for every host below one, and pressing #ui[Add host].
+
+#shot("figures/03-assistant/agent-network.png", [The #ui[Network] part of the Claude Agent card, with its provider’s host and the hosts of Spectrum’s tools.], width: 65%) <fig-assistant-agent-network>
+
+When an agent on a list asks for a host that is not on it, the connection is refused and a #ui[Host refused] card naming the host appears in its session (@fig-assistant-host-refused). The button on the card, #ui[Allow for] with the agent's name, adds the host to that agent's list for every session, and the agent is told with its next task that it may try again. Allow a host only if you would trust it with what the agent can read, which is its copy of the project and its own sign-in. If an agent on a list finishes a task without asking for any host at all, the session says so once, since such an agent either could not reach its model or does not work through the list, and #ui[Any host] is then the choice to make.
+
+#shot("figures/03-assistant/agent-host-refused.png", [A host that is not on Claude Agent's list, refused in its session.], width: 65%) <fig-assistant-host-refused>
+
+On macOS the list is kept as follows. The sandbox can open or close an address and a port to a program, but it cannot tell one host name from another, and a provider's addresses change. An agent on a list is therefore given one way out, a port on this computer where Spectrum itself listens. Spectrum takes each request there, checks the host against the list, looks the name up itself, connects only to port 443 and never to this computer, and passes nothing on until the first message of the connection, a TLS hello, names the same host. Everything else is closed to the agent, including name lookups, which could otherwise carry text out inside the names that are asked for.
+
+A list narrows where an agent can send what it reads, but it does not close every way out. Specifically,
+
+- anything can still be sent to a host on the list, so an agent could be led to upload text to its own provider under someone else's account, or to a host you allowed,
+- the provider still sees everything the agent sends it,
+- Spectrum checks which host a connection names but cannot read the encrypted traffic inside it, so a site served from the same content network as a listed host could in some cases still be reached through it,
+- the few macOS services that isolation leaves open to an agent, such as the one that checks certificates, can make requests of their own,
+- a program that ignores the proxy settings is not let out another way, it simply fails to connect, so an agent built that way does not work on a list and
+- on Windows the isolation opens every public address to an agent or none, so no list is enforced there yet.
 
 === Spectrum's tools in another agent <sec-assistant-outside>
 
