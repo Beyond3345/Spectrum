@@ -60,7 +60,9 @@ ${offline ? '' : `(allow system-socket (require-all (socket-domain AF_SYSTEM) (s
   (require-not (remote ip "localhost:*"))))
 (allow network-outbound (remote udp "*:53"))
 ; names go through the system's resolver, which is how most programs look one up
-(allow network-outbound (literal "/private/var/run/mDNSResponder"))`}
+(allow network-outbound (literal "/private/var/run/mDNSResponder"))
+; the kernel's sockets that say which route and source address a connection takes, as every sandboxed network client has
+(allow network-outbound (control-name "com.apple.netsrc") (control-name "com.apple.network.statistics"))`}
 ${Number.isInteger(internalPort) && internalPort > 0 && internalPort < 65536 ? `(allow network-bind network-inbound (local tcp "localhost:${internalPort}"))\n(allow network-outbound (remote tcp "localhost:${internalPort}"))` : ''}
 `;
 }
