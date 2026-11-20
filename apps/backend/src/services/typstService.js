@@ -8,6 +8,7 @@ import { promisify } from 'util';
 import { CJK_FONTS_DIR, DATA_DIR } from '../config/constants.js';
 import { ensureDir, zipFiles } from '../utils/fsUtils.js';
 import { readProjectSettings } from './projectSettings.js';
+import { appPath } from './projectService.js';
 import { BUILT_IN_TYPST_VERSION, builtInTypst, typstFor } from './engineService.js';
 import { MAX_LOG_BYTES, children, cleanBuild, currentJob, killGroup, runSpawn, writePdf } from './compileService.js';
 
@@ -338,8 +339,9 @@ async function settle(w) {
       if (!w.compiling && w.last) {
         const last = w.last;
         const changed = await lastChange(w);
-        // a time ahead of this computer's clock (a sync app's) can't be compared
-        if (changed === null || changed > Date.now()) return null;
+        // a time ahead of this computer's clock (a sync app's) can't be compared; by a millisecond it is only one
+        // Spectrum wrote just now (the page colour's file), whose time has the fraction the clock's doesn't
+        if (changed === null || changed > Date.now() + 1) return null;
         if (changed !== undefined && !w.compiling && last.startedAt > changed + MARGIN_MS) {
           if (last.outcome === 'with errors') return { code: 1, log: last.log, pdf: null };
           const pdf = await fs.readFile(w.pdf).catch(() => null);
@@ -419,6 +421,20 @@ export function typstInput(projectRoot, absMain, pageColour) {
   return { input: '-', source: typstFill(pageColour) + '#include ' + JSON.stringify('/' + rel) + '\n' };
 }
 
+/**
+ * text as a file for the kept Typst to compile in the document's place: .spectrum/compile/<document>.typ, inside the
+ * project because Typst reads nothing outside --root, and in Spectrum's own folder there, which the file list,
+ * checkpoints and GitHub leave out. Written only when the text changed, so an unchanged document isn't compiled again.
+ */
+async function keptSource(projectRoot, mainFile, text) {
+  const file = appPath(projectRoot, 'compile', /\.typ$/i.test(mainFile) ? mainFile : mainFile + '.typ');
+  if ((await fs.readFile(file, 'utf8').catch(() => null)) !== text) {
+    await ensureDir(path.dirname(file));
+    await fs.writeFile(file, text);
+  }
+  return file;
+}
+
 /** The line that gives the pages '#rrggbb'. */
 export const typstFill = (hex) => '#set page(fill: rgb("' + hex + '"))\n';
 
@@ -449,9 +465,11 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
   let pdf;
   // Markdown's Typst is given its page colour by compileMarkdown
   const { input, source } = options.source != null ? { input: '-', source: options.source } : typstInput(projectRoot, absMain, options.pageColour);
-  // a project's own document through its kept watcher; a scratch build, or anything on standard input, once.
-  // ponytail: Compile with page colour compiles in a fresh Typst each time (typst watch can't read standard input)
-  const watched = options.scratch || source != null ? null : await watchedCompile(projectRoot, executable, ['--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, absMain], path.dirname(absMain), env);
+  // a project's own document through its kept watcher, and a scratch build once. Text in the document's place (the
+  // page colour's wrapper, a Markdown document's Typst) is watched as a file of Spectrum's own in the project, since
+  // typst watch can't read standard input; where that can't be written it compiles once from standard input, as before
+  const watchedMain = options.scratch ? null : source == null ? absMain : await keptSource(projectRoot, mainFile, source).catch(() => null);
+  const watched = watchedMain ? await watchedCompile(projectRoot, executable, ['--root', projectRoot, '--diagnostic-format', 'short', ...fonts, ...inputs, watchedMain], path.dirname(absMain), env) : null;
   if (watched?.timedOut) {
     pushLog(`\n[spectrum] ${executable} was stopped after ${WATCH_LIMIT_MS / 1000}s.\n`);
     result = { code: null, timedOut: true };

@@ -98,3 +98,67 @@ test('a watcher that has had its time and still misses a change is stopped, and 
   assert.deepEqual(started(from).map((s) => s.command), ['watch'], 'a new watcher');
   await stopTypstWatch({ root: p.path });
 });
+
+test('Compile with page colour is watched too, through a file of Spectrum’s own in the project', { skip }, async () => {
+  process.env.FAKE_TYPST_DEAF_MS = '0';
+  const p = await project('Colour');
+  const wrapper = path.join(p.path, '.spectrum', 'compile', 'main.typ');
+  let from = count();
+  const first = await compile(p, { pageColour: '#fdf6e3' });
+  assert.equal(text(first), '#set page(fill: rgb("#fdf6e3"))\n#include "/main.typ"');
+  assert.equal(await fs.readFile(wrapper, 'utf8'), '#set page(fill: rgb("#fdf6e3"))\n#include "/main.typ"\n');
+  assert.deepEqual(started(from).map((s) => s.command), ['watch']);
+  // nothing changed: no Typst runs, and the wrapper isn't written again
+  const written = (await fs.stat(wrapper)).mtimeMs;
+  from = count();
+  await compile(p, { pageColour: '#fdf6e3' });
+  assert.deepEqual(started(from), []);
+  assert.equal((await fs.stat(wrapper)).mtimeMs, written);
+  // another colour is another text for the same watcher
+  await sleep(100);
+  const blue = await compile(p, { pageColour: '#0000ff' });
+  assert.match(text(blue), /#0000ff/);
+  assert.deepEqual(started(from), []);
+  // without the colour the document itself is compiled, by a watcher of its own
+  from = count();
+  assert.equal(text(await compile(p)), 'one');
+  assert.deepEqual(started(from).map((s) => s.command), ['watch']);
+  // the project's files are as they were but for the PDF and Spectrum's own folder
+  assert.deepEqual((await fs.readdir(p.path)).sort(), ['.spectrum', 'main.pdf', 'main.typ']);
+  await stopTypstWatch({ root: p.path });
+});
+
+test('a Markdown document set through Typst is watched too, as the Typst pandoc made of it', { skip }, async (t) => {
+  process.env.FAKE_TYPST_DEAF_MS = '0';
+  // a pandoc that passes Spectrum's version check and writes the .md's own text as its Typst
+  const shim = path.join(tmp, 'pandoc-shim');
+  await fs.mkdir(shim, { recursive: true });
+  await fs.writeFile(path.join(shim, 'pandoc'), [
+    '#!/bin/sh',
+    'if [ "$1" = --version ]; then echo "pandoc 3.12.1"; exit 0; fi',
+    'first="$1"',
+    'for a; do [ "$prev" = -o ] && cat "$first" > "$a"; prev="$a"; done',
+    ''
+  ].join('\n'), { mode: 0o755 });
+  const realPath = process.env.PATH;
+  process.env.PATH = shim + path.delimiter + realPath;
+  t.after(() => (process.env.PATH = realPath));
+  const p = await createProject({ name: 'Markdown', meta: { mainFile: 'main.md' }, populate: (root) => fs.writeFile(path.join(root, 'main.md'), 'First words.\n') });
+  const run = () => runCompile({ projectId: p.id, mainFile: 'main.md', engine: 'auto', markdownEngine: 'typst' });
+  let from = count();
+  const first = await run();
+  assert.ok(first.ok, first.error || first.log);
+  assert.equal(text(first), 'First words.');
+  assert.deepEqual(started(from).map((s) => s.command), ['watch']);
+  assert.equal(await fs.readFile(path.join(p.path, '.spectrum', 'compile', 'main.md.typ'), 'utf8'), 'First words.\n');
+  // an edit is the watcher's own compile, and nothing changed is no compile at all
+  await sleep(100);
+  from = count();
+  await fs.writeFile(path.join(p.path, 'main.md'), 'Second words.\n');
+  assert.equal(text(await run()), 'Second words.');
+  assert.deepEqual(started(from), [], 'the edit');
+  assert.equal(text(await run()), 'Second words.');
+  assert.deepEqual(started(from), [], 'nothing changed');
+  assert.deepEqual((await fs.readdir(p.path)).sort(), ['.spectrum', 'main.md', 'main.pdf']);
+  await stopTypstWatch({ root: p.path });
+});
