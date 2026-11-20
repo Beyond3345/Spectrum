@@ -628,9 +628,12 @@ export default function Composer({
                 <button
                   className="chip active"
                   title={`Every request here is given your ${INSTRUCTIONS_FILE} as your standing instructions for this project, with what Spectrum remembers for it. Click to open it.`}
+                  aria-label={INSTRUCTIONS_FILE}
                   onClick={() => void api.openFile(INSTRUCTIONS_FILE)}
                 >
-                  <Icon name="list.clipboard" /> {INSTRUCTIONS_FILE}
+                  {/* its icon alone beside Use selection, so the bar keeps its room */}
+                  <Icon name="list.clipboard" />
+                  {!hasSelection && ` ${INSTRUCTIONS_FILE}`}
                 </button>
               )}
             </>
