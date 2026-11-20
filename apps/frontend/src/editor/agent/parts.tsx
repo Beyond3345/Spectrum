@@ -346,7 +346,7 @@ export function MemorySheet({ memory, onClose }: { memory: Memory; onClose(): vo
         </>
       }
     >
-      <div className="field-hint">What the Spectrum agent remembers for this project. Spectrum keeps it on this computer, apart from the project’s files, and gives it to the agent with every request. Local agents keep their own memory.</div>
+      <div className="field-hint">What the Spectrum agent remembers for this project. Spectrum keeps it on this computer, apart from the project’s files, and gives it to the agent and the assistant with every request. Local agents keep their own memory.</div>
       <div className="kv-list" role="list">
         {lines.map((line) => (
           <div key={line.id} className="kv-row persona-row" role="listitem">

@@ -87,6 +87,8 @@ In #ui[Assistant] mode the panel opens on "How can I help with your paper?" (@fi
 
 The model is told which language the open file is written in, LaTeX, Typst or Markdown, with that language's conventions, so an answer about a `.typ` file is written in Typst and not in LaTeX. This applies to every request in this chapter.
 
+When the project has an `AGENTS.md` that you have approved (@sec-assistant-instructions), every request from this panel is given it as well, a question and a rewrite alike, followed by the lines Spectrum remembers for the project (@sec-assistant-memory). A rule such as "Spelling: Australian English" therefore applies to #ui[Polish] and #ui[Translate] too. The file shapes how the model writes and is not a task of its own, so a rewrite still comes back as the rewritten text. While the file is in use, an #ui[AGENTS.md] chip beside the persona picker opens it. AI autocomplete is given neither, to keep it quick.
+
 A provider that is busy does not end a request. When it answers that it is overloaded or limiting requests, Spectrum waits and sends the request again, twice at most. It waits for as long as the provider asks, up to 20 seconds, or else for one second and then three. A rejected key, a wrong address and an account with no credit left are not sent again, since waiting does not mend them, and the message says which it was. A connection that drops before the provider answers, as one through a VPN sometimes does, is tried again in the same way. If it still fails, the message names the cause, such as a server name that was not found, a connection that was refused, dropped or timed out, or a certificate that could not be trusted. When an answer stops at the model's output limit, the panel says "The answer was cut off by the model's output limit." under it, and #ui[Continue] asks the model to go on from where it stopped.
 
 #shot("figures/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The bar at the bottom holds the image menu (+), the persona and the reasoning effort.], width: 85%) <fig-assistant-empty>
@@ -340,7 +342,7 @@ The comparison is always against your file as it is now, with the left side labe
 
 === Standing instructions in AGENTS.md <sec-assistant-instructions>
 
-Things an agent should know about one project, such as its spelling, the journal's style or a folder it must never touch, are kept in a file named `AGENTS.md` at the top of the project. The Spectrum agent is given this file with every request as your standing instructions for the project, up to its first 20,000 characters. #ui[Fix with AI] is given it too. Most local agents read a file of this name by themselves from their copy of the project. A persona (@sec-assistant-personas) applies to every project, while `AGENTS.md` applies to the one it is in.
+Things an agent should know about one project, such as its spelling, the journal's style or a folder it must never touch, are kept in a file named `AGENTS.md` at the top of the project. The Spectrum agent is given this file with every request as your standing instructions for the project, up to its first 20,000 characters. #ui[Fix with AI] and the assistant panel (@sec-assistant-panel) are given it too. Most local agents read a file of this name by themselves from their copy of the project. A persona (@sec-assistant-personas) applies to every project, while `AGENTS.md` applies to the one it is in.
 
 The chip under the message box shows where the file stands,
 
@@ -352,7 +354,7 @@ The file is yours, and the agent never writes it by itself. A project can come f
 
 #shot("figures/03-assistant/agent-instructions-ask.png", [An `AGENTS.md` that changed outside Spectrum. The agent is not given it until it has been read and #ui[Use it] is pressed.], width: 65%) <fig-assistant-instructions-ask>
 
-This check is the Spectrum agent's. A local agent that reads `AGENTS.md` by itself reads the file in its copy of the project as it is.
+The same check decides what a local agent reads. An Isolated session's copy of the project (@sec-assistant-external) leaves out an `AGENTS.md` you have not approved, and the session says so when it starts, pointing to the chip and #ui[Use it]. Once you approve the file, it reaches the agent's copy with its next task, and a file that a pull changes leaves the copy again by the next task. Some agents also read an `AGENTS.md` in a folder below the top, or a file named `AGENTS.override.md` or `AGENTS.local.md`. These cannot be approved, so an Isolated copy always leaves them out. An agent that writes a file by one of these names in its copy while yours is left out is told that it will not be offered, and the review never shows it, so it cannot replace or delete your file. A Direct session works in the project's folder itself, where Spectrum cannot hide a file, and says so when it starts.
 
 === What the agent remembers <sec-assistant-memory>
 
@@ -360,7 +362,7 @@ The Spectrum agent also has a memory for each project, kept apart from `AGENTS.m
 
 #shot("figures/03-assistant/agent-instructions.png", [Two lines the agent suggested to remember. The first has been added, and the #ui[Memory] chip counts it.], width: 65%) <fig-assistant-instructions>
 
-The #ui[Memory] chip under the message box, beside the `AGENTS.md` chip, shows how many lines are kept and opens the list (@fig-assistant-memory). Each line has a pencil to edit it and a bin to delete it, and #ui[Add a line] adds one of your own. The Spectrum agent and #ui[Fix with AI] are given every line with each request, as your remembered notes for the project, after `AGENTS.md`. A project keeps 30 lines at most and each line is at most 300 characters, and a turn can suggest three.
+The #ui[Memory] chip under the message box, beside the `AGENTS.md` chip, shows how many lines are kept and opens the list (@fig-assistant-memory). Each line has a pencil to edit it and a bin to delete it, and #ui[Add a line] adds one of your own. The Spectrum agent, #ui[Fix with AI] and the assistant panel are given every line with each request, as your remembered notes for the project, after `AGENTS.md`. A project keeps 30 lines at most and each line is at most 300 characters, and a turn can suggest three.
 
 #shot("figures/03-assistant/agent-memory.png", [The lines the agent remembers for a project, with the pencil to edit and the bin to delete each one.], width: 65%) <fig-assistant-memory>
 

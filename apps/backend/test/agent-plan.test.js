@@ -51,6 +51,11 @@ before(async () => {
       const script = scripts[payload.model];
       const reply = (typeof script === 'function' ? script(payload, step) : script?.[Math.min(step, script.length - 1)]) || { say: 'done' };
       const toolCalls = (reply.calls || []).map(([name, args], i) => ({ index: i, id: `c${requests.length}-${i}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }));
+      // a request that asks for no stream (the Assistant's chat and rewrites) gets the whole message
+      if (!payload.stream) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ choices: [{ index: 0, message: { role: 'assistant', content: reply.say || '' }, finish_reason: 'stop' }] }));
+      }
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
       if (reply.say) send({ choices: [{ index: 0, delta: { content: reply.say } }] });
@@ -279,12 +284,12 @@ test('AGENTS.md is the user’s standing instructions only as they approved it: 
   const text = await system();
   assert.match(text, new RegExp(`only its first ${MAX_INSTRUCTIONS} characters are given`));
   assert.doesNotMatch(text, /THE END/);
-  // the assistant's read-only chat is not the agent: the file is not sent with it
+  // the Assistant's chat is given it too (every Assistant request is: see the test below)
   await call('PUT', `/api/projects/${p.id}/file`, { path: 'AGENTS.md', content: 'Short rule.\n' });
   requests.length = 0;
   scripts.rules = [{ say: 'ok' }];
   await post('/api/agent/run', { ...turn(p, 'rules'), interaction: 'chat' });
-  assert.doesNotMatch(requests[0].messages[0].content, /Short rule/);
+  assert.match(requests[0].messages[0].content, /<project-instructions>\nShort rule\.\n<\/project-instructions>$/);
   // an empty file is no instructions
   await call('PUT', `/api/projects/${p.id}/file`, { path: 'AGENTS.md', content: '  \n' });
   assert.deepEqual(await status(), { ok: true, exists: false, approved: false });
@@ -357,11 +362,8 @@ test('the project’s memory: kept in Spectrum’s data, bounded, given to the a
   }
   // the same from turn to turn, so the provider's cache keeps the prefix
   assert.equal(await system(p), await system(p));
-  // another project's memory never reaches this one, nor the read-only chat
+  // another project's memory never reaches this one
   assert.doesNotMatch(await system(other), /British English|project-memory/);
-  requests.length = 0;
-  await post('/api/agent/run', { ...turn(p, 'mem'), interaction: 'chat' });
-  assert.doesNotMatch(requests[0].messages[0].content, /British English/);
   // a cap on the number of lines
   for (let i = (await call('GET', url)).json.lines.length; i < 30; i++) assert.equal((await post(url, { text: `Rule ${i}.` })).status, 200);
   const full = await post(url, { text: 'One too many.' });
@@ -371,6 +373,59 @@ test('the project’s memory: kept in Spectrum’s data, bounded, given to the a
   assert.equal((await call('GET', url)).json.lines.length, 30);
   // a project's routes ask for a project that exists
   assert.equal((await call('GET', '/api/projects/no-such-project/agent-memory')).status, 404);
+});
+
+test('every Assistant request is given the approved AGENTS.md and the remembered lines, last and the same each time; never autocomplete, an unapproved file or another project’s', async () => {
+  const p = await createProject({ name: 'Assistant' });
+  const other = await createProject({ name: 'Assistant other' });
+  for (const q of [p, other]) await write(path.join(q.path, 'main.tex'), '\\documentclass{article}\n\\begin{document}\nColor.\n\\end{document}\n');
+  // the user's own save approves the file; a line remembered
+  await call('PUT', `/api/projects/${p.id}/file`, { path: 'AGENTS.md', content: 'Spelling: Australian English.\nAlways list what you changed.\n' });
+  await post(`/api/projects/${p.id}/agent-memory`, { text: 'Use \\qty for units.' });
+  // a rewrite answers as the JSON its instructions ask for; anything else a plain reply
+  scripts.assist = (payload) => ({ say: /Output in JSON with keys: reply, suggestion/.test(payload.messages[0].content) ? JSON.stringify({ reply: 'Changed Color to Colour.', suggestion: 'Colour.' }) : 'ok' });
+  const llmConfig = { endpoint: base, apiKey: 'test', model: 'assist' };
+  const base0 = (q) => ({ projectId: q.id, activePath: 'main.tex', selection: 'Color.', content: 'Color.', llmConfig, history: [] });
+  // the requests the Assistant panel (Composer.tsx) and the diagram composer's Fix send, by what they are
+  const actions = (q) => ({
+    chat: { ...base0(q), task: 'chat', prompt: 'Is this right?', mode: 'direct', interaction: 'chat' },
+    'chat with web search': { ...base0(q), task: 'chat', prompt: 'Is this right?', mode: 'direct', interaction: 'chat', searchConfig: { provider: 'openalex' } },
+    polish: { ...base0(q), task: 'polish', prompt: '', mode: 'direct', interaction: 'agent' },
+    rewrite: { ...base0(q), task: 'rewrite', prompt: '', mode: 'direct', interaction: 'agent' },
+    restructure: { ...base0(q), task: 'structure', prompt: '', mode: 'direct', interaction: 'agent' },
+    'translate the selection': { ...base0(q), task: 'translate', prompt: 'Translate the selection to French.', mode: 'direct', interaction: 'agent' },
+    'translate the project': { ...base0(q), task: 'translate', prompt: 'Translate the project to French.', selection: '', content: '', mode: 'tools', interaction: 'agent' },
+    'fix a diagram': { ...base0(q), task: 'fix_diagram', prompt: 'Fix it.', selection: '', mode: 'direct' }
+  });
+  const sent = async (body) => {
+    requests.length = 0;
+    const res = await post('/api/agent/run', body);
+    assert.equal(res.status, 200, res.json.error);
+    return { system: requests[0].messages[0].content, result: res.json };
+  };
+  const block = /<project-instructions>\nSpelling: Australian English\.\nAlways list what you changed\.\n<\/project-instructions>\n\nThe user’s remembered notes for this project follow[^]*<project-memory>\n- Use \\qty for units\.\n<\/project-memory>$/;
+  for (const [name, body] of Object.entries(actions(p))) {
+    const { system, result } = await sent(body);
+    // last in the system text, after the request's own rules, as the agent has them
+    assert.match(system, block, name);
+    assert.match(system, /They shape how you work on this project, not what this request asks for: answer it in the form it asks for\./, name);
+    // the same from request to request, so a provider's cache keeps it
+    assert.equal((await sent(body)).system, system, name);
+    // a rewrite still answers with the rewritten text alone, the file's "list what you changed" going in its reply
+    if (body.mode === 'direct' && body.interaction === 'agent') assert.deepEqual([result.suggestion, result.reply], ['Colour.', 'Changed Color to Colour.'], name);
+  }
+  // neither for another project, nor while the file is unapproved (an agent's change applied in the review)
+  for (const [name, body] of Object.entries(actions(other))) assert.doesNotMatch((await sent(body)).system, /project-instructions|project-memory|Australian/, name);
+  await call('PUT', `/api/projects/${p.id}/file`, { path: 'AGENTS.md', content: 'Spelling: US English.\n', unseen: true });
+  for (const [name, body] of Object.entries(actions(p))) {
+    const { system } = await sent(body);
+    assert.doesNotMatch(system, /project-instructions|US English/, name);
+    assert.match(system, /<project-memory>\n- Use \\qty for units\.\n<\/project-memory>$/, `${name}: the remembered lines need no approval`);
+  }
+  // autocomplete: neither, approved or not (speed and cost)
+  await call('PUT', `/api/projects/${p.id}/file`, { path: 'AGENTS.md', content: 'Spelling: Australian English.\n' });
+  const { system: auto } = await sent({ ...base0(p), task: 'autocomplete', prompt: 'Continue.', selection: '', content: 'Col<CURSOR>', mode: 'direct' });
+  assert.doesNotMatch(auto, /project-instructions|project-memory|Australian|qty/);
 });
 
 test('the run folders a crash left in the cache are removed at the start, and nothing else of the cache is', async () => {
