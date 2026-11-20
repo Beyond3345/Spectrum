@@ -163,7 +163,7 @@ export default function AgentsPane() {
       {IS_WINDOWS && (
         <div className="field-hint">
           On Windows, local agents get no Spectrum tools yet, such as compiling or searching the literature. Skills and the workspace’s task buttons work all the
-          same.
+          same, and the Spectrum agent has every tool.
         </div>
       )}
       <div className="row">
