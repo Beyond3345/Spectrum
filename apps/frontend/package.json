@@ -27,6 +27,7 @@
     "@xyflow/react": "12.12.0",
     "codemirror": "^6.0.2",
     "diff": "^9.0.0",
+    "katex": "0.16.47",
     "mermaid": "11.17.2",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "^6.4.299",

@@ -22,6 +22,10 @@ eq(labelsAt('chapters/two.typ', ''), ['knuth', 'sec:one'], 'a label in another f
 eq(labelsAt('main.typ', '0.14.2'), ['knuth', 'sec:one'], 'an older Typst gets the project’s labels here');
 eq(labelsAt('main.md', '', 'See [@'), ['knuth'], 'Markdown gets keys');
 eq(labelsAt('main.md', '', 'See @'), [], 'and only inside brackets');
+const labelled = '![Plan](p.png){#fig:plan width=50%}\n\nTable: Use. {#tbl:use}\n\n$$ x $$ {#eq:flow}\n\n# Two {#sec-two}\n\n';
+eq(labelsAt('main.md', '', labelled + 'See @'), ['fig:plan', 'tbl:use', 'eq:flow', 'sec-two'], 'Markdown lists its labels after @ in the text');
+eq(labelsAt('main.md', '', labelled + 'See [@'), ['fig:plan', 'tbl:use', 'eq:flow', 'sec-two', 'knuth'], 'and labels with keys in brackets');
+eq(labelsAt('main.md', '', labelled + 'me@'), [], 'not after a word');
 
 // the project's own #let functions and values, without Tinymist
 eq(typstDefinitions('#let note(body) = body\n#let width = 3cm\n#{ let inner-x = 1 }\nlet go'), [{ name: 'note', fn: true }, { name: 'width', fn: false }, { name: 'inner-x', fn: false }], 'definitions');

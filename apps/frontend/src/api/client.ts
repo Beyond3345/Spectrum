@@ -237,6 +237,11 @@ export function saveThumbnail(id: string, png: string) {
   return request<{ ok: boolean }>(`/api/projects/${id}/thumbnail`, json('PUT', { png }));
 }
 
+/** The editor's pictures of a Markdown document's ```mermaid blocks ({ sha1: base64 PNG }), and which wanted have none. */
+export function saveMermaid(id: string, wanted: string[], images: Record<string, string> = {}) {
+  return request<{ ok: boolean; missing: string[] }>(`/api/projects/${id}/mermaid`, json('POST', { wanted, images }));
+}
+
 export interface ProjectStats {
   ok: boolean;
   source: 'texcount' | 'estimate';

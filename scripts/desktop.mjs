@@ -78,6 +78,8 @@ async function bundleBackend() {
   copyDir(path.join(root, 'apps/backend/src/data/opencc'), path.join(resourcesDir, 'data/opencc'));
   // and the APA 7 CSL a Markdown compile gives pandoc at ../data/csl, with its licence (CC BY-SA 3.0)
   copyDir(path.join(root, 'apps/backend/src/data/csl'), path.join(resourcesDir, 'data/csl'));
+  // and the Lua filter for its numbered cross-references at ../data/pandoc
+  copyDir(path.join(root, 'apps/backend/src/data/pandoc'), path.join(resourcesDir, 'data/pandoc'));
   if (win) fs.copyFileSync(buildAgentSandbox(), path.join(outDir, 'Spectrum.AgentWorker.exe'));
   console.log(`Bundled backend → ${path.relative(root, path.join(outDir, 'server.mjs'))}`);
 }

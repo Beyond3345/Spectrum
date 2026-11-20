@@ -16,7 +16,7 @@ import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge } from '../floats';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge, imageOf } from '../floats';
 import { typstTableRows } from '../outlines';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
@@ -978,8 +978,6 @@ type DiagramWidth = 'natural' | WidthChoice;
 const DIAGRAM_WIDTHS: [DiagramWidth, string, string?][] = [['natural', 'Natural', 'Natural size'], ...WIDTHS];
 
 /** The image a diagram that isn't TikZ goes in as: the PDF or PNG saved beside it (or the image it is), '' when there's none. */
-const imageOf = (path: string, figures: string[]) =>
-  figureKind(path, '') === 'keep' ? path : ['pdf', 'png'].map((ext) => path.replace(/\.[^./]+$/, `.${ext}`)).find((p) => figures.includes(p)) || '';
 
 /** Whether a Typst version can show PDF images (0.14 and later). */
 const atLeastVersion = (version: string, minimum: string) => {
@@ -1123,7 +1121,7 @@ function InsertDiagram() {
       } else if (target === 'markdown') {
         // a TikZ picture goes in as the PDF the composer's preview made, which isn't among the figures (it's x.tex's)
         const pdf = tikz ? diagram.path.replace(/\.tex$/i, '.pdf') : '';
-        const source = tikz ? (a.projectFiles.includes(pdf) ? pdf : '') : imageOf(diagram.path, a.figureFiles);
+        const source = tikz ? (a.projectFiles.includes(pdf) ? pdf : '') : imageOf(diagram.path, a.figureFiles, true);
         if (!source) {
           a.notify(tikz ? 'Compile the diagram in the composer first, so its PDF is there.' : 'Export the diagram as a PDF or PNG in the composer first.', 'error');
           return;

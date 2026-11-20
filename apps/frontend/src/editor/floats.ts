@@ -21,6 +21,13 @@ export function figureKind(name: string, type: string): 'keep' | 'convert' | nul
   return null;
 }
 
+/**
+ * A composer diagram's image among the figures: its PDF, else its PNG; for Markdown the PNG first, which Word shows
+ * (pandoc puts a PDF into a .docx as it is). '' when neither is there.
+ */
+export const imageOf = (path: string, figures: string[], markdown = false) =>
+  figureKind(path, '') === 'keep' ? path : (markdown ? ['png', 'pdf'] : ['pdf', 'png']).map((ext) => path.replace(/\.[^./]+$/, `.${ext}`)).find((p) => figures.includes(p)) || '';
+
 // letters, digits, - and _ only: spaces, dots, brackets and the like become '-', accents are dropped
 const slug = (text: string) =>
   text

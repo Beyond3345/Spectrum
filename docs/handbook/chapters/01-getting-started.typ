@@ -165,7 +165,7 @@ A template is a starting project: a main file, a bibliography and any files it n
 
 #shot("figures/01-getting-started/template-gallery.png", [The template gallery on its LaTeX tab. The starred templates are the featured ones, and the conference templates follow under Academic.], width: 85%) <fig-start-gallery>
 
-The built-in templates are listed in @tab-start-templates. Every LaTeX template uses APA 7 citations through `biblatex-apa` and Biber, compiles with Auto, pdfLaTeX, XeLaTeX or LuaLaTeX and uses A4 paper (apart from the slides), Australian English and no shell escape. The conference templates keep their venues' page layouts but use an APA 7 bibliography, so a real submission should go back to the venue's own reference style. The Typst templates follow Spectrum's house style for Typst, compile offline with no packages and use Typst's own APA style, while the Markdown article uses pandoc's citeproc with the `.bib` file its front matter names.
+The built-in templates are listed in @tab-start-templates. Every LaTeX template uses APA 7 citations through `biblatex-apa` and Biber, compiles with Auto, pdfLaTeX, XeLaTeX or LuaLaTeX and uses A4 paper (apart from the slides), Australian English and no shell escape. The conference templates keep their venues' page layouts but use an APA 7 bibliography, so a real submission should go back to the venue's own reference style. The Typst templates follow Spectrum's house style for Typst, compile offline with no packages and use Typst's own APA style, while the Markdown templates use pandoc's citeproc with the `.bib` file their front matter names.
 
 #figure(
   table(
@@ -183,6 +183,9 @@ The built-in templates are listed in @tab-start-templates. Every LaTeX template 
     [ACL, CVPR, NeurIPS, ICML, arXiv preprint], [conference papers and preprints, under Academic],
     [Typst document, report, maths notes, electronics notes, coding report, letter and CV], [the same documents written in Typst],
     [Markdown article], [a Markdown article for pandoc with a YAML title, a figure, a table and citations],
+    [Markdown report], [a report with an abstract, contents, numbered sections, cross-references and a Mermaid diagram],
+    [Markdown maths notes], [lecture notes or an assignment with numbered equations, a worked solution and exercises],
+    [Markdown slides], [a 16:9 talk written in Markdown and made into Beamer slides],
   ),
   caption: [The built-in templates.],
 ) <tab-start-templates>

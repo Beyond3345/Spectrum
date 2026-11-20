@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -77,6 +77,10 @@ import { referenceEdits } from '../editor/references';
 import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
 import ConvertSheet from './ConvertSheet';
 import JyutpingSheet from './JyutpingSheet';
+import { drawMermaid } from '../editor/mermaidBlocks';
+import { markdownIncludes } from '../editor/insights';
+// the live preview of a Markdown document, with KaTeX, loaded when first shown
+const MarkdownPreview = lazy(() => import('../editor/MarkdownPreview'));
 import { jyutpingWrap, loadsXjyutping } from '../editor/jyutping';
 import { switcherList, switcherStart } from './ProjectSwitcher';
 import { withDeletionCheck } from './github';
@@ -310,6 +314,7 @@ const SNIPPETS: (Snippet | FloatCard | null)[] = [
   { label: 'Maths', icon: 'function', text: '$x$', select: 'x', kinds: MARKDOWN },
   { label: 'Block maths', icon: 'function', text: '$$\nx\n$$', select: 'x', block: true, kinds: MARKDOWN },
   { label: 'Citation', icon: 'quote.opening', text: '[@key]', select: 'key', kinds: MARKDOWN },
+  { label: 'Reference', icon: 'link', text: '@fig:label', select: 'fig:label', kinds: MARKDOWN },
   { label: 'Footnote', icon: 'note.text', text: '^[Footnote text]', select: 'Footnote text', kinds: MARKDOWN },
   { label: 'Comment', icon: 'text.bubble', text: '<!-- comment -->', select: 'comment', kinds: MARKDOWN },
   { label: 'Code block', icon: 'chevron.left.forwardslash.chevron.right', text: '```\ncode\n```', select: 'code', block: true, kinds: MARKDOWN }
@@ -573,6 +578,8 @@ function Editor({ projectId }: { projectId: string }) {
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const dark = useDarkMode();
+  /** the live preview in the PDF's place, for a Markdown file */
+  const [mdPreview, setMdPreview] = useState(false);
   const setLayout = (patch: Partial<Layout>) => setLayoutState((prev) => ({ ...prev, ...patch }));
   const zoom = layout.pdfZoom;
   const setZoom = (pdfZoom: PdfZoom) => setLayout({ pdfZoom });
@@ -1815,6 +1822,14 @@ function Editor({ projectId }: { projectId: string }) {
    * The document Compile builds (compileTarget), or another once. fresh: its kept build files are cleared first.
    * auto: auto compile started it. Says how it ended ('busy': another compile was running).
    */
+  /** The Mermaid blocks of a Markdown document and of the files its include: names, drawn; warnings where they can't be. */
+  const drawMarkdownMermaid = async (doc: string) => {
+    const main = await readText(doc).catch(() => '');
+    const files = [doc, ...markdownIncludes(main, doc).filter((path) => fileSet.has(path))];
+    const drawn = await Promise.all(files.map(async (path) => drawMermaid(projectId, path, path === doc ? main : await readText(path)).catch(() => [])));
+    return drawn.flat();
+  };
+
   const runCompile = async (doc = compileTarget, opts: { fresh?: boolean; auto?: boolean } = {}): Promise<CompileState['state'] | 'busy'> => {
     if (compilingRef.current) return 'busy';
     if (!doc) {
@@ -1845,6 +1860,8 @@ function Editor({ projectId }: { projectId: string }) {
     try {
       await saveNow();
       const startedAt = Date.now();
+      // a Markdown document's ```mermaid blocks drawn first, with the composer's Mermaid, for pandoc to put in as pictures
+      const drawn = /\.(md|markdown)$/i.test(doc) ? await drawMarkdownMermaid(doc) : [];
       const res = await compileProject({
         projectId,
         mainFile: doc,
@@ -1883,7 +1900,7 @@ function Editor({ projectId }: { projectId: string }) {
       const problem = checkpointProblem(res.checkpoint, skippedToldRef.current);
       if (problem && settings.checkpointNotice) notify(problem, 'error');
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
-      setCompileDiagnostics(res.errors ?? null);
+      setCompileDiagnostics(drawn.length ? [...(res.errors ?? []), ...drawn] : (res.errors ?? null));
       setCompileNotice(res.code ? { code: res.code, version: res.version, from: res.from, builtIn: res.builtIn } : null);
       setCompileGenerated(res.generated ?? null);
       // an install from Logs' notice changes what the compile menu can offer
@@ -3741,8 +3758,8 @@ function Editor({ projectId }: { projectId: string }) {
               <button className="icon-btn float-button hue-green" title="Draw a diagram" aria-label="Draw a diagram" onClick={() => drawDiagram()}>
                 <Icon name="pencil" />
               </button>
-              {/* aria-disabled rather than disabled, so its tooltip still says why */}
-              <button
+              {/* aria-disabled rather than disabled, so its tooltip still says why; not in Markdown, which never has it */}
+              {(docKind(activePath) ?? docKind(mainFile)) !== 'markdown' && <button
                 className="icon-btn float-button hue-pink"
                 title={jyutpingOk ? 'Jyutping' : 'Jyutping works in LaTeX documents only'}
                 aria-label="Jyutping"
@@ -3750,7 +3767,7 @@ function Editor({ projectId }: { projectId: string }) {
                 onClick={() => void openJyutping()}
               >
                 <Icon name="custom.jyut" />
-              </button>
+              </button>}
               <span className="spacer" />
               <button className={`icon-btn hue-purple ${composerOpen ? 'active' : ''}`} title={withShortcut(settings.shortcuts, 'Assistant', 'assistant')} aria-label="Assistant" aria-pressed={composerOpen} onClick={toggleComposer}>
                 <Icon name="sparkles" />
@@ -3971,6 +3988,11 @@ function Editor({ projectId }: { projectId: string }) {
                 {/* always mounted, so screen readers hear each change */}
                 {compileStatus}
                 <span className="spacer" data-tauri-drag-region />
+                {docKind(activePath) === 'markdown' && (
+                  <button className={`icon-btn ${mdPreview ? 'active' : ''}`} title={mdPreview ? 'Show the PDF' : 'Live preview'} aria-label="Live preview" aria-pressed={mdPreview} onClick={() => setMdPreview((on) => !on)}>
+                    <Icon name="eye" />
+                  </button>
+                )}
                 <button
                   className={`icon-btn ${layout.pdfSidebarOpen ? 'active' : ''}`}
                   title="Document outline"
@@ -4024,7 +4046,13 @@ function Editor({ projectId }: { projectId: string }) {
                 {viewSwitcher}
               </div>
 
+              {mdPreview && docKind(activePath) === 'markdown' && (
+                <Suspense fallback={<div className="md-preview" />}>
+                  <MarkdownPreview projectId={projectId} doc={activePath} text={editorValue} dark={dark} view={() => viewRef.current} />
+                </Suspense>
+              )}
               <div
+                hidden={mdPreview && docKind(activePath) === 'markdown'}
                 className={`pdf-body ${pdf && layout.pdfSidebarOpen ? 'with-sidebar' : ''} ${ownPage && !dark ? 'own-page' : ''}`}
                 // a PDF with its own page colour shows as it is, not tinted again
                 style={ownPage && !dark ? ({ '--pdf-own-page': PDF_PAGE_FILLS[ownPage] } as CSSProperties) : undefined}
