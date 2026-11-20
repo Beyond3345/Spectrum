@@ -28,6 +28,7 @@ import {
   getFileIfChanged,
   getEngines,
   getProjectSettings,
+  getProjectStats,
   getProjectTree,
   getSyncSettings,
   getTrust,
@@ -151,7 +152,8 @@ import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
-import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
+import { numberTypstOutline, parseMarkdownOutline, parseTypstOutline, typstDocumentOutline } from '../editor/outlines';
+import type { TypstNumbers } from '../editor/outlines';
 import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
 import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
@@ -3054,8 +3056,8 @@ function Editor({ projectId }: { projectId: string }) {
   const held = heldRef.current.get(activePath);
   const outlineFile = isDocument(activePath) ? activePath : mainFile;
   const outlineText = outlineFile === activePath ? editorValue : filesRef.current.get(outlineFile) || '';
-  // Typst's headings, with those in the files it includes one level deep; and the project's labels to complete after @
-  const [typstOutline, setTypstOutline] = useState<(OutlineItem & { file: string })[]>([]);
+  // Typst's headings and figures, with those in the files it includes; and the project's labels to complete after @
+  const [typstOutline, setTypstOutline] = useState<{ root: string; items: (OutlineItem & { file: string })[] }>({ root: '', items: [] });
   const [typstLabels, setTypstLabels] = useState<string[]>([]);
   const typstLabelsRef = useRef<string[]>([]);
   typstLabelsRef.current = typstLabels;
@@ -3076,36 +3078,56 @@ function Editor({ projectId }: { projectId: string }) {
       live = false;
     };
   }, [includeFileSet]);
+  // the whole Typst document the open file is part of (the main file's, or the open file's when no document includes
+  // it), across its includes, with the numbers of its last compile once it has one
+  const [typstNumbers, setTypstNumbers] = useState<{ doc: string; numbers: TypstNumbers } | null>(null);
   useEffect(() => {
     if (docKind(outlineFile) !== 'typst') {
-      setTypstOutline([]);
+      setTypstOutline({ root: '', items: [] });
       return;
     }
     let live = true;
-    const own = parseTypstOutline(outlineText);
-    const includes = [...outlineText.matchAll(/^\s*#include\s+"([^"]+)"/gm)]
-      .map((m) => ({ line: outlineText.slice(0, m.index).split('\n').length, path: includedPath(outlineFile, m[1]) }))
-      .filter(({ path }) => fileSet.has(path));
-    Promise.all(includes.map(async ({ line, path }) => ({ line, path, items: parseTypstOutline(await ensureFileContent(path).catch(() => '')) }))).then((parts) => {
-      if (!live) return;
-      const entries = own.map((item) => ({ key: item.line, item: { ...item, file: outlineFile } }));
-      for (const part of parts) part.items.forEach((item, index) => entries.push({ key: part.line + (index + 1) / (part.items.length + 1), item: { ...item, file: part.path } }));
-      entries.sort((a, b) => a.key - b.key);
-      setTypstOutline(entries.map(({ item }) => item));
-    });
+    const read = (path: string) => (path === activePath ? Promise.resolve(editorValue) : ensureFileContent(path));
+    const timer = window.setTimeout(async () => {
+      const seen = new Set<string>();
+      const root = docKind(docRoot) === 'typst' ? docRoot : outlineFile;
+      let items = await typstDocumentOutline(root, fileSet, read, seen);
+      let shown = root;
+      if (!seen.has(outlineFile)) {
+        shown = outlineFile;
+        items = await typstDocumentOutline(outlineFile, fileSet, read);
+      }
+      if (live) setTypstOutline({ root: shown, items });
+    }, 300);
     return () => {
       live = false;
+      window.clearTimeout(timer);
     };
-  }, [outlineFile, outlineText, fileSet]);
+  }, [docRoot, outlineFile, editorValue, activePath, fileSet]);
+  // Typst's eval of the compiled document lays it out again, so not at every compile of As you type: once they pause
+  useEffect(() => {
+    const doc = typstOutline.root;
+    if (!doc || !layout.outlineOpen) return;
+    let live = true;
+    const timer = window.setTimeout(() => {
+      getProjectStats(projectId, doc, undefined, settings.compileDefaults.typstVersion || undefined)
+        .then((stats) => live && setTypstNumbers({ doc, numbers: stats }))
+        .catch(() => undefined);
+    }, typstNumbers ? 2000 : 0);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [projectId, typstOutline.root, compileLog, layout.outlineOpen]);
   const parsedOutline = useMemo(() => {
-    if (docKind(outlineFile) === 'typst') return typstOutline;
+    if (docKind(outlineFile) === 'typst') return numberTypstOutline(typstOutline.items, typstNumbers?.doc === typstOutline.root ? typstNumbers.numbers : null);
     const items = docKind(outlineFile) === 'markdown' ? parseMarkdownOutline(outlineText) : parseOutline(outlineText);
     return items.map((item) => ({ ...item, file: outlineFile }));
-  }, [outlineText, outlineFile, typstOutline]);
+  }, [outlineText, outlineFile, typstOutline, typstNumbers]);
   // TexLab's, across the files the document pulls in, once it has one that takes in the open file
   const projectOutline = symbolOutline?.root === docRoot && symbolOutline.items.length && (!isTex(activePath) || symbolOutline.seen.has(activePath)) ? symbolOutline : null;
   const outline = projectOutline?.items ?? parsedOutline;
-  const outlineName = projectOutline ? docRoot : outlineFile;
+  const outlineName = projectOutline ? docRoot : docKind(outlineFile) === 'typst' ? typstOutline.root || outlineFile : outlineFile;
   const outlineBase = Math.min(...outline.map((o) => o.level), 9);
   const currentHeading = outline.filter((o) => o.file === activePath && o.pos <= selectionRange[0]).pop();
 

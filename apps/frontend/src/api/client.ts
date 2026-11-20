@@ -256,7 +256,9 @@ export interface ProjectStats {
   /** a file the document reads is newer than the kept .aux */
   stale?: boolean;
   /** the contents' entries from the kept .aux files, in order; number '' for an unnumbered one */
-  headings?: { level: string; number: string; page: string }[];
+  headings?: { level: string; number: string; page: string; title?: string }[];
+  /** a Typst document's figures in order, their numbers as printed */
+  figures?: { supplement: string; number: string; page: string; caption: string }[];
 }
 
 /** doc: the project-relative document; sent as mainFile too, which texcount counts from (looked for in texFolder first) */

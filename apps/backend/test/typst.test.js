@@ -283,6 +283,33 @@ test('labels in a file an included chapter includes still get their numbers and 
   assert.deepEqual(labels['tab:deep'], { number: '1', page: '1' });
 });
 
+test('a Typst document’s headings and figures come with their numbers as printed, for the outline', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const source = [
+    '#set heading(numbering: "1.1")',
+    '#let by-section(pattern) = n => numbering(pattern, counter(heading).get().first(), n)',
+    '#set figure(numbering: by-section("1.1"))',
+    '#set math.equation(numbering: "(1)")',
+    '= One',
+    '= Two',
+    '#figure(table(columns: 1, [x]), caption: [The *first* table]) <tab:a>',
+    '$ x $ <eq:x>',
+    '#set heading(numbering: "A.1")',
+    '#counter(heading).update(0)',
+    '= Extra <app:a>',
+    ''
+  ].join('\n');
+  const project = await projectWith('typst-outline', source);
+  const result = await runCompile({ projectId: project.id, mainFile: 'main.typ', engine: 'auto' });
+  assert.equal(result.ok, true, result.error);
+  const { headings, figures, labels } = await typstDocumentLabels(await getProjectRoot(project.id), 'main.typ');
+  assert.deepEqual(headings.map((h) => [h.number, h.title]), [['1', 'One'], ['2', 'Two'], ['A', 'Extra']]);
+  assert.deepEqual(figures, [{ supplement: 'Table', number: '2.1', page: '1', caption: 'The first table' }]);
+  assert.equal(labels['tab:a'].number, '2.1');
+  assert.equal(labels['eq:x'].number, '1');
+  assert.equal(labels['app:a'].number, 'A');
+});
+
 test('an unpinned Typst document reads its numbers with the app’s default version', async (t) => {
   if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
   const project = await projectWith('typst-fallback', '#set heading(numbering: "1.")\n= One <sec:one>\n');
