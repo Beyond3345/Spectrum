@@ -70,13 +70,15 @@ export function helloName(b) {
 const REFUSED = 'Spectrum’s isolation does not let this program reach that host. The user can allow it in Spectrum.';
 
 /**
- * Opens a gate: { port, close }. hosts(): the list now, read at each connection so a host the user allows works at
- * once; onRefused(host): a host off the list was asked for.
+ * Opens a gate: { port, close, asked }. hosts(): the list now, read at each connection so a host the user allows works
+ * at once; onRefused(host): a host off the list was asked for; asked(): how many times the gate was asked for anything.
  */
 export async function openGate({ hosts, onRefused }) {
   const tunnels = new Set();
-  const server = http.createServer((req, res) => { res.writeHead(403, { Connection: 'close' }).end('Spectrum’s isolation allows HTTPS only.\n'); });
+  let asked = 0;
+  const server = http.createServer((req, res) => { asked++; res.writeHead(403, { Connection: 'close' }).end('Spectrum’s isolation allows HTTPS only.\n'); });
   server.on('connect', async (req, client, head) => {
+    asked++;
     client.on('error', () => {});
     const refuse = (status, why) => client.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${why}\n`);
     const [, name = '', port] = /^([^:]*):(\d+)$/.exec(req.url || '') || [];
@@ -130,6 +132,7 @@ export async function openGate({ hosts, onRefused }) {
   server.unref();
   return {
     port: server.address().port,
+    asked: () => asked,
     close() { server.close(); server.closeAllConnections(); for (const end of [...tunnels]) end(); }
   };
 }

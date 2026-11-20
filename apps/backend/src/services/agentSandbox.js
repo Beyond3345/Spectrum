@@ -121,6 +121,7 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
   if (gate) {
     // for a program it starts with an environment of its own choosing (Spectrum's tools server)
     child.gateEnv = proxyEnv(gate.port);
+    child.gateAsked = gate.asked;
     child.once('close', gate.close);
     child.once('error', gate.close);
   }

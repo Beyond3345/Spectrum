@@ -280,6 +280,8 @@ test('a session’s agent held to its list: Spectrum’s tools reach the scholar
     await run.task;
     assert.deepEqual(network(), [{ host: 'unlisted.test' }]);
 
+    assert.deepEqual(run.events.filter((e) => e.type === 'notice'), [], 'an agent that asked the gate for something is not told of the list');
+
     // allowed for the agent: reached on the next try by the same running agent, which is told
     assert.equal(await allowSessionHost(run, 'unlisted.test'), 'unlisted.test');
     assert.deepEqual(network().at(-1), { host: 'unlisted.test', allowed: true });
@@ -292,6 +294,24 @@ test('a session’s agent held to its list: Spectrum’s tools reach the scholar
     assert.match(JSON.stringify(entries.filter((q) => q.method === 'session/prompt').at(-1).params.prompt), /The user now allows you to reach unlisted\.test/);
     assert.equal(asked.at(-1), 'unlisted.test/');
   } finally { await standIn.close(); }
+});
+
+test('a listed agent that asks the gate for nothing is told once where Any host is', { skip, timeout: 60000 }, async () => {
+  const { createProject } = await import('../src/services/projectService.js');
+  const { newAgentRun, getAgentRun, promptAgent } = await import('../src/services/agentSessionService.js');
+  const project = await createProject({ name: 'Quiet fixture' });
+  await fs.writeFile(path.join(project.path, 'main.tex'), 'Text.\n');
+  const quiet = async (network) => {
+    await saveAgentConfig('qoder', { command: process.execPath, args: [path.join(fixtures, 'acp-tools-agent.mjs')], runtimePaths: [fixtures], network });
+    const run = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'qoder' })).id);
+    await run.ready;
+    for (let turn = 0; turn < 2; turn++) { await promptAgent(run, 'use the tools'); await run.task; }
+    return run.events.filter((e) => e.type === 'notice').map((e) => e.data.message);
+  };
+  const told = await quiet({ mode: 'hosts', hosts: [] });
+  assert.equal(told.length, 1, JSON.stringify(told));
+  assert.match(told[0], /^Qoder is held to its list of hosts and asked for none of them in this task\..*choose Any host for it in Settings › Agents\.$/);
+  assert.deepEqual(await quiet({ mode: 'any' }), []);
 });
 
 // a stdio MCP server by hand, with one tool that asks a host for a page

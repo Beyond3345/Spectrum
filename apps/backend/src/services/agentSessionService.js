@@ -955,7 +955,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
     r.forceNew = true;
   }
   state(r, 'running');
-  let outcome;
+  let outcome, unreached = false;
   const task = (async () => {
     // kept from the start, should Spectrum close, Stop be pressed or the agent fail to start
     const asked = emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
@@ -995,6 +995,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       r.notes = [];
       r.openedNew = r.freshSession = false;
       r.turnCount++;
+      unreached = r.child?.gateAsked?.() === 0;
       emit(r, 'complete', result);
       // the turn's tokens, where the agent counts them: { turn: { totalTokens, inputTokens, outputTokens, … } }
       if (result.usage) emit(r, 'usage', { turn: result.usage });
@@ -1003,6 +1004,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       // an agent that stopped by itself is told of by its exit, with its last words: wait a moment for that, so the
       // protocol's own word for a closed pipe doesn't take its place
       const child = r.child;
+      unreached = child?.gateAsked?.() === 0;
       if (!r.cancelled && child?.pid && child.exitCode === null && child.signalCode === null) await timeout(new Promise((resolve) => child.once('exit', resolve)), 500, 'still running').catch(() => {});
       const told = r.status === 'failed' && child && (child.exitCode !== null || child.signalCode !== null);
       // ACP's "authentication required": the agent has no key or login inside isolation, which its own words don't say how to give
@@ -1028,6 +1030,12 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
         if (r.mode === 'review') r.notes.push(`Spectrum couldn’t take your changes for review: ${err.message} Put that right so the user can review your work.`);
       }
       for (const todo of await takeSuggestions(r).catch(() => [])) emit(r, 'todo', todo);
+      // held to its list, an agent that works asks the gate for its model at least: one that asked for nothing either
+      // ignores the proxy variables or never got that far, and the user is told once where the choice is
+      if (unreached && !r.cancelled && !r.toldUnreached) {
+        r.toldUnreached = true;
+        emit(r, 'notice', { message: `${profileFor(r.agentId).name} is held to its list of hosts and asked for none of them in this task. If it could not reach its model, it may not work through the list: choose Any host for it in Settings › Agents.` });
+      }
       // the turn's end is told once its changes are in and the next prompt can be taken
       r.busy = false;
       state(r, ...outcome);
