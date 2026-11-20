@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'child_process';
+import { realpath } from 'fs/promises';
 import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
 import { findExecutable, texPath } from '../services/compileService.js';
 import { resolvePythonExecutable } from '../services/plotService.js';
@@ -26,6 +27,9 @@ export function registerSystemRoutes(fastify) {
         problems[name] = `Installed but not working${detail ? `: ${detail.slice(0, 160)}` : ''}`;
       }
     }
+    // where the TeX found really is (MacTeX's /Library/TeX/texbin links into /usr/local/texlive/2026), for Get started
+    const tex = tools.pdflatex || tools.latexmk || tools.xelatex || tools.lualatex;
+    const texReal = tex ? await realpath(tex).catch(() => tex) : null;
     const python = resolvePythonExecutable();
     const probe = spawnSync(python, ['-c', 'import matplotlib'], { timeout: 20_000, windowsHide: true });
     // for the DDGS web search provider
@@ -35,6 +39,7 @@ export function registerSystemRoutes(fastify) {
       dataDir: DATA_DIR,
       projectsDir: PROJECTS_DIR,
       tools,
+      texReal,
       problems,
       python: { path: python, found: !probe.error, matplotlib: probe.status === 0, ddgs },
       platform: process.platform

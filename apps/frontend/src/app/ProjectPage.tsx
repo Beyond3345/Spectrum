@@ -45,6 +45,7 @@ import type { MenuItems } from './Menu';
 import Select from './Select';
 import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
+import GetStarted from './GetStarted';
 import type { Section as SettingsSection } from './SettingsSheet';
 import GitHubView from './GitHubView';
 import { linkInstead, linkWithPreview, offerMove, pullSummary, withDeletionCheck } from './github';
@@ -136,8 +137,10 @@ type Prefs = {
   home: Record<string, Partial<HomeView>>;
   /** how large icons are, 1 being Goodnotes' size */
   iconSize: number;
+  /** Get started was hidden */
+  getStartedHidden: boolean;
 };
-const DEFAULT_PREFS: Prefs = { layout: 'list', sortKey: 'date', dateField: 'updatedAt', sortDir: 'desc', sidebarCollapsed: false, tagsOpen: true, closedFolders: [], home: {}, iconSize: 1 };
+const DEFAULT_PREFS: Prefs = { layout: 'list', sortKey: 'date', dateField: 'updatedAt', sortDir: 'desc', sidebarCollapsed: false, tagsOpen: true, closedFolders: [], home: {}, iconSize: 1, getStartedHidden: false };
 
 function loadPrefs(): Prefs {
   try {
@@ -890,7 +893,7 @@ export default function ProjectPage() {
       <div className="empty-state">
         <Icon name="doc.text" size={40} />
         <div className="empty-title">{projects.length ? 'Everything here is archived' : 'No projects yet'}</div>
-        <div className="empty-text">Start a new paper, or open a folder that already holds your LaTeX files.</div>
+        <div className="empty-text">Start a new paper, or open a folder that already holds your LaTeX, Typst or Markdown files.</div>
         <div className="empty-actions">
           <button className="btn inverse hue-blue" onClick={() => setSheet({ kind: 'new', template: '', folder: here })}><Icon name="plus" /> New project…</button>
           <button className="btn" onClick={openExisting}><Icon name="folder" /> Open existing folder…</button>
@@ -1093,6 +1096,15 @@ export default function ProjectPage() {
 
         <div className="panel-body" style={{ '--tile': `${Math.round(116 * prefs.iconSize)}px` } as CSSProperties}>
           {view === 'all' && notice && <MoveNotice notice={notice} onMove={moveHere} onDismiss={dismissNotice} />}
+          {(view === 'all' || (view === 'home' && !homeAt)) && loaded && !query.trim() && prefs.getStartedHidden !== true && (
+            <GetStarted
+              settings={settings}
+              projects={projects.length}
+              onSettings={(section) => setSheet({ kind: 'settings', section })}
+              onTemplates={() => setSheet({ kind: 'gallery', folder: here })}
+              onHide={() => updatePrefs({ getStartedHidden: true })}
+            />
+          )}
           {view === 'github' ? (
             <GitHubView
               key={settingsClosed}

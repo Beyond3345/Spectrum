@@ -1941,6 +1941,8 @@ export interface SystemCheck {
   dataDir: string;
   projectsDir: string;
   tools: Record<string, string | null>;
+  /** the TeX found (pdflatex, else latexmk, xelatex or lualatex) with its links followed, or null for none */
+  texReal?: string | null;
   /** tools that are on PATH but fail to run, with a short reason */
   problems?: Record<string, string>;
   python: { path: string; found: boolean; matplotlib: boolean; ddgs: boolean };
