@@ -3,6 +3,7 @@ import { runToolAgent, languageLine, llmErrorMessage, namedMainFile, projectCont
 import { getProjectRoot } from '../services/projectService.js';
 import { getRun, runOfThread, runSnapshot, startTurn, steerRun, stopRun, subscribeRun } from '../services/agentRunService.js';
 import { approveInstructions, instructionsStatus } from '../services/agentInstructions.js';
+import { MAX_MEMORY_CHARS, MAX_MEMORY_LINES, addMemory, deleteMemory, editMemory, memoryLines } from '../services/agentMemory.js';
 import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, untrusted } from '../utils/outsideText.js';
 
@@ -70,6 +71,18 @@ export function registerAgentRoutes(fastify) {
     await approveInstructions(root, String(req.body?.hash || ''));
     return { ok: true, ...(await instructionsStatus(root)) };
   });
+
+  // What the Spectrum agent remembers for the project (agentMemory.js): the lines, and the user's add, edit and delete.
+  // Each answers with the lines as they are now.
+  const memory = async (req, fn) => {
+    const root = await getProjectRoot(req.params.id);
+    if (fn) await fn(root);
+    return { ok: true, lines: await memoryLines(root), max: { lines: MAX_MEMORY_LINES, chars: MAX_MEMORY_CHARS } };
+  };
+  fastify.get('/api/projects/:id/agent-memory', (req) => memory(req));
+  fastify.post('/api/projects/:id/agent-memory', (req) => memory(req, (root) => addMemory(root, req.body?.text)));
+  fastify.put('/api/projects/:id/agent-memory/:line', (req) => memory(req, (root) => editMemory(root, req.params.line, req.body?.text)));
+  fastify.delete('/api/projects/:id/agent-memory/:line', (req) => memory(req, (root) => deleteMemory(root, req.params.line)));
 
   fastify.post('/api/agent/run', async (req, res) => {
     const {

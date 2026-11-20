@@ -3,9 +3,8 @@
 // its text is outside text until the user has seen it: it reaches a prompt only while its content is the content the
 // user approved on this computer. The approval is the text's hash, kept in this computer's cache for the project and
 // never in the project's folder, where it could arrive with the file. Saving the file in Spectrum's editor (the user's
-// own typing, a line they added from a suggestion's card) approves what was saved; anything else that changes it (a
-// pull, a sync from another computer, an agent working in the folder itself, an agent's change applied in the review)
-// asks again: text an agent wrote must not become the user's standing instructions by an Apply all.
+// own typing) approves what was saved; anything else that changes it (a pull, a sync from another computer, an agent
+// working in the folder itself, an agent's change applied in the review) asks again: text an agent wrote must not become the user's standing instructions by an Apply all.
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';

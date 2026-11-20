@@ -16,7 +16,8 @@ import { readItems } from '../routes/todos.js';
 import { TOOLS, buildErrors, checkedInput, projectMap, suggestedTodo, toolSpec } from '../mcp/tools.js';
 import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, SKILL_RULE, skillText, untrusted } from '../utils/outsideText.js';
-import { INSTRUCTIONS_FILE, instructionsBlock } from './agentInstructions.js';
+import { instructionsBlock } from './agentInstructions.js';
+import { MAX_MEMORY_CHARS, memoryBlock } from './agentMemory.js';
 
 const MAX_STEPS = 25;
 // what one read_file call returns unless it asks for less or more; a longer file is read on with offset
@@ -38,8 +39,7 @@ const MAX_SKILL_LIST = 6000;
 // a plan the user approves: its steps, each short enough for a line of the plan strip
 const MAX_PLAN_STEPS = 12;
 const MAX_PLAN_STEP = 300;
-// a line the agent suggests for AGENTS.md, and how many of them one turn may put forward
-const MAX_INSTRUCTION = 300;
+// how many lines to remember one turn may put forward (each as long as the memory keeps)
 const MAX_SUGGESTED = 3;
 
 // chatCompletion already words its errors for people
@@ -299,15 +299,15 @@ const OWN_TOOLS = [
     show: (answer) => ({ text: answer })
   },
   {
-    name: 'suggest_instruction',
-    description: `Suggest one short line for the project’s ${INSTRUCTIONS_FILE}, when the user states a lasting rule or preference for this project (spelling, style, what never to touch). It is not added: the user sees it as a card and adds it if they want.`,
-    schema: { text: short(MAX_INSTRUCTION).refine((text) => !/[\r\n]/.test(text), 'one line') },
+    name: 'suggest_memory',
+    description: 'Suggest one short line for Spectrum to remember for this project, when the user states a lasting rule or preference (spelling, style, what never to touch). It is not kept: the user sees it as a card and adds it to the project’s memory if they want.',
+    schema: { text: short(MAX_MEMORY_CHARS).refine((text) => !/[\r\n]/.test(text), 'one line') },
     readOnly: false,
-    run: (ctx, { text }) => ctx.suggestInstruction(text)
+    run: (ctx, { text }) => ctx.suggestMemory(text)
   }
 ];
 // offered only where there is a thread to answer in
-const JOB_TOOLS = ['ask_user', 'propose_plan', 'step_done', 'suggest_instruction'];
+const JOB_TOOLS = ['ask_user', 'propose_plan', 'step_done', 'suggest_memory'];
 // what a Plan turn has besides the tools that only read
 const PLAN_TOOLS = ['ask_user', 'propose_plan'];
 
@@ -349,7 +349,7 @@ const shownOf = (show) => show && {
  * approved plan's steps ([{ content, status }]), which step_done ticks ('plan' { entries }, and `plan` in the result).
  * eachFile (Approve, ask before each file): the turn ends before it changes a second new file, with
  * ask { kind: 'next', path }, so the user reviews one file's changes before the agent builds on them.
- * suggest_instruction puts a line forward for AGENTS.md ('instruction' { text }, and `instructions` in the result).
+ * suggest_memory puts a line forward for the project's memory ('instruction' { text }, and `instructions` in the result).
  */
 export async function runToolAgent({
   projectId,
@@ -573,11 +573,11 @@ export async function runToolAgent({
       const next = entries.findIndex((e) => e.status !== 'completed');
       return `Step ${n} of ${entries.length} is ticked: ${entries[n - 1].content}${next < 0 ? '\nEvery step is done: finish with a short summary.' : `\nNext: ${next + 1}. ${entries[next].content}`}`;
     },
-    suggestInstruction: (text) => {
+    suggestMemory: (text) => {
       if (suggested.length >= MAX_SUGGESTED) throw new Error(`At most ${MAX_SUGGESTED} suggestions a turn.`);
       suggested.push(text);
       say('instruction', { text });
-      return `Suggested. The user sees it as a card and adds it to ${INSTRUCTIONS_FILE} if they want.`;
+      return 'Suggested. The user sees it as a card and adds it to the project’s memory if they want.';
     },
     // the Spectrum agent's own side
     path: projectPath,
@@ -606,6 +606,8 @@ export async function runToolAgent({
   const toolSpecs = offered.map(toolSpec);
   // the user's own file of standing instructions for this project, once they have approved it as it is
   const projectRules = projectRoot && !readOnly ? await instructionsBlock(projectRoot).catch(() => '') : '';
+  // and what they chose for Spectrum to remember there: last, since it changes only when they add or edit a line
+  const remembered = projectRoot && !readOnly ? await memoryBlock(projectRoot).catch(() => '') : '';
   const system = [readOnly ? [
     'You are a helpful writing assistant in read-only chat mode. Answer normally; do not propose edits, patches or JSON.',
     hasDocument(activePath, mainFile) ? languageLine(language) : '',
@@ -630,13 +632,13 @@ export async function runToolAgent({
       'For a task that touches more than two files or rewrites a section, call propose_plan first and change nothing until the user approves it; do a smaller task straight away.',
       'When the request is unclear and a wrong guess would waste the work, ask with ask_user; otherwise decide, and say what you assumed.',
       'While you work from an approved plan, call step_done as each step is finished.',
-      `When the user states a lasting rule for this project, offer it with suggest_instruction, for their ${INSTRUCTIONS_FILE}.`
+      'When the user states a lasting rule or preference for this project, offer it with suggest_memory, for Spectrum to remember.'
     ] : []),
     'Be concise. Provide a short summary in the final response.',
     DATA_RULE,
     // said once: a skill picked with / brings the line with it
     skills.length && !instructions.includes(SKILL_RULE) ? SKILL_RULE : ''
-  ].filter(Boolean).join(' '), skillsList(skills), instructions, projectRules].filter(Boolean).join('\n\n');
+  ].filter(Boolean).join(' '), skillsList(skills), instructions, projectRules, remembered].filter(Boolean).join('\n\n');
 
   // The conversation: the job's own from its earlier turns, while it is the same model's and still fits; else the
   // thread's last texts, as before there were jobs.
