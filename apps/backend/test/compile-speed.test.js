@@ -3,12 +3,13 @@
 // throwaway data and projects folders. Run: npm test
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { promises as fs, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { promises as fs, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-speed-')));
-const dataDir = path.join(tmp, 'data');
+// a space in it, as the app's own data folder has on a Mac (Application Support): the kept folders are in there
+const dataDir = path.join(tmp, 'Application Support', 'data');
 Object.assign(process.env, {
   SPECTRUM_DATA_DIR: dataDir,
   SPECTRUM_PROJECTS_DIR: path.join(tmp, 'projects'),
@@ -16,12 +17,13 @@ Object.assign(process.env, {
   SPECTRUM_TEMPLATE_SEED_DIR: ''
 });
 const { createProject } = await import('../src/services/projectService.js');
-const { findExecutable, runCompile } = await import('../src/services/compileService.js');
+const { findExecutable, runCompile, stopCompile } = await import('../src/services/compileService.js');
+const { setTrusted } = await import('../src/services/trustService.js');
 
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 const tools = {};
-for (const name of ['pdflatex', 'xelatex', 'biber', 'latexmk']) tools[name] = await findExecutable(name);
+for (const name of ['pdflatex', 'xelatex', 'biber', 'bibtex', 'latexmk']) tools[name] = await findExecutable(name);
 const needs = (...names) => names.filter((name) => !tools[name]).map((name) => `needs ${name}`)[0] || false;
 
 const newProject = (files) => createProject({
@@ -124,4 +126,145 @@ test('a .bib in the main file’s folder or the project’s is read where Biber 
   await write(p, 'paper/refs.bib', entry('knuth', 'Another Book'));
   assert.equal(biberRuns((await run()).log), 1);
   assert.equal(biberRuns((await run()).log), 0);
+});
+
+// ─── latexmk's own folder ───
+
+const mk = (p, options = {}) => compile(p, { engine: 'latexmk', ...options });
+const mkFolder = (p) => path.join(dataDir, 'cache', p.id, 'build-files', 'main.tex', 'latexmk');
+const NO_PASS = /Nothing this document reads has changed, so latexmk ran no pass/;
+const article = (body, preamble = '') => `\\documentclass{article}\n${preamble}\\begin{document}\n\\tableofcontents\n\\section{One}\\label{one}\n${body}\n\\end{document}\n`;
+const natbib = (body) => article(`${body} \\cite{knuth}\n\\bibliographystyle{plain}\n\\bibliography{refs}`);
+
+test('latexmk builds in a folder it keeps: nothing again when nothing changed, one pass for an edit, BibTeX for a changed .bib', { skip: needs('latexmk', 'pdflatex', 'bibtex') }, async () => {
+  const p = await newProject({ 'main.tex': natbib('Words. \\rule{2\\textwidth}{1pt}'), 'refs.bib': entry('knuth', 'The TeXbook') });
+  const first = await mk(p);
+  assert.equal(first.status, 0, first.log);
+  assert.ok(passes(first.log) >= 3, 'a full build');
+  assert.match(first.log, /This is BibTeX/);
+  const pdf = await fs.readFile(path.join(p.path, 'main.pdf'));
+
+  // nothing changed: no pass, the same PDF, and the last pass's warnings still in the log for the editor
+  const second = await mk(p);
+  assert.equal(second.status, 0, second.log);
+  assert.match(second.log, NO_PASS);
+  assert.doesNotMatch(second.log.split('The last pass said:')[0], /This is pdfTeX/);
+  assert.match(second.log, /Overfull \\hbox/);
+  assert.ok(pdf.equals(await fs.readFile(path.join(p.path, 'main.pdf'))));
+  assert.ok(pdf.equals(Buffer.from(second.pdf, 'base64')));
+
+  // an edit to the text: one pass, no BibTeX
+  await write(p, 'main.tex', natbib('Other words. \\rule{2\\textwidth}{1pt}'));
+  const edit = await mk(p);
+  assert.equal(edit.status, 0, edit.log);
+  assert.equal(passes(edit.log), 1, edit.log);
+  assert.doesNotMatch(edit.log, /This is BibTeX/);
+  assert.ok(!pdf.equals(Buffer.from(edit.pdf, 'base64')), 'a new PDF');
+
+  // a changed .bib, same size: BibTeX and the passes after it
+  await write(p, 'refs.bib', entry('knuth', 'The TeXbooj'));
+  const bib = await mk(p);
+  assert.match(bib.log, /This is BibTeX/);
+  assert.ok(passes(bib.log) >= 1);
+
+  // a new heading: the contents need a second pass, which latexmk sees
+  await write(p, 'main.tex', natbib('Other words. \\section{Two}'));
+  assert.ok(passes((await mk(p)).log) >= 2);
+
+  // from scratch starts from nothing
+  const fresh = await mk(p, { fresh: true });
+  assert.ok(passes(fresh.log) >= 3, fresh.log);
+  assert.match(fresh.log, /This is BibTeX/);
+  assert.ok(existsSync(path.join(mkFolder(p), '.complete')));
+  assert.ok(!existsSync(mkFolder(p) + '.last'));
+  // SyncTeX and the .aux other documents read are kept as for every engine, and latexmk's folder still has its own
+  assert.ok(existsSync(path.join(dataDir, 'cache', p.id, 'aux-files', 'main.tex', 'main.aux')));
+  assert.ok(existsSync(path.join(mkFolder(p), 'main.aux')));
+  assert.ok(existsSync(path.join(mkFolder(p), 'main.synctex.gz')));
+});
+
+test('latexmk’s folder is built on only as a build without errors left it: an error, a Stop and a draft leave the last such build', { skip: needs('latexmk', 'pdflatex') }, async () => {
+  const p = await newProject({ 'main.tex': article('Words.') });
+  assert.equal((await mk(p)).status, 0);
+  const good = await fs.readFile(path.join(mkFolder(p), 'main.aux'), 'utf8');
+
+  // an error: the PDF of that build is shown, and the folder goes back to the last good build
+  await write(p, 'main.tex', article('Words. \\section{Broken}\\undefinedthing'));
+  const broken = await mk(p);
+  assert.notEqual(broken.status, 0);
+  assert.equal(await fs.readFile(path.join(mkFolder(p), 'main.aux'), 'utf8'), good);
+  assert.ok(!existsSync(mkFolder(p) + '.last'));
+  // and its fix is one build on from there, with the new heading in the contents
+  await write(p, 'main.tex', article('Words. \\section{Mended}'));
+  const mended = await mk(p);
+  assert.equal(mended.status, 0, mended.log);
+  assert.match(await fs.readFile(path.join(mkFolder(p), 'main.toc'), 'utf8'), /Mended/);
+  assert.doesNotMatch(await fs.readFile(path.join(mkFolder(p), 'main.toc'), 'utf8'), /Broken/);
+
+  // a Stop part way through a pass
+  const kept = await fs.readFile(path.join(mkFolder(p), 'main.aux'), 'utf8');
+  await write(p, 'main.tex', article('Words. \\section{Stopped}\\loop\\iftrue\\repeat'));
+  const running = mk(p, { compileId: 'stop-latexmk' });
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  stopCompile('stop-latexmk');
+  assert.equal((await running).stopped, true);
+  assert.equal(await fs.readFile(path.join(mkFolder(p), 'main.aux'), 'utf8'), kept);
+  assert.ok(!existsSync(mkFolder(p) + '.last'));
+
+  // a draft builds elsewhere, from nothing, and the next full compile has nothing to do
+  await write(p, 'main.tex', article('Words. \\section{Mended}'));
+  assert.equal((await mk(p)).status, 0);
+  const draft = await mk(p, { draft: true });
+  assert.ok(passes(draft.log) >= 2, draft.log);
+  assert.match((await mk(p)).log, NO_PASS);
+
+  // a build that never ended (a crash): the copy beside the folder is put back
+  await fs.cp(mkFolder(p), mkFolder(p) + '.last', { recursive: true });
+  await fs.writeFile(path.join(mkFolder(p), 'main.aux'), '\\relax \\broken{');
+  assert.match((await mk(p)).log, NO_PASS);
+});
+
+test('latexmk’s folder starts from nothing when the project’s trust or the TeX it runs with changes', { skip: needs('latexmk', 'pdflatex') }, async () => {
+  const p = await newProject({ 'main.tex': article('Words.') });
+  assert.equal((await mk(p)).status, 0);
+  assert.match((await mk(p)).log, NO_PASS);
+  // trusted: full shell escape, which the kept files were not made with
+  await setTrusted(p.id, p.path, true);
+  const trusted = await mk(p);
+  assert.ok(passes(trusted.log) >= 2, trusted.log);
+  assert.match((await mk(p)).log, NO_PASS);
+  await setTrusted(p.id, p.path, false);
+  assert.ok(passes((await mk(p)).log) >= 2);
+  // another TeX folder first on the PATH
+  const other = await mk(p, { texFolder: tmp });
+  assert.equal(other.status, 0);
+  assert.ok(passes(other.log) >= 2, other.log);
+});
+
+test('what filecontents wrote is not kept in latexmk’s folder, so the block’s new text is read', { skip: needs('latexmk', 'pdflatex') }, async () => {
+  const doc = (text) => `\\begin{filecontents}{note.tex}\n${text}\n\\end{filecontents}\n` + article('\\input{note}');
+  const p = await newProject({ 'main.tex': doc('First text.') });
+  assert.equal((await mk(p)).status, 0);
+  await write(p, 'main.tex', doc('Second text.'));
+  const second = await mk(p);
+  assert.equal(second.status, 0, second.log);
+  // its first pass writes the new text (a pass after it in the same build then finds it there)
+  assert.match(second.log.split('Run number 2')[0], /Writing file `\.\/note\.tex'/);
+  assert.ok(!existsSync(path.join(mkFolder(p), 'note.tex')));
+});
+
+test('latexmk runs Biber from its kept folder, again only for a changed .bib', { skip: needs('latexmk', 'pdflatex', 'biber') }, async () => {
+  const p = await newProject({ 'main.tex': cited(), 'refs.bib': entry('knuth', 'The TeXbook') });
+  const first = await mk(p);
+  assert.equal(first.status, 0, first.log);
+  assert.equal(biberRuns(first.log), 1);
+  assert.match((await mk(p)).log, NO_PASS);
+  await write(p, 'main.tex', cited('Other words \\cite{knuth}.'));
+  const edit = await mk(p);
+  assert.equal(edit.status, 0, edit.log);
+  assert.equal(biberRuns(edit.log), 0);
+  await write(p, 'refs.bib', entry('knuth', 'The TeXbooj'));
+  const bib = await mk(p);
+  assert.equal(bib.status, 0, bib.log);
+  assert.equal(biberRuns(bib.log), 1);
 });
