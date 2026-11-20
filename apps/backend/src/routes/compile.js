@@ -6,6 +6,7 @@ import { synctexEdit, synctexView } from '../services/synctex.js';
 import { confinement } from '../services/compileSandbox.js';
 import { isTrusted, setTrusted } from '../services/trustService.js';
 import { auxKept } from '../services/texlabService.js';
+import { PREVIEW_MAX, previewFigure } from '../services/figurePreview.js';
 
 const isCount = (n) => Number.isInteger(n) && n > 0;
 // Typst's sys.inputs: a few short names and values, which the composer uses for its standalone flag
@@ -69,6 +70,17 @@ export function registerCompileRoutes(fastify) {
     });
     if (res.ok) auxKept(projectId);
     return folders ? { ...res, folders } : res;
+  });
+
+  // Preview this figure: a piece of a .tex file compiled alone with its preamble, from a copy, confined (figurePreview.js).
+  // A newer preview's request closes this one, which stops its compile
+  fastify.post('/api/projects/:id/figure-preview', async (req, reply) => {
+    const { file, piece, engine = 'auto', texFolder } = req.body || {};
+    if (typeof file !== 'string' || !file || typeof piece !== 'string' || !piece.trim() || piece.length > PREVIEW_MAX) return reply.code(400).send({ ok: false, error: 'Invalid preview.' });
+    if (!SUPPORTED_ENGINES.includes(engine)) return reply.code(400).send({ ok: false, error: `Unsupported engine: ${engine}` });
+    const gone = new AbortController();
+    reply.raw.on('close', () => reply.raw.writableFinished || gone.abort());
+    return previewFigure({ projectId: req.params.id, file, piece, engine, texFolder: typeof texFolder === 'string' && texFolder ? texFolder : undefined, signal: gone.signal });
   });
 
   // Trust this project (the Compile menu's switch): its LaTeX compiles run unconfined and with full shell escape. Kept
