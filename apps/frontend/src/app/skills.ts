@@ -21,7 +21,8 @@ const GROUP_OF: Record<string, SkillGroup> = {
   'spectrum-verify-claims': 'Review',
   'venue-templates': 'Submission',
   'scientific-slides': 'Submission',
-  'latex-posters': 'Submission'
+  'latex-posters': 'Submission',
+  'spectrum-template-transfer': 'Submission'
 };
 
 export const skillGroup = (skill: Skill): SkillGroup => (skill.source === 'own' ? 'Your skills' : GROUP_OF[skill.id] ?? 'Writing');

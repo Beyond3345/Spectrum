@@ -11,6 +11,7 @@ import { autocompletion, nextSnippetField, prevSnippetField } from '@codemirror/
 import { foldService, syntaxHighlighting } from '@codemirror/language';
 import { applyPatch, structuredPatch } from 'diff';
 import {
+  AGENT_TASK_KEY,
   deleteFile,
   ApiError,
   blobUrl,
@@ -2074,6 +2075,18 @@ function Editor({ projectId }: { projectId: string }) {
     setAgentTask((was) => ({ ...task, n: (was?.n || 0) + 1 }));
     openPanel('agent');
   };
+  // a project Template transfer made With an agent opens with its task, once
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      const task = JSON.parse(sessionStorage.getItem(AGENT_TASK_KEY) || 'null');
+      if (task?.projectId !== projectId) return;
+      sessionStorage.removeItem(AGENT_TASK_KEY);
+      if (typeof task.skill === 'string' && typeof task.prompt === 'string') openAgentTask({ skill: task.skill, prompt: task.prompt });
+    } catch {
+      // nothing to hand over
+    }
+  }, [loaded, projectId]);
 
   // an Edit chat from before 2.0 leaves the bottom card for the Spectrum agent
   const continueInAgent = (id: string) => {

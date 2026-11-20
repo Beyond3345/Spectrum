@@ -7,7 +7,8 @@ import { resolveLLMConfig, missingKey, NO_API_KEY } from '../services/llmService
 import { PARSERS, resolveParserConfig, transferDir } from '../services/parsers/index.js';
 import { readTemplateManifest, templatePath } from '../services/templateService.js';
 import { createProject, getProjectRoot, readMeta, unregister } from '../services/projectService.js';
-import { copyDir, ensureDir } from '../utils/fsUtils.js';
+import { copyDir, ensureDir, listFilesRecursive } from '../utils/fsUtils.js';
+import { agentHidden } from '../utils/pathUtils.js';
 
 /** New project for a transfer: the target template's files, named after the source. */
 async function createTargetProject(template, sourceProjectId, parentDir) {
@@ -140,6 +141,34 @@ export function registerTransferRoutes(fastify) {
    * Runs the graph one step forward.
    * Returns: { status, currentNode, progressLog }
    */
+  /**
+   * POST /api/transfer/agent
+   * Body: { sourceProjectId, targetTemplateId, parentDir? }
+   * With an agent: a new project from the target template (LaTeX or Typst) with the source project's files in source/,
+   * for an agent to move the paper across with the spectrum-template-transfer skill. Calls no model.
+   * Returns: { newProjectId }
+   */
+  fastify.post('/api/transfer/agent', async (request, reply) => {
+    const { sourceProjectId, targetTemplateId, parentDir } = request.body || {};
+    let sourceRoot;
+    try {
+      sourceRoot = await getProjectRoot(sourceProjectId);
+    } catch {
+      return reply.code(400).send({ error: 'Unknown source project.' });
+    }
+    const template = (await readTemplateManifest()).templates.find((t) => t.id === targetTemplateId);
+    if (!template) return reply.code(400).send({ error: `Unknown template: ${targetTemplateId}` });
+    const newProjectId = await createTargetProject(template, sourceProjectId, parentDir);
+    const root = await getProjectRoot(newProjectId);
+    // what an agent may read of it (no .git, .env or keys), and never through a link
+    for (const { path: rel } of (await listFilesRecursive(sourceRoot)).filter((f) => f.type === 'file' && !agentHidden(f.path))) {
+      if (!(await fs.lstat(path.join(sourceRoot, rel))).isFile()) continue;
+      await ensureDir(path.dirname(path.join(root, 'source', rel)));
+      await fs.copyFile(path.join(sourceRoot, rel), path.join(root, 'source', rel));
+    }
+    return { newProjectId };
+  });
+
   fastify.post('/api/transfer/step', async (request, reply) => {
     const { jobId } = request.body || {};
     const job = jobs.get(jobId);

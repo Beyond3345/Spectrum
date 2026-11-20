@@ -9,6 +9,8 @@ import {
   pdfTransferStart,
   setProjectMainFile,
   transferStart,
+  transferWithAgent,
+  AGENT_TASK_KEY,
   transferStep,
   transferSubmitImages,
   transferUploadPdf,
@@ -34,7 +36,7 @@ import {
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
-type TransferMode = 'quick' | 'classic' | 'pdf';
+type TransferMode = 'quick' | 'classic' | 'pdf' | 'agent';
 type PdfSource = 'project' | 'upload';
 export type TransferJob = { jobId: string; status: string; progressLog: string[]; error?: string; newProjectId?: string };
 
@@ -43,8 +45,14 @@ const MAX_LAYOUT_PAGES = 8;
 const MODES: [TransferMode, string, string][] = [
   ['quick', 'Quick switch', 'Swaps the preamble for the new template and keeps the body. No AI; a checkpoint is saved first.'],
   ['classic', 'Classic (LaTeX → LaTeX, AI)', 'The model rewrites the source for the new template into a new project.'],
-  ['pdf', 'From the PDF (parser → LaTeX)', 'A parser reads the PDF, then the model rebuilds it in the new template as a new project.']
+  ['pdf', 'From the PDF (parser → LaTeX)', 'A parser reads the PDF, then the model rebuilds it in the new template as a new project.'],
+  ['agent', 'With an agent (LaTeX or Typst)', 'A new project from the template, with this one’s files in source/, opens with the task for the agent. You review each change.']
 ];
+
+const TRANSFER_TASK = {
+  skill: 'spectrum-template-transfer',
+  prompt: 'Move the paper in source/ into this project’s template, following the spectrum-template-transfer skill: keep every word, label, citation, figure and equation, use the template’s layout and bibliography style, and compile until it builds.'
+};
 
 const STATUS_LABELS: Record<string, string> = {
   starting: 'Starting…',
@@ -129,12 +137,14 @@ export default function TransferPanel({
       })
       .catch((err) => setError(message(err)));
     listTemplates()
-      // every mode writes LaTeX, so only LaTeX templates: a Typst or Markdown one's preamble would land in a .tex
-      .then((res) => setTemplates((res.templates || []).filter((tp) => /\.(tex|ltx)$/i.test(tp.mainFile || 'main.tex'))))
+      .then((res) => setTemplates(res.templates || []))
       .catch((err) => setError(message(err)));
   }, [projectId]);
 
-  const selectedTemplate = templates.find((tp) => tp.id === targetTemplateId);
+  // the AI modes write LaTeX, so only LaTeX templates: a Typst or Markdown one's preamble would land in a .tex; an
+  // agent moves the paper into a Typst one too
+  const offered = templates.filter((tp) => (mode === 'agent' ? /\.(tex|ltx|typ)$/i : /\.(tex|ltx)$/i).test(tp.mainFile || 'main.tex'));
+  const selectedTemplate = offered.find((tp) => tp.id === targetTemplateId);
 
   const report = useCallback(
     (job: TransferJob) => {
@@ -250,6 +260,17 @@ export default function TransferPanel({
       if (mode === 'quick') {
         await runQuick();
         setRunning(false);
+      } else if (mode === 'agent') {
+        const { newProjectId: id } = await transferWithAgent({ sourceProjectId: projectId, targetTemplateId, parentDir: settings.projectsDir || undefined });
+        setNewProjectId(id);
+        setStatus('success');
+        setRunning(false);
+        try {
+          sessionStorage.setItem(AGENT_TASK_KEY, JSON.stringify({ projectId: id, ...TRANSFER_TASK }));
+        } catch {
+          // the new project opens without its task, which the agent workspace's skills menu still has
+        }
+        onOpenProject?.(id);
       } else {
         await runJob();
       }
@@ -264,14 +285,14 @@ export default function TransferPanel({
   // AI conversions need the main model's key (and most parsers one too); the .env file can supply the
   // model's and MinerU's, so this only warns. A local server on plain http, such as Ollama, takes none.
   const missingKey =
-    running || mode === 'quick'
+    running || mode === 'quick' || mode === 'agent'
       ? ''
       : !llmConfigFor(settings, 'main').apiKey && !/^http:\/\//i.test(settings.llmEndpoint)
         ?'Needs an API key for the main model in Settings › Models, or in the .env file.'
         : mode === 'pdf'
           ? parserWarning(settings, parserPreset(parsers, settings))
           : '';
-  const canStart = !running && !!targetTemplateId && (usesProjectSource ? !!sourceMainFile : !!uploadedPdf);
+  const canStart = !running && !!selectedTemplate && (mode === 'agent' || (usesProjectSource ? !!sourceMainFile : !!uploadedPdf));
   const statusIcon = status === 'success' ? 'checkmark.circle.fill' : status === 'failed' || status === 'error' ? 'xmark.octagon.fill' : 'clock';
 
   return (
@@ -304,7 +325,7 @@ export default function TransferPanel({
       )}
 
       <div className="row">
-        {usesProjectSource ? (
+        {mode === 'agent' ? null : usesProjectSource ? (
           <div className="field grow">
             <label id="transfer-main-file">Main file</label>
             <Select
@@ -339,14 +360,20 @@ export default function TransferPanel({
           <Select
             labelId="transfer-template"
             value={targetTemplateId}
-            options={templates.map((tp): [string, string] => [tp.id, tp.label])}
+            options={offered.map((tp): [string, string] => [tp.id, tp.label])}
             onChange={setTargetTemplateId}
-            placeholder={templates.length ? 'Choose a template…' : 'No templates available'}
+            placeholder={offered.length ? 'Choose a template…' : 'No templates available'}
           />
         </div>
       </div>
 
-      {mode !== 'quick' && (
+      {mode === 'agent' && (
+        <div className="field-hint">
+          The new project holds the template’s files and this project’s in source/. The Spectrum agent or a local agent moves the paper across, compiling as it
+          goes; this project is left as it is.
+        </div>
+      )}
+      {(mode === 'classic' || mode === 'pdf') && (
         <>
           <div className="row">
             <div className="field">
@@ -367,7 +394,7 @@ export default function TransferPanel({
         {running ? (
           <><span className="spinner" /> {mode === 'quick' ? 'Switching…' : 'Converting…'}</>
         ) : (
-          <><Icon name="arrow.triangle.2.circlepath" /> {mode === 'quick' ? 'Switch template' : 'Start conversion'}</>
+          <><Icon name="arrow.triangle.2.circlepath" /> {mode === 'quick' ? 'Switch template' : mode === 'agent' ? 'Make the project' : 'Start conversion'}</>
         )}
       </button>
       {missingKey && <div className="field-hint" id="transfer-missing-key">{missingKey}</div>}

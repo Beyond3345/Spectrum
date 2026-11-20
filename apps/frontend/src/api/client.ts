@@ -2229,3 +2229,9 @@ export type OutsideTools = { on: false } | { on: true; url: string; token: strin
 export const getOutsideTools = (projectId: string) => request<OutsideTools>(`/api/projects/${projectId}/outside-tools`);
 export const setOutsideTools = (projectId: string, on: boolean, compile?: { typstVersion: string; markdownEngine: string }) =>
   request<OutsideTools>(`/api/projects/${projectId}/outside-tools`, json('POST', { on, compile }));
+
+/** Template transfer › With an agent: a new project from the template with this one's files in source/. */
+/** The task such a project opens with ({ projectId, skill, prompt } in sessionStorage), handed to the agent workspace once. */
+export const AGENT_TASK_KEY = 'spectrum-agent-task';
+export const transferWithAgent = (payload: { sourceProjectId: string; targetTemplateId: string; parentDir?: string }) =>
+  request<{ newProjectId: string }>('/api/transfer/agent', json('POST', payload));
