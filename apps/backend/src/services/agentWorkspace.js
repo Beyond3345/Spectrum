@@ -139,7 +139,7 @@ export async function readCurrent(root, rel) {
  * place of the whole proposal, made against the project's file when its hash was `current`; it is written only while
  * the file is still that, and nothing is merged into it.
  */
-export async function applyWorkspaceChanges(run, selected, expected, own = {}) {
+export async function applyWorkspaceChanges(run, selected, expected, own = {}, checkpoint = true) {
   if (run.mode !== 'review' || run.busy) throw new Error('Finish the review run before applying changes.');
   const changes = await workspaceChanges(run);
   if (!Array.isArray(selected) || !selected.length || selected.some((rel) => !changes.some((c) => c.path === rel))) throw new Error('Choose changes from this run.');
@@ -176,7 +176,8 @@ export async function applyWorkspaceChanges(run, selected, expected, own = {}) {
     if (after !== null) await writeFileAtomic(safeJoin(path.join(transaction, 'after'), rel), after);
   }
   await writeJsonAtomic(path.join(transaction, 'journal.json'), journal);
-  await createVersion(run.root, { reason: 'before-ai', label: 'Before applying agent changes' });
+  // none where the review sitting saved one before its first apply
+  if (checkpoint) await createVersion(run.root, { reason: 'before-ai', label: 'Before applying agent changes' });
   try {
     for (let i = 0; i < writes.length; i++) {
       const { rel, before, after } = writes[i];

@@ -1062,6 +1062,7 @@ export async function setAgentOption(r, configId, value) {
  * and the agent's. content (null: no file), when given, is what the project's file becomes, written only while that
  * file still has the hash `current` the review showed it with; proposed is what the agent's copy then holds, and
  * original what the rest is measured from (the two are the same once nothing is left). The agent is told.
+ * checkpoint: false: an apply saves no checkpoint, as its review sitting saved one before its first.
  */
 export async function reviewAgentChanges(r, body) {
   if (r.busy || r.reviewing || busyProject(r)) throw new Error('Wait for the agent to finish before reviewing changes.');
@@ -1077,7 +1078,7 @@ export async function reviewAgentChanges(r, body) {
       const bytes = (text) => { if (text !== null && typeof text !== 'string') throw new Error('Choose the text to keep.'); return text === null ? null : Buffer.from(text); };
       const [original, proposed] = [bytes(body.original), bytes(body.proposed)];
       const wrote = body.content !== undefined;
-      if (wrote) await mutateProjectRoot(r.root, () => applyWorkspaceChanges(r, [rel], { [rel]: change.afterHash }, { [rel]: { bytes: bytes(body.content), current: body.current ?? null } }));
+      if (wrote) await mutateProjectRoot(r.root, () => applyWorkspaceChanges(r, [rel], { [rel]: change.afterHash }, { [rel]: { bytes: bytes(body.content), current: body.current ?? null } }, body.checkpoint !== false));
       await rebaseChange(r, rel, proposed, draftWriter(r, rel), original);
       // said once for a file however many of its parts are settled one by one
       const left = fileHash(original) !== fileHash(proposed);
@@ -1092,7 +1093,7 @@ export async function reviewAgentChanges(r, body) {
       if (body.action === 'apply') throw new Error('Finish the review run before applying changes.');
       for (const rel of body.paths) r.resolved.add(changeKey(changes.find((c) => c.path === rel)));
     } else if (body.action === 'apply') {
-      for (const { path: rel, bytes, merged } of await mutateProjectRoot(r.root, () => applyWorkspaceChanges(r, body.paths, body.expected))) {
+      for (const { path: rel, bytes, merged } of await mutateProjectRoot(r.root, () => applyWorkspaceChanges(r, body.paths, body.expected, {}, body.checkpoint !== false))) {
         await rebaseChange(r, rel, bytes, draft(rel));
         if (merged) r.notes.push(`“${rel}” was applied with the user’s own edits to it merged in. Re-read it before changing it again.`);
       }
