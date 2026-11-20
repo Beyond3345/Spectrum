@@ -53,6 +53,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A reference to a label that does not exist in a Markdown document prints ?? and is a warning at its line in Logs
 - A composer diagram goes into Markdown as its PNG, which Word shows
 - A long document's AI review starts each part at a top-level heading where it can
+- On Windows, PDF before and after compiles Typst drafts too, and an agent's draft is compiled from a copy that leaves out links, never from the agent's own folder
+- On Windows, the Local agents tab says what local agents lack there, and that the Spectrum agent has every tool
 
 ### Fixed
 
