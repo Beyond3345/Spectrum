@@ -49,6 +49,7 @@ import { resetPersonas, unsavedPersona } from '../editor/personas';
 import type { Persona } from '../editor/personas';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, errorText } from '../editor/shared';
 import { ZoteroSettings } from '../editor/ZoteroCite';
+import { EDITOR_KEYMAPS, editorKeymap } from '../editor/keymaps';
 import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
 import Segmented from './Segmented';
@@ -1393,6 +1394,13 @@ function EditorPane() {
           </div>
         </div>
       )}
+
+      <h3 className="form-section-title">Keys</h3>
+      <div className="field">
+        <label id="settings-editorKeymap">Editing keys</label>
+        <Select labelId="settings-editorKeymap" value={settings.editorKeymap} options={EDITOR_KEYMAPS} onChange={(value) => update({ editorKeymap: editorKeymap(value) })} />
+        <div className="field-hint">Vim’s or Emacs’s keys in the source editor. In Vim, <code>:w</code> saves.</div>
+      </div>
 
       <h3 className="form-section-title">Theme</h3>
       <div className="field-hint section-hint">Any light theme goes with any dark one. With System, the editor switches between them with {OS_NAME}.</div>

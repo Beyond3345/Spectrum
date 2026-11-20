@@ -151,6 +151,7 @@ import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
+import { keymapCompartment, keymapExtension } from '../editor/keymaps';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
@@ -2476,6 +2477,8 @@ function Editor({ projectId }: { projectId: string }) {
       ])
     ]);
     extensionsRef.current = [
+      // Vim or Emacs, ahead of Spectrum's own keys
+      keymapCompartment.of([]),
       keys,
       editorBasics,
       indentation,
@@ -2594,6 +2597,14 @@ function Editor({ projectId }: { projectId: string }) {
       viewRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    keymapExtension(settings.editorKeymap, () => actions.current.save()).then((ext) => live && viewRef.current?.dispatch({ effects: keymapCompartment.reconfigure(ext) }));
+    return () => {
+      live = false;
+    };
+  }, [settings.editorKeymap]);
 
   // ?file=: a file opened from Finder or Explorer (App.tsx)
   const [params, setParams] = useSearchParams();
