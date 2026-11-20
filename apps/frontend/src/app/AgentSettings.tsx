@@ -535,14 +535,17 @@ function AgentCard({
                       <div className="field-hint">
                         {a.network.mode === 'hosts'
                           ? `${a.name} reaches only the hosts below, over HTTPS. Another host it asks for is refused and shown in its session, where you can allow it.`
-                          : `${a.name} reaches any public host over HTTPS, so what it reads could be sent anywhere. Listed hosts only holds it to the hosts below.`}
+                          : `${a.name} reaches any public host over HTTPS, so what it reads could be sent anywhere.`}
                       </div>
-                      {!a.network.sure && (
-                        <div className="field-hint">
-                          {a.name}’s own documentation does not say enough for Spectrum to be sure it works held to a list, so it starts on Any host. If you choose the
-                          list and a task then fails, come back to Any host.
-                        </div>
-                      )}
+                      <div className="field-hint">
+                        {a.network.mode === 'hosts'
+                          ? 'If a task fails to connect on the list, choose Any host again.'
+                          : `${
+                              a.network.sure
+                                ? `${a.name}’s documentation names its hosts and says it honours the proxy settings a list relies on, but it has not yet been run on its list inside Spectrum`
+                                : `${a.name}’s own documentation does not say enough for Spectrum to be sure it works held to a list`
+                            }, so it starts on Any host. Its list is ready: choose Listed hosts only above to hold it to the hosts below, and come back to Any host if a task then fails to connect.`}
+                      </div>
                     </>
                   ) : (
                     <div className="field-hint">

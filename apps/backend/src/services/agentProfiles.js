@@ -30,14 +30,15 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  * in env, or the app it drives; app: the agent's desktop app, by name, and bin: the agent program inside the Mac app,
  * when it carries one; experimental, windows and planned: why the agent is experimental, off on Windows or not yet
  * startable. hosts: the hosts its provider needs, which an agent held to a list reaches besides the scholarly sites of
- * Spectrum's tools and the ones the user adds; network: 'hosts' where its documentation names those hosts and says it
- * honours the proxy variables, so it starts held to the list, else it starts on any host with the list ready.
+ * Spectrum's tools and the ones the user adds; documented: its own documentation names those hosts and says it honours
+ * the proxy variables a list relies on. Every agent starts on any host with its list ready, until it has been run on
+ * its list for real; network: 'hosts' would start one held to its list (none yet).
  */
 export const PROFILES = [
   { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', hosts: ['api.openai.com', 'api.anthropic.com', 'openrouter.ai', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'opencode.ai', 'models.dev'], keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', unsupported: 'OpenCode 2 does not run inside Spectrum’s isolation: its agent mode starts a private server on a port it chooses itself, which isolation does not open. Spectrum never runs an agent outside isolation.' },
   { id: 'codex', name: 'Codex', command: 'codex-acp', args: [], url: 'https://github.com/agentclientprotocol/codex-acp', hosts: ['api.openai.com', 'chatgpt.com', 'auth.openai.com'], keys: ['OPENAI_API_KEY'], login: ['.codex/auth.json'], signIn: 'codex login', adapter: { package: '@agentclientprotocol/codex-acp', version: '2.7.0', bin: 'dist/index.js', integrity: 'sha512-fFFU/tV5DltBzN4cZIh5tJEWGTZFXbwHU7I5RxPkmrGraw3jhAIuvTeudYwK3wAbV311WgIi7qONl2I8uRV2jw==', official: true, publisher: ACP_PROJECT, size: { arm64: '370 MB', x64: '395 MB' } }, windows: NODE_ON_WINDOWS },
   // never “Claude Code”: an API key only, with the claude.ai sign-in hidden (Anthropic's Agent SDK terms)
-  { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', hosts: ['api.anthropic.com'], network: 'hosts', keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
+  { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', hosts: ['api.anthropic.com'], documented: true, keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
   { id: 'gemini', name: 'Gemini CLI', command: 'gemini', args: ['--acp'], url: 'https://github.com/google-gemini/gemini-cli', hosts: ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'oauth2.googleapis.com', 'www.googleapis.com'], keys: ['GEMINI_API_KEY'], login: ['.gemini/settings.json', '.gemini/oauth_creds.json', '.gemini/google_accounts.json'], signIn: 'gemini', then: 'Choose Sign in with Google.', install: 'npm install -g @google/gemini-cli' },
   { id: 'copilot', name: 'GitHub Copilot CLI', command: 'copilot', args: ['--acp'], url: 'https://github.com/github/copilot-cli', hosts: ['api.github.com', 'api.githubcopilot.com', '*.githubcopilot.com', 'copilot-proxy.githubusercontent.com'], keys: ['GH_TOKEN'], login: [], install: 'npm install -g @github/copilot' },
   { id: 'cursor', name: 'Cursor', command: 'cursor-agent', alt: ['agent'], args: ['acp'], url: 'https://cursor.com/docs/cli/acp', hosts: ['*.cursor.sh', 'cursor.com', '*.cursor.com'], keys: ['CURSOR_API_KEY'], login: [], install: 'curl https://cursor.com/install -fsS | bash' },
@@ -103,11 +104,11 @@ const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
  * Where an agent may connect: mode 'hosts' (its provider's hosts, the sites Spectrum's tools search, check references
  * against and download a compile's packages from, and the ones the user added) or 'any' (every public HTTPS host), the user's choice or else the profile's; enforced: whether this
  * platform can hold an agent to a list (macOS; the Windows worker opens every public address or none); sure: whether
- * the agent's documentation was sure enough for it to start held to its list.
+ * the agent's documentation says enough to expect it to work held to its list (profile.documented).
  */
 export function networkOf(profile, saved = {}) {
   const mode = ['hosts', 'any'].includes(saved.network?.mode) ? saved.network.mode : profile.network || 'any';
-  return { mode, provider: profile.hosts || [], tools: TOOL_HOSTS, hosts: cleanHosts(saved.network?.hosts), enforced: process.platform === 'darwin', sure: profile.network === 'hosts' };
+  return { mode, provider: profile.hosts || [], tools: TOOL_HOSTS, hosts: cleanHosts(saved.network?.hosts), enforced: process.platform === 'darwin', sure: !!profile.documented };
 }
 /** Adds host to the ones the user allows the agent, and gives the host as saved. */
 export async function allowAgentHost(id, value) {

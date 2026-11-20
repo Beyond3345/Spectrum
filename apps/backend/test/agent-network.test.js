@@ -183,17 +183,20 @@ test('inside isolation, a program reaches a listed host through the gate and not
   } finally { await standIn.close(); }
 });
 
-test('each agent has its provider’s hosts; only one whose documentation is sure starts held to them', () => {
+test('each agent has its provider’s hosts, and every agent starts on any host with its list ready', () => {
   for (const p of PROFILES.filter((p) => !p.planned)) {
     assert.ok(p.hosts.length && p.hosts.every((h) => cleanHost(h) === h), `${p.id} names its provider’s hosts`);
   }
-  assert.deepEqual(PROFILES.filter((p) => p.network === 'hosts').map((p) => p.id), ['claude']);
+  // no agent is held to a list until it has been run on one for real, the two the owner uses least of all
+  for (const p of PROFILES) assert.equal(networkOf(p).mode, 'any', p.id);
   const claude = networkOf(profileFor('claude'));
-  assert.deepEqual({ mode: claude.mode, provider: claude.provider, tools: claude.tools, hosts: claude.hosts }, { mode: 'hosts', provider: ['api.anthropic.com'], tools: TOOL_HOSTS, hosts: [] });
+  assert.deepEqual({ mode: claude.mode, provider: claude.provider, tools: claude.tools, hosts: claude.hosts }, { mode: 'any', provider: ['api.anthropic.com'], tools: TOOL_HOSTS, hosts: [] });
+  // only Claude Code's documentation names its hosts and its proxy variables, which its card says
+  assert.deepEqual(PROFILES.filter((p) => networkOf(p).sure).map((p) => p.id), ['claude']);
+  // the user's choice of the list holds
+  assert.equal(networkOf(profileFor('claude'), { network: { mode: 'hosts' } }).mode, 'hosts');
   assert.ok(SCHOLARLY_HOSTS.every((host) => TOOL_HOSTS.includes(host)));
   assert.equal(claude.enforced, process.platform === 'darwin');
-  // the two the owner's tests left as they are: any host, with the list ready
-  for (const id of ['deepseek', 'codex']) assert.equal(networkOf(profileFor(id)).mode, 'any', id);
   assert.deepEqual(networkOf(profileFor('deepseek')).provider, ['api.deepseek.com']);
   // a saved choice that is no choice, and hosts that are no hosts, fall back
   assert.deepEqual(networkOf(profileFor('codex'), { network: { mode: 'everything', hosts: ['x.example.com', 'localhost', 5] } }), { ...networkOf(profileFor('codex')), hosts: ['x.example.com'] });
@@ -239,16 +242,26 @@ test('an agent’s network setting: saved only where it differs, a list checked,
   assert.equal((await launch()).hosts, undefined);
 });
 
-test('Claude Agent held to its list leaves out its telemetry and update checks; on any host it starts as before', async () => {
+test('Claude Agent starts on any host as before; held to its list by the user, it leaves out its telemetry and update checks', async () => {
   const fixture = path.join(fixtures, 'acp-agent.mjs');
-  await saveAgentConfig('claude', { command: process.execPath, args: [fixture], runtimePaths: [fixtures] });
   const home = await agentHome('claude');
-  const listed = await launchOptions('claude', { workspace: path.join(home, 'tmp'), home });
+  const launch = () => launchOptions('claude', { workspace: path.join(home, 'tmp'), home });
+  const asBefore = async () => {
+    const open = await launch();
+    assert.equal(open.network, 'any');
+    assert.equal(open.hosts, undefined, 'no list, and so no gate');
+    assert.equal(open.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, undefined);
+  };
+  await saveAgentConfig('claude', { command: process.execPath, args: [fixture], runtimePaths: [fixtures] });
+  await asBefore();
+  await saveAgentConfig('claude', { network: { mode: 'hosts' } });
+  assert.deepEqual((await agentConfigs()).claude.network, { mode: 'hosts' });
+  const listed = await launch();
+  if (process.platform === 'darwin') assert.deepEqual(await listed.hosts(), ['api.anthropic.com', ...TOOL_HOSTS]);
   assert.equal(listed.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, process.platform === 'darwin' ? '1' : undefined);
   await saveAgentConfig('claude', { network: { mode: 'any' } });
-  const open = await launchOptions('claude', { workspace: path.join(home, 'tmp'), home });
-  assert.equal(open.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, undefined);
-  assert.equal(open.hosts, undefined);
+  assert.equal((await agentConfigs()).claude.network, undefined, 'the profile’s own choice is not saved');
+  await asBefore();
 });
 
 test('a session’s agent held to its list: Spectrum’s tools reach the scholarly sites, a refused host is shown once and allowed in one step', { skip, timeout: 120000 }, async () => {
