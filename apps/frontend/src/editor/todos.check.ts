@@ -1,7 +1,8 @@
-// Self-check for the to-do scanner and link finding. Run:
+// Self-check for the to-do scanner, link finding, and your own to-dos' notes, search, counts and order. Run:
 // npx esbuild apps/frontend/src/editor/todos.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/todos.cjs && node <scratch>/todos.cjs
+import type { Todo } from '../api/client';
 import { isSource } from './shared';
-import { findKey, findLine, scanTodos, snippetOf } from './todos';
+import { MAX_NOTE, emptyText, findKey, findLine, scanTodos, snippetOf, sortTodos, todoCounts, todoMatches, withNote } from './todos';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -85,5 +86,35 @@ eq(
   [['main.typ', 1, 'TODO', 'a sharper photo'], ['notes.md', 2, 'FIXME', 'check the numbers'], ['main.tex', 1, 'TODO', 'cite']],
   'Typst and Markdown sources, once each, without LaTeX’s % comments or \\todo'
 );
+
+// ─── your own to-dos: the note, search, counts, order, what an empty tab says ───
+
+const at = (n: number) => `2026-11-0${n}T00:00:00.000Z`;
+const own: Todo = { id: 'a', text: 'Fix the caption', done: false, createdAt: at(1), updatedAt: at(1) };
+eq(withNote(own, '  See p. 3\n  and the table  \n'), { ...own, note: 'See p. 3\n  and the table' }, 'a note is trimmed, its lines kept');
+eq(withNote({ ...own, note: 'old' }, ' \n '), own, 'an emptied note is taken off, not kept empty');
+eq(withNote(own, 'x'.repeat(MAX_NOTE + 50)).note?.length, MAX_NOTE, 'a note is capped as the backend caps it');
+eq(withNote({ ...own, link: { key: 'k' }, later: 1 } as Todo, 'n'), { ...own, link: { key: 'k' }, later: 1, note: 'n' }, 'the rest of the to-do, a later version’s fields too, stays');
+
+eq(todoMatches('', own), true, 'no search finds everything');
+eq(todoMatches('table', { ...own, note: 'See the Table on p. 3' }), true, 'search finds a note');
+eq(todoMatches('caption', own), true, 'search finds the text');
+eq(todoMatches('main.tex', own, 'main.tex:6'), true, 'search finds what the link shows');
+eq(todoMatches('nope', { ...own, note: 'x' }, 'p. 2'), false, 'nothing found');
+
+eq(todoCounts([own, { ...own, done: true }, { ...own, done: true }], [{}, {}]), { open: 3, done: 2, all: 5 }, 'counts: the source’s are open');
+eq(todoCounts([], []), { open: 0, done: 0, all: 0 }, 'counts of none');
+
+const order = sortTodos([
+  { ...own, id: 'done-old', done: true, createdAt: at(1) },
+  { ...own, id: 'new', createdAt: at(3) },
+  { ...own, id: 'old', createdAt: at(2) }
+]).map((t) => t.id);
+eq(order, ['old', 'new', 'done-old'], 'open first, oldest first');
+
+eq(emptyText({ total: 0, show: 'open', search: '' }).startsWith('Nothing to do yet.'), true, 'empty: the first hint');
+eq(emptyText({ total: 3, show: 'open', search: 'zz' }), 'No to-dos match “zz”.', 'empty: a search');
+eq(emptyText({ total: 3, show: 'open', search: '' }), 'All done. Ticked ones are under Done.', 'empty: nothing open');
+eq(emptyText({ total: 3, show: 'done', search: '' }), 'Nothing ticked off yet.', 'empty: nothing done');
 
 console.log('todos: all checks passed');

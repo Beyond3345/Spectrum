@@ -1196,6 +1196,8 @@ export interface Todo {
   createdAt: string;
   updatedAt: string;
   link?: TodoLink;
+  /** a few lines of detail, since 2.6; older versions keep it through their saves */
+  note?: string;
 }
 
 /** A to-do an agent suggests (its suggest_todo tool); it is only saved when the user adds it */
