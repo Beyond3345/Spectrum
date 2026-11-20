@@ -3,7 +3,7 @@
 import { EditorState } from '@codemirror/state';
 import { CompletionContext } from '@codemirror/autocomplete';
 import { ensureSyntaxTree } from '@codemirror/language';
-import { languageFor, referenceCompletions } from './languages.ts';
+import { definitionCompletions, languageFor, referenceCompletions, typstDefinitions, typstPathAt } from './languages.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(what + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
@@ -22,6 +22,28 @@ eq(labelsAt('chapters/two.typ', ''), ['knuth', 'sec:one'], 'a label in another f
 eq(labelsAt('main.typ', '0.14.2'), ['knuth', 'sec:one'], 'an older Typst gets the project’s labels here');
 eq(labelsAt('main.md', '', 'See [@'), ['knuth'], 'Markdown gets keys');
 eq(labelsAt('main.md', '', 'See @'), [], 'and only inside brackets');
+const labelled = '![Plan](p.png){#fig:plan width=50%}\n\nTable: Use. {#tbl:use}\n\n$$ x $$ {#eq:flow}\n\n# Two {#sec-two}\n\n';
+eq(labelsAt('main.md', '', labelled + 'See @'), ['fig:plan', 'tbl:use', 'eq:flow', 'sec-two'], 'Markdown lists its labels after @ in the text');
+eq(labelsAt('main.md', '', labelled + 'See [@'), ['fig:plan', 'tbl:use', 'eq:flow', 'sec-two', 'knuth'], 'and labels with keys in brackets');
+eq(labelsAt('main.md', '', labelled + 'me@'), [], 'not after a word');
+
+// the project's own #let functions and values, without Tinymist
+eq(typstDefinitions('#let note(body) = body\n#let width = 3cm\n#{ let inner-x = 1 }\nlet go'), [{ name: 'note', fn: true }, { name: 'width', fn: false }, { name: 'inner-x', fn: false }], 'definitions');
+const defsAt = (path: string, version: string, doc: string) => {
+  const source = definitionCompletions({ path: () => path, defs: () => typstDefinitions('#let note(body) = body\n#let width = 3cm\n#let mine = 1'), version: () => version });
+  return source(new CompletionContext(EditorState.create({ doc }), doc.length, false))?.options.map((o) => o.label) ?? [];
+};
+eq(defsAt('chapters/one.typ', '', '#let mine = 2\nA #no'), ['note', 'width'], 'after #, the other files’ (Typst lists the open file’s)');
+eq(defsAt('chapters/one.typ', '0.14.2', '#let mine = 2\nA #no'), ['note', 'width', 'mine'], 'an older Typst gets them all');
+eq(defsAt('chapters/one.typ', '', '#figure(image("a.png", width: wi'), ['note', 'width', 'mine'], 'in a call’s arguments');
+eq(defsAt('chapters/one.typ', '', 'Plain no'), [], 'not in plain text');
+eq(defsAt('main.tex', '', '#no'), [], 'not in LaTeX');
+
+// a quoted path in a Typst file names the project file ⌘-click opens
+const files = new Set(['chapters/one.typ', 'figures/a.png', 'refs.bib']);
+const src = '#include "one.typ"\n#image("/figures/a.png", alt: "x")\n#bibliography("../refs.bib")\n#include "gone.typ"';
+const at = (part: string) => src.indexOf(part) + 2;
+eq(['clude', 'one.typ', 'figures/a', 'refs.bib', '"x"', 'gone'].map((part) => typstPathAt(src, at(part), 'chapters/main.typ', files)), [null, 'chapters/one.typ', 'figures/a.png', 'refs.bib', null, null], 'paths under the click');
 
 // Markdown: front matter, maths, GitHub tables and ```latex blocks are their own nodes
 const md = ['---', 'title: A', '---', '', 'Cost $5 and $6, maths $x_1$ and', '$$', '\\frac{a}{b}', '$$', '', '| a | b |', '| - | - |', '| 1 | 2 |', '', '```latex', '\\ref{x}', '```', ''].join('\n');

@@ -7,7 +7,7 @@ import type { AgentAsk, AgentEvent, AgentRunResult, AgentSaid, AgentStep, AgentU
 
 /** What a tool call shows: text, a file's change, or a terminal Spectrum ran for it (ACP ToolCallContent) */
 export type ToolContent =
-  | { type: 'content'; content: { type: string; text?: string } }
+  | { type: 'content'; content: { type: string; text?: string; data?: string; mimeType?: string } }
   | { type: 'diff'; path: string; oldText?: string | null; newText: string }
   | { type: 'terminal'; terminalId: string };
 
@@ -33,7 +33,7 @@ export type Checkpoint = { id: number; number: number; label: string; createdAt:
 
 type Said<T> = { type: T; key: string; text: string };
 export type Item =
-  | Said<'user'>
+  | (Said<'user'> & { pictures?: string[] })
   | Said<'assistant'>
   | Said<'thought'>
   | { type: 'tool'; key: string; call: ToolCall }
@@ -197,6 +197,8 @@ export type ThreadMeta = {
   eachFile?: boolean;
   /** lines the agent suggested to remember for the project */
   instructions?: string[];
+  /** on the user's message: small copies of the pictures sent with it */
+  pictures?: string[];
 };
 export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) as ThreadMeta;
 
@@ -293,6 +295,9 @@ const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
   literature_search: ['search', 'Search the literature', 'Search the literature for'],
   arxiv_bibtex: ['fetch', 'Get BibTeX from arXiv', 'Get BibTeX for'],
   fetch_bibtex: ['fetch', 'Get BibTeX', 'Get BibTeX for'],
+  check_references: ['search', 'Check the references against their sources'],
+  read_source: ['read', 'Read a paper', 'Read'],
+  record_claim: ['other', 'Record a checked claim', 'Record the claim at'],
   load_skill: ['read', 'Load a skill', 'Load the skill'],
   read_skill_file: ['read', 'Read a skill’s file', 'Read the skill file'],
   list_todos: ['read', 'List the to-dos'],
@@ -300,7 +305,9 @@ const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
   ask_user: ['other', 'Ask you a question'],
   propose_plan: ['other', 'Propose a plan'],
   step_done: ['other', 'Tick off a step of the plan'],
-  suggest_memory: ['other', 'Suggest a line to remember']
+  suggest_memory: ['other', 'Suggest a line to remember'],
+  view_pdf_page: ['read', 'Look at a page', 'Look at'],
+  preview_figure: ['read', 'Look at a figure', 'Look at']
 };
 
 // ─── The Spectrum agent's questions and plans: what a turn ended with, which the user's next message answers ───
@@ -362,7 +369,11 @@ export function stepCall(step: AgentStep & { status?: string }, id: string): Too
   const built = step.tool === 'compile' && step.ok ? step.show?.text?.split('\n')[0] : '';
   const title = built ? `Compiled the draft: ${built}` : about && step.about ? `${about} “${step.about}”` : alone;
   const content: ToolContent[] = step.show?.diff ? [{ type: 'diff', ...step.show.diff }] : step.show?.text ? [{ type: 'content', content: { type: 'text', text: step.show.text } }] : [];
-  return { toolCallId: id, title, kind, status: step.status === 'started' ? 'in_progress' : step.ok ? 'completed' : 'failed', content, locations: [], ...(step.ms !== undefined && { ms: step.ms }) };
+  // a page or a figure the agent looked at, as an image block; a figure's file is where its card's composer button goes
+  const picture = /^data:(image\/png);base64,(.+)$/.exec(step.show?.image || '');
+  if (picture) content.push({ type: 'content', content: { type: 'image', mimeType: picture[1], data: picture[2] } });
+  const locations = step.tool === 'preview_figure' && step.about ? [{ path: step.about }] : [];
+  return { toolCallId: id, title, kind, status: step.status === 'started' ? 'in_progress' : step.ok ? 'completed' : 'failed', content, locations, ...(step.ms !== undefined && { ms: step.ms }) };
 }
 
 /** A Spectrum agent thread's messages as the transcript's items: each reply with its steps, and what was said between them, in their order. */
@@ -377,7 +388,7 @@ export function threadItems(messages: ChatThread['messages']): Item[] {
     return [
       ...steps.flatMap((step, j): Item[] => [...said(j), ...(quiet(step) ? [] : [{ type: 'tool' as const, key: `s${i}-${j}`, call: stepCall(step, `${i}-${j}`) }])]),
       ...said(steps.length),
-      m.role === 'user' ? { type: 'user', key: `u${i}`, text: m.content } : meta.error ? { type: 'notice', key: `n${i}`, text: m.content, error: true }
+      m.role === 'user' ? { type: 'user', key: `u${i}`, text: m.content, ...(meta.pictures?.length && { pictures: meta.pictures }) } : meta.error ? { type: 'notice', key: `n${i}`, text: m.content, error: true }
         : ask?.kind === 'plan' ? { type: 'plan', key: `p${i}`, steps: ask.steps }
           : ask ? { type: 'request', key: `q${i}`, request: askRequest(ask, `q${i}`), answered: false }
             : { type: 'assistant', key: `a${i}`, text: m.content },

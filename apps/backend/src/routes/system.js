@@ -6,10 +6,15 @@ import { resolvePythonExecutable } from '../services/plotService.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { cloudRootOf, readMirror } from '../services/mirrorService.js';
 import { safeJoin } from '../utils/pathUtils.js';
+import { updateNotice } from '../services/updateService.js';
 
 const TOOLS = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic', 'bibtex', 'biber', 'texcount'];
 
 export function registerSystemRoutes(fastify) {
+  // a newer Spectrum, asked of the release page at most once a day (updateService.js); the page asks only while the
+  // user's setting is on
+  fastify.get('/api/system/update', async () => ({ ok: true, ...(await updateNotice()) }));
+
   // What's installed on this machine, so the UI can explain a failing compile or plot.
   // texFolder: Settings › Engines › LaTeX's TeX folder, looked in first as a compile does
   fastify.get('/api/system/check', async (req) => {

@@ -45,9 +45,12 @@ const ctx = {
 for (const tool of tools.TOOLS) {
   server.registerTool(tool.name, { description: tool.description, inputSchema: tool.schema, annotations: { readOnlyHint: tool.readOnly } }, async (input) => {
     try {
-      const result = await tool.run(ctx, input || {});
+      const answer = await tool.run(ctx, input || {});
+      const { image, ...rest } = answer?.image ? answer : {};
+      const result = image ? rest : answer;
       const text = typeof result === 'string' ? result : JSON.stringify(result);
-      return { content: [{ type: 'text', text: tool.name === 'load_skill' ? skillText(input?.id, text) : untrusted(tool.name, text) }] };
+      // a page or a figure the tool drew comes as an image block after its words
+      return { content: [{ type: 'text', text: tool.name === 'load_skill' ? skillText(input?.id, text) : untrusted(tool.name, text) }, ...(image ? [{ type: 'image', data: image.data, mimeType: image.type }] : [])] };
     } catch (err) {
       return { isError: true, content: [{ type: 'text', text: untrusted(tool.name, err.message) }] };
     }

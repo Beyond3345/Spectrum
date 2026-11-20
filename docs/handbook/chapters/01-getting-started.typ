@@ -65,6 +65,8 @@ Each row ticks itself once it is done, and its button opens the place to do it: 
 
 Choosing a provider fills in its endpoint, its recommended models and the recommended reasoning effort, which @ch-assistant describes. The System section lists each program Spectrum looks for, such as `pdflatex`, `xelatex`, `biber` and `texcount`, with a tick and the path where it was found, together with the app's data folder and the default folder for new projects (@fig-start-system). #ui[Check again] looks again after a TeX installation has been added, and #ui[Licences] lists the software, fonts and word lists Spectrum includes.
 
+Below #ui[Licences], #ui[Tell me when a newer Spectrum is out] is on by default. Once a day at most, Spectrum then asks its release page on GitHub for the number of the latest version. The request carries nothing about you, the computer or your projects, and nothing is downloaded or installed. When a newer version is out, the projects page says so above the projects, with a link to its release page (@fig-start-update). #ui[OK] hides the notice until the next version, and turning the switch off stops the requests altogether.
+
 #shot("figures/01-getting-started/settings-system.png", [The System section of Settings. Each TeX tool Spectrum found has a tick and its path, and the folders below show where the app keeps its data and where new projects go.], width: 72%) <fig-start-system>
 
 == The projects page <sec-start-projects>
@@ -82,6 +84,8 @@ The sidebar on the left holds the views of the page, which are,
 #shot("figures/01-getting-started/home.png", [Home with two folders, each with its own colour and symbol, and three projects that are in no folder. Each project shows the first page of its last compiled PDF.]) <fig-start-home>
 
 The header holds a search field, #ui[Sort] (by name, date changed or date created), the list and icon views with a slider for the size of the icons, #ui[Import] and #ui[New]. The search looks through the projects of every folder, and each result says which folder it is in. #menu[Settings][Projects] chooses whether Spectrum opens on Home or on All projects.
+
+#shot("figures/01-getting-started/update-notice.png", [The notice of a newer version at the top of the projects page. The link opens the release page in the browser.]) <fig-start-update>
 
 #shot("figures/01-getting-started/all-projects.png", [All projects as a list. Each row shows the project's folder on disk, its tags and when it was last changed, and the #dots button at the end of the row opens its menu.]) <fig-start-all>
 
@@ -161,7 +165,7 @@ A template is a starting project: a main file, a bibliography and any files it n
 
 #shot("figures/01-getting-started/template-gallery.png", [The template gallery on its LaTeX tab. The starred templates are the featured ones, and the conference templates follow under Academic.], width: 85%) <fig-start-gallery>
 
-The built-in templates are listed in @tab-start-templates. Every LaTeX template uses APA 7 citations through `biblatex-apa` and Biber, compiles with Auto, pdfLaTeX, XeLaTeX or LuaLaTeX and uses A4 paper (apart from the slides), Australian English and no shell escape. The conference templates keep their venues' page layouts but use an APA 7 bibliography, so a real submission should go back to the venue's own reference style. The Typst templates follow Spectrum's house style for Typst, compile offline with no packages and use Typst's own APA style, while the Markdown article uses pandoc's citeproc with the `.bib` file its front matter names.
+The built-in templates are listed in @tab-start-templates. Every LaTeX template uses APA 7 citations through `biblatex-apa` and Biber, compiles with Auto, pdfLaTeX, XeLaTeX or LuaLaTeX and uses A4 paper (apart from the slides), Australian English and no shell escape. The conference templates keep their venues' page layouts but use an APA 7 bibliography, so a real submission should go back to the venue's own reference style. The Typst templates follow Spectrum's house style for Typst, compile offline with no packages and use Typst's own APA style, while the Markdown templates use pandoc's citeproc with the `.bib` file their front matter names.
 
 #figure(
   table(
@@ -179,6 +183,9 @@ The built-in templates are listed in @tab-start-templates. Every LaTeX template 
     [ACL, CVPR, NeurIPS, ICML, arXiv preprint], [conference papers and preprints, under Academic],
     [Typst document, report, maths notes, electronics notes, coding report, letter and CV], [the same documents written in Typst],
     [Markdown article], [a Markdown article for pandoc with a YAML title, a figure, a table and citations],
+    [Markdown report], [a report with an abstract, contents, numbered sections, cross-references and a Mermaid diagram],
+    [Markdown maths notes], [lecture notes or an assignment with numbered equations, a worked solution and exercises],
+    [Markdown slides], [a 16:9 talk written in Markdown and made into Beamer slides],
   ),
   caption: [The built-in templates.],
 ) <tab-start-templates>

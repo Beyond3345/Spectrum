@@ -248,7 +248,7 @@ test('the server answers over stdio with every tool', async () => {
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [server, '--root', root, '--state', state], env: { HOME: home, PATH: process.env.PATH }, stderr: 'pipe' }));
   try {
     const listed = (await client.listTools()).tools.map((t) => t.name).sort();
-    assert.deepEqual(listed, ['bib_entries', 'bib_search', 'compile', 'fetch_bibtex', 'get_log', 'list_todos', 'literature_search', 'load_skill', 'project_map', 'search_text', 'suggest_todo']);
+    assert.deepEqual(listed, ['bib_entries', 'bib_search', 'check_references', 'compile', 'fetch_bibtex', 'get_log', 'list_todos', 'literature_search', 'load_skill', 'preview_figure', 'project_map', 'search_text', 'suggest_todo', 'view_pdf_page']);
     // the registry's every tool, and no other
     assert.deepEqual(listed, tools.TOOLS.map((t) => t.name).sort());
     // each answer inside a marker naming its tool (a skill's as a skill), with the line on how to treat them in the

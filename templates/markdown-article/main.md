@@ -11,13 +11,13 @@ Start writing here. A Markdown project compiles through pandoc into LaTeX, with 
 
 ![A bar chart of the first measurements](figures/example.png){#fig:example width=60%}
 
-The image above shows a first figure. Replace it with your own image or a diagram.
+@fig:example shows a first figure. Replace it with your own image or a diagram.
 
 # Results
 
-The first measurements are below.
+The first measurements are in @tbl:measures.
 
-Table: First measurements.
+Table: First measurements. {#tbl:measures}
 
 | Measure | Before | After |
 | --- | --- | --- |
@@ -25,6 +25,6 @@ Table: First measurements.
 | Width | 8 mm | 10 mm |
 | Height | 3 mm | 4 mm |
 
-Cite a source with its key in brackets, as in [@Knuth1984].
+Refer to a labelled figure, table, equation or section by its label, as in @fig:example, and Spectrum numbers it. Cite a source with its key in brackets, as in [@Knuth1984].
 
 # References

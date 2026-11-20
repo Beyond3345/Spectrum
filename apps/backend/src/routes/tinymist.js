@@ -1,5 +1,5 @@
 import { getProjectRoot, httpError } from '../services/projectService.js';
-import { connectClient, fromClient, jumpToPdf, jumpToSource, tinymistSession } from '../services/tinymistService.js';
+import { connectClient, fromClient, jumpToPdf, jumpToSource, livePreview, tinymistSession } from '../services/tinymistService.js';
 
 // The editor's line to the project's Tinymist (services/tinymistService.js), as the lsp route is to TexLab's: JSON-RPC
 // down an event stream and up by POST, and the jumps between the PDF and the source through its hidden preview.
@@ -40,6 +40,14 @@ export function registerTinymistRoutes(fastify) {
     const { doc, page, x, y } = req.body || {};
     const found = await jumpToSource(req.params.id, String(doc || ''), { page, x, y });
     return found ? { ok: true, ...found } : { ok: false };
+  });
+
+  // the Live view: { doc, on } → { ok, url } of Tinymist's preview page of doc, kept running while on
+  fastify.post('/api/projects/:id/tinymist/live', async (req) => {
+    const { doc, on } = req.body || {};
+    const live = await livePreview(req.params.id, String(doc || ''), on === true);
+    if (!live) throw httpError('Tinymist isn’t available.', 503);
+    return { ok: true, url: live.url };
   });
 
   // source → PDF: { doc, file, line, column } (from 1) → { ok, page, x, y }, y on the baseline

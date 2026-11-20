@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableTitle, tableRules, tableTypst, typstMarkup, typstPlacement, uniqueName } from './floats';
+import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, imageOf, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableTitle, tableRules, tableTypst, typstMarkup, typstPlacement, uniqueName } from './floats';
 import type { FigureSet, FigureSize, TableModel } from './floats';
 import { TYPST_SUBFIGURE, addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -10,6 +10,11 @@ const eq = (actual: unknown, expected: unknown, what: string) => {
 const lines = (...l: string[]) => l.join('\n');
 
 // ─── figures ───
+// a composer diagram: its PDF for LaTeX and Typst, its PNG for Markdown (which Word shows), else the one there is
+eq(imageOf('diagrams/flow.mmd', ['diagrams/flow.pdf', 'diagrams/flow.png']), 'diagrams/flow.pdf', 'a diagram’s PDF first');
+eq(imageOf('diagrams/flow.mmd', ['diagrams/flow.pdf', 'diagrams/flow.png'], true), 'diagrams/flow.png', 'its PNG first in Markdown');
+eq(imageOf('diagrams/flow.mmd', ['diagrams/flow.pdf'], true), 'diagrams/flow.pdf', 'or the PDF there is');
+
 
 eq(figureKind('a.PNG', 'image/png'), 'keep', 'PNG goes in as it is');
 eq(figureKind('a.jpeg', ''), 'keep', 'JPEG');
@@ -694,6 +699,9 @@ eq(
   'Typst: separate figures each with a label'
 );
 eq(figureTypst({ path: 'a.png', width: 0.5, caption: '', label: '', size: { ...share, mode: 'scale' } }), '#figure(scale(50%, reflow: true, image("/a.png")))', 'Typst scale');
+// alt text, which PDF/UA-1 export needs on every image
+eq(figureTypst({ path: 'a.png', width: 1, caption: '', label: '', alt: ' A "cat" on a\nmat \\ ' }), '#figure(image("/a.png", width: 100%, alt: "A \\"cat\\" on a mat \\\\"))', 'Typst alt text, quoted on one line');
+eq(figureSetTypst({ ...pair, panels: pair.panels.map((p, i) => ({ ...p, alt: i ? '' : 'Front view' })) }).match(/alt: "[^"]*"/g), ['alt: "Front view"'], 'Typst: alt text on each panel that has one');
 eq(figureMarkdown({ path: 'a.png', width: 0.5, caption: 'C', label: '', size: { ...share, mode: 'height' } }), '![C](a.png){height=40mm}', 'Markdown height');
 
 Promise.all([

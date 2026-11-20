@@ -7,6 +7,7 @@ import path from 'node:path';
 import { ensureDir } from './utils/fsUtils.js';
 import { DATA_DIR, FRONTEND_DIST, HOST, PORT, PROJECTS_DIR, setProjectsDir } from './config/constants.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { registerKeyRoutes } from './services/keyStore.js';
 import { registerArxivRoutes } from './routes/arxiv.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerVersionRoutes } from './routes/versions.js';
@@ -45,6 +46,7 @@ import { registerZoteroRoutes } from './routes/zotero.js';
 import { registerEngineRoutes } from './routes/engines.js';
 import { registerUniverseRoutes } from './routes/universe.js';
 import { registerJyutpingRoutes } from './routes/jyutping.js';
+import { registerMarkdownRoutes } from './routes/markdown.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { migrateToV2 } from './services/mirrorService.js';
@@ -129,6 +131,8 @@ fastify.setErrorHandler(async (err, req, reply) => {
   return reply.code(status).send({ ok: false, error: message });
 });
 
+// first, so its hook hands every route the keys its request names
+registerKeyRoutes(fastify);
 registerHealthRoutes(fastify);
 registerArxivRoutes(fastify);
 registerProjectRoutes(fastify);
@@ -161,6 +165,7 @@ registerZoteroRoutes(fastify);
 registerEngineRoutes(fastify);
 registerUniverseRoutes(fastify);
 registerJyutpingRoutes(fastify);
+registerMarkdownRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {

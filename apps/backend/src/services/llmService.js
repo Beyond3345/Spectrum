@@ -1,4 +1,4 @@
-import { LEVELS, effortFields, ollamaModel, providerFor } from './providers.js';
+import { LEVELS, PROVIDERS, effortFields, ollamaModel, providerFor } from './providers.js';
 
 const DEFAULT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const DEFAULT_MODEL = 'gpt-6-sol';
@@ -81,6 +81,20 @@ function ollamaShow(base, name) {
 
 /** A live preset's model as its server describes it, or null when it can't say. */
 const liveModel = (endpoint, name) => ollamaShow(ollamaBase(endpoint), name).then((show) => ollamaModel(name, show, ''), () => null);
+
+/**
+ * Whether a model reads images, as its preset says (an Ollama model as its server says). On a server Spectrum has no
+ * preset for, a model with a preset model's name is taken to be that one (a proxy serving claude-sonnet-5-5); any other
+ * model is taken not to, since a text model refuses a request with a picture in it.
+ */
+export async function readsImages(llmConfig) {
+  const { endpoint, model } = resolveLLMConfig(llmConfig);
+  const url = normalizeChatEndpoint(endpoint);
+  const provider = providerFor(url);
+  const live = provider?.live && (await liveModel(url, model));
+  if (live) return live.vision;
+  return !!(provider ? [provider] : PROVIDERS).flatMap((p) => p.models).find((m) => m.id === model)?.vision;
+}
 
 /** The models a live preset's server lists, as preset models with recommendations, for Settings. */
 export async function listLiveModels(preset, endpoint) {

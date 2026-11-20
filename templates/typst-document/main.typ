@@ -34,6 +34,7 @@ Typst single quotation marks are typed straight, 'like this', and Typst curls th
 #figure(
   rect(width: 60mm, height: 30mm, stroke: 0.5pt, fill: luma(240)),
   caption: [A first figure. Replace it with an image or a diagram.],
+  alt: "A grey rectangle standing in for a figure.", // what the figure shows, read aloud by screen readers; PDF/UA needs it
 ) <fig:example>
 
 #bibliography("refs.bib", style: "apa")

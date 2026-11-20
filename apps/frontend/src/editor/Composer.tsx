@@ -327,13 +327,15 @@ export default function Composer({
     const extra = input.trim();
     const label = VISION_MODES.find(([v]) => v === visionMode)?.[1] || visionMode;
     setInput('');
-    const base = append(threadRef.current, msg('user', `Image → LaTeX (${label}): ${file.name}${extra ? `\n\n${extra}` : ''}`));
+    // a Typst document gets Typst
+    const typst = docKind(api.activePath) === 'typst';
+    const base = append(threadRef.current, msg('user', `Image → ${typst ? 'Typst' : 'LaTeX'} (${label}): ${file.name}${extra ? `\n\n${extra}` : ''}`));
     markBusy(base.id, true);
     try {
-      const res = await visionToLatex({ projectId: api.projectId, file, mode: visionMode, prompt: extra || VISION_HINTS[visionMode], llmConfig: api.llm.vision });
+      const res = await visionToLatex({ projectId: api.projectId, file, mode: visionMode, prompt: extra || (typst ? undefined : VISION_HINTS[visionMode]), llmConfig: api.llm.vision, kind: typst ? 'typst' : null });
       if (!res.ok) throw new Error(res.error || 'The image couldn’t be read.');
       const latex = (res.latex || '').trim();
-      append(base, msg('assistant', `\`\`\`latex\n${latex}\n\`\`\``, { latex }));
+      append(base, msg('assistant', `\`\`\`${typst ? 'typst' : 'latex'}\n${latex}\n\`\`\``, { latex }));
       if (res.assetPath) await latest.current.refreshTree();
     } catch (err) {
       append(base, msg('assistant', `Couldn’t convert the image: ${errorText(err)}`, { error: true }));

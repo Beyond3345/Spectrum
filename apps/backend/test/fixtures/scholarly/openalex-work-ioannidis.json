@@ -1,0 +1,62 @@
+{
+ "id": "https://openalex.org/W2144981148",
+ "doi": "https://doi.org/10.1371/journal.pmed.0020124",
+ "display_name": "Why Most Published Research Findings Are False",
+ "publication_year": 2005,
+ "is_retracted": false,
+ "authorships": [
+  {
+   "author": {
+    "display_name": "John P. A. Ioannidis"
+   }
+  }
+ ],
+ "open_access": {
+  "is_oa": true,
+  "oa_status": "gold",
+  "oa_url": "https://doi.org/10.1371/journal.pmed.0020124",
+  "any_repository_has_fulltext": true
+ },
+ "best_oa_location": {
+  "is_oa": true,
+  "landing_page_url": "https://doi.org/10.1371/journal.pmed.0020124",
+  "pdf_url": null
+ },
+ "locations": [
+  {
+   "is_oa": true,
+   "landing_page_url": "https://doi.org/10.1371/journal.pmed.0020124",
+   "pdf_url": null
+  },
+  {
+   "is_oa": true,
+   "landing_page_url": "https://www.ncbi.nlm.nih.gov/pmc/articles/1182327",
+   "pdf_url": null
+  },
+  {
+   "is_oa": false,
+   "landing_page_url": "https://pubmed.ncbi.nlm.nih.gov/16060722",
+   "pdf_url": null
+  },
+  {
+   "is_oa": true,
+   "landing_page_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC1182327/",
+   "pdf_url": null
+  },
+  {
+   "is_oa": true,
+   "landing_page_url": "https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.0020124",
+   "pdf_url": "https://journals.plos.org/plosmedicine/article/file?id=10.1371/journal.pmed.0020124&type=printable"
+  },
+  {
+   "is_oa": true,
+   "landing_page_url": "https://doaj.org/article/52d69fba56f94a93972d38c6da6554c6",
+   "pdf_url": null
+  },
+  {
+   "is_oa": true,
+   "landing_page_url": "https://doaj.org/article/672569c50cfc422b86ee982f75e98010",
+   "pdf_url": null
+  }
+ ]
+}

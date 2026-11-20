@@ -10,6 +10,8 @@ import { useEditor } from '../EditorContext';
 import type { TaskRequest } from '../agent/parts';
 import { PROJECT_DATA_CHANGED, citationText, errorText, formatDate, isDocument, relativeTime } from '../shared';
 import CitationAssistant, { bibWritten } from './CitationAssistant';
+import ClaimsLedger from './ClaimsLedger';
+import type { TodosState } from '../TodosList';
 import { DEFAULT_SOURCES, SOURCES, badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, searched, shown, yearOf } from './results';
 import type { Show } from './results';
 
@@ -42,9 +44,11 @@ const savedSources = (): ResearchSource[] => {
 const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
 // the agent tasks: prompts for the workspace, each with a skill (and a persona for the review)
+// Deep research plans first: the plan (the questions, where to search, how many papers to read) is the user’s to change
 const deepResearch = (question: string): ResearchTask => ({
   skill: 'literature-review',
-  prompt: `Carry on the research session sent with this message, on “${question}”. Search further with other phrasings, and follow the references and citations of the papers kept so far through Semantic Scholar. Read the open-access full text where there is some (arXiv or Unpaywall). Write research/notes/<key>.md for each paper you read, saying where each point came from, and research/reading-list.md grouped by theme. Propose .bib entries for the papers worth citing, checked against the project’s .bib so none is added twice.`
+  plan: true,
+  prompt: `Carry on the research session sent with this message, on “${question}”. First propose a plan: the questions to answer, the sources and phrasings to search, and how many papers to read in full. Once it is approved, search further and follow the references and citations of the papers kept so far. Read the papers that matter with read_source, which gives the open full text page by page (or the abstract when there is none). Write research/notes/<key>.md for each paper you read: copy read_source’s “Read:” line into it, and give every point a quote with its page. Then write research/reading-list.md grouped by theme. Propose .bib entries for the papers worth citing with fetch_bibtex, checked against the project’s .bib so none is added twice.`
 });
 const relatedWork = (session: ResearchSession | null): ResearchTask => ({
   skill: 'spectrum-related-work',
@@ -55,7 +59,7 @@ const relatedWork = (session: ResearchSession | null): ResearchTask => ({
 const verifyClaims = (session: ResearchSession | null): ResearchTask => ({
   skill: 'spectrum-verify-claims',
   persona: 'critical-reviewer',
-  prompt: `Check the claims in the open file (when it is the main document, in the files it brings in with \\input or \\include, in reading order) against the sources they cite${session ? ', using the research session sent with this message for what the papers say' : ''}. For each claim give its file and line, say whether its source supports it fully, partly or not at all, and add a short note on the evidence. Don’t rewrite the text.`
+  prompt: `Check the claims in the open file (when it is the main document, in the files it brings in with \\input or \\include, in reading order) against the sources they cite${session ? ', using the research session sent with this message to find the papers' : ''}. Run check_references on the keys first. Read each source with read_source, and record every claim with record_claim: its file and line, its keys, the rating and, for a rating that says what the source says, the source’s own words. Don’t rewrite the text.`
 });
 
 /**
@@ -63,7 +67,7 @@ const verifyClaims = (session: ResearchSession | null): ResearchTask => ({
  * each result kept or dropped with a reason, cited, added to the .bib, noted or fetched as a PDF; the citation
  * assistant; and the agent tasks, which open the workspace with the session. filter: the sidebar's search.
  */
-export default function ResearchPanel({ filter, onAgentTask }: { filter: string; onAgentTask(task: ResearchTask): void }) {
+export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: string; onAgentTask(task: ResearchTask): void; todos?: TodosState }) {
   const api = useEditor();
   const latest = useRef(api);
   latest.current = api;
@@ -413,6 +417,7 @@ export default function ResearchPanel({ filter, onAgentTask }: { filter: string;
       ) : (
         <>
           <CitationAssistant />
+          <ClaimsLedger todos={todos} />
           {listed.length > 0 && (
             <div className="todo-group" role="list" aria-label="Sessions">
               <div className="todo-group-title">Sessions</div>

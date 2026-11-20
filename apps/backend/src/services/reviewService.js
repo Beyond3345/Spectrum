@@ -218,33 +218,49 @@ const numbered = ({ path: file, lines, from = 1, to = lines.length }) =>
   [`=== ${file}${from > 1 || to < lines.length ? ` (lines ${from} to ${to})` : ''} ===`, ...lines.slice(from - 1, to).map((line, i) => `${from + i}| ${line}`)].join('\n');
 const lineCost = (line, i) => `${i + 1}| ${line}\n`.length;
 
+// a top-level heading, where a part had best begin: LaTeX's \part, \chapter and \section, Typst's = and ==, Markdown's
+// # and ##; the first line of a file is one too
+const TOP_HEADING = /^\s*(?:\\(?:part|chapter|section)\*?\s*[[{]|={1,2}\s|#{1,2}\s)/;
+
 /**
  * The document in parts of at most budget characters of numbered source, in reading order: each part a list of
- * { path, from, to } line runs, whole files while they fit and a file longer than the budget cut between lines.
- * ponytail: cut at the line the budget runs out on, not at a heading; a section split across two parts is read in two
+ * { path, from, to } line runs. A part ends before the last top-level heading (or file) that comes once it is at least
+ * half full, so a section is read whole where it fits; a section longer than that is cut between lines.
  */
 export function reviewParts(files, budget = REVIEW_BUDGET) {
-  const parts = [[]];
+  const flat = files.flatMap((file) => file.lines.map((line, i) => ({ path: file.path, i, cost: lineCost(line, i), head: i === 0 || TOP_HEADING.test(line) })));
+  // a run's header line costs its path and a little more
+  const costOf = (k, start) => flat[k].cost + (k === start || flat[k - 1].path !== flat[k].path ? flat[k].path.length + 30 : 0);
+  const sum = (from, to) => {
+    let n = 0;
+    for (let k = from; k < to; k += 1) n += costOf(k, from);
+    return n;
+  };
+  const starts = [0];
   let size = 0;
-  for (const file of files) {
-    file.lines.forEach((line, i) => {
-      const cost = lineCost(line, i);
-      let part = parts[parts.length - 1];
-      let run = part[part.length - 1];
-      if (size && size + cost > budget) {
-        parts.push((part = []));
-        size = 0;
-        run = null;
-      }
-      if (run?.path !== file.path) {
-        part.push((run = { path: file.path, from: i + 1, to: i }));
-        size += file.path.length + 30;
-      }
-      run.to = i + 1;
-      size += cost;
-    });
+  let head = -1;
+  for (let k = 0; k < flat.length; k += 1) {
+    const start = starts[starts.length - 1];
+    const cost = costOf(k, start);
+    if (k > start && size + cost > budget) {
+      const at = head > start && sum(start, head) >= budget / 2 ? head : k;
+      starts.push(at);
+      size = sum(at, k + 1);
+      head = flat[k].head ? k : -1;
+      continue;
+    }
+    if (flat[k].head) head = k;
+    size += cost;
   }
-  return parts.filter((part) => part.length);
+  return starts.map((from, n) => {
+    const runs = [];
+    for (let k = from; k < (starts[n + 1] ?? flat.length); k += 1) {
+      const run = runs[runs.length - 1];
+      if (run?.path === flat[k].path) run.to = flat[k].i + 1;
+      else runs.push({ path: flat[k].path, from: flat[k].i + 1, to: flat[k].i + 1 });
+    }
+    return runs;
+  }).filter((part) => part.length);
 }
 
 /**
