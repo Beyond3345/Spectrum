@@ -66,6 +66,7 @@ import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, TAG_COLOURS, useDarkMode } from './appearance';
 import type { IconColour } from './appearance';
 import { groupSkills, projectSkills, skillId, skillOn } from './skills';
+import { modelChoices, testSays, useConnectionTest } from './connectionTest';
 
 // the notices are long, so they load only when asked for
 const Licences = lazy(() => import('./Licences'));
@@ -234,11 +235,17 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
     vision: useLivePreset(followsMain(settings, 'vision') ? null : rolePresetOf(providers, settings, 'vision'), settings.visionEndpoint)
   };
   const preset = live.main.preset;
+  // Test connection, beside each key: what the provider lists fills the Model menu
+  const tests = {
+    main: useConnectionTest(preset?.id || 'custom', settings.llmEndpoint, settings.llmApiKey),
+    quick: useConnectionTest(rolePresetOf(providers, settings, 'quick')?.id || 'custom', settings.referencesEndpoint, settings.referencesApiKey),
+    vision: useConnectionTest(rolePresetOf(providers, settings, 'vision')?.id || 'custom', settings.visionEndpoint, settings.visionApiKey)
+  };
   const mainModel = modelOf(preset, settings.llmModel);
   const effortChoices = effortOptions(mainModel);
   // stays on Other… while a typed name happens to match a listed model, e.g. glm-5.3 on the way to glm-5.3-flashx
   const [otherModel, setOtherModel] = useState<Record<string, boolean>>({});
-  const typedModel = otherModel.main || !mainModel;
+  const typedModel = otherModel.main || !(mainModel || tests.main.models.includes(settings.llmModel));
   const visionConfig = llmConfigFor(settings, 'vision');
   const imagesGoElsewhere = visionConfig.model !== settings.llmModel || visionConfig.endpoint !== settings.llmEndpoint;
 
@@ -309,6 +316,18 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
       </button>
     );
 
+  const testButton = (t: (typeof tests)['main'], name: string) => (
+    <button className="btn small" disabled={t.testing} aria-label={`Test connection for the ${name}`} onClick={t.run}>
+      {t.testing ? 'Testing…' : 'Test connection'}
+    </button>
+  );
+  const testResult = (t: (typeof tests)['main'], model: string) =>
+    t.result && (
+      <div className={`field-hint ${t.result.ok ? '' : 'error'}`} role="status">
+        {testSays(t.result, model)}
+      </div>
+    );
+
   const keyHint = (p: ProviderPreset | null) =>
     p && (
       <>
@@ -325,8 +344,11 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
     const own = ownLive.preset;
     const value = settings[f.model];
     const choices = (own?.models || []).filter((m) => role === 'quick' || m.vision);
+    const test = same ? tests.main : tests[role];
+    // a model only the provider lists may not read images, so the vision menu keeps to the presets
+    const listed = role === 'quick' ? test.models : [];
     // an empty name only means “the main model's” while the role follows the main provider
-    const typed = otherModel[role] || !own || (value ? !choices.some((m) => m.id === value) : !same);
+    const typed = otherModel[role] || !own || (value ? !choices.some((m) => m.id === value) && !listed.includes(value) : !same);
     const current = same ? 'same' : own?.id || 'custom';
     const picked = modelOf(own, value);
     const blindMain = role === 'vision' && same && !value && mainModel && !mainModel.vision;
@@ -370,7 +392,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 value={typed ? 'other' : value}
                 options={[
                   ...(same ? [['', 'Same as main model'] as [string, string]] : []),
-                  ...choices.map((m): [string, string] => [m.id, m.id === recommendedFor(own, role) ? `${m.label} (recommended)` : m.label]),
+                  ...modelChoices(choices, listed, recommendedFor(own, role)),
                   ['other', 'Other…']
                 ]}
                 onChange={(id) => {
@@ -389,12 +411,23 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                     ? 'Type the model’s name exactly as the provider lists it.'
                     : picked?.note
                       ? `${picked.note}.`
-                      : ''}
+                      : value && !picked
+                        ? 'Listed by the provider. Spectrum has no notes on this model.'
+                        : ''}
             </div>
           </div>
         )}
-        {typed && text(own ? 'Model name' : 'Model', f.model, { name: `${name} name`, placeholder: same ? settings.llmModel || 'Same as main model' : 'Model name' })}
-        {!same && !own?.local && text('API key', f.apiKey, { name: `${name} API key`, placeholder: 'Paste your key', secret: true, hint: keyHint(own) })}
+        {typed && text(own ? 'Model name' : 'Model', f.model, { name: `${name} name`, placeholder: same ? settings.llmModel || 'Same as main model' : 'Model name', list: own ? [] : test.models })}
+        {!same &&
+          !own?.local &&
+          text('API key', f.apiKey, {
+            name: `${name} API key`,
+            placeholder: 'Paste your key',
+            secret: true,
+            hint: keyHint(own),
+            action: testButton(test, name.toLowerCase()),
+            after: testResult(test, value)
+          })}
       </>
     );
   };
@@ -416,14 +449,15 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
   const text = (
     label: string,
     key: keyof AppSettings,
-    opts: { placeholder?: string; secret?: boolean; hint?: ReactNode; name?: string; onChange?: (value: string) => void } = {}
-  ) => (
-    <div className="field">
-      <label htmlFor={`settings-${key}`}>{label}</label>
+    // action: a button beside the field; after: a line under its hint; list: names to suggest as you type
+    opts: { placeholder?: string; secret?: boolean; hint?: ReactNode; name?: string; onChange?: (value: string) => void; action?: ReactNode; after?: ReactNode; list?: string[] } = {}
+  ) => {
+    const input = (
       <input
         id={`settings-${key}`}
         aria-label={opts.name}
-        className="input"
+        className={opts.action ? 'input grow' : 'input'}
+        list={opts.list?.length ? `settings-${key}-list` : undefined}
         type={opts.secret ? 'password' : 'text'}
         value={String(settings[key] ?? '')}
         placeholder={opts.placeholder}
@@ -433,9 +467,17 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
         autoComplete="off"
         onChange={(e) => (opts.onChange ? opts.onChange(e.target.value) : update({ [key]: e.target.value }))}
       />
-      {opts.hint && <div className="field-hint">{opts.hint}</div>}
-    </div>
-  );
+    );
+    return (
+      <div className="field">
+        <label htmlFor={`settings-${key}`}>{label}</label>
+        {opts.action ? <div className="row">{input}{opts.action}</div> : input}
+        {opts.list?.length ? <datalist id={`settings-${key}-list`}>{opts.list.map((id) => <option key={id} value={id} />)}</datalist> : null}
+        {opts.hint && <div className="field-hint">{opts.hint}</div>}
+        {opts.after}
+      </div>
+    );
+  };
 
   const defaultProjectsDir = check?.projectsDir || '~/Documents/Spectrum';
   const ddgsMissing =
@@ -721,11 +763,8 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                     <Select
                       className="grow"
                       labelId="settings-mainTitle settings-llmModelPick"
-                      value={typedModel ? 'other' : mainModel.id}
-                      options={[
-                        ...preset.models.map((m): [string, string] => [m.id, m.id === preset.recommended.main ? `${m.label} (recommended)` : m.label]),
-                        ['other', 'Other…']
-                      ]}
+                      value={typedModel ? 'other' : settings.llmModel}
+                      options={[...modelChoices(preset.models, tests.main.models, preset.recommended.main), ['other', 'Other…']]}
                       onChange={chooseModel}
                     />
                     {refreshButton(live.main)}
@@ -734,22 +773,26 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                     {live.main.error ||
                       (typedModel
                         ? 'Type the model’s name exactly as the provider lists it.'
-                        : [
-                            mainModel.note && `${mainModel.note}.`,
-                            !mainModel.vision && (imagesGoElsewhere ? 'Reads text only, so images go to the vision model.' : 'Reads text only, so set a vision model below for images.')
-                          ]
-                            .filter(Boolean)
-                            .join(' '))}
+                        : !mainModel
+                          ? 'Listed by the provider. Spectrum has no notes on this model.'
+                          : [
+                              mainModel.note && `${mainModel.note}.`,
+                              !mainModel.vision && (imagesGoElsewhere ? 'Reads text only, so images go to the vision model.' : 'Reads text only, so set a vision model below for images.')
+                            ]
+                              .filter(Boolean)
+                              .join(' '))}
                   </div>
                 </div>
               )}
-              {typedModel && text(preset ? 'Model name' : 'Model', 'llmModel', { name: 'Main model name', placeholder: preset?.recommended.main || 'Model name' })}
+              {typedModel && text(preset ? 'Model name' : 'Model', 'llmModel', { name: 'Main model name', placeholder: preset?.recommended.main || 'Model name', list: preset ? [] : tests.main.models })}
               {!preset?.local &&
                 text('API key', 'llmApiKey', {
                   name: 'Main model API key',
                   placeholder: 'Paste your key',
                   secret: true,
-                  hint: keyHint(preset)
+                  hint: keyHint(preset),
+                  action: testButton(tests.main, 'main model'),
+                  after: testResult(tests.main, settings.llmModel)
                 })}
               <div className="field">
                 <label id="settings-reasoningEffort">Reasoning effort</label>
