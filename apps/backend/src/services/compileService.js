@@ -433,7 +433,8 @@ export const compiling = (projectId) => [...running.values()].some((job) => job.
  * A compile of a folder that isn't a project (an agent's copy), as the agent's tools and the review's preview run one
  * inside isolation: built in buildDir (the temp folder's spectrum-build by default), nothing written into the folder,
  * and no kept files, SyncTeX or checkpoints. env: more for TeX's; without: engines Auto doesn't pick; untrusted: no
- * shell escape, Biber or index and glossary tools, for a draft compiled outside isolation. warmUp: the background
+ * shell escape, for a draft compiled outside isolation (on Windows), which runs the same helpers as the user's own
+ * compile there (Biber, BibTeX, the index and glossary tools, latexmk with no rc file). warmUp: the background
  * warm-up's, at low priority, stopped by its signal. Resolves as runCompile does, with the PDF in base64.
  */
 export async function compileFolder({ root, mainFile, engine = 'auto', texFolder, signal, ...options }) {
@@ -704,10 +705,10 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     logChunks.push(next);
   };
   const tex = await fs.readFile(absMain, 'utf8').catch(() => '');
-  // a mismatched Biber on the PATH would refuse Tectonic's biblatex; an untrusted compile runs none. Tectonic runs
-  // Biber for any biblatex document, so Spectrum's is downloaded first when it isn't there yet
-  let biber = engine === 'tectonic' && !options.untrusted ? tectonicBiber() : null;
-  if (engine === 'tectonic' && !options.untrusted && !options.warmUp && !biber && needsBiber(tex)) biber = await fetchBiber(live, pushLog);
+  // a mismatched Biber on the PATH would refuse Tectonic's biblatex. Tectonic runs Biber for any biblatex document, so
+  // Spectrum's is downloaded first when it isn't there yet
+  let biber = engine === 'tectonic' ? tectonicBiber() : null;
+  if (engine === 'tectonic' && !options.warmUp && !biber && needsBiber(tex)) biber = await fetchBiber(live, pushLog);
   if (stopped()) {
     await cleanBuild(buildRoot, outDir);
     return { ok: false, stopped: true, error: 'The compile was stopped.', log: logChunks.join(''), status: -1 };
@@ -816,8 +817,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
           // a .aux that would have the glossaries' programs run something else: neither runs
           const unsafe = input === 'glo' && glossariesUnsafe(await auxWithInputs(outDir, `${base}.aux`), base);
           if (unsafe) pushLog(Buffer.from('\n[spectrum warning] The glossary settings in this document’s .aux file (or its name) hold characters a command line would run, so makeglossaries wasn’t run.\n'));
-          // an untrusted compile's helpers are Perl and Lua (and MiKTeX's), which TeX's limits don't reach: none run
-          for (const tool of options.untrusted || unsafe ? [] : [indexer, fallback].filter(Boolean)) {
+          for (const tool of unsafe ? [] : [indexer, fallback].filter(Boolean)) {
             ran = await confined(tool, indexArgs(base), outDir).catch(() => null); // not installed
             if (ran?.code === 0 || stopped()) break;
           }
@@ -944,11 +944,9 @@ async function fetchBiber(live, pushLog) {
 
 /**
  * BibTeX or Biber after the first pass, when the .aux cites anything or names a bibliography: the tool chosen, else
- * a `% !BIB program = biber` comment's, else Biber for biblatex. Resolves 1 or Biber's code when Biber failed. An
- * untrusted compile (a Windows preview of an agent's draft) never runs Biber, which is Perl and reads and writes
- * wherever the document says, whatever openin_any and openout_any say.
+ * a `% !BIB program = biber` comment's, else Biber for biblatex. Resolves 1 or Biber's code when Biber failed.
  */
-async function runBibliography(outDir, base, tex, { bibTool, untrusted } = {}, run, pushLog) {
+async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog) {
   // with the \include'd chapters' .aux, where the citations and \bibliography may be
   const aux = await auxWithInputs(outDir, `${base}.aux`);
   // biblatex writes \abx@aux@... commands in .aux; traditional bibtex \citation and \bibdata
@@ -957,10 +955,6 @@ async function runBibliography(outDir, base, tex, { bibTool, untrusted } = {}, r
   const chosen = bibTool && bibTool !== 'auto' ? bibTool : ['bibtex', 'biber'].includes(magic) ? magic : null;
   const useBiber = chosen ? chosen === 'biber' : aux.includes('\\abx@aux@') || /\\usepackage(\[.*?\])?\{biblatex\}/.test(tex);
   const bibCmd = useBiber ? 'biber' : 'bibtex';
-  if (useBiber && untrusted) {
-    pushLog(Buffer.from('[spectrum] Biber doesn’t run for a preview of an agent’s draft, so its citations show as missing.\n'));
-    return 0;
-  }
   // Run bibtex/biber in outDir on the bare base name (openout_any=p blocks absolute
   // paths). Both find the project's .bib files through BIBINPUTS. biber must not get
   // --input-directory=<project>: it looks for the .bcf there and fails.

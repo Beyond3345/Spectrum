@@ -671,6 +671,16 @@ async function takeSuggestions(r) {
 // TeX Live through openin_any only until 2026, which made that a no-op
 export const confinableTeX = (version) => /MiKTeX/i.test(version) || Number(String(version).match(/TeX Live (\d{4})/)?.[1]) < 2026;
 /**
+ * Why a Windows preview of a draft isn't compiled, or null: version is pdflatex's --version, null when there is none
+ * (Auto then compiles with Tectonic, as the user's own compile does). Its engines and helpers are the user's own compile's.
+ * ponytail: Typst's own sandboxing on Windows is unexplored, and Markdown goes through pandoc on either engine
+ */
+export function windowsPreviewRefusal(main, engine, version) {
+  if (/\.(typ|md|markdown)$/i.test(main)) return 'Preview PDF on Windows supports LaTeX drafts only for now.';
+  if (engine !== 'tectonic' && version != null && !confinableTeX(version)) return 'Preview PDF on Windows needs MiKTeX, or TeX Live 2025 or earlier: later TeX Live can’t limit what a compile reads, so the draft isn’t compiled. Review its changes as text.';
+  return null;
+}
+/**
  * What a Windows preview's TeX is told: read and write only below the draft and its build folder, and no shell escape,
  * not even the restricted kind. TeX Live reads the lower-case names, MiKTeX its [Core] settings by these names (which a
  * value set in its own configuration overrides, so previewDraft checks what MiKTeX makes of them).
@@ -708,13 +718,14 @@ function inTurn(root, work) {
 const reviewCompiles = new Set();
 
 /**
- * A folder as a PDF: { ok, pdf (base64, or null), log }. It is compiled where it can read nothing but the folder and
- * TeX, into this computer's cache (under `name`), never into the folder. On macOS inside isolation, the folder
- * read-only and the project (root) out of reach; on Windows with TeX told to read only below the folder (MiKTeX's
- * AllowUnsafeInputFiles, TeX Live's openin_any before 2026) and run nothing, with none of the Perl and Lua helpers that
- * ignore those limits (Biber, latexmk, the glossary tools), and with no preview where TeX can't be told: Tectonic, TeX
- * Live 2026 and later, and a MiKTeX whose own settings win over the preview's. children: where the compile's process
- * is kept while it runs, to be stopped from.
+ * A folder as a PDF: { ok, pdf (base64, or null), log }, compiled into this computer's cache (under `name`), never into
+ * the folder. On macOS inside isolation, where it can read nothing but the folder and TeX, the folder read-only and the
+ * project (root) out of reach. On Windows as the user's own compile is there, with the same engines and helpers
+ * (Biber, latexmk, the index and glossary tools, Tectonic), but with no shell escape and TeX told to read and write
+ * only below the folder (MiKTeX's AllowUnsafeInputFiles, TeX Live's openin_any before 2026), and with no preview where
+ * TeX can't be told: TeX Live 2026 and later, and a MiKTeX whose own settings win over the preview's. The helpers are
+ * Perl and Lua, which those limits don't reach, so they read what the user's own compile's would (Biber a .bib
+ * anywhere the draft names). children: where the compile's process is kept while it runs, to be stopped from.
  */
 async function compileIsolated({ root, workspace, name, main, engine, choices, children }) {
   // a fresh folder for each, and a home kept between them for TeX's own caches
@@ -724,16 +735,13 @@ async function compileIsolated({ root, workspace, name, main, engine, choices, c
   await fs.mkdir(out, { recursive: true, mode: 0o700 });
   await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
   if (process.platform === 'win32') {
-    // ponytail: Typst's own sandboxing on Windows is unexplored, and Markdown goes through pandoc on either engine
-    if (/\.(typ|md|markdown)$/i.test(main)) return { ok: false, pdf: null, log: 'Preview PDF on Windows supports LaTeX drafts only for now.' };
-    if (engine === 'tectonic') return { ok: false, pdf: null, log: 'Preview PDF needs TeX Live or MiKTeX on Windows.' };
-    if (engine === 'latexmk') return { ok: false, pdf: null, log: 'Preview PDF on Windows doesn’t use latexmk, which runs outside the limits a preview sets. Choose Auto, pdfLaTeX, XeLaTeX or LuaLaTeX for the project, or review the changes as text.' };
-    const tex = await findExecutable('pdflatex');
-    const version = tex ? (await execFileAsync(tex, ['--version'], { timeout: 20000, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout : '';
-    if (!confinableTeX(version)) return { ok: false, pdf: null, log: 'Preview PDF on Windows needs MiKTeX, or TeX Live 2025 or earlier: later TeX Live can’t limit what a compile reads, so the draft isn’t compiled. Review its changes as text.' };
+    // TeX's limits, checked where TeX runs: Tectonic (the user's own compile's engine when no TeX is installed) has none
+    const tex = engine === 'tectonic' || windowsPreviewRefusal(main, engine, null) ? null : await findExecutable('pdflatex');
+    const version = tex ? (await execFileAsync(tex, ['--version'], { timeout: 20000, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout : null;
+    const refused = windowsPreviewRefusal(main, engine, version);
+    if (refused) return { ok: false, pdf: null, log: refused };
     if (/MiKTeX/i.test(version) && !(await mikTeXConfined())) return { ok: false, pdf: null, log: 'Spectrum couldn’t confirm that MiKTeX will limit what the compile reads, writes and runs (a setting in MiKTeX’s own configuration may take precedence), so the draft isn’t compiled. Review its changes as text.' };
-    // ponytail: whether MiKTeX's bibtex keeps to the [Core] settings is for the Windows build machine's test to show
-    const result = await compileFolder({ root: workspace, mainFile: main, engine, without: ['tectonic', 'latexmk'], untrusted: true, buildDir: out, env: PREVIEW_TEX_ENV });
+    const result = await compileFolder({ root: workspace, mainFile: main, engine, untrusted: true, buildDir: out, env: PREVIEW_TEX_ENV });
     return { ok: result.ok && result.status === 0, pdf: result.pdf || null, log: result.log || result.error || '' };
   }
   const { entry, env, reads } = await toolsLaunch();
