@@ -360,7 +360,7 @@ async function drawAs(file: File, type: 'image/png' | 'image/jpeg') {
   }
 }
 
-type Panel = { key: number; source: FigureSource; name: string; caption: string; /** null: follows the file name */ label: string | null };
+type Panel = { key: number; source: FigureSource; name: string; caption: string; /** null: follows the file name */ label: string | null; /** Typst's alt text */ alt: string };
 let panelKeys = 0;
 
 const panelPath = (panel: Panel) => (panel.source.kind === 'project' ? panel.source.path : `figures/${safeFileName(panel.name, panel.source.ext)}`);
@@ -446,7 +446,7 @@ function InsertFigure() {
   }, [count]);
 
   const add = (source: FigureSource, name = '') => {
-    const panel: Panel = { key: (panelKeys += 1), source, name, caption: '', label: null };
+    const panel: Panel = { key: (panelKeys += 1), source, name, caption: '', label: null, alt: '' };
     setPanels((prev) => {
       if (several) return [...prev, panel];
       prev.forEach(forget);
@@ -593,7 +593,7 @@ function InsertFigure() {
       let wanted = ['graphicx'];
       if (several) {
         const figureSet: FigureSet = {
-          panels: used.map((p, i) => ({ path: saved[i], caption: p.caption, label: p.label ?? figureLabel(saved[i]) })),
+          panels: used.map((p, i) => ({ path: saved[i], caption: p.caption, label: p.label ?? figureLabel(saved[i]), alt: p.alt })),
           layout,
           columns: prefs.columns,
           labels: prefs.labels,
@@ -608,7 +608,7 @@ function InsertFigure() {
       } else {
         // an automatic label follows the name the file was saved under
         const figure = { path: saved[0], width: widthOf(prefs), caption, label: label ?? figureLabel(saved[0]), size };
-        text = docKindNow === 'typst' ? figureTypst({ ...figure, ...placement }) : docKindNow === 'markdown' ? figureMarkdown(figure) : figureLatex({ ...figure, ...placement });
+        text = docKindNow === 'typst' ? figureTypst({ ...figure, ...placement, alt: used[0].alt }) : docKindNow === 'markdown' ? figureMarkdown(figure) : figureLatex({ ...figure, ...placement });
       }
       const added =
         docKindNow === 'latex' ? await ensurePackages(() => apiRef.current, [...wanted, ...(placementOf(prefs.placement, prefs.span) === 'H' ? ['float'] : [])]) : { text: '', warn: false };
@@ -734,6 +734,9 @@ function InsertFigure() {
                 spellCheck={false}
               />
             )}
+            {kind === 'typst' && (
+              <input className="input" aria-label={`Image ${i + 1} alt text`} placeholder="Alt text: what it shows" value={panel.alt} onChange={(e) => setPanel(panel.key, { alt: e.target.value })} />
+            )}
             {prefs.labels !== 'none' && (
               <>
                 <input className="input" aria-label={`Image ${i + 1} caption`} placeholder={prefs.labels === 'sub' ? 'Sub-caption' : 'Caption'} value={panel.caption} onChange={(e) => setPanel(panel.key, { caption: e.target.value })} />
@@ -843,6 +846,13 @@ function InsertFigure() {
                 <input id={`${id}-label`} className="input" value={mainLabel} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
               </div>
             </>
+          )}
+          {!several && kind === 'typst' && (
+            <div className="field">
+              <label htmlFor={`${id}-alt`}>Alt text</label>
+              <textarea id={`${id}-alt`} className="input" rows={2} value={first.alt} onChange={(e) => setPanel(first.key, { alt: e.target.value })} placeholder="What the image shows, for someone who can’t see it" />
+              <div className="field-hint">Read aloud by screen readers. Download › PDF/UA-1 needs it on every image.</div>
+            </div>
           )}
           <Segmented label="Size by" value={prefs.sizeMode} options={SIZE_MODES} onChange={(sizeMode) => set({ sizeMode })} />
           {prefs.sizeMode === 'line' && (
