@@ -159,7 +159,7 @@ Before it writes the first change you accept, Spectrum saves a "Before AI change
 
 #shot("figures/03-assistant/image-menu.png", [The image menu under #ui[+].], width: 40%) <fig-assistant-image-menu>
 
-After choosing a picture, the reply shows the LaTeX in a code block with #ui[Insert at cursor], which puts it into the open file as a block. Anything typed in the message box before choosing the picture is sent with it as an extra instruction.
+After choosing a picture, the reply shows the LaTeX in a code block with #ui[Insert at cursor], which puts it into the open file as a block. In a Typst document each kind asks for Typst instead: maths between `$`, a `#table`, a `#figure` with alt text, an algorithm as a numbered list in a figure and text with Typst's marks escaped. Anything typed in the message box before choosing the picture is sent with it as an extra instruction.
 
 === AI autocomplete
 
