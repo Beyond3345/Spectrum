@@ -11,6 +11,7 @@ import { autocompletion, nextSnippetField, prevSnippetField } from '@codemirror/
 import { foldService, syntaxHighlighting } from '@codemirror/language';
 import { applyPatch, structuredPatch } from 'diff';
 import {
+  AGENT_TASK_KEY,
   deleteFile,
   ApiError,
   blobUrl,
@@ -161,7 +162,7 @@ import { Tinymist, tinymistCompletions } from '../editor/lsp/tinymist';
 import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/rename';
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
-import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
+import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, fixWithAI, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
 import { expandTrigger, insertSnippet as insertUserSnippet } from '../editor/userSnippets';
 import { projectMacros } from '../editor/mathPreview';
 import { figurePreview, previewFigure } from '../editor/figurePreview';
@@ -1528,7 +1529,22 @@ function Editor({ projectId }: { projectId: string }) {
       })
     );
     notify(ready.length === 1 ? `Applied the changes to ${nameOf(ready[0].filePath)}` : `Applied changes to ${ready.length} files`, 'success');
+    void afterAgentApply();
     return { applied: ready, stale, checkpoint: version };
+  };
+
+  /** Settings › Agents › Automations, once an agent's changes are written: a compile, and Fix with AI offered (never called) if it fails. */
+  const afterAgentApply = async () => {
+    if (!settings.compileAfterApply || (await runCompile(compiledDoc || mainFile)) !== 'failed' || !settings.offerFixAfterApply) return;
+    toast('The document doesn’t build after the applied changes.', {
+      tone: 'error',
+      action: {
+        label: 'Fix with AI',
+        onClick: () => {
+          if (apiRef.current) void fixWithAI(apiRef.current, { task: 'debug_compile', prompt: 'Diagnose the errors in the compile log and fix them. Ignore warnings. Propose patches that can be applied.', label: 'Fix with AI' });
+        }
+      }
+    });
   };
 
   /**
@@ -2112,6 +2128,18 @@ function Editor({ projectId }: { projectId: string }) {
     setAgentTask((was) => ({ ...task, n: (was?.n || 0) + 1 }));
     openPanel('agent');
   };
+  // a project Template transfer made With an agent opens with its task, once
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      const task = JSON.parse(sessionStorage.getItem(AGENT_TASK_KEY) || 'null');
+      if (task?.projectId !== projectId) return;
+      sessionStorage.removeItem(AGENT_TASK_KEY);
+      if (typeof task.skill === 'string' && typeof task.prompt === 'string') openAgentTask({ skill: task.skill, prompt: task.prompt });
+    } catch {
+      // nothing to hand over
+    }
+  }, [loaded, projectId]);
   // a page of the PDF, notes, to-dos and review findings sent to the agent (agent/handoff.ts)
   useEffect(() => onHandoff((t) => openAgentTask({ prompt: t.prompt, skill: '', images: t.images })));
   const renderPage = (n: number, w: number, h: number) => pdfRef.current?.renderPage(n, w, h) ?? Promise.resolve(null);
@@ -3152,6 +3180,7 @@ function Editor({ projectId }: { projectId: string }) {
     showLineInPdf,
     proposeChanges,
     applyChanges: acceptChanges,
+    agentApplied: () => void afterAgentApply(),
     prepareAgent: async () => {
       await saveNow();
       if (heldRef.current.size) throw new Error('Resolve the files changed on disk before starting or applying agent work.');

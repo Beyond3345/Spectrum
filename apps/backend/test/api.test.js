@@ -1818,6 +1818,24 @@ test('a template change without a model creates nothing; one that errors leaves 
   assert.ok(!existsSync(target.path));
 });
 
+test('a transfer with an agent: the Typst template’s project with the paper in source/, its secrets and links left out', async () => {
+  const src = await newProject('Gamma paper');
+  await writeFile(src.id, 'main.tex', '\\documentclass{article}\\begin{document}Hi\\end{document}');
+  await writeFile(src.id, 'figs/plot.txt', 'figure');
+  await writeFile(src.id, '.env', 'KEY=1');
+  const root = (await api('/api/projects')).json.projects.find((x) => x.id === src.id).path;
+  await fs.symlink('/etc/hosts', path.join(root, 'hosts.tex'));
+  assert.equal((await api('/api/transfer/agent', { method: 'POST', body: { sourceProjectId: src.id, targetTemplateId: 'nope' } })).status, 400);
+  const { newProjectId } = (await api('/api/transfer/agent', { method: 'POST', body: { sourceProjectId: src.id, targetTemplateId: 'typst-document' } })).json;
+  const target = (await api('/api/projects')).json.projects.find((x) => x.id === newProjectId);
+  assert.match(target.name, /^Gamma paper \(.+\)$/);
+  const tree = (await api(`/api/projects/${newProjectId}/tree`)).json;
+  const files = tree.items.filter((i) => i.type === 'file').map((i) => i.path);
+  assert.equal(tree.mainFile, 'main.typ');
+  assert.ok(files.includes('main.typ') && files.includes('source/main.tex') && files.includes('source/figs/plot.txt'), files.join(', '));
+  assert.ok(!files.some((f) => /\.env|hosts/.test(f)), files.join(', '));
+});
+
 test('PDF transfers list their parsers and keep the PDF out of the new project’s files', async () => {
   const { parsers } = (await api('/api/transfer/parsers')).json;
   assert.deepEqual(parsers.map((p) => p.id), ['mineru', 'mathpix', 'mistral', 'datalab', 'llamaparse', 'paddleocr', 'docling']);

@@ -2312,3 +2312,24 @@ export const setGitHubPersonal = (id: string, personal: boolean) => request<{ ok
 export const gitHubOpened = (id: string) => request<{ ok: boolean; linked: boolean; result?: GitHubPull; message?: string }>(`/api/projects/${id}/github/opened`, json('POST'));
 /** The editor left the project (sent as the window closes too). */
 export const gitHubLeft = (id: string) => fetch(`/api/projects/${id}/github/left`, { method: 'POST', keepalive: true }).catch(() => undefined);
+
+/** Spectrum's tools for an agent it did not start: off, or on with the address and this switch's secret. */
+export type OutsideTools = { on: false } | { on: true; url: string; token: string };
+export const getOutsideTools = (projectId: string) => request<OutsideTools>(`/api/projects/${projectId}/outside-tools`);
+export const setOutsideTools = (projectId: string, on: boolean, compile?: { typstVersion: string; markdownEngine: string }) =>
+  request<OutsideTools>(`/api/projects/${projectId}/outside-tools`, json('POST', { on, compile }));
+
+/** Template transfer › With an agent: a new project from the template with this one's files in source/. */
+/** The task such a project opens with ({ projectId, skill, prompt } in sessionStorage), handed to the agent workspace once. */
+export const AGENT_TASK_KEY = 'spectrum-agent-task';
+export const transferWithAgent = (payload: { sourceProjectId: string; targetTemplateId: string; parentDir?: string }) =>
+  request<{ newProjectId: string }>('/api/transfer/agent', json('POST', payload));
+
+/** Settings › Agents › MCP servers: the user's own, for the Spectrum agent. */
+export type McpServer = { name: string; command: string; args: string[]; on: boolean; checked: boolean };
+export type McpTool = { name: string; description: string; readOnly: boolean };
+export const listMcpServers = () => request<{ servers: McpServer[] }>('/api/mcp-servers');
+export const addMcpServer = (server: { name: string; command: string; args: string[] }) => request<{ ok: boolean }>('/api/mcp-servers', json('POST', server));
+export const removeMcpServer = (name: string) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
+export const checkMcpServer = (name: string) => request<{ tools: McpTool[] }>(`/api/mcp-servers/${encodeURIComponent(name)}/check`, json('POST'));
+export const setMcpServerOn = (name: string, on: boolean) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, json('PUT', { on }));

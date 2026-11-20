@@ -325,7 +325,10 @@ test('the Windows preview of a draft takes the user’s compile’s engines, lat
   assert.equal(windowsPreviewRefusal('main.tex', 'tectonic', null), null);
   assert.equal(windowsPreviewRefusal('main.tex', 'tectonic', live2026), null, 'Tectonic is not TeX Live');
   assert.equal(windowsPreviewRefusal('main.tex', 'auto', null), null, 'no TeX installed: Auto takes Tectonic');
-  assert.match(windowsPreviewRefusal('paper.typ', 'auto', null), /LaTeX drafts only/);
+  // Typst keeps to its --root on any system, whatever TeX is installed; pandoc reads what a Markdown draft names
+  assert.equal(windowsPreviewRefusal('paper.typ', 'auto', null), null);
+  assert.equal(windowsPreviewRefusal('paper.typ', 'auto', live2026), null);
+  assert.match(windowsPreviewRefusal('notes.md', 'auto', null), /Markdown drafts/);
 });
 
 test('the Windows preview compiles only with a TeX that can be told to read only the draft', async () => {

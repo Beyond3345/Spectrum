@@ -18,6 +18,7 @@ import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, SKILL_RULE, skillText, untrusted } from '../utils/outsideText.js';
 import { instructionsBlock } from './agentInstructions.js';
 import { MAX_MEMORY_CHARS, memoryBlock } from './agentMemory.js';
+import { serverTools } from './mcpServers.js';
 import { RATINGS, recordClaim } from './claimsLedger.js';
 import { readSource } from './sourceReader.js';
 
@@ -673,7 +674,25 @@ export async function runToolAgent({
   let sight = null;
   const sees = () => (sight ||= readsImages(resolved).catch(() => false));
 
-  const mine = agentTools().filter((t) => (readOnly ? READ_ONLY_TOOLS.includes(t.name) : (t.name !== 'web_search' || searchConfig) && (interactive || !JOB_TOOLS.includes(t.name))));
+  // the user's own MCP servers that are on (Settings › Agents), in a job's thread, where a call that may change
+  // something can wait for the user's word: a tool the server does not mark read-only asks once in the thread
+  const outside = interactive ? await serverTools().catch((err) => ({ tools: [], notes: [err.message] })) : { tools: [], notes: [] };
+  for (const message of outside.notes) say('notice', { message });
+  const allowed = interactive ? (conversation.mcpAllowed ??= new Set()) : new Set();
+  if (conversation?.mcpWaiting) {
+    if (/^allow$/i.test(String(prompt || '').trim())) allowed.add(conversation.mcpWaiting);
+    conversation.mcpWaiting = null;
+  }
+  const theirs = outside.tools.map((t) => (t.readOnly ? t : {
+    ...t,
+    run: (ctx, input) => {
+      if (allowed.has(t.name)) return t.run(ctx, input);
+      ctx.ask({ kind: 'question', question: `May the agent use “${t.mcp.tool}” from your MCP server “${t.mcp.server}”? The server does not say that it only reads, so it may change something outside this project. The agent asked with: ${JSON.stringify(input).slice(0, 300)}`, options: ['Allow', 'Don’t allow'] });
+      conversation.mcpWaiting = t.name;
+      return 'This tool needs the user’s permission, and they are asked for it now. Your turn ends here; if they allow it, call it again.';
+    }
+  }));
+  const mine = [...agentTools().filter((t) => (readOnly ? READ_ONLY_TOOLS.includes(t.name) : (t.name !== 'web_search' || searchConfig) && (interactive || !JOB_TOOLS.includes(t.name)))), ...theirs];
   // Plan: the turn reads, asks and plans, and can change nothing
   const planning = interactive && planFirst;
   const offered = planning ? mine.filter((t) => t.readOnly || PLAN_TOOLS.includes(t.name)) : mine;

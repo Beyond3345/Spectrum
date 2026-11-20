@@ -17,6 +17,10 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
 - The projects page says when a newer Spectrum is out, asking the release page at most once a day and sending nothing about you. A switch in Settings › System turns it off
 - Vim or Emacs keys in the source editor, in Settings › Editor
+- Agents you run yourself, such as Claude Code, Codex or Cursor, can use a project's Spectrum tools once you turn on Use from another agent in the Local agents bar. The secret is new each time and ends when Spectrum quits
+- Your own MCP servers for the Spectrum agent in Settings › Agents: added off, checked, run isolated, and a tool that may change something asks first
+- Spectrum compiles after you apply an agent's changes, and offers Fix with AI if that compile fails (Settings › Agents › Automations)
+- Change template › With an agent moves a paper into a LaTeX or Typst template, with the new spectrum-template-transfer skill
 - Pictures go with a message to either agent: paste, drop or choose one, sent to models that read images. A model that does not read images is told a picture was left out, and says so
 - The Spectrum agent can look at a page of its draft and at a figure on its own, with Open in composer on a diagram's card
 - Send page to agent in the PDF's right-click menu, with the source line of the spot clicked
@@ -49,11 +53,14 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A reference to a label that does not exist in a Markdown document prints ?? and is a warning at its line in Logs
 - A composer diagram goes into Markdown as its PNG, which Word shows
 - A long document's AI review starts each part at a top-level heading where it can
+- On Windows, PDF before and after compiles Typst drafts too, and an agent's draft is compiled from a copy that leaves out links, never from the agent's own folder
+- On Windows, the Local agents tab says what local agents lack there, and that the Spectrum agent has every tool
 
 ### Fixed
 
 - A table's `{#tbl:x}` label no longer prints in its caption with pandoc before 3.8.2
 - No Jyutping button in a Markdown document's toolbar
+- A task sent to the agent workspace as it opens keeps its skill
 
 ## 2.6.0 (21 November 2026)
 

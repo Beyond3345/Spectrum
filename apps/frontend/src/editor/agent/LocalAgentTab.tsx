@@ -34,6 +34,7 @@ import type { Picture } from './pictures';
 import { RUNNING, addEvent, project } from './transcript';
 import AgentLogo from './AgentLogo';
 import AgentHeader from './AgentHeader';
+import OutsideTools from './OutsideTools';
 import { chosenAgent, shownAgents } from './agents';
 import { AGENT_CARD_KEY } from '../../app/AgentSettings';
 import type { Checkpoint } from './transcript';
@@ -309,6 +310,7 @@ export default function LocalAgentTab({
         await latest.current.reloadProject();
         window.dispatchEvent(new Event(VERSIONS_CHANGED));
         await loadCheckpoints();
+        latest.current.agentApplied();
       }
     } catch (err) {
       fail(err);
@@ -340,6 +342,7 @@ export default function LocalAgentTab({
         await latest.current.reloadProject();
         window.dispatchEvent(new Event(VERSIONS_CHANGED));
         await loadCheckpoints();
+        latest.current.agentApplied();
       }
     } catch (err) {
       fail(err);
@@ -430,6 +433,7 @@ export default function LocalAgentTab({
         />
         <span className="grow" />
         <AgentHeader events={events} />
+        <OutsideTools />
         {session && RUNNING.includes(session.status) && (
           <button className="btn small" onClick={() => stopLocalAgentSession(session.id).catch(fail)}>
             <Icon name="stop.fill" /> Stop
@@ -500,6 +504,7 @@ export default function LocalAgentTab({
         )}
         {!reviewing && <ChangesTray changes={tray} direct={session?.mode === 'direct'} onOpen={openReview} />}
         {!session && mode === 'direct' && <p className="field-hint">The agent can change your project straight away. A checkpoint is saved before each task.</p>}
+        {!session && IS_WINDOWS && <p className="field-hint">On Windows, local agents don’t get Spectrum’s tools or Direct editing yet. The Spectrum agent has every tool.</p>}
         <AgentComposer
           busy={running}
           disabled={!session && !ready}

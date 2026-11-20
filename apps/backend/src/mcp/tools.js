@@ -12,6 +12,7 @@ import { withoutComments } from '../latex/text.js';
 import { DOC_LANGUAGES, docKind } from '../utils/docLanguage.js';
 import { listFilesRecursive } from '../utils/fsUtils.js';
 import { agentHidden, safeJoin } from '../utils/pathUtils.js';
+import { skillText, untrusted } from '../utils/outsideText.js';
 
 // What Spectrum's tools server does for an agent, inside the agent's isolation: root is its working copy, state its
 // run's folder in its private home, where Spectrum leaves context.json ({ mainFile, engine, todos }) before the
@@ -19,6 +20,14 @@ import { agentHidden, safeJoin } from '../utils/pathUtils.js';
 // context itself in place of the folder.
 
 const slashed = (p) => p.split(path.sep).join('/');
+// a file of the project as an agent may read it: never a hidden or secret one (.git, .env, keys), nor through a link
+// out of the project. The copy a local agent works on has none of those; the project itself, which an agent outside
+// Spectrum works on, does
+const readText = async (root, rel) => {
+  if (agentHidden(rel)) throw new Error('This path is not available to the agent.');
+  return fs.readFile(safeJoin(root, rel), 'utf8');
+};
+const visible = (f) => f.type === 'file' && !agentHidden(f.path);
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 async function context(state) {
   return typeof state === 'string' ? JSON.parse(await fs.readFile(path.join(state, 'context.json'), 'utf8').catch(() => '{}')) : state || {};
@@ -31,10 +40,10 @@ async function context(state) {
 async function mainFile(root, state) {
   const named = (await context(state)).mainFile;
   if (named && (await fs.stat(safeJoin(root, named)).catch(() => null))?.isFile()) return named;
-  const tex = (await listFilesRecursive(root)).filter((f) => f.type === 'file' && /\.tex$/i.test(f.path)).map((f) => f.path).sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
-  for (const file of tex) if (/\\documentclass\b/.test(withoutComments((await fs.readFile(path.join(root, file), 'utf8')).slice(0, 16384)))) return file;
+  const tex = (await listFilesRecursive(root)).filter((f) => visible(f) && /\.tex$/i.test(f.path)).map((f) => f.path).sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
+  for (const file of tex) if (/\\documentclass\b/.test(withoutComments((await readText(root, file).catch(() => '')).slice(0, 16384)))) return file;
   if (tex[0]) return tex[0];
-  const others = (await listFilesRecursive(root)).filter((f) => f.type === 'file' && /\.(?:typ|md|markdown)$/i.test(f.path)).map((f) => f.path);
+  const others = (await listFilesRecursive(root)).filter((f) => visible(f) && /\.(?:typ|md|markdown)$/i.test(f.path)).map((f) => f.path);
   const depth = (f) => f.split('/').length;
   const rank = (f) => (/^main\./i.test(path.posix.basename(f)) ? 0 : /\.typ$/i.test(f) ? 1 : /^readme\./i.test(path.posix.basename(f)) ? 3 : 2);
   return others.sort((a, b) => depth(a) - depth(b) || rank(a) - rank(b) || a.localeCompare(b))[0] || null;
@@ -71,7 +80,7 @@ async function documentFiles(root, main) {
     if (depth > 20 || seen.has(rel)) return;
     let text;
     try {
-      text = await fs.readFile(safeJoin(root, rel), 'utf8');
+      text = await readText(root, rel);
     } catch {
       return false;
     }
@@ -102,14 +111,14 @@ async function documentFiles(root, main) {
 /** The project's .bib entries: the files the document names, else every .bib in the project. */
 async function bibEntries(root, files) {
   const named = files.flatMap(({ text }) => [...text.matchAll(BIBLIOGRAPHY)].flatMap((m) => m[1].split(',').map((n) => n.trim()).filter(Boolean)).map((n) => (n.endsWith('.bib') ? n : `${n}.bib`)));
-  const all = (await listFilesRecursive(root)).filter((f) => f.type === 'file' && /\.bib$/i.test(f.path)).map((f) => f.path);
+  const all = (await listFilesRecursive(root)).filter((f) => visible(f) && /\.bib$/i.test(f.path)).map((f) => f.path);
   // Typst's #bibliography and a Markdown front matter's bibliography, as an add to the .bib finds them
   const others = files.filter(({ file }) => kindOf(file) !== 'latex').map(({ text }) => text);
   const loaded = (f) => named.some((n) => f === slashed(path.normalize(n)) || f.endsWith(`/${path.posix.basename(n)}`)) || texIncludesBib(others, f);
   const bibs = named.length || all.some(loaded) ? all.filter(loaded) : all;
   const entries = [];
   for (const file of bibs) {
-    const text = await fs.readFile(path.join(root, file), 'utf8').catch(() => '');
+    const text = await readText(root, file).catch(() => '');
     for (const entry of parseBibEntries(text)) entries.push({ ...entry, file, line: lineOf(text, entry.at) });
   }
   return { bibs, entries };
@@ -123,7 +132,7 @@ export async function projectMap(root, state) {
   const { bibs, entries } = await bibEntries(root, files);
   const outline = [], labels = [], refs = [], cites = [], atKeys = [];
   // a Markdown document's front matter: what pandoc reads its title, authors, bibliography and style from
-  const front = kindOf(main) === 'markdown' ? Object.fromEntries(Object.entries(readFrontMatter(await fs.readFile(safeJoin(root, main), 'utf8').catch(() => '')).data).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, v.slice(0, 200)])) : null;
+  const front = kindOf(main) === 'markdown' ? Object.fromEntries(Object.entries(readFrontMatter(await readText(root, main).catch(() => '')).data).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, v.slice(0, 200)])) : null;
   for (const { file, text } of files) {
     const at = (m) => ({ file, line: lineOf(text, m.index) });
     const kind = kindOf(file);
@@ -201,6 +210,7 @@ export function logErrors(log) {
  * log is kept for get_log, and nothing is written into the copy.
  */
 export async function compile(root, state, { main, engine } = {}, options = {}) {
+  if (main && agentHidden(main)) return { ok: false, error: 'This path is not available to the agent.' };
   const file = main || await mainFile(root, state);
   if (!file) return { ok: false, error: 'This project has no LaTeX, Typst or Markdown document.' };
   const { typstVersion, markdownEngine, ...chosen } = await context(state);
@@ -509,9 +519,32 @@ export const TOOLS = [
   }
 ];
 
+/**
+ * The tools (TOOLS, or those named) on an MCP server, for the host ctx gives: every answer as JSON text inside a marker
+ * naming the tool it came from (a skill's as a skill), as what a paper's abstract, a .bib field or a log says is never
+ * the user speaking; a failure as the tool's error, for the agent to read.
+ */
+export function serveTools(server, ctx, names = null) {
+  for (const tool of TOOLS.filter((t) => !names || names.includes(t.name))) {
+    server.registerTool(tool.name, { description: tool.description, inputSchema: tool.schema, annotations: { readOnlyHint: tool.readOnly } }, async (input) => {
+      try {
+        const answer = await tool.run(ctx, input || {});
+        const { image, ...rest } = answer?.image ? answer : {};
+        const result = image ? rest : answer;
+        const text = typeof result === 'string' ? result : JSON.stringify(result);
+        // a page or a figure the tool drew comes as an image block after its words
+        return { content: [{ type: 'text', text: tool.name === 'load_skill' ? skillText(input?.id, text) : untrusted(tool.name, text) }, ...(image ? [{ type: 'image', data: image.data, mimeType: image.type }] : [])] };
+      } catch (err) {
+        return { isError: true, content: [{ type: 'text', text: untrusted(tool.name, err.message) }] };
+      }
+    });
+  }
+}
+
 /** A tool as a model's request lists it: an OpenAI-style function with the schema as JSON Schema. */
-export function toolSpec({ name, description, schema }) {
-  const { properties = {}, required = [] } = z.toJSONSchema(z.object(schema));
+export function toolSpec({ name, description, schema, jsonSchema }) {
+  // a user's MCP server's tool brings its schema as JSON Schema already
+  const { properties = {}, required = [] } = jsonSchema && typeof jsonSchema === 'object' ? jsonSchema : z.toJSONSchema(z.object(schema));
   // as written by hand before: no bounds a model never needs, and nothing some providers' checkers refuse
   const plain = (node) => (Array.isArray(node) ? node.map(plain) : node && typeof node === 'object'
     ? Object.fromEntries(Object.entries(node).filter(([key, value]) => !['$schema', 'additionalProperties'].includes(key) && !(['minimum', 'maximum'].includes(key) && Math.abs(value) > 1e9)).map(([key, value]) => [key, plain(value)]))
@@ -521,6 +554,11 @@ export function toolSpec({ name, description, schema }) {
 
 /** A tool's input checked against its schema; throws with what is wrong, in words a model can act on. */
 export function checkedInput(tool, input) {
+  // an MCP server checks its own tools' input
+  if (tool.jsonSchema) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(`Invalid input for ${tool.name}: give an object.`);
+    return input;
+  }
   const parsed = z.object(tool.schema).safeParse(input ?? {});
   if (parsed.success) return parsed.data;
   throw new Error(`Invalid input for ${tool.name}: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'input'}: ${issue.message}`).join('; ')}`);

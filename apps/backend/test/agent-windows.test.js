@@ -98,6 +98,48 @@ test('Windows cancellation kills background descendants and preserves ordinary p
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
+// Probes for docs/WINDOWS_AGENT_CHECKS.md: what decides whether the Node adapters and Spectrum's tools server can run in
+// Windows isolation. Marked todo, so a stall is reported, not failed; the owner sends back each one's lines.
+async function probe(t, options, wanted) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-win-probe-'));
+  const workspace = path.join(root, 'work'), home = path.join(root, 'home');
+  await fs.mkdir(workspace); await fs.mkdir(home); await fs.mkdir(path.join(home, 'tmp'));
+  try {
+    await options.prepare?.(workspace);
+    const child = await spawnAgentProcess({ workspace, home, ...options });
+    const done = completion(child);
+    const timer = setTimeout(() => killAgentProcess(child), 10000);
+    const result = await done.finally(() => clearTimeout(timer));
+    t.diagnostic(`exit ${result.code}; out: ${JSON.stringify(result.output)}; err: ${JSON.stringify(result.error.slice(-800))}`);
+    assert.match(result.output, wanted, 'stalled or failed (exit 130 is the 10 second stop)');
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+}
+
+test('Windows probe: a Node program in isolation starts a child with new pipes (the adapters’ way)', { skip: !native, todo: 'stalled in 2.0 (docs/WINDOWS_AGENT_VALIDATION.md)', timeout: 30000 }, async (t) => {
+  // which pipe names isolation lets Node make (an AppContainer's own are under LOCAL), then the spawn itself
+  const script = `const net=require('node:net');
+    const make=(name)=>new Promise((res)=>{const s=net.createServer();s.once('error',(e)=>res(e.code));s.listen(name,()=>s.close(()=>res('ok')));});
+    (async()=>{
+      console.log('global-pipe '+await make('\\\\\\\\.\\\\pipe\\\\spectrum-probe-'+process.pid));
+      console.log('local-pipe '+await make('\\\\\\\\.\\\\pipe\\\\LOCAL\\\\spectrum-probe-'+process.pid));
+      console.log('spawning');
+      const c=require('node:child_process').spawn(process.execPath,['-e','process.stdin.pipe(process.stdout)'],{stdio:['pipe','pipe','inherit']});
+      console.log('spawned');
+      c.stdout.on('data',(d)=>{console.log('echoed '+d);process.exit(0);});
+      c.stdin.end('ping');
+    })();`;
+  await probe(t, { command: process.execPath, args: ['-e', script] }, /echoed ping/);
+});
+
+test('Windows probe: a native program in isolation feeds a Node child through a pipe (the tools server’s way, under a native agent)', { skip: !native, todo: 'not yet seen on Windows', timeout: 30000 }, async (t) => {
+  // cmd's | is an anonymous pipe, as most native programs make; Node only reads it
+  const node = process.execPath;
+  await probe(t, {
+    command: path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe'), args: ['/d', '/c', 'probe.cmd'], runtimePaths: [node],
+    prepare: (workspace) => fs.writeFile(path.join(workspace, 'probe.cmd'), `@echo ping| "${node}" --preserve-symlinks --preserve-symlinks-main -e "process.stdin.pipe(process.stdout)"\r\n`)
+  }, /ping/);
+});
+
 // Windows' rules, run on any system with process.platform as Windows reports it
 const asWindows = async (fn) => {
   const platform = Object.getOwnPropertyDescriptor(process, 'platform');
