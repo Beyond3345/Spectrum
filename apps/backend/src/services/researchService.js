@@ -640,7 +640,7 @@ export async function openNote({ root, id, resultId }) {
 const pdfTimeout = () => Number(process.env.SPECTRUM_PDF_TIMEOUT_MS) || 180_000;
 
 /** The PDF's bytes, or null when the link gives something else; throws when the download fails partway. */
-async function downloadPdf(url) {
+export async function downloadPdf(url) {
   const { res } = await getPage(url, 'application/pdf', { timeoutMs: pdfTimeout() });
   if (!res.ok) {
     res.body?.cancel().catch(() => {});

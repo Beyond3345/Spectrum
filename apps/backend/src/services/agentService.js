@@ -18,6 +18,8 @@ import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, SKILL_RULE, skillText, untrusted } from '../utils/outsideText.js';
 import { instructionsBlock } from './agentInstructions.js';
 import { MAX_MEMORY_CHARS, memoryBlock } from './agentMemory.js';
+import { RATINGS, recordClaim } from './claimsLedger.js';
+import { readSource } from './sourceReader.js';
 
 const MAX_STEPS = 25;
 // what one read_file call returns unless it asks for less or more; a longer file is read on with offset
@@ -273,6 +275,26 @@ const OWN_TOOLS = [
     schema: { id: str, path: str },
     readOnly: true,
     run: (ctx, { id, path: file }) => readSkillFile(ctx.skillOn(id), file, MAX_SKILL_FILE)
+  },
+  // a paper's text, and a claim checked against it: for Deep research and Verify claims
+  {
+    name: 'read_source',
+    description: 'Read a paper’s full text, page by page: its open copy from arXiv or from an open-access location OpenAlex knows, or a PDF in the project; without an open copy, its abstract. Give doi, arxiv, key (a .bib entry’s) or path (a PDF in the project), and pages ("3" or "3-6"; 1 to 4 unless you say, 8 at most). The answer starts with what was read and a "Read:" line to copy into a note.',
+    schema: { doi: str.optional(), arxiv: str.optional(), key: str.optional(), path: str.optional(), pages: z.union([str, z.number()]).optional() },
+    readOnly: true,
+    run: async (ctx, input) => (await readSource(ctx.project, { ...input, ...(input.path && { path: ctx.path(input.path) }) })).text,
+    show: (text) => ({ text: text.split('\n').find((line) => line.startsWith('Read: ')) || text.slice(0, 300) })
+  },
+  {
+    name: 'record_claim',
+    description: `Record one checked claim in the project’s claims ledger, which the user sees in Research as a table. file and line: where the claim is; claim: its words; keys: the citations it carries; rating: ${RATINGS.join(', ')}. For supported, partly and unsupported give quote, the source’s own words (six or more, copied from read_source’s text), and source ({ key }, { doi }, { arxiv } or { path }), with page when you know it. Spectrum checks the claim is at that line and the quote is in the source, and finds its page; what it cannot find is refused.`,
+    schema: { file: str, line: z.coerce.number().int().min(1), claim: str, keys: z.array(str).max(20).optional(), rating: z.enum(RATINGS), quote: str.optional(), source: z.object({ key: str.optional(), doi: str.optional(), arxiv: str.optional(), path: str.optional() }).optional(), page: z.coerce.number().int().min(1).optional(), note: str.optional() },
+    readOnly: false,
+    run: async (ctx, input) => {
+      const row = await recordClaim(ctx.project, input, { checkPath: ctx.path });
+      return `Recorded: ${row.file}:${row.line} is ${row.rating}${row.read ? `, the quote found in the ${row.read.kind}${row.read.page ? ` on page ${row.read.page}` : ''} of ${row.read.where}` : ''}.`;
+    },
+    show: (answer) => ({ text: answer })
   },
   // The four below are a job's alone (a thread the user can answer in). The first two end the turn: what they show
   // waits in the thread, with no model call open, and the user's next message is the answer.
@@ -580,6 +602,7 @@ export async function runToolAgent({
       return 'Suggested. The user sees it as a card and adds it to the project’s memory if they want.';
     },
     // the Spectrum agent's own side
+    project: projectRoot,
     path: projectPath,
     current,
     read,
@@ -798,7 +821,7 @@ export async function runToolAgent({
       } catch (err) {
         c.bad = err.message;
       }
-      c.about = [c.input?.path, c.input?.query, c.input?.id, c.input?.dir, c.input?.text, c.input?.main].find((v) => typeof v === 'string' && v)?.slice(0, 200);
+      c.about = [c.input?.path, c.input?.query, c.input?.id, c.input?.dir, c.input?.text, c.input?.main, c.input?.key, c.input?.doi, c.input?.arxiv, c.input?.file && `${c.input.file}:${c.input.line}`].find((v) => typeof v === 'string' && v)?.slice(0, 200);
       return c;
     });
     const runCall = async (c) => {
