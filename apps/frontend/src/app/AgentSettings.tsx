@@ -12,6 +12,7 @@ import { pickFile } from './desktop';
 import { IS_WINDOWS, tildify } from './platform';
 import { toast } from './Toast';
 import { useSettings } from './settings';
+import McpServers from './McpServers';
 
 /** The card the agent workspace asks Settings › Agents to open (its agent, when that isn't ready), read once. */
 export const AGENT_CARD_KEY = 'spectrum-agent-card';
@@ -205,6 +206,7 @@ export default function AgentsPane() {
           </section>
         ))}
       {error && <div className="field-hint error">{error}</div>}
+      <McpServers />
       <section className="agent-group" aria-labelledby="agent-automations">
         <h3 id="agent-automations" className="agent-group-title">
           Automations

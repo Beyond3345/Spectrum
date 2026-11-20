@@ -2235,3 +2235,12 @@ export const setOutsideTools = (projectId: string, on: boolean, compile?: { typs
 export const AGENT_TASK_KEY = 'spectrum-agent-task';
 export const transferWithAgent = (payload: { sourceProjectId: string; targetTemplateId: string; parentDir?: string }) =>
   request<{ newProjectId: string }>('/api/transfer/agent', json('POST', payload));
+
+/** Settings › Agents › MCP servers: the user's own, for the Spectrum agent. */
+export type McpServer = { name: string; command: string; args: string[]; on: boolean; checked: boolean };
+export type McpTool = { name: string; description: string; readOnly: boolean };
+export const listMcpServers = () => request<{ servers: McpServer[] }>('/api/mcp-servers');
+export const addMcpServer = (server: { name: string; command: string; args: string[] }) => request<{ ok: boolean }>('/api/mcp-servers', json('POST', server));
+export const removeMcpServer = (name: string) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
+export const checkMcpServer = (name: string) => request<{ tools: McpTool[] }>(`/api/mcp-servers/${encodeURIComponent(name)}/check`, json('POST'));
+export const setMcpServerOn = (name: string, on: boolean) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, json('PUT', { on }));
