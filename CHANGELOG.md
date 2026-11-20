@@ -11,11 +11,24 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
 - Go to a file or heading (⌘P) opens a project file or an Outline heading by its name
 - Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
+- Auto compile has an As you type choice for Typst documents, which compiles 0.3 s after typing stops
+- Live in the PDF bar shows a Typst document as you type it, through Tinymist's preview
+- The Typst outline covers the whole document across nested includes, with the last compile's numbers and the figures and tables
+- Typst completion lists the project's own `#let` functions and values without Tinymist, and ⌘-click on a path in a Typst file opens that file
+- A failed Typst export lists every error in Logs and marks them in the editor, with what PDF/UA-1 needs. Insert figure asks for alt text in a Typst document, and the Typst document template exports as PDF/UA-1
+- Image to LaTeX writes Typst in a Typst document, and Table to chart takes a Typst `#table`
+- Tinymist's linter runs as you type
+- Review: References exist looks each .bib entry up in Crossref, doi.org, arXiv or OpenAlex and lists the retracted, unknown and differing ones with the record it read
+- The Spectrum agent reads a paper's open full text page by page, or its abstract when there is none
+- Verify claims records each claim with the source's own words, checked by Spectrum and found on their page, in Research › Claims checked
 
 ### Changed
 
 - Tools opens on Logs when the last compile had errors
 - The agents' text search can match whole words
+- Insights gives Typst figure and appendix numbers as the PDF prints them
+- `fetch_bibtex` gives a title's BibTeX only for a work whose title, first author and year match, and lists the nearest works otherwise
+- Deep research starts with a plan to approve
 
 ## 2.6.0 (21 November 2026)
 
