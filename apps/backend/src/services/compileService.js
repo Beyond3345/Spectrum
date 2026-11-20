@@ -10,6 +10,7 @@ import { ensureDir, listFilesRecursive, renameOver } from '../utils/fsUtils.js';
 import { biberCache, biberDownload, builtInTectonic, installBiber, tectonicBiber } from './engineService.js';
 import { SANDBOX_EXEC, blockedNotes, compileSandbox, confinement } from './compileSandbox.js';
 import { isTrusted } from './trustService.js';
+import { documentRecipe } from './buildRecipe.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
 import { cachePath, getProjectRoot } from './projectService.js';
@@ -125,7 +126,8 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
       // draft: images drawn as boxes, which the first line passes to graphicx; the file it inputs still names the job.
       // ponytail: a name TeX would read as code (with %, # or braces) keeps its images
       const input = draft && !/[\\{}%#&~^$]/.test(mainFile) ? `${DRAFT_IMAGES}\\input{${mainFile}}` : mainFile;
-      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, shell, `-output-directory=${outDir}`, input] };
+      // extra: the document's own options (buildRecipe.js), last before the file
+      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, shell, `-output-directory=${outDir}`, ...(options.extra ?? []), input] };
     }
     case 'latexmk':
       // -norc: a project's own latexmkrc is Perl, which could run anything. ponytail: in draft mode latexmk draws
@@ -721,11 +723,17 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   else if (box) texEnv = { ...texEnv, ...box.env };
   else if ((await confinement()) === 'no') pushLog(Buffer.from('[spectrum warning] This Mac’s sandbox-exec didn’t run, so this compile wasn’t confined.\n'));
   const confined = (name, runArgs, cwd, limit) => runSpawn(name, runArgs, cwd, pushLog, texEnv, limit, null, box?.profile);
+  // the document's own steps and engine options (buildRecipe.js), run through `confined` as every pass is; inside an
+  // agent's isolation its own limits confine them
+  const recipe = options.markdownSource ? { steps: null, options: [] } : documentRecipe(tex, { trusted: !!options.trusted, confined: !!box || (await confinement()) === 'inside' });
+  if (recipe.warning) pushLog(Buffer.from(`[spectrum warning] ${recipe.warning}\n`));
+  const steps = MULTI_PASS_ENGINES.includes(engine) && !options.draft ? recipe.steps : null;
+  if (recipe.steps && !steps) pushLog(Buffer.from('[spectrum note] This compile ran without the document’s “% !TEX recipe”, which applies to full compiles with pdfLaTeX, XeLaTeX or LuaLaTeX.\n'));
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
   // (one a virus scanner still holds is left: none of it is copied in, and keepBuild clears it again)
   if (options.fresh && cache) await fs.rm(path.join(cache, 'build-files', doc), { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
   // ponytail: only the engines run pass by pass here keep files; latexmk and Tectonic choose their own passes from nothing
-  const multiPass = MULTI_PASS_ENGINES.includes(engine);
+  const multiPass = MULTI_PASS_ENGINES.includes(engine) && !steps;
   const store = cache && keptStore(cache, doc, engine);
   // first, so another document's .aux of the same name doesn't take the place of its own
   const kept = multiPass && store && !options.fresh && (await copyKept(store, outDir));
@@ -762,7 +770,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     }
   }
 
-  const { cmd, args } = buildCommand(engine, slashed(outDir), copy ? slashed(copy.main) : `./${mainName}`, options);
+  const input = copy ? slashed(copy.main) : `./${mainName}`;
+  const { cmd, args } = buildCommand(engine, slashed(outDir), input, { ...options, extra: recipe.options });
   // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
   const limit = PASS_TIMEOUT_MS[engine] || DEFAULT_PASS_TIMEOUT_MS;
   if (engine === 'tectonic') {
@@ -786,7 +795,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   try {
     let before = await keptFiles(outDir);
     // Pass 1: generate .aux with \citation{} entries
-    pass = await confined(cmd, args, mainDir, limit);
+    pass = steps ? await runRecipe(steps, { outDir, input, mainDir, base, options: { ...options, extra: recipe.options }, confined, pushLog }) : await confined(cmd, args, mainDir, limit);
     let log = await passLog();
     const carryOn = () => !pass.timedOut && !stopped() && !(options.haltOnError && pass.code !== 0);
     const keptFailed = () => kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log, kept);
@@ -977,6 +986,34 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
     pushLog(Buffer.from(`[warn] ${bibCmd} not available, skipping bibliography pass.\n`));
   }
   return 0;
+}
+
+/**
+ * A document's own steps (buildRecipe.js), each through the compile's confinement (confined): an engine as the compile
+ * runs it, with the step's options after the document's; any other program in the build folder, as Biber and makeindex
+ * run, with %DOC%, %OUTDIR% and %DIR% filled in. Resolves as the last engine pass did.
+ * ponytail: MiKTeX's --enable-installer isn't added to a recipe's engine steps, so one may wait on a missing package
+ */
+async function runRecipe(steps, { outDir, input, mainDir, base, options, confined, pushLog }) {
+  let pass = { code: 0, timedOut: false };
+  for (const { program, args: given } of steps) {
+    if (stopped() || pass.timedOut || (options.haltOnError && pass.code !== 0)) break;
+    const args = given.map((arg) => arg.replaceAll('%DOC%', base).replaceAll('%OUTDIR%', slashed(outDir)).replaceAll('%DIR%', slashed(mainDir)));
+    pushLog(Buffer.from(`\n[spectrum] Recipe: ${[program, ...args].join(' ')}\n`));
+    if (MULTI_PASS_ENGINES.includes(program)) {
+      const command = buildCommand(program, slashed(outDir), input, { ...options, extra: [...(options.extra ?? []), ...args] });
+      pass = await confined(command.cmd, command.args, mainDir, PASS_TIMEOUT_MS[program] || DEFAULT_PASS_TIMEOUT_MS);
+      continue;
+    }
+    // the glossaries' programs read names from the .aux, as Spectrum's own run of them does
+    if (/^makeglossaries/.test(program) && !options.trusted && glossariesUnsafe(await auxWithInputs(outDir, `${base}.aux`), base)) {
+      pushLog(Buffer.from('[spectrum warning] The glossary settings in this document’s .aux file (or its name) hold characters a command line would run, so makeglossaries wasn’t run.\n'));
+      continue;
+    }
+    const ran = await confined(program, args, outDir).catch((err) => (pushLog(Buffer.from(`[spectrum warning] ${program} couldn’t run: ${err.message}\n`)), null));
+    if (ran && ran.code !== 0 && !stopped()) pushLog(Buffer.from(`[spectrum warning] ${program} ended with ${ran.timedOut ? 'its time limit' : `code ${ran.code}`}.\n`));
+  }
+  return pass;
 }
 
 /** An .aux with the .aux files its \@input lines name (\include'd chapters'), as BibTeX reads them, as one text. */
