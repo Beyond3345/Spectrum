@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { compileFolder, unwrap } from '../services/compileService.js';
 import { parseBibEntries, texIncludesBib } from '../services/referenceService.js';
 import { fetchBibtex, literatureSearch } from '../services/researchTools.js';
+import { checkReferences, checkSummary } from '../services/referenceCheck.js';
 import { SKILL_ID, readFrontMatter, skillBody } from '../services/skillService.js';
 import { withoutComments } from '../latex/text.js';
 import { DOC_LANGUAGES, docKind } from '../utils/docLanguage.js';
@@ -107,7 +108,8 @@ async function bibEntries(root, files) {
   const bibs = named.length || all.some(loaded) ? all.filter(loaded) : all;
   const entries = [];
   for (const file of bibs) {
-    for (const entry of parseBibEntries(await fs.readFile(path.join(root, file), 'utf8').catch(() => ''))) entries.push({ ...entry, file });
+    const text = await fs.readFile(path.join(root, file), 'utf8').catch(() => '');
+    for (const entry of parseBibEntries(text)) entries.push({ ...entry, file, line: lineOf(text, entry.at) });
   }
   return { bibs, entries };
 }
@@ -155,10 +157,15 @@ export async function projectMap(root, state) {
   };
 }
 
+/** Every entry of the project's bibliography as read: { key, type, fields, file, line }. */
+export async function projectBibEntries(root, state) {
+  const main = await mainFile(root, state);
+  return (await bibEntries(root, main ? await documentFiles(root, main) : [])).entries;
+}
+
 /** Every entry of the project's bibliography, briefly. */
 export async function listBibEntries(root, state) {
-  const main = await mainFile(root, state);
-  const { entries } = await bibEntries(root, main ? await documentFiles(root, main) : []);
+  const entries = await projectBibEntries(root, state);
   return entries.map(({ key, type, fields, file }) => ({ key, type, title: fields.title, author: fields.author, year: fields.year || fields.date, ...(fields.doi && { doi: fields.doi }), file }));
 }
 
@@ -419,6 +426,14 @@ export const TOOLS = [
     schema: { id: z.string(), author: z.string().optional(), year: z.union([z.string(), z.number()]).optional() },
     readOnly: true,
     run: (ctx, { id, author, year }) => fetchBibtex(id, { author, year })
+  },
+  {
+    name: 'check_references',
+    description: 'Check the bibliography against the sources, by code: each entry’s DOI in Crossref or doi.org, its arXiv id in arXiv, or its title in OpenAlex, comparing title, first author and year and reading retractions. Returns the keys found as they are, and for each other entry its status (differs, not-found, retracted, unchecked), what differs, the record read and where. keys: only these entries. Slow for a long bibliography: check the keys you need.',
+    schema: { keys: z.array(z.string()).max(300).optional() },
+    readOnly: true,
+    run: async (ctx, { keys }) => checkSummary(await checkReferences(await ctx.root(), { keys, state: ctx.state })),
+    show: (r) => ({ text: [`${r.found.length} of ${r.checked} found as they are`, ...r.problems.map((p) => `${p.key} (${p.at}): ${p.status}${p.differences ? `, ${p.differences.map((d) => d.field).join(', ')} differ` : ''}${p.retraction ? `, ${p.retraction}` : ''}`)].join('\n') })
   },
   {
     name: 'list_todos',
