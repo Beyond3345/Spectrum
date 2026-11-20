@@ -33,7 +33,11 @@ loopback.addSubnet('0.0.0.0', 8);
 loopback.addAddress('::1', 'ipv6');
 loopback.addAddress('::', 'ipv6');
 // what isolation refuses without a list too (a service on this computer), by any of the computer's own addresses
-export const thisComputer = ({ address, family }) => loopback.check(address, family === 6 ? 'ipv6' : 'ipv4') || Object.values(os.networkInterfaces()).flat().some((i) => i?.address === address);
+export function thisComputer({ address, family }) {
+  // an IPv4 address written as an IPv6 one is that IPv4 address
+  const plain = family === 6 && /^::ffff:\d+\.\d+\.\d+\.\d+$/i.test(address) ? address.slice(7) : address;
+  return loopback.check(plain, net.isIPv6(plain) ? 'ipv6' : 'ipv4') || Object.values(os.networkInterfaces()).flat().some((i) => i?.address === plain);
+}
 
 // A test names a stand-in server on this computer for a host (host → port on 127.0.0.1); never in a release
 const standIns = new Map();

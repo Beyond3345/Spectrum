@@ -121,7 +121,8 @@ async function started(server) {
       // its own list, as it is at each connection
       ...(!server.anyHost && {
         hosts: async () => (await listServers()).find((s) => s.name === server.name)?.hosts || [],
-        onRefused: (host) => refused.set(server.name, (refused.get(server.name) || new Set()).add(host))
+        // ponytail: the first 20 it asks for are kept to offer
+        onRefused: (host) => { const set = refused.get(server.name) || new Set(); if (set.size < 20) refused.set(server.name, set.add(host)); }
       })
     });
     let error = '';

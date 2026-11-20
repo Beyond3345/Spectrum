@@ -46,6 +46,8 @@ test('an address of this computer is never a way out', () => {
   for (const [address, family] of [['127.0.0.1', 4], ['127.8.9.1', 4], ['0.0.0.0', 4], ['::1', 6], ['::', 6], ['::ffff:127.0.0.1', 6]]) assert.ok(thisComputer({ address, family }), address);
   const own = Object.values(os.networkInterfaces()).flat().find((i) => !i.internal);
   if (own) assert.ok(thisComputer(own), own.address);
+  const own4 = Object.values(os.networkInterfaces()).flat().find((i) => !i.internal && i.family === 'IPv4');
+  if (own4) assert.ok(thisComputer({ address: `::ffff:${own4.address}`, family: 6 }), 'its own address written as IPv6');
   assert.ok(!thisComputer({ address: '93.184.216.34', family: 4 }));
 });
 

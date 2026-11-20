@@ -311,7 +311,8 @@ function requestUser(r, kind, params) {
 /** A host off the agent's list was asked for: said once a session, until the user allows it. */
 function refusedHost(r, host) {
   r.refused ||= new Set();
-  if (r.refused.has(host) || r.status === 'closed') return;
+  // ponytail: 20 hosts a session are shown; an agent asking for more is refused them unseen, so it cannot bury the conversation in cards
+  if (r.refused.has(host) || r.refused.size >= 20 || r.status === 'closed') return;
   r.refused.add(host);
   emit(r, 'network', { host });
   void persist(r);
