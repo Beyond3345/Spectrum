@@ -17,6 +17,10 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
 - The projects page says when a newer Spectrum is out, asking the release page at most once a day and sending nothing about you. A switch in Settings › System turns it off
 - Vim or Emacs keys in the source editor, in Settings › Editor
+- Pictures go with a message to either agent: paste, drop or choose one, sent to models that read images. A model that does not read images is told a picture was left out, and says so
+- The Spectrum agent can look at a page of its draft and at a figure on its own, with Open in composer on a diagram's card
+- Send page to agent in the PDF's right-click menu, with the source line of the spot clicked
+- Send to agent on PDF notes, to-dos and Review's rows and AI points, each with its file, line and source lines
 - A `% !TEX recipe` comment runs a document's own build steps, and `% !TEX options` adds engine options, inside the compile's sandbox
 - Auto compile has an As you type choice for Typst documents, which compiles 0.3 s after typing stops
 - Live in the PDF bar shows a Typst document as you type it, through Tinymist's preview
@@ -36,6 +40,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Insights gives Typst figure and appendix numbers as the PDF prints them
 - `fetch_bibtex` gives a title's BibTeX only for a work whose title, first author and year match, and lists the nearest works otherwise
 - Deep research starts with a plan to approve
+- A long document's AI review starts each part at a top-level heading where it can
 
 ## 2.6.0 (21 November 2026)
 
