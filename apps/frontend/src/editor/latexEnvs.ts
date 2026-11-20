@@ -1,4 +1,5 @@
 import { withoutComments } from '../../../backend/src/latex/text.js';
+import { texMacros } from './texMacros';
 
 // \begin{…} completion: the environments LaTeX, packages and classes provide, what to insert for them,
 // and a scan of what a project loads and defines (its labels, commands and bibliography too, for the other
@@ -260,13 +261,15 @@ export type TexScan = {
   bibs: string[];
   /** the other documents whose labels \externaldocument brings in, and the prefix they get */
   externals: [prefix: string, name: string][];
+  /** what its \newcommand and the like define, as KaTeX macros (texMacros.ts), for the maths preview */
+  macros?: Record<string, string>;
   /** the project file it came from (scanProject sets it) */
   file?: string;
 };
 
 export function scanTex(src: string): TexScan {
   src = withoutComments(src);
-  const scan: TexScan = { packages: [], classes: [], libraries: [], defined: [], inputs: [], labels: [], commands: [], bibs: [], externals: [] };
+  const scan: TexScan = { packages: [], classes: [], libraries: [], defined: [], inputs: [], labels: [], commands: [], bibs: [], externals: [], macros: texMacros(src) };
   const names = (list: string) => list.split(',').map((n) => n.trim()).filter(Boolean);
   for (const m of src.matchAll(LOAD_RE)) (/class/i.test(m[1]) ? scan.classes : scan.packages).push(...names(m[2]));
   for (const m of src.matchAll(LIB_RE)) for (const lib of names(m[2])) scan.libraries.push([LIBRARY_OF[m[1]], lib]);

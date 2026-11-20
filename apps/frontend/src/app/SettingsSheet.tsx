@@ -51,6 +51,7 @@ import { ENGINES_CHANGED, LANGUAGES_CHANGED, errorText } from '../editor/shared'
 import { ZoteroSettings } from '../editor/ZoteroCite';
 import { EDITOR_KEYMAPS, editorKeymap } from '../editor/keymaps';
 import { confirmDialog } from './Dialogs';
+import SnippetsPane from './SnippetsPane';
 import Icon from './Icon';
 import Segmented from './Segmented';
 import { radioKeys, radioTab } from './Segmented';
@@ -119,6 +120,7 @@ export type Section =
   | 'composer'
   | 'language'
   | 'shortcuts'
+  | 'snippets'
   | 'projects'
   | 'github'
   | 'models'
@@ -147,6 +149,7 @@ export const SECTION_GROUPS: [string, [Section, string, string][]][] = [
   ['Writing', [
     ['engines', 'Engines', 'hammer'],
     ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
+    ['snippets', 'Snippets', 'curlybraces'],
     ['composer', 'Diagram composer', 'pencil'],
     ['checkpoints', 'Checkpoints', 'clock.arrow.circlepath']
   ]],
@@ -172,6 +175,7 @@ const SECTION_HUES: Record<Section, IconColour> = {
   appearance: 'pink',
   editor: 'blue',
   shortcuts: 'indigo',
+  snippets: 'yellow',
   system: 'gray',
   engines: 'orange',
   language: 'red',
@@ -693,6 +697,8 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
           {section === 'language' && <LanguagePane projectId={projectId} />}
 
           {section === 'shortcuts' && <ShortcutsPane />}
+
+          {section === 'snippets' && <SnippetsPane onUnsaved={setUnsaved} />}
 
           {section === 'personas' && <PersonasPane onUnsaved={setUnsaved} />}
 
@@ -1292,6 +1298,37 @@ function EditorPane() {
             Insert <code>\cite</code> at the cursor after adding a reference
           </span>
           <span className="field-hint">Applies when the References chat adds or finds a single reference.</span>
+        </span>
+      </label>
+
+      <h3 className="form-section-title">Typing</h3>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.continueLists} onChange={(e) => update({ continueLists: e.target.checked })} />
+        <span>
+          Continue lists
+          <span className="field-hint">
+            Return after an <code>\item</code> in LaTeX, or a list item in Typst, starts the next one. Return on an empty item ends the list. Markdown always continues its lists.
+          </span>
+        </span>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.closeMaths} onChange={(e) => update({ closeMaths: e.target.checked })} />
+        <span>
+          Close maths delimiters
+          <span className="field-hint">
+            Typing <code>$</code>, <code>\(</code>, <code>\[</code> or <code>\left(</code> adds its closer in LaTeX, and <code>$</code> in Typst. Backspace in an empty pair removes both.
+          </span>
+        </span>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.mathPreview} onChange={(e) => update({ mathPreview: e.target.checked })} />
+        <span>
+          Show the maths at the cursor
+          <span className="field-hint">
+            In LaTeX and Markdown, the equation the cursor is in is drawn under it. Your own commands from <code>\newcommand</code>, <code>\def</code> and{' '}
+            <code>\DeclareMathOperator</code> are used; a command from a package it doesn’t know, or one with an optional argument, shows a note instead. Esc hides it
+            until the cursor leaves the equation.
+          </span>
         </span>
       </label>
 

@@ -8,6 +8,8 @@ import type { MarkdownConfig } from '@lezer/markdown';
 import { latex } from '../latex/lang';
 import { compileLint } from './compileMarks';
 import { latexFoldService, latexHighlight, mathsWrap } from './latexEditor';
+import { smartTyping } from './smartTyping';
+import { mathPreview } from './mathPreview';
 import { docKind } from './shared';
 import { includedPath } from './outlines';
 import { EditorView } from '@codemirror/view';
@@ -24,7 +26,7 @@ let loading: Promise<Extension | null> | null = null;
 /** The Typst language, loaded once; null while loading or when the package fails. */
 export function loadTypst(): Promise<Extension | null> {
   loading ??= import('codemirror-lang-typst/lezer')
-    .then(({ typst_lezer }) => (typst = [typst_lezer(), compileLint]))
+    .then(({ typst_lezer }) => (typst = [typst_lezer(), compileLint, smartTyping('typst')]))
     .catch(() => null);
   return loading;
 }
@@ -156,7 +158,7 @@ export function typstPathClick({ path, files, open }: { path: () => string; file
   });
 }
 
-const latexLanguage = (): Extension => [latex(), syntaxHighlighting(latexHighlight), foldService.of(latexFoldService), mathsWrap];
+const latexLanguage = (): Extension => [latex(), syntaxHighlighting(latexHighlight), foldService.of(latexFoldService), mathsWrap, smartTyping('latex'), mathPreview.latex];
 
 const mathsTag = Tag.define();
 const isSpace = (code: number) => code === 32 || code === 9 || code === 10 || code === -1;
@@ -237,7 +239,8 @@ const markdownHighlight = HighlightStyle.define([
 const markdownSupport = (): Extension => [
   markdown({ base: markdownLanguage, extensions: [frontMatter, maths], codeLanguages: (info) => (/^(?:la)?tex$/i.test(info) ? latexCode : null) }),
   syntaxHighlighting(markdownHighlight),
-  syntaxHighlighting(latexHighlight)
+  syntaxHighlighting(latexHighlight),
+  mathPreview.markdown
 ];
 
 /** A file's editor language: LaTeX as it was, Typst once loaded, Markdown, and plain text for anything else. */

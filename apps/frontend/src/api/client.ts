@@ -832,6 +832,15 @@ export function compileDiagram(payload: { projectId: string; file: string; engin
 }
 
 /**
+ * Preview this figure: a piece of a .tex file (a tikzpicture, a table, a selection) compiled alone with the preamble of
+ * file, from a copy and confined, writing nothing into the project. The PDF in base64, cropped to the piece; aborting
+ * the signal stops the compile.
+ */
+export function previewFigure(projectId: string, payload: { file: string; piece: string; engine?: CompileEngine; texFolder?: string }, signal?: AbortSignal) {
+  return request<{ ok: boolean; pdf?: string; error?: string; log?: string }>(`/api/projects/${projectId}/figure-preview`, { ...json('POST', payload), signal });
+}
+
+/**
  * A circuit part to draw: tikz is its circuitikz key ('R', 'op amp'), options its other keys ('mirror'), pins the
  * anchors to measure ('+', 'out'). Letters, digits, spaces and . , = + - / * < > ^ ! | : only.
  */
