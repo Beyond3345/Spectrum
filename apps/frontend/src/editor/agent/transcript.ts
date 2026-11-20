@@ -41,7 +41,7 @@ export type Item =
   | { type: 'request'; key: string; request: AgentUserRequest; answered: boolean }
   /** the Spectrum agent's plan, waiting for the user's approval */
   | { type: 'plan'; key: string; steps: string[] }
-  /** a line the Spectrum agent suggests for the project's AGENTS.md */
+  /** a line the Spectrum agent suggests to remember for the project */
   | { type: 'instruction'; key: string; text: string }
   | { type: 'notice'; key: string; text: string; error: boolean }
   | { type: 'checkpoint'; key: string; checkpoint: Checkpoint };
@@ -195,7 +195,7 @@ export type ThreadMeta = {
   plan?: PlanEntry[];
   /** on the user's approval: the agent stops before each new file it would change */
   eachFile?: boolean;
-  /** lines the agent suggested for the project's AGENTS.md */
+  /** lines the agent suggested to remember for the project */
   instructions?: string[];
 };
 export const metaOf = (m: { meta?: Record<string, unknown> }) => (m.meta || {}) as ThreadMeta;
@@ -300,14 +300,14 @@ const STEPS: Record<string, [kind: string, alone: string, about?: string]> = {
   ask_user: ['other', 'Ask you a question'],
   propose_plan: ['other', 'Propose a plan'],
   step_done: ['other', 'Tick off a step of the plan'],
-  suggest_instruction: ['other', 'Suggest an instruction for AGENTS.md']
+  suggest_memory: ['other', 'Suggest a line to remember']
 };
 
 // ─── The Spectrum agent's questions and plans: what a turn ended with, which the user's next message answers ───
 
 // steps with nothing to open, which the card under them or the plan strip already shows: no card unless one failed.
 // Nor for a change held back by the pause before the next file (paused), which the “Go on to …?” card stands for.
-const QUIET = ['ask_user', 'propose_plan', 'step_done', 'suggest_instruction'];
+const QUIET = ['ask_user', 'propose_plan', 'step_done', 'suggest_memory'];
 const quiet = (step: { tool: string; ok?: boolean; status?: string; paused?: boolean }) => !!step.paused || (QUIET.includes(step.tool) && (step.status ? step.status !== 'failed' : step.ok !== false));
 
 /**
