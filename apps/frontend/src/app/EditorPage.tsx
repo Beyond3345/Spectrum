@@ -4010,7 +4010,7 @@ function Editor({ projectId }: { projectId: string }) {
               {notes.length > 0 && (
                 <div className="pdf-notes">
                   <div className="pdf-notes-head">
-                    <span>Notes</span>
+                    <span className="grow">Notes</span>
                     <button className="btn small ghost" title="Send the notes to the agent, each with where it points in the source" onClick={() => void sendNotes(projectId, notes, renderPage, readText)}>
                       Send to agent
                     </button>

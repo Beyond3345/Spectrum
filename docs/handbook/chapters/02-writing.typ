@@ -176,9 +176,9 @@ The page colours only tint the pages in the preview, while the PDF itself stays 
 
 Spectrum adds the colour while it compiles and never writes it into the source. A LaTeX document is compiled from a copy of its main file with a few lines added on the `\documentclass` line, which load `xcolor` only when the document does not already and set `\pagecolor`, or the slide background in beamer. A Typst document is compiled with `#set page(fill: ...)` set before it, and a Markdown document gets the colour through its PDF engine. The lines of the source stay where they were, so errors, SyncTeX and the jumps between the source and the PDF still point at the right lines. A page colour the document sets itself, with `\pagecolor`, a beamer theme or `set page(fill: ...)`, wins over the project's.
 
-Presentation mode shows the PDF one page at a time in full screen, for slides. A right-click on the PDF offers #ui[Add a note here], which pins a sticky note to that spot, and #ui[Add to-do here], which adds a to-do linked to that page (@sec-writing-todos). The notes are listed under the PDF with their pages, each a click away, and with #ui[Clear all] (@fig-writing-note). They are saved with the project, one small file each in `.spectrum/notes`.
+Presentation mode shows the PDF one page at a time in full screen, for slides. A right-click on the PDF offers #ui[Add a note here], which pins a sticky note to that spot, #ui[Add to-do here], which adds a to-do linked to that page (@sec-writing-todos) and #ui[Send page to agent], which puts the page in the agent's message box (@sec-assistant-ask). The notes are listed under the PDF with their pages, each a click away, with a paper plane that sends a note to the agent, #ui[Send to agent] for all of them and #ui[Clear all] (@fig-writing-note, @sec-assistant-handoff). They are saved with the project, one small file each in `.spectrum/notes`.
 
-#shot("figures/02-writing/pdf-note.png", [A note added with a right-click on the PDF. The notes are listed under the pages with the page each one is on.], width: 72%) <fig-writing-note>
+#shot("figures/02-writing/pdf-note.png", [Two notes added with a right-click on the PDF. The notes are listed under the pages with the page each one is on, and the paper plane sends one to the agent.], width: 72%) <fig-writing-note>
 
 === Jumping between the source and the PDF
 
@@ -318,7 +318,7 @@ The #ui[To-dos] tab in the sidebar holds a to-do list for the project, with a ba
 
 #shot("figures/02-writing/todos.png", [The To-dos tab with two of your own to-dos and two from the source, a `\todo` and a `TODO` comment, each with its line.], width: 42%) <fig-writing-todos>
 
-A to-do is added in the box at the top of the tab, or with #ui[Add to-do here] in the editor's right-click menu, which links the line, or in the PDF's, which links the page. The tab shows Open, Done or All and Mine, Source or both, and the sidebar's search finds to-dos too. Each to-do is a small file in the project's `.spectrum/todos` folder, so it travels with the project. Document insights also has a To-dos tab, and the open to-dos go with an agent's first message (@ch-assistant).
+A to-do is added in the box at the top of the tab, or with #ui[Add to-do here] in the editor's right-click menu, which links the line, or in the PDF's, which links the page. The tab shows Open, Done or All and Mine, Source or both, and the sidebar's search finds to-dos too. Each to-do is a small file in the project's `.spectrum/todos` folder, so it travels with the project. The paper plane beside one of your own to-dos, shown when the pointer is over it, sends it to the agent with the lines it links to (@sec-assistant-handoff). Document insights also has a To-dos tab, and the open to-dos go with an agent's first message (@ch-assistant).
 
 == Jyutping <sec-writing-jyutping>
 
