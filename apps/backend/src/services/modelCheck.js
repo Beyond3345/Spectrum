@@ -62,7 +62,6 @@ export async function testConnection({ provider: id, endpoint, apiKey }) {
   const api = p?.api || (/\/messages$/i.test(url) ? 'anthropic' : /\/responses$/i.test(url) ? 'responses' : 'chat');
   const key = p?.local ? '' : config.apiKey;
   const host = parsed.host;
-  const name = p?.name || host;
   if (!key && !p?.local && !/^http:/i.test(url)) return { ok: false, kind: 'key', message: 'Paste the API key first.' };
   if (badKey(key)) return { ok: false, kind: 'header', message: BAD_KEY };
 
@@ -99,7 +98,7 @@ export async function testConnection({ provider: id, endpoint, apiKey }) {
   if (ids) {
     const listed = ids.length ? `offers ${plural(ids.length)}` : 'lists no models';
     // a list that needs no key says nothing about the key, unless it was checked apart
-    const said = !key ? `Connected to ${host}, which ${listed}.` : keyCheck && !checked?.ok ? `Connected to ${host}, which ${listed}. Spectrum couldn’t check the key (HTTP ${checked.status}).` : `Connected to ${host}. It accepted the key, and ${name} ${listed}.`;
+    const said = !key ? `Connected to ${host}, which ${listed}.` : keyCheck && !checked?.ok ? `Connected to ${host}, which ${listed}. Spectrum couldn’t check the key (HTTP ${checked.status}).` : `Connected to ${host}. It accepted the key${p ? `, and ${p.name} ${listed}` : ` and ${listed}`}.`;
     return { ok: true, kind: 'connected', message: said, models: ids };
   }
   if ([401, 403].includes(res.status)) return refused(res.status);

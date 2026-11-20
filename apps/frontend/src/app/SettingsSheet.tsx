@@ -471,7 +471,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
     return (
       <div className="field">
         <label htmlFor={`settings-${key}`}>{label}</label>
-        {opts.action ? <div className="row">{input}{opts.action}</div> : input}
+        {opts.action ? <div className="row" style={{ alignItems: 'center' }}>{input}{opts.action}</div> : input}
         {opts.list?.length ? <datalist id={`settings-${key}-list`}>{opts.list.map((id) => <option key={id} value={id} />)}</datalist> : null}
         {opts.hint && <div className="field-hint">{opts.hint}</div>}
         {opts.after}
