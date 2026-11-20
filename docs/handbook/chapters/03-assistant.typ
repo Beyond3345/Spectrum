@@ -207,11 +207,12 @@ Personas follow you to your other computers with the shared settings, as describ
 
 A skill is a folder with a `SKILL.md` file, whose front matter gives the skill's name and description, and any scripts or notes it needs. An agent sees each skill's name and description only, and reads the rest when the task calls for it, or straight away when the skill is chosen by typing `/` in the agent workspace.
 
-#menu[Settings][Skills] lists the skills in four groups, Research, Writing, Review and Submission, with a search at the top (@fig-assistant-settings-skills). Spectrum ships 18 skills. Twelve come from K-Dense's scientific agent skills, each under its own licence, and six are Spectrum's own,
+#menu[Settings][Skills] lists the skills in four groups, Research, Writing, Review and Submission, with a search at the top (@fig-assistant-settings-skills). Spectrum ships 19 skills. Twelve come from K-Dense's scientific agent skills, each under its own licence, and seven are Spectrum's own,
 
 - `spectrum-latex`, `spectrum-typst` and `spectrum-markdown`, for editing and fixing a document in each language,
-- `spectrum-related-work` and `spectrum-verify-claims`, for drafting related work and checking claims against their sources and
-- `spectrum-convert-tidy`, used when converting a project between LaTeX and Typst.
+- `spectrum-related-work` and `spectrum-verify-claims`, for drafting related work and checking claims against their sources,
+- `spectrum-convert-tidy`, used when converting a project between LaTeX and Typst and
+- `spectrum-template-transfer`, for moving a paper into another LaTeX or Typst template (@sec-assistant-transfer-agent).
 
 #shot("figures/03-assistant/settings-skills.png", [#menu[Settings][Skills]. Each card shows the skill's author, licence, version, file count and what its scripts need, with its switch at the top right.], width: 85%) <fig-assistant-settings-skills>
 
@@ -340,6 +341,10 @@ The comparison is always against your file as it is now, with the left side labe
 
 #ui[PDF before and after] works as in #ui[Review changes]. For a local agent the page after is compiled from the agent's own copy of the project. A dot on the #ui[Agent] button shows a task that is running, waiting for an answer or has changes to review.
 
+=== After changes are applied <sec-assistant-automations>
+
+Once changes from the Spectrum agent, a local agent or #ui[Fix with AI] are applied, Spectrum compiles the document, so the PDF shows them straight away. If that compile fails, the message that says so has a #ui[Fix with AI] button, which asks the main model for a fix only when it is pressed. Both are switches under #ui[Automations] in #menu[Settings][Agents] (@fig-assistant-settings-mcp), and both are on until you turn them off. They run only while Spectrum is open, and neither asks a model anything by itself.
+
 === Standing instructions in AGENTS.md <sec-assistant-instructions>
 
 Things an agent should know about one project, such as its spelling, the journal's style or a folder it must never touch, are kept in a file named `AGENTS.md` at the top of the project. The Spectrum agent is given this file with every request as your standing instructions for the project, up to its first 20,000 characters. #ui[Fix with AI] and the assistant panel (@sec-assistant-panel) are given it too. Most local agents read a file of this name by themselves from their copy of the project. A persona (@sec-assistant-personas) applies to every project, while `AGENTS.md` applies to the one it is in.
@@ -389,6 +394,22 @@ The meter in the header counts what the agent used (@fig-assistant-meter). For t
 
 For a local agent the meter shows what the agent reports: how full its context is, with a bar that turns orange from 80 per cent, the cost of the session when the agent gives one and the tokens of its last task. An agent that reports none of these shows no meter.
 
+=== Your own MCP servers <sec-assistant-mcp>
+
+A Model Context Protocol (MCP) server is a program that gives an agent more tools, such as a search of a reference service or a lab's own data. The Spectrum agent can use the ones you add under #ui[MCP servers] in #menu[Settings][Agents] (@fig-assistant-settings-mcp). A server is added by a name and the command that starts it, such as `npx -y` and the server's package, and it is used as follows,
+
+#howto[give the agent an MCP server's tools][
++ Type a #ui[Name] and the command, then press #ui[Add]
++ Press #ui[Check], which starts the server and lists its tools
++ Switch it #ui[On]
+]
+
+A server is added off, and it can be switched on only once it has been checked. Each tool is listed as #ui[only reads] or #ui[asks you first]. The agent sees a server's tools as the server's name and the tool's, such as `notes__lookup`, and what a tool answers reaches it marked as material from that tool, never as your instructions. A tool that the server does not mark as only reading may change something outside the project, so the first time the agent calls it in a thread the turn ends with a question card, and the tool runs only after #ui[Allow]. If a server's list of tools changes after you checked it, the agent gets none of its tools, with a note saying so, until you check it again.
+
+#shot("figures/03-assistant/settings-agents-mcp.png", [#menu[Settings][Agents] with a server named notes checked and on. Below it, the two automations that follow an applied change.], width: 70%) <fig-assistant-settings-mcp>
+
+A server runs inside the same isolation as a local agent (@sec-assistant-external), in a folder of its own in Spectrum's data, and never sees the project. It can reach the internet over HTTPS but not a service on this computer, and it is stopped after five minutes without use. Servers that are reached by an address rather than started by a command are not supported yet.
+
 == External agents <sec-assistant-external>
 
 External agents, also called local agents, are coding agents installed on your computer, such as OpenCode, Codex or Claude Agent, which Spectrum runs through the Agent Client Protocol (ACP). The user guide calls this a local preview, since its support for each agent is still being tested. There is no switch to turn it on: an agent becomes available in the #ui[Local agents] tab once it is set up in #menu[Settings][Agents]. Until then, the tab says "No agents are set up yet" with #ui[Set up an agent] (@fig-assistant-local-empty).
@@ -429,6 +450,14 @@ An isolated agent keeps working on its copy while changes wait, so you can go on
 In an Isolated session the agent stays running for five minutes after a task, so the next message starts at once, and at most three such agents wait at a time. It stops when you open another session or close the project, and Spectrum starts it again when it is needed. A Direct session's agent stops after each task instead, since anything it left running would write into the project outside the task's checkpoint. Either way, a local agent also stops when Spectrum is force-quit or crashes, and does not run on by itself. A very long output from an agent, such as a whole log, keeps its first and last 100 KB with a line saying how many characters were left out between, so that it does not push the earlier turns out of the session.
 
 On macOS, a local agent also gets Spectrum's tools from a small server it starts inside its isolation: `compile`, `get_log`, `project_map`, `bib_entries`, `bib_search`, `search_text`, `literature_search`, `fetch_bibtex`, `list_todos`, `suggest_todo` and `load_skill`. For a Markdown document, `compile` and `get_log` give each error at its line of the `.md` file, as the Logs tab does, and not at a line of the file pandoc generated. Each tool's answer reaches the agent marked with the tool it came from, as text to read and not an instruction. Local agents on Windows get no Spectrum tools yet, as #menu[Settings][Agents] says there. Keys, working copies, session mappings and transcripts stay on this computer.
+
+=== Spectrum's tools in another agent <sec-assistant-outside>
+
+An agent that you start yourself, such as Claude Code or Codex in a terminal or the agent in Cursor, can use the same tools on a project, except `suggest_todo` and `load_skill`. The button with the server icon at the right of the #ui[Local agents] bar opens #ui[Use from another agent] (@fig-assistant-outside-tools). Turning on #ui[Offer this project's tools] shows a command for Claude Code and an entry for the MCP configuration file of Cursor and other agents, each with a copy button. The button stays highlighted while the tools are offered.
+
+#shot("figures/03-assistant/outside-tools.png", [#ui[Use from another agent] with the project's tools offered, and the configuration to copy into Claude Code or another agent.], width: 70%) <fig-assistant-outside-tools>
+
+The tools answer only programs on this computer that send the secret in the configuration. The secret is new each time the switch is turned on and ends when it is turned off or Spectrum quits, so the configuration is copied again after each start. It opens these tools and nothing else of Spectrum's. The other agent works on the project folder itself, outside Spectrum's isolation, while Spectrum's tools keep their own rules: they read no hidden or secret file of the project, and a compile builds into Spectrum's own folder, confined as your own compile is.
 
 == Review <sec-assistant-review>
 
@@ -527,13 +556,14 @@ The default is tried first, then each other connection that is switched on, in t
 
 == Template transfer <sec-assistant-transfer>
 
-Template transfer moves a LaTeX document into another of Spectrum's LaTeX templates. It is #ui[Change template…] in a project's menu on the projects page, opened with the #ui[…] button or a right click on the project, and it has three methods (@fig-assistant-change-template),
+Template transfer moves a document into another of Spectrum's templates. It is #ui[Change template…] in a project's menu on the projects page, opened with the #ui[…] button or a right click on the project, and it has four methods (@fig-assistant-change-template),
 
 - #ui[Quick switch], which swaps the preamble for the new template's and keeps the body, without a model, after saving a checkpoint,
-- #ui[Classic (LaTeX → LaTeX, AI)], in which the main model rewrites the source for the new template into a new project and
-- #ui[From the PDF (parser → LaTeX)], in which a parser reads the PDF into Markdown with LaTeX maths and figures, and the main model then rebuilds it in the new template as a new project.
+- #ui[Classic (LaTeX → LaTeX, AI)], in which the main model rewrites the source for the new template into a new project,
+- #ui[From the PDF (parser → LaTeX)], in which a parser reads the PDF into Markdown with LaTeX maths and figures, and the main model then rebuilds it in the new template as a new project and
+- #ui[With an agent (LaTeX or Typst)], which makes a new project from the template with this one's files in it, for an agent to move the paper across.
 
-#shot("figures/03-assistant/change-template.png", [#ui[Change template] for the lab report, with its three methods. Only LaTeX templates are offered.], width: 75%) <fig-assistant-change-template>
+#shot("figures/03-assistant/change-template.png", [#ui[Change template] for the lab report, with its four methods. The first three offer LaTeX templates only.], width: 75%) <fig-assistant-change-template>
 
 === Quick switch
 
@@ -576,3 +606,11 @@ The parser is chosen in the sheet or in #menu[Settings][Template transfer], and 
 ) <tab-assistant-parsers>
 
 The PDF and the parser's output are kept in the new project's hidden `.spectrum` folder. A Typst or Markdown project is converted to LaTeX, or a LaTeX project to Typst, with #ui[Convert to Typst project…] in the same menu instead, which @ch-writing describes.
+
+=== With an agent <sec-assistant-transfer-agent>
+
+#ui[With an agent (LaTeX or Typst)] offers the Typst templates as well as the LaTeX ones (@fig-assistant-change-template-agent). #ui[Make the project] calls no model. It makes a new project from the template, copies this project's files into a `source` folder inside it, leaving out the hidden and secret ones, and opens the new project with the agent workspace showing. The message box then holds the task, with the `spectrum-template-transfer` skill chosen, and nothing is sent until you press send, in the #ui[Spectrum agent] tab or in #ui[Local agents].
+
+#shot("figures/03-assistant/change-template-agent.png", [#ui[With an agent] with the Typst report template chosen. The lab report's files will be in `source/` of the new project.], width: 75%) <fig-assistant-change-template-agent>
+
+The skill has the agent read the template and the old paper first, then move the title block, sections, figures and bibliography into the template's places, keeping every label and citation key. Where the template is in the other language, the agent rewrites the markup and the maths but not the words. It compiles until the document builds and checks that no section, figure or reference was lost, and every change it makes is reviewed as any agent's is (@sec-assistant-agent-review). The `source` folder stays until you remove it. Unlike Classic, this method has no layout check with the vision model.
