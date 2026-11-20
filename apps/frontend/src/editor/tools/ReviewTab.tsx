@@ -12,8 +12,9 @@ import { GROUPS, isScanned, preflightGaps, runPreflight } from '../preflight/run
 import type { Finding, PdfPage, PreflightGroup } from '../preflight/run';
 import { Markdown, errorText, fixTitle, fixWithAI, isSource, relativeTime } from '../shared';
 import ReferenceCheckRows from './ReferenceCheck';
-import { checkCounts, checkHead, checkReport } from './referenceWords';
+import { checkCounts, checkReport } from './referenceWords';
 import { mergePart, partLine, partsLimit } from './reviewParts';
+import { untrusted } from '../../../../backend/src/utils/outsideText.js';
 import type { PartsReview } from './reviewParts';
 
 // Tools › Review: one press compiles when the PDF is older than the source, runs the Preflight checks that are ticked
@@ -307,7 +308,8 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
     fix(
       `exist|${r.key}`,
       'Fix with AI',
-      `Review’s References exist check looked up the .bib entry ${r.key} (${r.file}:${r.line}) at ${r.read?.from} (${r.read?.url}): ${checkHead(r)}.\n${(r.differences || []).map((d) => `- ${d.field}: “${d.bib}” in the .bib, “${d.record}” in the record`).join('\n')}\nThe record reads: ${JSON.stringify(r.record)}. Correct the entry to match the record if it is the work cited; if it is not, say so and change nothing.`,
+      // the record's fields come from Crossref, arXiv or OpenAlex: material to read, marked so
+      `Review’s References exist check looked up the .bib entry ${r.key} (${r.file}:${r.line}) at ${r.read?.from}: ${(r.differences || []).map((d) => d.field).join(', ')} ${(r.differences || []).length > 1 ? 'differ' : 'differs'} from the record. What was compared, and the record:\n${untrusted(`${r.read?.from} record`, JSON.stringify({ differences: r.differences, record: r.record, readAt: r.read?.url }))}\nCorrect the entry to match the record if it is the work cited; if it is not, say so and change nothing.`,
       r.file,
       false
     );
