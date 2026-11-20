@@ -503,6 +503,31 @@ export async function compileTypst(projectRoot, absMain, mainFile, options = {})
   });
 }
 
+/**
+ * One page of a PDF as a PNG at ppi, on white: drawn by the built-in Typst, which reads a PDF's pages as images (0.14
+ * and later, so never a project's older pin). Works in a folder of its own beside the PDF, which an agent's isolation
+ * may write. Resolves { ok: true, data } with the PNG's bytes, or { ok: false, error }.
+ */
+export async function pdfPagePng(pdf, page = 1, ppi = 130) {
+  const executable = builtInTypst();
+  if (!executable) return { ok: false, error: 'Typst isn’t available in this copy of Spectrum, so the page can’t be drawn.' };
+  const dir = path.join(path.dirname(pdf), `page-${crypto.randomUUID()}`);
+  const chunks = [];
+  try {
+    await ensureDir(dir);
+    await fs.copyFile(pdf, path.join(dir, 'page.pdf'));
+    const source = `#set page(width: auto, height: auto, margin: 0pt, fill: white)\n#image("page.pdf", page: ${Number(page)})\n`;
+    const result = await runSpawn(executable, ['compile', '--root', dir, '--diagnostic-format', 'short', '--format', 'png', '--ppi', String(ppi), '-', path.join(dir, 'page.png')], dir, (chunk) => chunks.push(chunk.toString()), process.env, 60000, source);
+    if (result.code === 0) return { ok: true, data: await fs.readFile(path.join(dir, 'page.png')) };
+    const said = chunks.join('').match(/error: (.*)/)?.[1]?.replace(/ in page\.pdf/, '') || 'Typst couldn’t draw it.';
+    return { ok: false, error: /does not exist/.test(said) ? `There is no page ${page} (${said.replace(/^failed to load PDF \((.*)\)$/, '$1')}).` : `The page couldn’t be drawn: ${said}` };
+  } catch (err) {
+    return { ok: false, error: `The page couldn’t be drawn: ${err.message}` };
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
 // what Export offers: the file Typst writes and what it needs for it; PNG and SVG make one file per page
 export const TYPST_EXPORTS = {
   png: { ext: 'png', pages: true },

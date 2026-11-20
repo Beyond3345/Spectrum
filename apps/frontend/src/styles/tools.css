@@ -3005,6 +3005,45 @@ textarea.table-latex {
   overflow-wrap: anywhere;
 }
 
+/* pictures for the agents: chips in the message box, small copies under a message, a page or figure on a step's card */
+.agent-picture-chip img {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.agent-picture-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.agent-picture-strip img {
+  max-width: 96px;
+  max-height: 96px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.agent-tool-picture {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.agent-tool-picture img {
+  max-width: 100%;
+  max-height: 360px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
 .agent-note {
   color: var(--text-secondary);
   font-size: 12px;

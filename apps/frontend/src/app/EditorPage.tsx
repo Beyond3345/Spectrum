@@ -108,6 +108,7 @@ import ReviewChangesSheet from '../editor/ReviewChangesSheet';
 import { reviewSitting } from '../editor/reviewHunks';
 import type { Sitting } from '../editor/reviewHunks';
 import AgentWorkspace, { STATUS_TEXT } from '../editor/agent/AgentWorkspace';
+import { onHandoff, sendNotes, sendPdfPage } from '../editor/agent/handoff';
 import type { AgentStatus } from '../editor/agent/LocalAgentTab';
 import SyncBanners from '../editor/SyncBanners';
 import { conflictCopyPath, onDiskChange } from '../editor/heldFiles';
@@ -2087,6 +2088,9 @@ function Editor({ projectId }: { projectId: string }) {
     setAgentTask((was) => ({ ...task, n: (was?.n || 0) + 1 }));
     openPanel('agent');
   };
+  // a page of the PDF, notes, to-dos and review findings sent to the agent (agent/handoff.ts)
+  useEffect(() => onHandoff((t) => openAgentTask({ prompt: t.prompt, skill: '', images: t.images })));
+  const renderPage = (n: number, w: number, h: number) => pdfRef.current?.renderPage(n, w, h) ?? Promise.resolve(null);
 
   // an Edit chat from before 2.0 leaves the bottom card for the Spectrum agent
   const continueInAgent = (id: string) => {
@@ -4152,7 +4156,10 @@ function Editor({ projectId }: { projectId: string }) {
               {notes.length > 0 && (
                 <div className="pdf-notes">
                   <div className="pdf-notes-head">
-                    <span>Notes</span>
+                    <span className="grow">Notes</span>
+                    <button className="btn small ghost" title="Send the notes to the agent, each with where it points in the source" onClick={() => void sendNotes(projectId, notes, renderPage, readText)}>
+                      Send to agent
+                    </button>
                     <button
                       className="btn small ghost"
                       onClick={async () => {
@@ -4174,6 +4181,9 @@ function Editor({ projectId }: { projectId: string }) {
                         p. {note.page}
                       </button>
                       <span className="pdf-note-text">{note.text}</span>
+                      <button className="icon-btn small" title="Send to agent" aria-label="Send the note to the agent" onClick={() => void sendNotes(projectId, [note], renderPage, readText)}>
+                        <Icon name="paperplane" />
+                      </button>
                       <button
                         className="icon-btn small"
                         title="Remove note"
@@ -4339,7 +4349,8 @@ function Editor({ projectId }: { projectId: string }) {
             {
               label: 'Add to-do here',
               onSelect: () => addTodo({ doc: shownDoc, page: pdfMenu.at.page }, `${nameOf(pdfOf(shownDoc))}, page ${pdfMenu.at.page}`).catch(() => undefined)
-            }
+            },
+            { label: 'Send page to agent', onSelect: () => void sendPdfPage(projectId, shownDoc, pdfMenu.at, renderPage, readText) }
           ]}
         />
       )}

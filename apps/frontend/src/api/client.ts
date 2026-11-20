@@ -1341,7 +1341,7 @@ export type Incomplete = 'failed' | 'steps' | 'cut' | 'stopped';
  * One of the Spectrum agent's tool calls: the tool, what it was about (a path, a query, an id), whether it worked, how
  * long it took, and what its card opens to (an output's text, or the two sides of an edit)
  */
-export type AgentStep = { tool: string; about?: string; ok: boolean; ms?: number; show?: { text?: string; diff?: { path: string; oldText: string; newText: string } }; paused?: boolean };
+export type AgentStep = { tool: string; about?: string; ok: boolean; ms?: number; show?: { text?: string; diff?: { path: string; oldText: string; newText: string }; image?: string }; paused?: boolean };
 /** What was said before step `before` of a turn: the model's own words, or (user) a message steered in */
 export type AgentSaid = { before: number; text: string; user?: boolean };
 /** Tokens as the provider counted them: all it read (cacheRead and cacheWrite are part of input) and what it wrote */
@@ -1376,6 +1376,8 @@ export type AgentTurnRequest = {
   plan?: AgentPlanEntry[];
   /** the run pauses before each new file it would change */
   eachFile?: boolean;
+  /** pictures sent with the request: base64 PNG, JPEG, WebP or GIF, at most four */
+  images?: { type: string; data: string; name?: string }[];
 };
 /** Starts a turn; the answer comes at once, and the turn is heard at agentRunEventsUrl. 409 while one is going. */
 export const startAgentTurn = (payload: AgentTurnRequest) => request<{ ok: boolean; run: AgentRunSnapshot }>('/api/agent/runs', json('POST', payload));
@@ -2109,7 +2111,7 @@ export interface AgentPersona { name: string; prompt: string }
  * What the editor sends with a prompt, as ACP resources: todos sends the open to-dos, research a research session's id,
  * skill a skill's SKILL.md in whole
  */
-export interface AgentPromptContext { activePath?: string; selection?: string; log?: string; todos?: boolean; research?: string; skill?: string }
+export interface AgentPromptContext { activePath?: string; selection?: string; log?: string; todos?: boolean; research?: string; skill?: string; images?: { type: string; data: string; name?: string }[] }
 export interface AgentChange {
   path: string; kind: 'created' | 'modified' | 'deleted'; binary: boolean; beforeHash: string | null;
   afterHash: string | null; size: number; original?: string; proposed?: string;

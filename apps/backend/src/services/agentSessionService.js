@@ -14,7 +14,7 @@ import { appPath, cachePath, detectMainFile, getProjectRoot, mutateProjectRoot, 
 import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileService.js';
 import { builtInTectonic, builtInTypst } from './engineService.js';
 import { readProjectSettings } from './projectSettings.js';
-import { openTodos, suggestedTodo } from './agentService.js';
+import { checkedImages, openTodos, suggestedTodo } from './agentService.js';
 import { AGENT_DIR, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, isolationAvailable } from './agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, workspaceFiles, applyWorkspaceChanges, captureAgentProposal, fileHash, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
@@ -854,7 +854,7 @@ export async function readContext(r, value) {
   if (value == null) return {};
   const bad = () => Object.assign(new Error('Invalid context.'), { statusCode: 400 });
   if (typeof value !== 'object' || Array.isArray(value)) throw bad();
-  const { activePath, selection, log, todos, research, skill } = value;
+  const { activePath, selection, log, todos, research, skill, images } = value;
   for (const [text, max] of [[activePath, 1024], [selection, 100000], [log, 200000]]) if (text != null && (typeof text !== 'string' || text.length > max)) throw bad();
   if ((todos != null && typeof todos !== 'boolean') || (research != null && !ITEM_ID.test(String(research))) || (skill != null && !SKILL_ID.test(String(skill)))) throw bad();
   const context = {};
@@ -864,6 +864,9 @@ export async function readContext(r, value) {
   }
   if (selection?.trim()) context.selection = selection;
   if (log?.trim()) context.log = log;
+  // pictures pasted or dropped into the message, or a page of the PDF
+  const pictures = checkedImages(images);
+  if (pictures.length) context.images = pictures;
   if (todos) {
     const open = (await readItems(r.root, 'todos')).filter((t) => !t.done);
     context.todos = open.map((t) => `- [ ] ${t.text}${t.link?.file ? ` (${t.link.file}:${t.link.line})` : t.link?.doc ? ` (${t.link.doc}, page ${t.link.page})` : t.link?.key ? ` (${t.link.key})` : ''}`).join('\n') || 'No open to-dos.';
@@ -895,6 +898,14 @@ function contextBlocks(r, context) {
   for (const { label, skill, ...resource } of parts) {
     // an embedded resource says what it is by its address; as plain text it goes in the marker the tools' answers use
     blocks.push(r.capabilities?.promptCapabilities?.embeddedContext ? { type: 'resource', resource } : { type: 'text', text: `${label}:\n${skill ? skillText(skill, resource.text) : untrusted(label, resource.text)}` });
+  }
+  // pictures as image blocks, to an agent that says it takes them; to another, a line saying they were left out
+  const pictures = context.images || [];
+  if (pictures.length && r.capabilities?.promptCapabilities?.image) blocks.push(...pictures.map((p) => ({ type: 'image', mimeType: p.type, data: p.data })));
+  else if (pictures.length) {
+    const n = pictures.length === 1 ? 'a picture' : `${pictures.length} pictures`;
+    blocks.push({ type: 'text', text: `[The user attached ${n}, not sent: this agent does not take images. Say so in your answer.]` });
+    emit(r, 'notice', { message: `This agent doesn’t take images, so ${pictures.length === 1 ? 'the picture wasn’t' : `the ${n} weren’t`} sent.` });
   }
   return blocks;
 }

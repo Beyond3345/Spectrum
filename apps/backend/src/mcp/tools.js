@@ -3,6 +3,7 @@ import path from 'path';
 import vm from 'node:vm';
 import { z } from 'zod';
 import { compileFolder, unwrap } from '../services/compileService.js';
+import { pdfPagePng } from '../services/typstService.js';
 import { parseBibEntries, texIncludesBib } from '../services/referenceService.js';
 import { fetchBibtex, literatureSearch } from '../services/researchTools.js';
 import { checkReferences, checkSummary } from '../services/referenceCheck.js';
@@ -367,6 +368,25 @@ function buildShown(r) {
   return { text: [head, ...errors, ...missing].slice(0, 21).join('\n') };
 }
 
+// how sharp a picture is: a page at 130 ppi is about 1,100 by 1,500 pixels, inside what providers take without
+// shrinking; a figure, smaller, at 200; the transcript's card a third of that
+const PAGE_PPI = 130;
+const FIGURE_PPI = 200;
+const FIGURE = 'Look for labels that overlap or touch lines, text past the edge, parts too small to read and space wasted around it.';
+
+/**
+ * A page of a compiled PDF as a tool's answer: what the compile found, and `image` ({ type, data, about, thumb }), which
+ * no answer's text carries: the Spectrum agent sends it as a picture to a model that reads them (and the card shows
+ * thumb), and the tools server as an image block.
+ */
+async function pictured(pdf, page, ppi, about, facts) {
+  const [png, small] = await Promise.all([pdfPagePng(pdf, page, ppi), pdfPagePng(pdf, page, Math.round(ppi / 3))]);
+  if (!png.ok) throw new Error(png.error);
+  return { ...facts, image: { type: 'image/png', data: png.data.toString('base64'), about, ...(small.ok && { thumb: `data:image/png;base64,${small.data.toString('base64')}` }) } };
+}
+/** How a pictured compile went, for its card: buildShown's words with the small picture. */
+const picturedShown = (r) => ({ ...buildShown(r), ...(r.image?.thumb && { image: r.image.thumb }) });
+
 export const TOOLS = [
   {
     name: 'compile',
@@ -380,6 +400,33 @@ export const TOOLS = [
       return ctx.opensFiles ? { ...result, ...(pdf && { pdf }), ...(generated && { generated }) } : result;
     },
     show: buildShown
+  },
+  {
+    name: 'view_pdf_page',
+    description: 'Look at a page of the document as it builds with your changes: compiles it and returns the page as a picture, with the compile’s errors. For a task about how the page looks: a table or equation past the margin, where a figure lands, the layout.',
+    schema: { page: z.coerce.number().int().min(1).max(9999) },
+    // it compiles, as compile does
+    readOnly: false,
+    run: async (ctx, { page }) => {
+      const { pdf, generated, ...built } = await compile(await ctx.root(), ctx.state, {}, ctx.compileOptions);
+      if (!pdf) throw new Error(['The document did not build, so there is no page to look at.', ...buildErrors(built).slice(0, 5)].join('\n'));
+      return pictured(pdf, page, PAGE_PPI, `page ${page} of ${built.mainFile}`, { ...built, page });
+    },
+    show: picturedShown
+  },
+  {
+    name: 'preview_figure',
+    description: `Look at a figure: compiles one standalone .tex or .typ file on its own (a diagram the composer saved in diagrams/, or a figure of its own) and returns its first page as a picture, with the errors. ${FIGURE} Fix what you see and look again, three times at most.`,
+    schema: { file: z.string() },
+    readOnly: false,
+    run: async (ctx, { file }) => {
+      if (!/\.(?:tex|typ)$/i.test(file)) throw new Error('preview_figure compiles a .tex or .typ figure. A Mermaid diagram (.mmd) is drawn by the composer: read its text instead.');
+      // a Typst diagram of the composer's draws its page alone when told it stands alone, as the composer's preview does
+      const { pdf, generated, ...built } = await compile(await ctx.root(), ctx.state, { main: file }, { ...ctx.compileOptions, ...(/\.typ$/i.test(file) && { typstInputs: { 'spectrum-diagram': 'standalone' } }) });
+      if (!pdf) throw new Error([`${file} did not build, so there is nothing to look at.`, ...buildErrors(built).slice(0, 5)].join('\n'));
+      return pictured(pdf, 1, FIGURE_PPI, `${file}. ${FIGURE}`, built);
+    },
+    show: picturedShown
   },
   {
     name: 'get_log',
