@@ -16,7 +16,8 @@ A Markdown project in Spectrum has a main `.md` file (usually `main.md`), `.bib`
 
 1. Read the YAML front matter at the top, between the `---` lines: `title`, `author`, `date`, `abstract`, `bibliography` and `csl`. When there is no `bibliography`, Spectrum gives pandoc every `.bib` in the project; when there is one, list every `.bib` the document needs there (`bibliography: [refs.bib, more.bib]`), never a second `bibliography:` line. Citations come out in APA 7 unless `csl` names another style.
 2. Note the PDF engine (LaTeX or Typst) from the compile menu or the log's first lines. Raw LaTeX in the text works only with the LaTeX engine; keep to plain Markdown so both work.
-3. Images are found relative to the `.md` file's folder.
+3. Images are found relative to the main `.md` file's folder.
+4. A document across files names its other files in the front matter, in order: `include: [chapters/intro.md, chapters/method.md]`. They are joined after the main file, so the main file holds the front matter and the last file the `# References` heading. Errors are reported in the file they are in.
 
 ## The compile loop
 

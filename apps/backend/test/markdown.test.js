@@ -518,3 +518,23 @@ test('slides: true makes Beamer slides, through LaTeX whatever the PDF engine', 
   assert.match(made.text, /\\documentclass\[[^\]]*\]\{beamer\}/);
   assert.match(made.text, /\\begin\{frame\}\{First slide\}/);
 });
+
+test('a document across files: include: joins them in order, and errors and warnings name the file they are in', { skip: WINDOWS ? 'not on Windows' : false }, async (t) => {
+  process.env.PATH = realPath;
+  if (!(await pandocPath())) return t.skip('needs pandoc');
+  if (!(await findExecutable('pdflatex')) && !(await findExecutable('xelatex'))) return t.skip('needs a TeX installation');
+  const p = await projectWith('---\ntitle: Across files\ninclude: [chapters/one.md, ../outside.md, missing.md, chapters/two.md]\n---\n\n# Start\n\nAs @fig:dot in the second chapter shows.\n', {
+    'chapters/one.md': '# One\n\nThe first chapter cites [@nobody].\n',
+    'chapters/two.md': '# Two\n\nThe second chapter has a line that goes wrong here \\undefinedcommand{} for the test.\n\n![A dot](figures/dot.png){#fig:dot}\n',
+    'figures/dot.png': Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+  });
+  const result = await compile(p);
+  const at = (pattern) => result.errors.filter((e) => pattern.test(e.message)).map((e) => [e.file, e.line ?? null]);
+  assert.deepEqual(at(/Undefined control sequence/), [['chapters/two.md', 3]]);
+  assert.deepEqual(at(/@nobody/), [['chapters/one.md', 3]]);
+  assert.deepEqual(at(/include: names/), [['main.md', 3], ['main.md', 3]]);
+  assert.deepEqual(at(/Nothing is labelled/), []);
+  const tex = await fs.readFile(path.join(process.env.SPECTRUM_DATA_DIR, 'cache', p.id, 'generated', 'main.md.tex'), 'utf8');
+  assert.ok(tex.indexOf('{Start}') < tex.indexOf('{One}') && tex.indexOf('{One}') < tex.indexOf('{Two}'), 'in order');
+  assert.match(tex, /As Figure~\\ref\{fig:dot\}/);
+});

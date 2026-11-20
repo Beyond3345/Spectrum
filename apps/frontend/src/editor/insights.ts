@@ -460,49 +460,75 @@ function markdownMetadata(text: string): Metadata {
   return meta;
 }
 
-/** A Markdown document's headings, images, pipe tables, $$ equations, citations, labels and front matter. */
+/**
+ * The files a Markdown document's front matter joins to it (include: a list, or [a, b]), as paths in the project
+ * from the document's folder; one that leaves the project is left out.
+ */
+export function markdownIncludes(text: string, doc: string) {
+  const front = /^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/.exec(text)?.[1] ?? '';
+  const field = /^include[ \t]*:[ \t]*(.*)((?:\r?\n[ \t]*-[ \t]*.*)*)/m.exec(front);
+  if (!field) return [];
+  const names = (field[1].trim() ? field[1].replace(/^\[|\]$/g, '').split(',') : field[2].split(/\r?\n/)).map((n) => n.replace(/^[\s-]*/, '').trim().replace(/^(["'])(.*)\1$/, '$2')).filter(Boolean);
+  const out: string[] = [];
+  for (const name of names) {
+    const parts: string[] = doc.split('/').slice(0, -1);
+    let inside = true;
+    for (const part of name.split('/')) {
+      if (part === '..') inside = parts.pop() !== undefined && inside;
+      else if (part && part !== '.') parts.push(part);
+    }
+    if (inside && !name.startsWith('/')) out.push(parts.join('/'));
+  }
+  return out;
+}
+
+/** A Markdown document's headings, images, pipe tables, $$ equations, citations, labels and front matter, across its include: files. */
 function scanMarkdown(files: { path: string; text: string }[], doc: string): Insights {
   const out = emptyInsights();
-  const text = files.find((file) => file.path === doc)?.text ?? files[0]?.text ?? '';
-  const lines = text.split('\n');
-  out.metadata = markdownMetadata(text);
-  for (const item of parseMarkdownOutline(text)) {
-    const line = lines[item.line - 1] ?? '';
-    const label = /\{#([A-Za-z0-9_:.-]+)/.exec(line)?.[1];
-    out.headings.push({ file: doc, line: item.line, text: item.title, level: item.level, ...(label && { label }) });
-    if (label) out.labels.push({ file: doc, line: item.line, text: label, label });
-  }
-  for (const m of text.matchAll(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)(?:\{([^}]*)\})?/g)) {
-    const label = /#([A-Za-z0-9_:.-]+)/.exec(m[3] ?? '')?.[1];
-    out.figures.push({ file: doc, line: lineAt(text, m.index!), text: m[1].trim() || '(untitled)', ...(label && { label }) });
-    if (label) out.labels.push({ file: doc, line: lineAt(text, m.index!), text: label, label });
-  }
-  for (let i = 0; i + 1 < lines.length; i += 1) {
-    if (!/^\s*\|/.test(lines[i]) || !/^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1])) continue;
-    const header = lines[i].split('|').map((cell) => cell.trim()).filter(Boolean).join(' · ');
-    let j = i + 1;
-    while (j + 1 < lines.length && /^\s*\|/.test(lines[j + 1])) j += 1;
-    let captionAt = j + 1;
-    while (captionAt < lines.length && !lines[captionAt].trim()) captionAt += 1;
-    const caption = /^Table:\s*(.*?)(?:\s*\{#([A-Za-z0-9_:.-]+)\})?\s*$/.exec(lines[captionAt] ?? '');
-    const label = caption?.[2];
-    out.tables.push({ file: doc, line: i + 1, text: header, ...(label && { label }) });
-    if (label) out.labels.push({ file: doc, line: captionAt + 1, text: label, label });
-    i = j;
-  }
-  for (const m of text.matchAll(/\$\$([\s\S]*?)\$\$(?:[ \t]*\{#([A-Za-z0-9_:.-]+)\})?/g)) {
-    const label = m[2];
-    out.equations.push({ file: doc, line: lineAt(text, m.index!), text: shortened(collapse(m[1])), ...(label && { label }) });
-    if (label) out.labels.push({ file: doc, line: lineAt(text, m.index!), text: label, label });
-  }
+  const main = files.find((file) => file.path === doc)?.text ?? files[0]?.text ?? '';
+  out.metadata = markdownMetadata(main);
   const cited = new Map<string, Citation>();
-  for (const m of text.matchAll(/\[[^\]]*@[^\]]*\]/g)) {
-    for (const key of m[0].matchAll(/@([A-Za-z0-9_:.-]+)/g)) {
-      // [@fig:x] is a cross-reference, not a citation
-      if (/^(?:fig|tbl|tab|eq|sec)[:-]/.test(key[1])) continue;
-      const known = cited.get(key[1]);
-      if (known) known.count += 1;
-      else cited.set(key[1], { key: key[1], count: 1, file: doc, line: lineAt(text, m.index!) });
+  // the document, then the files its include: names, in order
+  const parts = [{ path: doc, text: main }, ...markdownIncludes(main, doc).flatMap((path) => files.filter((file) => file.path === path))];
+  for (const { path: file, text } of parts) {
+    const lines = text.split('\n');
+    for (const item of parseMarkdownOutline(text)) {
+      const line = lines[item.line - 1] ?? '';
+      const label = /\{#([A-Za-z0-9_:.-]+)/.exec(line)?.[1];
+      out.headings.push({ file, line: item.line, text: item.title, level: item.level, ...(label && { label }) });
+      if (label) out.labels.push({ file, line: item.line, text: label, label });
+    }
+    for (const m of text.matchAll(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)(?:\{([^}]*)\})?/g)) {
+      const label = /#([A-Za-z0-9_:.-]+)/.exec(m[3] ?? '')?.[1];
+      out.figures.push({ file, line: lineAt(text, m.index!), text: m[1].trim() || '(untitled)', ...(label && { label }) });
+      if (label) out.labels.push({ file, line: lineAt(text, m.index!), text: label, label });
+    }
+    for (let i = 0; i + 1 < lines.length; i += 1) {
+      if (!/^\s*\|/.test(lines[i]) || !/^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1])) continue;
+      const header = lines[i].split('|').map((cell) => cell.trim()).filter(Boolean).join(' · ');
+      let j = i + 1;
+      while (j + 1 < lines.length && /^\s*\|/.test(lines[j + 1])) j += 1;
+      let captionAt = j + 1;
+      while (captionAt < lines.length && !lines[captionAt].trim()) captionAt += 1;
+      const caption = /^Table:\s*(.*?)(?:\s*\{#([A-Za-z0-9_:.-]+)\})?\s*$/.exec(lines[captionAt] ?? '');
+      const label = caption?.[2];
+      out.tables.push({ file, line: i + 1, text: header, ...(label && { label }) });
+      if (label) out.labels.push({ file, line: captionAt + 1, text: label, label });
+      i = j;
+    }
+    for (const m of text.matchAll(/\$\$([\s\S]*?)\$\$(?:[ \t]*\{#([A-Za-z0-9_:.-]+)\})?/g)) {
+      const label = m[2];
+      out.equations.push({ file, line: lineAt(text, m.index!), text: shortened(collapse(m[1])), ...(label && { label }) });
+      if (label) out.labels.push({ file, line: lineAt(text, m.index!), text: label, label });
+    }
+    for (const m of text.matchAll(/\[[^\]]*@[^\]]*\]/g)) {
+      for (const key of m[0].matchAll(/@([A-Za-z0-9_:.-]+)/g)) {
+        // [@fig:x] is a cross-reference, not a citation
+        if (/^(?:fig|tbl|tab|eq|sec)[:-]/.test(key[1])) continue;
+        const known = cited.get(key[1]);
+        if (known) known.count += 1;
+        else cited.set(key[1], { key: key[1], count: 1, file, line: lineAt(text, m.index!) });
+      }
     }
   }
   out.citations = [...cited.values()];

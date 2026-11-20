@@ -73,6 +73,7 @@ import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
 import ConvertSheet from './ConvertSheet';
 import JyutpingSheet from './JyutpingSheet';
 import { drawMermaid } from '../editor/mermaidBlocks';
+import { markdownIncludes } from '../editor/insights';
 // the live preview of a Markdown document, with KaTeX, loaded when first shown
 const MarkdownPreview = lazy(() => import('../editor/MarkdownPreview'));
 import { jyutpingWrap, loadsXjyutping } from '../editor/jyutping';
@@ -1794,6 +1795,14 @@ function Editor({ projectId }: { projectId: string }) {
    * The document Compile builds (compileTarget), or another once. fresh: its kept build files are cleared first.
    * auto: auto compile started it. Says how it ended ('busy': another compile was running).
    */
+  /** The Mermaid blocks of a Markdown document and of the files its include: names, drawn; warnings where they can't be. */
+  const drawMarkdownMermaid = async (doc: string) => {
+    const main = await readText(doc).catch(() => '');
+    const files = [doc, ...markdownIncludes(main, doc).filter((path) => fileSet.has(path))];
+    const drawn = await Promise.all(files.map(async (path) => drawMermaid(projectId, path, path === doc ? main : await readText(path)).catch(() => [])));
+    return drawn.flat();
+  };
+
   const runCompile = async (doc = compileTarget, opts: { fresh?: boolean; auto?: boolean } = {}): Promise<CompileState['state'] | 'busy'> => {
     if (compilingRef.current) return 'busy';
     if (!doc) {
@@ -1825,7 +1834,7 @@ function Editor({ projectId }: { projectId: string }) {
       await saveNow();
       const startedAt = Date.now();
       // a Markdown document's ```mermaid blocks drawn first, with the composer's Mermaid, for pandoc to put in as pictures
-      const drawn = /\.(md|markdown)$/i.test(doc) ? await drawMermaid(projectId, doc, await readText(doc)).catch(() => []) : [];
+      const drawn = /\.(md|markdown)$/i.test(doc) ? await drawMarkdownMermaid(doc) : [];
       const res = await compileProject({
         projectId,
         mainFile: doc,

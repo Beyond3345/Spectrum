@@ -291,4 +291,14 @@ eq(
   'Markdown word count'
 );
 
+// a Markdown document across files: its include: files are scanned after it, each row at its own file
+const across = scanInsights([
+  { path: 'thesis/main.md', text: ['---', 'title: T', 'include: [ch/one.md]', '---', '', '# Start {#sec:start}', ''].join(NEWLINE) },
+  { path: 'thesis/ch/one.md', text: ['# One', '', '![A dot](dot.png){#fig:dot}', '', 'Cited [@knuth84].', ''].join(NEWLINE) },
+  { path: 'other.md', text: '# Not part of it' }
+], 'thesis/main.md');
+eq(across.headings.map((h) => [h.file, h.text]), [['thesis/main.md', 'Start'], ['thesis/ch/one.md', 'One']], 'Markdown headings across files');
+eq(across.labels.map((l) => [l.file, l.label, l.line]), [['thesis/main.md', 'sec:start', 6], ['thesis/ch/one.md', 'fig:dot', 3]], 'Markdown labels across files');
+eq(across.citations.map((c) => [c.file, c.key, c.line]), [['thesis/ch/one.md', 'knuth84', 5]], 'Markdown citations across files');
+
 console.log('insights: all checks passed');

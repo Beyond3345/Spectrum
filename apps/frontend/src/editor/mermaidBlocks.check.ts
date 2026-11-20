@@ -1,6 +1,7 @@
 // Self-check for finding a Markdown document's Mermaid blocks and their keys. Run:
 // npx esbuild apps/frontend/src/editor/mermaidBlocks.check.ts --bundle --platform=node --format=esm --outfile=/tmp/m.mjs && node /tmp/m.mjs
 import { mermaidBlocks, mermaidKey } from './mermaidBlocks';
+import { markdownIncludes } from './insights';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -34,4 +35,8 @@ eq(mermaidBlocks(doc), [
 // the key crossref.lua makes of pandoc's text, whose tabs are spaces
 eq(mermaidKey('graph TD\n\tA --> B'), mermaidKey('graph TD\n    A -->  B '), 'whitespace does not change the key');
 eq(mermaidKey('  graph TD\n  A --> B\n'), 'graph TD A --> B', 'the key');
+// the files a document joins to it, from its folder, none outside the project
+eq(markdownIncludes('---\ntitle: T\ninclude: [chapters/one.md, "two.md"]\n---\n', 'thesis/main.md'), ['thesis/chapters/one.md', 'thesis/two.md'], 'include: as a list in brackets');
+eq(markdownIncludes('---\ninclude:\n  - one.md\n  - ../shared/two.md\n  - ../../out.md\n---\n', 'thesis/main.md'), ['thesis/one.md', 'shared/two.md'], 'include: as items, none outside');
+eq(markdownIncludes('# No front matter\n\ninclude: [x.md]\n', 'main.md'), [], 'only in the front matter');
 console.log('mermaidBlocks.check: ok');

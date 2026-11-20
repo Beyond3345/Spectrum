@@ -81,6 +81,34 @@ export async function bibliographyArgs(projectRoot, meta) {
   return files.flatMap((file) => ['--bibliography', file]);
 }
 
+/**
+ * A document across files: the .md, then the files its front matter's include: names (from the .md's folder, in
+ * order, each once), as { files: absolute paths, missing: names not in the project }.
+ */
+export function markdownInputs(projectRoot, absMain, meta) {
+  const files = [absMain];
+  const missing = [];
+  for (const name of [meta.include].flat().filter(Boolean)) {
+    let abs = null;
+    try {
+      abs = safeJoin(projectRoot, path.relative(projectRoot, path.resolve(path.dirname(absMain), String(name))));
+    } catch {
+      // outside the project
+    }
+    if (!abs || !existsSync(abs)) missing.push(String(name));
+    else if (!files.includes(abs)) files.push(abs);
+  }
+  return { files, missing };
+}
+
+/** Each input's text with its name in the project ('/'-separated), the main file's as mainFile names it. */
+export async function markdownParts(projectRoot, files, mainFile) {
+  return Promise.all(files.map(async (abs, i) => ({ abs, file: i === 0 ? mainFile : path.relative(projectRoot, abs).split(path.sep).join('/'), text: await fs.readFile(abs, 'utf8') })));
+}
+
+/** A source as parts: a string is the main file's text. */
+const partsOf = (source, mainFile) => (Array.isArray(source) ? source : [{ file: mainFile, text: String(source || '') }]);
+
 /** Whether the front matter asks for slides: slides: true, yes or beamer. */
 export const isSlides = (meta) => /^(?:true|yes|beamer)$/i.test(String([meta.slides].flat()[0] ?? ''));
 
@@ -141,11 +169,13 @@ function collector() {
  * pandoc's own errors at a line and column in the .md: at "file" (line N, column M), not the YAML parser's line that
  * may follow, which counts from the front matter.
  */
-export function pandocErrors(log, mainFile) {
+export function pandocErrors(log, mainFile, parts = []) {
   const errors = [];
   for (const line of String(log || '').split(/\r?\n/)) {
-    const match = /at\s+"[^"]*"\s+\(line\s+(\d+),?\s+column\s+(\d+)\)/i.exec(line);
-    if (match) errors.push({ severity: 'error', message: line.trim(), file: mainFile, line: Number(match[1]), column: Number(match[2]) });
+    const match = /at\s+"([^"]*)"\s+\(line\s+(\d+),?\s+column\s+(\d+)\)/i.exec(line);
+    // the file pandoc names, as it was given (an included part's path)
+    const file = parts.find((part) => part.abs === match?.[1])?.file ?? mainFile;
+    if (match) errors.push({ severity: 'error', message: line.trim(), file, line: Number(match[2]), column: Number(match[3]) });
   }
   return errors;
 }
@@ -169,10 +199,11 @@ function wordsOf(line) {
  */
 export function traceToMarkdown(diagnostics, generated, source, mainFile) {
   const generatedLines = String(generated || '').split(/\r?\n/);
-  const sourceWords = String(source || '').split(/\r?\n/).flatMap((text, index) => wordsOf(text).map((word) => ({ word, line: index + 1 })));
+  // source: the .md's text, or its parts ({ file, text }) for a document across files
+  const sourceWords = partsOf(source, mainFile).flatMap(({ file, text }) => text.split(/\r?\n/).flatMap((line, index) => wordsOf(line).map((word) => ({ word, line: index + 1, file }))));
   const findRun = (run) => {
     for (let at = 0; at + run.length <= sourceWords.length; at += 1) {
-      if (run.every((word, k) => sourceWords[at + k].word === word)) return sourceWords[at].line;
+      if (run.every((word, k) => sourceWords[at + k].word === word)) return sourceWords[at];
     }
     return null;
   };
@@ -184,14 +215,14 @@ export function traceToMarkdown(diagnostics, generated, source, mainFile) {
     for (const count of [6, 4]) {
       for (let start = 0; start + count <= words.length; start += 1) {
         const found = findRun(words.slice(start, start + count));
-        if (found) return { ...withoutLine, line: found, column: 1 };
+        if (found) return { ...withoutLine, file: found.file, line: found.line, column: 1 };
       }
     }
     return withoutLine;
   });
   const seen = new Set();
   return traced.filter((d) => {
-    const key = [d.severity, d.message, d.line].join('\n');
+    const key = [d.severity, d.message, d.file, d.line].join('\n');
     return !seen.has(key) && seen.add(key);
   });
 }
@@ -276,17 +307,24 @@ export function pandocWarnings(log, source, mainFile) {
   const messages = [...new Set([...String(log || '').matchAll(/^\[WARNING\] (.+)$/gm)].map((m) => m[1].trim()))];
   return messages.map((message) => {
     const reference = /^Nothing is labelled \S+ for the reference @(\S+)\.$/.exec(message)?.[1];
-    if (reference) return { severity: 'warning', message, file: mainFile, ...lineOf(source, '@' + reference) };
+    if (reference) return { severity: 'warning', message, file: mainFile, ...lineOf(source, mainFile, '@' + reference) };
     const key = /^Citeproc: citation (\S+) not found/.exec(message)?.[1];
     const text = key ? `No entry in the bibliography for the citation @${key}.` : message;
-    return { severity: 'warning', message: text, file: mainFile, ...(key && lineOf(source, '@' + key)) };
+    return { severity: 'warning', message: text, file: mainFile, ...(key && lineOf(source, mainFile, '@' + key)) };
   });
 }
 
-/** { line, column: 1 } of the first @key in the source not followed by more of a key, or {} where there is none. */
-function lineOf(source, at) {
-  const found = String(source || '').search(new RegExp(at.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w:.+-]*[\\w])'));
-  return found === -1 ? {} : { line: String(source).slice(0, found).split('\n').length, column: 1 };
+/**
+ * { file, line, column: 1 } of the first @key in the source (or its parts) not followed by more of a key, or {} where
+ * there is none.
+ */
+function lineOf(source, mainFile, at) {
+  const pattern = new RegExp(at.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w:.+-]*[\\w])');
+  for (const { file, text } of partsOf(source, mainFile)) {
+    const found = text.search(pattern);
+    if (found !== -1) return { file, line: text.slice(0, found).split('\n').length, column: 1 };
+  }
+  return {};
 }
 
 /** A font as TeX's "Missing character" line names it: [lmroman10-regular]:+tlig; or NotoSerifSC-Regular.otf/OT:…, or a path. */
@@ -312,7 +350,7 @@ export function missingGlyphs(log, source, mainFile) {
   }
   return [...fonts].map(([font, set]) => {
     const chars = [...set];
-    const at = String(source || '').indexOf(chars[0]);
+    const part = partsOf(source, mainFile).find(({ text }) => text.includes(chars[0]));
     const shown = chars.slice(0, 12).join(' ') + (chars.length > 12 ? ` and ${chars.length - 12} more` : '');
     const korean = chars.some((ch) => HANGUL.test(ch));
     const advice = korean
@@ -321,8 +359,8 @@ export function missingGlyphs(log, source, mainFile) {
     return {
       severity: 'warning',
       message: `${font ? `The font ${font}` : 'The font'} has no ${shown}, so the PDF leaves ${chars.length === 1 ? 'it' : 'them'} out. ${advice}`,
-      file: mainFile,
-      ...(at !== -1 && { line: String(source).slice(0, at).split('\n').length, column: 1 })
+      file: part?.file ?? mainFile,
+      ...(part && { line: part.text.slice(0, part.text.indexOf(chars[0])).split('\n').length, column: 1 })
     };
   });
 }
@@ -364,13 +402,13 @@ async function runPandoc(args, cwd, env = process.env) {
   return { ...run, log: log.text() };
 }
 
-const pandocFailure = (run, mainFile) => ({
+const pandocFailure = (run, mainFile, parts) => ({
   ok: false,
   ...(run.error && { error: PANDOC_MISSING }),
   ...(run.timedOut && { timedOut: true }),
   ...(run.code === null && !run.timedOut && !run.error && { stopped: true }),
   log: run.log,
-  errors: pandocErrors(run.log, mainFile)
+  errors: pandocErrors(run.log, mainFile, parts)
 });
 
 /**
@@ -379,17 +417,19 @@ const pandocFailure = (run, mainFile) => ({
  * but the .md and the .bib files, and each image named as the .md names it, for projectImages.
  */
 export async function markdownToLatex({ projectRoot, absMain, mainFile, generatedDir, sandboxed = false }) {
-  const source = await fs.readFile(absMain, 'utf8');
-  const { meta } = parseFrontMatter(source);
+  const { meta } = parseFrontMatter(await fs.readFile(absMain, 'utf8'));
+  const { files } = markdownInputs(projectRoot, absMain, meta);
+  const parts = await markdownParts(projectRoot, files, mainFile);
+  const source = parts.map((part) => part.text).join('\n\n');
   await ensureDir(generatedDir);
   const generatedFile = path.join(generatedDir, mainFile + '.tex');
   await ensureDir(path.dirname(generatedFile));
   // a compile's images go through vettedMarkdown, so --extract-media copies none from outside the project
-  const vetted = !sandboxed && (await vettedMarkdown(projectRoot, absMain, generatedFile + '.json'));
-  if (vetted && !vetted.ok) return { ...pandocFailure(vetted, mainFile), ...(vetted.code === 0 && { error: PANDOC_UNREADABLE }) };
+  const vetted = !sandboxed && (await vettedMarkdown(projectRoot, files, generatedFile + '.json'));
+  if (vetted && !vetted.ok) return { ...pandocFailure(vetted, mainFile, parts), ...(vetted.code === 0 && { error: PANDOC_UNREADABLE }) };
   const font = cjkFont(source, meta);
   const args = [
-    ...(sandboxed ? [absMain, '--from=markdown'] : [generatedFile + '.json', '--from=json']),
+    ...(sandboxed ? [...files, '--from=markdown'] : [generatedFile + '.json', '--from=json']),
     // slides: true (or beamer) in the front matter makes Beamer slides, a ## heading a slide
     isSlides(meta) ? '--to=beamer' : '--to=latex', '--standalone', ...crossrefArgs(), '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
@@ -403,12 +443,12 @@ export async function markdownToLatex({ projectRoot, absMain, mainFile, generate
   const run = await runPandoc(args, path.dirname(absMain), sandboxed ? process.env : mermaidEnv(projectRoot));
   if (vetted) run.log = vetted.log + run.log;
   let text = await fs.readFile(generatedFile, 'utf8').catch(() => null);
-  if (run.code !== 0 || text === null) return { ...pandocFailure(run, mainFile), ...(text === null && !run.error && !run.timedOut && { error: PANDOC_UNREADABLE }) };
+  if (run.code !== 0 || text === null) return { ...pandocFailure(run, mainFile, parts), ...(text === null && !run.error && !run.timedOut && { error: PANDOC_UNREADABLE }) };
   if (!sandboxed) {
     text = await svgsAsPdf(text, generatedDir);
     await fs.writeFile(generatedFile, text);
   }
-  return { ok: true, text, log: run.log, file: generatedFile };
+  return { ok: true, text, log: run.log, file: generatedFile, parts };
 }
 
 /**
@@ -472,9 +512,9 @@ function projectImage(file, projectRoot, mdDir) {
  * its full path and every other one (a URL, a file elsewhere on this computer, a link out of the project) left as its
  * description: pandoc's writer then reads no file outside the project and fetches nothing. { ok, log }, or a failed run.
  */
-async function vettedMarkdown(projectRoot, absMain, jsonFile) {
-  const mdDir = path.dirname(absMain);
-  const run = await runPandoc([absMain, '--from=markdown', '--to=json', '--sandbox', '-o', jsonFile], mdDir);
+async function vettedMarkdown(projectRoot, files, jsonFile) {
+  const mdDir = path.dirname(files[0]);
+  const run = await runPandoc([...files, '--from=markdown', '--to=json', '--sandbox', '-o', jsonFile], mdDir);
   const text = await fs.readFile(jsonFile, 'utf8').catch(() => null);
   let doc = null;
   try {
@@ -508,13 +548,15 @@ async function vettedMarkdown(projectRoot, absMain, jsonFile) {
 
 /** Pandoc's Typst for the .md, its images made project-root relative, into generatedDir. */
 export async function markdownToTypst({ projectRoot, absMain, mainFile, generatedDir }) {
-  const source = await fs.readFile(absMain, 'utf8');
-  const { meta } = parseFrontMatter(source);
+  const { meta } = parseFrontMatter(await fs.readFile(absMain, 'utf8'));
+  const { files } = markdownInputs(projectRoot, absMain, meta);
+  const parts = await markdownParts(projectRoot, files, mainFile);
+  const source = parts.map((part) => part.text).join('\n\n');
   await ensureDir(generatedDir);
   const generatedFile = path.join(generatedDir, mainFile + '.typ');
   await ensureDir(path.dirname(generatedFile));
   const args = [
-    absMain, '--from=markdown', '--to=typst', '--standalone', ...crossrefArgs(), '--citeproc',
+    ...files, '--from=markdown', '--to=typst', '--standalone', ...crossrefArgs(), '--citeproc',
     ...(await bibliographyArgs(projectRoot, meta)),
     ...cslArgs(meta),
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
@@ -522,10 +564,10 @@ export async function markdownToTypst({ projectRoot, absMain, mainFile, generate
   ];
   const run = await runPandoc(args, path.dirname(absMain), mermaidEnv(projectRoot));
   let text = await fs.readFile(generatedFile, 'utf8').catch(() => null);
-  if (run.code !== 0 || text === null) return { ...pandocFailure(run, mainFile), ...(text === null && !run.error && !run.timedOut && { error: PANDOC_UNREADABLE }) };
+  if (run.code !== 0 || text === null) return { ...pandocFailure(run, mainFile, parts), ...(text === null && !run.error && !run.timedOut && { error: PANDOC_UNREADABLE }) };
   text = typstCjkFont(source, meta) + rootRelativeImages(text, projectRoot, path.dirname(absMain));
   await fs.writeFile(generatedFile, text);
-  return { ok: true, text, log: run.log, file: generatedFile };
+  return { ok: true, text, log: run.log, file: generatedFile, parts };
 }
 
 /**
@@ -560,31 +602,38 @@ export async function compileMarkdown(projectRoot, absMain, mainFile, engine, op
     if (made.timedOut) return { ok: false, error: 'The compile took too long and was stopped.', log: made.log, status: -1, errors: made.errors };
     return { ok: false, error: made.error || PANDOC_UNREADABLE, log: made.log, errors: made.errors, generated: kind };
   }
+  // the document's parts (the .md and the files its include: names), and a warning for a named file that isn't there
+  const { parts } = made;
+  const text = parts.map((part) => part.text).join('\n\n');
+  const missing = markdownInputs(projectRoot, absMain, parseFrontMatter(source).meta).missing.map((name) => ({
+    severity: 'warning', message: `The front matter’s include: names ${name}, which isn’t a file in the project.`, file: mainFile, ...lineOf(source, mainFile, name)
+  }));
   // Compile with page colour goes into Spectrum's own generated file: for Typst a first line (which the errors are
   // traced through), for LaTeX on its \documentclass line
   if (kind === 'typst') {
     const typst = options.pageColour ? typstFill(options.pageColour) + made.text : made.text;
     const result = await compileTypst(projectRoot, absMain, mainFile, { ...options, source: typst });
-    return { ...result, log: made.log + (result.log || ''), errors: [...traceToMarkdown(result.errors || [], typst, source, mainFile), ...pandocWarnings(made.log, source, mainFile)], generated: 'typst' };
+    return { ...result, log: made.log + (result.log || ''), errors: [...traceToMarkdown(result.errors || [], typst, parts, mainFile), ...pandocWarnings(made.log, parts, mainFile), ...missing], generated: 'typst' };
   }
   if (options.pageColour) await fs.writeFile(made.file, pageColourLines(made.text, options.pageColour));
   // pandoc's LaTeX sets CJK text under XeLaTeX and LuaLaTeX only: pdfLaTeX (or latexmk's) gives way to XeLaTeX
-  const unicode = CJK_TEXT.test(source) ? await unicodeEngine(engine) : null;
+  const unicode = CJK_TEXT.test(text) ? await unicodeEngine(engine) : null;
   // LaTeX: the generated file compiles like any document, with its PDF beside the .md
   const result = await compileDocument(unicode?.engine || engine, projectRoot, made.file, mainFile, { ...options, pageColour: undefined, markdownSource: absMain, ...(unicode?.latexmk && { latexmkEngine: unicode.latexmk }) });
   // pandoc's own warnings (a citation with no entry) first, as they come first
   let log = (unicode?.note ? unicode.note + '\n' : '') + made.log + (result.log || '');
-  if (SVG.test(source) && !(await findExecutable('rsvg-convert'))) log += SVG_NOTE;
+  if (SVG.test(text) && !(await findExecutable('rsvg-convert'))) log += SVG_NOTE;
   // TeX's errors first, then its warnings, each traced to the .md and listed once
-  const tex = traceToMarkdown([...latexDiagnostics(log, path.basename(made.file)), ...latexWarnings(log)], made.text, source, mainFile);
+  const tex = traceToMarkdown([...latexDiagnostics(log, path.basename(made.file)), ...latexWarnings(log)], made.text, parts, mainFile);
   return {
     ...result,
     log,
     errors: [
       ...tex.filter((d) => d.severity === 'error'),
       ...tex.filter((d) => d.severity !== 'error'),
-      ...pandocWarnings(made.log, source, mainFile),
-      ...missingGlyphs(log, source, mainFile)
+      ...pandocWarnings(made.log, parts, mainFile),
+      ...missingGlyphs(log, parts, mainFile),
+      ...missing
     ],
     generated: 'latex'
   };
@@ -610,7 +659,7 @@ export async function pandocDocx(projectRoot, absMain, output) {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-docx-'));
   try {
     const json = path.join(tmp, 'document.json');
-    const vetted = await vettedMarkdown(projectRoot, absMain, json);
+    const vetted = await vettedMarkdown(projectRoot, markdownInputs(projectRoot, absMain, meta).files, json);
     if (!vetted.ok) return { ok: false, log: vetted.log };
     const resources = '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter);
     const run = await runPandoc([json, '--from=json', ...crossrefArgs(), '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), ...cslArgs(meta), resources, '-o', output], path.dirname(absMain), mermaidEnv(projectRoot));
