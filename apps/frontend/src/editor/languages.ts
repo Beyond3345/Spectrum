@@ -8,6 +8,7 @@ import type { MarkdownConfig } from '@lezer/markdown';
 import { latex } from '../latex/lang';
 import { compileLint } from './compileMarks';
 import { latexFoldService, latexHighlight, mathsWrap } from './latexEditor';
+import { smartTyping } from './smartTyping';
 import { docKind } from './shared';
 
 // The editor's language for a file, swapped as files open: LaTeX has its own mode, highlighting and folding, Typst
@@ -21,7 +22,7 @@ let loading: Promise<Extension | null> | null = null;
 /** The Typst language, loaded once; null while loading or when the package fails. */
 export function loadTypst(): Promise<Extension | null> {
   loading ??= import('codemirror-lang-typst/lezer')
-    .then(({ typst_lezer }) => (typst = [typst_lezer(), compileLint]))
+    .then(({ typst_lezer }) => (typst = [typst_lezer(), compileLint, smartTyping('typst')]))
     .catch(() => null);
   return loading;
 }
@@ -80,7 +81,7 @@ export function referenceCompletions({ path, keys, labels, version }: { path: ()
   };
 }
 
-const latexLanguage = (): Extension => [latex(), syntaxHighlighting(latexHighlight), foldService.of(latexFoldService), mathsWrap];
+const latexLanguage = (): Extension => [latex(), syntaxHighlighting(latexHighlight), foldService.of(latexFoldService), mathsWrap, smartTyping('latex')];
 
 const mathsTag = Tag.define();
 const isSpace = (code: number) => code === 32 || code === 9 || code === 10 || code === -1;

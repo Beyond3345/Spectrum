@@ -1283,6 +1283,26 @@ function EditorPane() {
         </span>
       </label>
 
+      <h3 className="form-section-title">Typing</h3>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.continueLists} onChange={(e) => update({ continueLists: e.target.checked })} />
+        <span>
+          Continue lists
+          <span className="field-hint">
+            Return after an <code>\item</code> in LaTeX, or a list item in Typst, starts the next one. Return on an empty item ends the list. Markdown always continues its lists.
+          </span>
+        </span>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.closeMaths} onChange={(e) => update({ closeMaths: e.target.checked })} />
+        <span>
+          Close maths delimiters
+          <span className="field-hint">
+            Typing <code>$</code>, <code>\(</code>, <code>\[</code> or <code>\left(</code> adds its closer in LaTeX, and <code>$</code> in Typst. Backspace in an empty pair removes both.
+          </span>
+        </span>
+      </label>
+
       <h3 className="form-section-title">Jump between source and PDF</h3>
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={settings.syncDoubleClick} onChange={(e) => update({ syncDoubleClick: e.target.checked })} />
