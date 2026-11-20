@@ -18,10 +18,17 @@ export const editorKeymap = (value: unknown): EditorKeymap => (value === 'vim' |
 
 let save: () => void = () => undefined;
 let vimReady = false;
+let current: Extension = [];
+/** The keymap last loaded, for a file's state as it opens (each file keeps a state of its own). */
+export const currentKeymap = () => current;
 
 /** The extension for a keymap, [] for the standard keys or when its package can't load. onSave: Vim's :w. */
 export async function keymapExtension(mode: EditorKeymap, onSave: () => void): Promise<Extension> {
   save = onSave;
+  return (current = await load(mode));
+}
+
+async function load(mode: EditorKeymap): Promise<Extension> {
   try {
     if (mode === 'vim') {
       const { vim, Vim } = await import('@replit/codemirror-vim');

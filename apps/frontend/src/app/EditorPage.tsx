@@ -151,7 +151,7 @@ import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
 import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
-import { keymapCompartment, keymapExtension } from '../editor/keymaps';
+import { currentKeymap, keymapCompartment, keymapExtension } from '../editor/keymaps';
 import { includedPath, parseMarkdownOutline, parseTypstOutline } from '../editor/outlines';
 import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
@@ -870,7 +870,7 @@ function Editor({ projectId }: { projectId: string }) {
       clearGhost();
       view.setState(saved && saved.doc.toString() === content ? saved : EditorState.create({ doc: content, extensions: extensionsRef.current }));
       // a saved state keeps its own language configuration, so every open says again which file this is
-      view.dispatch({ effects: languageCompartment.reconfigure(languageFor(path)) });
+      view.dispatch({ effects: [languageCompartment.reconfigure(languageFor(path)), keymapCompartment.reconfigure(currentKeymap())] });
       if (docKind(path) === 'typst') loadTypst().then((language) => { if (language && activeRef.current === path) viewRef.current?.dispatch({ effects: languageCompartment.reconfigure(language) }); });
       activeRef.current = path;
       attachTexlab();
