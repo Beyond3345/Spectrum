@@ -23,9 +23,10 @@ import type { Checkpoint, ThreadMeta as Meta } from './transcript';
 import { INSTRUCTIONS_FILE, starterInstructions } from './instructions';
 import AgentHeader, { useTurnChoice } from './AgentHeader';
 import type { TurnChoice } from './usage';
+import type { Picture } from './pictures';
 
 /** plan: the composer's Plan was on, so the turn only reads and ends with a plan or a question */
-type SendOptions = { skill?: string; research?: string; context: Record<ContextKind, boolean>; plan?: boolean };
+type SendOptions = { skill?: string; research?: string; context: Record<ContextKind, boolean>; plan?: boolean; images?: Picture[] };
 /** A message typed while the agent works on its thread: the next turn's, unless Steer now hands it over between steps */
 type Queued = { id: number; thread: string; text: string; opts: SendOptions; steering?: boolean };
 /** What a card's button sends besides the words the thread shows: the request as the model reads it, and the message's own record */
@@ -231,15 +232,16 @@ export default function SpectrumAgentTab({
     setRunning(null);
   };
 
-  const send = async (text: string, { skill, research, context, plan }: SendOptions, sent: Sent = {}) => {
+  const send = async (text: string, { skill, research, context, plan, images }: SendOptions, sent: Sent = {}) => {
     const a = latest.current;
     // while the agent works on this thread, a message waits its turn
     if (runningRef.current) {
       const thread = threadRef.current?.id;
-      if (thread && runningRef.current.id === thread) setQueue((old) => [...old, { id: Date.now() + old.length, thread, text: text || `/${skill}`, opts: { skill, research, context, plan } }]);
+      if (thread && runningRef.current.id === thread) setQueue((old) => [...old, { id: Date.now() + old.length, thread, text: text || `/${skill}`, opts: { skill, research, context, plan, images } }]);
       return;
     }
-    const base = append(threadRef.current, chatMessage('user', text || `/${skill}`, sent.meta));
+    // the thread keeps the pictures' small copies; the run is sent them whole
+    const base = append(threadRef.current, chatMessage('user', text || `/${skill}`, { ...sent.meta, ...(images?.length && { pictures: images.map((p) => p.thumb) }) }));
     setEvents([]);
     setRunning(base);
     runningRef.current = base;
@@ -270,6 +272,7 @@ export default function SpectrumAgentTab({
         history,
         ...(skill && { skill }),
         ...(plan && { planFirst: true }),
+        ...(images?.length && { images: images.map(({ type, data, name }) => ({ type, data, name })) }),
         ...turnSettings(base)
       });
       attach(run.id, base);
@@ -559,7 +562,7 @@ export default function SpectrumAgentTab({
       if (threadRef.current) void open(null);
       setNewPersona(taskPersona(api.settings.personas, task) ?? picked.current);
     }
-    setDraft({ text: task.prompt, skill: task.skill, research: task.research, n: task.n });
+    setDraft({ text: task.prompt, skill: task.skill, research: task.research, images: task.images, n: task.n });
   }, [task?.n]);
 
   const trayChanges = useMemo(() => tray.map(trayOf), [tray]);

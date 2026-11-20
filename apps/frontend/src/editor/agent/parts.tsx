@@ -18,6 +18,8 @@ import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
 import { Markdown, VERSIONS_CHANGED, errorText } from '../shared';
 import type { AgentCommand, Checkpoint, Item, PlanEntry, ToolCall } from './transcript';
+import { MAX_PICTURES, PictureChips, PictureStrip, ToolPicture, picturesOf } from './pictures';
+import type { Picture } from './pictures';
 
 // The pieces both agent tabs are made of: transcript cards, plan strip, changes tray and review, composer.
 
@@ -142,7 +144,7 @@ export const TASKS: AgentTask[] = [
 ];
 
 /** A task handed to the workspace from elsewhere (Research's Deep research, Draft related work and Verify claims). */
-export type TaskRequest = { prompt: string; skill: string; persona?: string; research?: string; n: number };
+export type TaskRequest = { prompt: string; skill: string; persona?: string; research?: string; images?: Picture[]; n: number };
 
 /** The task's persona, a starter's id (Settings › Personas), while the user still has it. */
 export const taskPersona = (personas: { id: string }[], task: { persona?: string }) => personas.find((p) => p.id === task.persona)?.id;
@@ -249,6 +251,8 @@ export function ToolCard({ call, terminals }: { call: ToolCall; terminals: Recor
               <pre className="agent-output" key={i}>$ {terminals[c.terminalId] || 'Terminal'}</pre>
             ) : c.content?.type === 'text' ? (
               <pre className="agent-output" key={i}>{clip(c.content.text || '')}</pre>
+            ) : c.content?.type === 'image' && c.content.data ? (
+              <ToolPicture key={i} url={`data:${c.content.mimeType || 'image/png'};base64,${c.content.data}`} file={call.locations[0]?.path} />
             ) : null
           )}
           {!call.content.length && call.rawInput !== undefined && <pre className="agent-output">{shown(call.rawInput)}</pre>}
@@ -484,6 +488,7 @@ export function Transcript({
         item.type === 'user' ? (
           <div className="composer-msg user" key={item.key}>
             <div className="composer-bubble">{item.text}</div>
+            <PictureStrip pictures={item.pictures} />
           </div>
         ) : item.type === 'assistant' ? (
           <div className="composer-msg assistant" key={item.key}>
@@ -814,8 +819,8 @@ export function ReviewView({
 // ─── Composer ───
 
 export type ContextKind = 'file' | 'selection' | 'log' | 'todos';
-/** research: a research session's id, sent with the message */
-export type Draft = { text: string; skill?: string; research?: string; n: number };
+/** research: a research session's id, sent with the message; images: pictures to send with it (a page of the PDF) */
+export type Draft = { text: string; skill?: string; research?: string; images?: Picture[]; n: number };
 
 const CONTEXT_ICONS: Record<ContextKind, string> = { file: 'doc.text', selection: 'text.cursor', log: 'terminal', todos: 'checklist' };
 
@@ -853,7 +858,7 @@ export function AgentComposer({
   placeholder: string;
   /** more chips for the bar, after those for what goes with the message */
   extras?: ReactNode;
-  onSend(text: string, opts: { skill?: string; research?: string; context: Record<ContextKind, boolean> }): void;
+  onSend(text: string, opts: { skill?: string; research?: string; context: Record<ContextKind, boolean>; images?: Picture[] }): void;
 }) {
   const api = useEditor();
   const [text, setText] = useState('');
@@ -863,10 +868,21 @@ export function AgentComposer({
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // pictures pasted, dropped or chosen, which go with the message
+  const [pictures, setPictures] = useState<Picture[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const addPictures = async (files: FileList | File[] | null | undefined) => {
+    const room = MAX_PICTURES - pictures.length;
+    const added = await picturesOf(files, Math.max(0, room));
+    if (added.length) setPictures((old) => [...old, ...added].slice(0, MAX_PICTURES));
+    else if (room <= 0) api.notify(`Up to ${MAX_PICTURES} pictures go with a message.`);
+  };
+  const hasImage = (list: DataTransferItemList | undefined) => Array.from(list || []).some((i) => i.kind === 'file' && i.type.startsWith('image/'));
 
   useEffect(() => {
     if (!draft) return;
     setText(draft.text);
+    setPictures(draft.images ?? []);
     // a task's skill only while it's on for the project
     setSkill(draft.skill && skills.some((s) => s.id === draft.skill) ? draft.skill : undefined);
     setResearch(draft.research);
@@ -917,15 +933,26 @@ export function AgentComposer({
       message = typed[2].trim();
     }
     if ((busy && !queues) || disabled || (!message && !use)) return;
-    onSend(message, { skill: use, research, context: { file: on('file'), selection: on('selection'), log: on('log'), todos: on('todos') } });
+    onSend(message, { skill: use, research, context: { file: on('file'), selection: on('selection'), log: on('log'), todos: on('todos') }, ...(pictures.length && { images: pictures }) });
     setText('');
     setSkill(undefined);
     setResearch(undefined);
+    setPictures([]);
   };
 
   const skillName = skill && (skills.find((s) => s.id === skill)?.name || skill);
   return (
-    <div className="agent-composer">
+    <div
+      className="agent-composer"
+      onDragOver={(e) => {
+        if (hasImage(e.dataTransfer.items)) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (!hasImage(e.dataTransfer.items)) return;
+        e.preventDefault();
+        void addPictures(e.dataTransfer.files);
+      }}
+    >
       {picker}
       {entries.length > 0 && (
         <div className="agent-slash" role="listbox" id={listId} aria-label="Commands and skills">
@@ -961,6 +988,12 @@ export function AgentComposer({
           setText(e.target.value);
           setActive(0);
         }}
+        onPaste={(e) => {
+          // a picture pasted goes with the message; text pastes as ever
+          if (!hasImage(e.clipboardData.items)) return;
+          e.preventDefault();
+          void addPictures(e.clipboardData.files);
+        }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return;
           if (entries.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -995,6 +1028,7 @@ export function AgentComposer({
             </button>
           </span>
         )}
+        <PictureChips pictures={pictures} onRemove={(i) => setPictures((old) => old.filter((_, j) => j !== i))} />
         {(Object.keys(available) as ContextKind[]).map(
           (k) =>
             available[k] && (
@@ -1004,6 +1038,20 @@ export function AgentComposer({
             )
         )}
         {extras}
+        <button className="chip" title="Add a picture for the agent to look at (or paste or drop one in the box)" aria-label="Add a picture" disabled={pictures.length >= MAX_PICTURES} onClick={() => fileRef.current?.click()}>
+          <Icon name="photo" />
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          hidden
+          onChange={(e) => {
+            void addPictures(e.target.files);
+            e.target.value = '';
+          }}
+        />
         <span className="grow" />
         <button className="composer-send" title={busy && queues ? 'Queue for the agent (↵)' : 'Send (↵)'} aria-label={busy && queues ? 'Queue' : 'Send'} disabled={(busy && !queues) || disabled || (!text.trim() && !skill)} onClick={send}>
           {busy && !queues ? <span className="spinner" /> : <Icon name="arrow.up" />}

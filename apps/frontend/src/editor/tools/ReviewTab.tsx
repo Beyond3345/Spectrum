@@ -12,6 +12,8 @@ import { GROUPS, isScanned, preflightGaps, runPreflight } from '../preflight/run
 import type { Finding, PdfPage, PreflightGroup } from '../preflight/run';
 import { Markdown, errorText, fixTitle, fixWithAI, isSource, relativeTime } from '../shared';
 import { mergePart, partLine, partsLimit } from './reviewParts';
+import { sendLocated } from '../agent/handoff';
+import type { Located } from '../agent/handoff';
 import type { PartsReview } from './reviewParts';
 
 // Tools › Review: one press compiles when the PDF is older than the source, runs the Preflight checks that are ticked
@@ -337,11 +339,21 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       </button>
     ) : null;
 
-  const actions = (id: string, onFix: (() => void) | null) => (
+  // a finding for the agent workspace, where it can be followed up in a thread (agent/handoff.ts)
+  const rowItem = (f: Row): Located => ({ kind: `Review’s ${LABEL[f.group]} check found this ${f.severity}`, text: f.message, ...(f.file && f.line && { file: f.file, line: f.line }), ...(f.page && run && { doc: run.doc, page: f.page }) });
+  const aiItem = (f: AiRow): Located => ({ kind: `Review point (${f.severity}, ${f.category})`, text: `${f.issue}${f.quote ? ` On “${f.quote}”.` : ''}${f.suggestion ? ` Suggested: ${f.suggestion}` : ''}`, ...(f.anchored && { file: f.file, line: f.line }) });
+  const toAgent = (items: Located[]) => void sendLocated(items, api.ensureFileContent);
+
+  const actions = (id: string, onFix: (() => void) | null, item?: Located) => (
     <div className="review-row-actions">
       {onFix && (
         <button className="btn small" disabled={fixing !== null} title={fixTitle(api)} onClick={onFix}>
           {fixing === id && <span className="spinner" />} Fix with AI
+        </button>
+      )}
+      {item && (
+        <button className="icon-btn" title="Send to agent: a thread to work on it in and follow up" aria-label="Send to agent" onClick={() => toAgent([item])}>
+          <Icon name="paperplane" />
         </button>
       )}
       <button className="icon-btn" title="Dismiss" aria-label="Dismiss" onClick={() => dismiss(id)}>
@@ -456,7 +468,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
                             <div className="log-message">{f.message}</div>
                             {location(f)}
                           </div>
-                          {actions(f.id, f.fixable ? () => fixRow(f) : null)}
+                          {actions(f.id, f.fixable ? () => fixRow(f) : null, rowItem(f))}
                         </div>
                         {notes[f.id] && <Markdown>{notes[f.id]}</Markdown>}
                       </div>
@@ -477,9 +489,14 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
                   return !n ? [] : severity === 'note' ? [plural(n, 'note')] : [`${n} ${severity}`];
                 }),
                 aiRows.length > 1 && (
-                  <button className="btn small" disabled={fixing !== null} title={fixTitle(api)} onClick={() => fixAllAi(aiRows)}>
-                    {fixing === 'ai' ? <span className="spinner" /> : <Icon name="sparkles" />} Fix all with AI
-                  </button>
+                  <>
+                    <button className="btn small" disabled={fixing !== null} title={fixTitle(api)} onClick={() => fixAllAi(aiRows)}>
+                      {fixing === 'ai' ? <span className="spinner" /> : <Icon name="sparkles" />} Fix all with AI
+                    </button>
+                    <button className="btn small" title="Send the points to the agent, each with its file and line, to work through in a thread" onClick={() => toAgent(aiRows.map(aiItem))}>
+                      <Icon name="paperplane" /> Send to agent
+                    </button>
+                  </>
                 )
               )}
               {!closed.has('ai') && (
@@ -525,7 +542,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
                                       )}
                                     </div>
                                   </div>
-                                  {actions(f.id, () => fixAi(f))}
+                                  {actions(f.id, () => fixAi(f), aiItem(f))}
                                 </div>
                                 {notes[f.id] && <Markdown>{notes[f.id]}</Markdown>}
                               </div>

@@ -6,6 +6,9 @@ import Segmented from '../app/Segmented';
 import { toast } from '../app/Toast';
 import { PROJECT_DATA_CHANGED, errorText } from './shared';
 import { findLine, scanTodos } from './todos';
+import { useEditor } from './EditorContext';
+import { sendLocated } from './agent/handoff';
+import type { Located } from './agent/handoff';
 import type { SourceTodo } from './todos';
 
 const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
@@ -164,6 +167,14 @@ export default function TodosList({
   const [whose, setWhose] = useState<Whose>('all');
   const [editing, setEditing] = useState<string | null>(null);
   const { mine, source, reload, save, remove, add, lineOf } = todos;
+  const api = useEditor();
+  /** A to-do for the agent, at the line or the page it links to. */
+  const located = (todo: Todo): Located => {
+    const link = knownLink(todo.link) ? todo.link : null;
+    if (link && 'file' in link) return { kind: 'To-do', text: todo.text, file: link.file, line: lineOf(link) };
+    if (link && 'doc' in link) return { kind: 'To-do', text: todo.text, doc: link.doc, page: link.page };
+    return { kind: 'To-do', text: link ? `${todo.text} (the reference ${link.key})` : todo.text };
+  };
 
   // opening the tab reads them again
   useEffect(reload, []);
@@ -248,6 +259,9 @@ export default function TodosList({
                   </button>
                 )}
               </div>
+              <button className="icon-btn small todo-action" title="Send to agent" aria-label="Send the to-do to the agent" onClick={() => void sendLocated([located(todo)], api.ensureFileContent)}>
+                <Icon name="paperplane" />
+              </button>
               <button className="icon-btn small todo-action" title="Edit" aria-label="Edit to-do" onClick={() => setEditing(todo.id)}>
                 <Icon name="pencil" />
               </button>
