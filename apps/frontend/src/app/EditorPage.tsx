@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -73,6 +73,8 @@ import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
 import ConvertSheet from './ConvertSheet';
 import JyutpingSheet from './JyutpingSheet';
 import { drawMermaid } from '../editor/mermaidBlocks';
+// the live preview of a Markdown document, with KaTeX, loaded when first shown
+const MarkdownPreview = lazy(() => import('../editor/MarkdownPreview'));
 import { jyutpingWrap, loadsXjyutping } from '../editor/jyutping';
 import { switcherList, switcherStart } from './ProjectSwitcher';
 import { withDeletionCheck } from './github';
@@ -564,6 +566,8 @@ function Editor({ projectId }: { projectId: string }) {
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const dark = useDarkMode();
+  /** the live preview in the PDF's place, for a Markdown file */
+  const [mdPreview, setMdPreview] = useState(false);
   const setLayout = (patch: Partial<Layout>) => setLayoutState((prev) => ({ ...prev, ...patch }));
   const zoom = layout.pdfZoom;
   const setZoom = (pdfZoom: PdfZoom) => setLayout({ pdfZoom });
@@ -3818,6 +3822,11 @@ function Editor({ projectId }: { projectId: string }) {
                 {/* always mounted, so screen readers hear each change */}
                 {compileStatus}
                 <span className="spacer" data-tauri-drag-region />
+                {docKind(activePath) === 'markdown' && (
+                  <button className={`icon-btn ${mdPreview ? 'active' : ''}`} title={mdPreview ? 'Show the PDF' : 'Live preview'} aria-label="Live preview" aria-pressed={mdPreview} onClick={() => setMdPreview((on) => !on)}>
+                    <Icon name="eye" />
+                  </button>
+                )}
                 <button
                   className={`icon-btn ${layout.pdfSidebarOpen ? 'active' : ''}`}
                   title="Document outline"
@@ -3880,7 +3889,13 @@ function Editor({ projectId }: { projectId: string }) {
                 {viewSwitcher}
               </div>
 
+              {mdPreview && docKind(activePath) === 'markdown' && (
+                <Suspense fallback={<div className="md-preview" />}>
+                  <MarkdownPreview projectId={projectId} doc={activePath} text={editorValue} dark={dark} view={() => viewRef.current} />
+                </Suspense>
+              )}
               <div
+                hidden={mdPreview && docKind(activePath) === 'markdown'}
                 className={`pdf-body ${pdf && layout.pdfSidebarOpen ? 'with-sidebar' : ''} ${ownPage && !dark ? 'own-page' : ''}`}
                 // a PDF with its own page colour shows as it is, not tinted again
                 style={ownPage && !dark ? ({ '--pdf-own-page': PDF_PAGE_FILLS[ownPage] } as CSSProperties) : undefined}
