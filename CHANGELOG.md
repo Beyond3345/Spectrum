@@ -29,6 +29,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The Spectrum agent shows what a thread cost: the figure OpenRouter reports, in US dollars, or an estimate from the prices you type in Settings › Models for any of the provider's models. Spectrum keeps no price list of its own
 - A price can be typed in any of 14 currencies. Each cost is shown in its own currency, with a symbol no other currency shares such as US$, A$, HK$ and CN¥, and two currencies are never added together
 - Choose the Spectrum agent's model and thinking for each thread in its tab
+- Settings › Models: Test connection beside each API key asks the provider for its model list, without sending a message, and says plainly what happened
+- The provider's models join the Model menu after a test, and suggest names for an Other server
 - Review an agent's or the assistant's changes one at a time: Apply, Reject or Edit each change, with J, K, A, R and E
 - A review saves one “Before AI changes” checkpoint, before the first change you apply, and it covers every change until you close the review. Settings › Checkpoints › Save a checkpoint before every change I apply saves one for each change instead, and a deletion you apply always has its own
 - A change that overlaps your own edit shows both versions: keep yours, use the agent's, take both or edit the result
@@ -49,6 +51,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A later message in a Spectrum agent thread keeps what the agent read earlier, so it does not read the same files again
 - Requests to Claude and OpenAI models ask for prompt caching, and the Spectrum agent's instructions are about 2 KB shorter
 - A busy provider's wait is shown while the Spectrum agent waits
+- A connection that drops before the provider answers is tried again twice, and the error names the cause: name not found, refused, dropped, timed out or certificate
+- A pasted key with a character no request can carry says so instead of “Couldn’t reach”, and a line break or invisible space at either end is trimmed
 - AI autocomplete gives up its request when you type, move the cursor or press Esc, and asks again after a pause
 - A custom endpoint ending in `/messages` or `/responses` is used in that format
 - The Spectrum agent's `arxiv_search`, `arxiv_bibtex` and `get_compile_log` are gone: `literature_search`, `fetch_bibtex` and `get_log` do their work. Through Spectrum's tools server `list_todos` answers `{ todos }` and `literature_search` `{ papers }`
