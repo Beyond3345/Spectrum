@@ -269,6 +269,12 @@ Tinymist has Typst 0.15.1 inside it. In a project on that version, its errors ta
 
 Without Tinymist, completion after `#` lists the project's own `#let` functions, and `⌘`-click on a quoted path opens that file. For Typst the outline follows `#include` to any depth, numbers the headings and figures as the last compile printed them, and keeps the whole document when a chapter is open.
 
+### What a compile keeps
+
+Spectrum keeps each document's .aux, .bbl and similar files between compiles, so an unchanged document is done in one pass. Biber is left out while the citations and the .bib files are unchanged. Latexmk builds in a folder of the document's own that stays between compiles, and goes back to the last good build after an error or a Stop. With Precompile the preamble on (Settings › Engines › LaTeX), pdfLaTeX starts each pass from a saved copy of the preamble's packages. Spectrum makes that copy behind a compile, tries it once and uses it only when the pages come out the same. It is made again when the preamble or a file it reads changes. Recompile from scratch clears all of it.
+
+For a document that brings in its chapters with `\include`, tick Only the open chapter in the Compile button's menu. A compile then typesets the chapter open in the editor alone, with the other chapters' page numbers and references from the last full compile. The PDF pane names the chapter, and Whole document compiles everything again. The PDF file beside the source stays the whole document. A citation or index entry added since the last full compile shows after the next one.
+
 ### Typing, maths and figures
 
 Return after an `\item` starts the next item, and Return on an empty item ends the list. Typst lists work the same way. Typing `$`, `\(`, `\[` or `\left(` adds its closer, and Backspace in an empty pair removes both. Both switches are in Settings › Editor › Typing.

@@ -2,7 +2,7 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
-## 2.7.0 (not released)
+## 2.7.0 (21 November 2026)
 
 ### Security
 
@@ -20,6 +20,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The maths at the cursor is drawn under it in LaTeX and Markdown, with the document's own `\newcommand`s
 - Preview this figure (⌥⌘P): the tikzpicture, table, figure or equation at the cursor compiled on its own with the document's preamble
 - Your own snippets in Settings › Snippets: a trigger then Tab, or from Insert (+)
+- Precompile the preamble: pdfLaTeX starts each pass from a saved copy of the preamble once Spectrum has checked the pages come out the same, about halving a pass for notes with TikZ, pgfplots or siunitx (Settings › Engines › LaTeX, on by default)
+- Only the open chapter in the Compile menu typesets one `\include`'d chapter of a thesis in a pass of its own
 - Return after an `\item` continues the list, and on an empty item ends it, in Typst lists too
 - `$`, `\(`, `\[` and `\left(` bring their closers in LaTeX (`$` in Typst), and Backspace in an empty pair removes both
 - The projects page says when a newer Spectrum is out, asking the release page at most once a day and sending nothing about you. A switch in Settings › System turns it off
@@ -54,6 +56,13 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 - Tools opens on Logs when the last compile had errors
 - The agents' text search can match whole words
+- Biber is left out of a LaTeX compile while the citations and the .bib files are unchanged, which takes 1.3 to 1.9 s off each compile of a biblatex document
+- Latexmk keeps its build folder between compiles, so an edit compiles in a quarter of the time and an unchanged document in a tenth of a second
+- Compile with page colour and Markdown through Typst use the kept Typst
+- A Typst document with hundreds of files no longer starts a fresh Typst for every compile made soon after the last
+- Typing in a long Typst file no longer slows with its length
+- A save made during a compile no longer waits for the compile to end: each window holds one connection for all its live updates
+- Opening Settings no longer holds everything else up for a second while Biber, Tectonic and Python are tried
 - Insights gives Typst figure and appendix numbers as the PDF prints them
 - `fetch_bibtex` gives a title's BibTeX only for a work whose title, first author and year match, and lists the nearest works otherwise
 - Deep research starts with a plan to approve
