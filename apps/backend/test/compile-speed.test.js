@@ -19,6 +19,8 @@ Object.assign(process.env, {
 const { createProject } = await import('../src/services/projectService.js');
 const { findExecutable, runCompile, stopCompile } = await import('../src/services/compileService.js');
 const { setTrusted } = await import('../src/services/trustService.js');
+// (every import up here: a test declared after a later await would start once the ones before it had ended)
+const { formatsSettled, pdfObjects, preambleOf, samePages } = await import('../src/services/preambleFormat.js');
 
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
@@ -314,7 +316,6 @@ test('the system check never holds the server up, and runs a program that worked
 
 // ─── the precompiled preamble ───
 
-const { formatsSettled, pdfObjects, preambleOf, samePages } = await import('../src/services/preambleFormat.js');
 const FROM_FORMAT = /This compile starts from a format of the preamble/;
 const fmtDir = (p) => path.join(dataDir, 'cache', p.id, 'build-files', 'main.tex', 'pdflatex.format');
 const fmtState = async (p) => JSON.parse(await fs.readFile(path.join(fmtDir(p), 'state.json'), 'utf8').catch(() => 'null'))?.status ?? null;
