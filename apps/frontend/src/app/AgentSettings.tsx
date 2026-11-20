@@ -26,7 +26,7 @@ const TERMINAL = IS_WINDOWS ? 'PowerShell' : 'Terminal';
 const firstSentence = (text: string) => text.match(/^.*?[.!?](\s|$)/)?.[0].trim() || text;
 const tokenWord = (a: LocalAgent) => (a.keyEnvs.some((k) => /TOKEN/.test(k)) && !a.keyEnvs.some((k) => /API_KEY/.test(k)) ? 'personal access token' : 'API key');
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-const copy = (text: string) => navigator.clipboard?.writeText(text).then(() => toast('Copied the command.'), () => undefined);
+const copy = (text: string) => navigator.clipboard?.writeText(text).then(() => toast('Copied.'), () => undefined);
 
 // Tests run one at a time; a second waits its turn
 let testQueue: Promise<unknown> = Promise.resolve();
@@ -111,7 +111,7 @@ function nextStep(a: LocalAgent): Step | null {
   }
 }
 
-function CodeBox({ code, label = 'Copy command' }: { code: string; label?: string }) {
+export function CodeBox({ code, label = 'Copy command' }: { code: string; label?: string }) {
   return (
     <div className="agent-code">
       <code className="mono">{code}</code>

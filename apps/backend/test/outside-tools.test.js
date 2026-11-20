@@ -3,7 +3,7 @@
 // launch secret, the MCP SDK's own HTTP client, throwaway folders.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
+const hasTeX = (() => { try { execFileSync('kpsewhich', ['article.cls'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 const here = path.dirname(fileURLToPath(import.meta.url));
 const tmp = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'spectrum-outside-')));
 let child;
@@ -82,6 +83,8 @@ test('an outside agent reaches one project’s tools only while its switch is on
   assert.match((await client.callTool({ name: 'search_text', arguments: { query: 'CANARY' } })).content[0].text, /"matches":\[\]/);
   assert.match((await client.callTool({ name: 'compile', arguments: { main: '.env' } })).content[0].text, /not available to the agent/);
   assert.match((await client.callTool({ name: 'compile', arguments: { main: '../../outside.tex' } })).content[0].text, /Invalid path/);
+  // a compile builds where a confined compile may read its own .aux back (the project's cache), and says where the PDF is
+  if (hasTeX) assert.match((await client.callTool({ name: 'compile', arguments: {} })).content[0].text, /"ok":true.*"pdf":"[^"]*cache[^"]*main\.pdf"/);
   await client.close();
 
   // the secret opens /mcp alone: /api still needs the launch's cookie

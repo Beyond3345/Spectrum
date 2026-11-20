@@ -9,11 +9,11 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { APP_VERSION, DATA_DIR, PORT } from '../config/constants.js';
+import { APP_VERSION, PORT } from '../config/constants.js';
 import { serveTools } from '../mcp/tools.js';
 import { openTodos } from '../services/agentService.js';
 import { PREVIEW_TEX_ENV, appCompile, compileChoices } from '../services/agentSessionService.js';
-import { getProjectRoot, readMeta } from '../services/projectService.js';
+import { cachePath, getProjectRoot, readMeta } from '../services/projectService.js';
 import { sameSecret } from '../utils/authUtils.js';
 import { DATA_RULE } from '../utils/outsideText.js';
 
@@ -56,8 +56,8 @@ export function registerOutsideToolRoutes(fastify) {
     const [projectId, grant] = (bearer && [...grants].find(([, g]) => sameSecret(bearer, g.token))) || [];
     if (!grant) return refuse(reply.header('WWW-Authenticate', 'Bearer'), 401, 'Turn on “Use from another agent” in Spectrum’s agent workspace and copy the configuration again: the secret changes each time, and ends when Spectrum quits.');
     const root = await getProjectRoot(projectId);
-    // the run's folder: the build and the last log, never in the project
-    const state = path.join(DATA_DIR, 'outside-tools', crypto.createHash('sha256').update(projectId).digest('hex').slice(0, 24));
+    // the build and the last log, in the project's cache, which a confined compile may read (compileSandbox.js)
+    const state = await cachePath(root, 'outside-tools');
     await fs.mkdir(state, { recursive: true });
     await fs.writeFile(path.join(state, 'context.json'), JSON.stringify({ mainFile: (await readMeta(root).catch(() => ({}))).mainFile || null, ...(await compileChoices({ root, compile: grant.compile })) }));
     const ctx = {

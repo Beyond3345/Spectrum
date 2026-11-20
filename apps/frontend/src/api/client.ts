@@ -2223,3 +2223,9 @@ export const setGitHubPersonal = (id: string, personal: boolean) => request<{ ok
 export const gitHubOpened = (id: string) => request<{ ok: boolean; linked: boolean; result?: GitHubPull; message?: string }>(`/api/projects/${id}/github/opened`, json('POST'));
 /** The editor left the project (sent as the window closes too). */
 export const gitHubLeft = (id: string) => fetch(`/api/projects/${id}/github/left`, { method: 'POST', keepalive: true }).catch(() => undefined);
+
+/** Spectrum's tools for an agent it did not start: off, or on with the address and this switch's secret. */
+export type OutsideTools = { on: false } | { on: true; url: string; token: string };
+export const getOutsideTools = (projectId: string) => request<OutsideTools>(`/api/projects/${projectId}/outside-tools`);
+export const setOutsideTools = (projectId: string, on: boolean, compile?: { typstVersion: string; markdownEngine: string }) =>
+  request<OutsideTools>(`/api/projects/${projectId}/outside-tools`, json('POST', { on, compile }));
