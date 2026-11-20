@@ -47,7 +47,7 @@ function run(file, args, input = '') {
     child.stdin.end(input);
   });
 }
-const firstLine = (text) => String(text).trim().split(/\r?\n/)[0].replace(/^security: /, '');
+const firstLine = (text) => String(text).trim().split(/\r?\n/)[0].replace(/^security: /, '').replace(/\.$/, '');
 
 // Each store holds one text (the keys as JSON, in base64 so the keychain prints it back as it is): read() is that text
 // or null when nothing is stored yet; write(text) stores it
