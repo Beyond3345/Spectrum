@@ -41,6 +41,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A long review is grouped under the document's headings, with counts, and an agent's change of line endings is offered as a change of its own
 - Local agents stay running between turns of an Isolated session, so a follow-up starts at once
 - Local agents get a `search_text` tool from Spectrum
+- To-dos: a + button at the end of the add box adds what is typed, as Return does
+- To-dos: a to-do can carry a note of a few lines, shown in two lines until clicked and found by the search
+- To-dos: Clear done deletes the ticked to-dos, with Undo
 - Each local agent's card says how far it is supported: Supported (Claude Agent, DeepSeek Harness), In progress (Codex), Untested or Not supported (OpenCode)
 - The AI review reads a long document in parts, with a progress line and Stop, and ties each point to its own file and line
 - Review checks a Markdown document's citations, bibliography, images and links
@@ -55,6 +58,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A later message in a Spectrum agent thread keeps what the agent read earlier, so it does not read the same files again
 - Requests to Claude and OpenAI models ask for prompt caching, and the Spectrum agent's instructions are about 2 KB shorter
 - A busy provider's wait is shown while the Spectrum agent waits
+- To-dos: Open, Done and All show their counts in one row, and Mine and In the source fold away under their titles. The add box and the filters stay at the top while the list scrolls
+- To-dos: Edit, Add a note and Delete sit over the end of the row, so a long to-do uses the sidebar's width. Each filter's empty list says why, and a page link reads Page 2
 - A connection that drops before the provider answers is tried again twice, and the error names the cause: name not found, refused, dropped, timed out or certificate
 - A pasted key with a character no request can carry says so instead of “Couldn’t reach”, and a line break or invisible space at either end is trimmed
 - AI autocomplete gives up its request when you type, move the cursor or press Esc, and asks again after a pause
@@ -71,6 +76,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Reloading the page shows a Spectrum agent run that is still going
 - Logs no longer offers Fix with AI or the generated text when pandoc is missing or too old
 - A long unbroken line in an agent's answer wraps
+- To-dos: Esc puts an edit back instead of saving it
 - Run folders a crash left in the cache are removed at the start
 
 ## 2.5.2 (20 November 2026)
