@@ -415,10 +415,10 @@ export const TOOLS = [
   },
   {
     name: 'fetch_bibtex',
-    description: 'BibTeX for a DOI, an arXiv id or link, or else the best match for a title.',
-    schema: { id: z.string() },
+    description: 'BibTeX for a DOI, an arXiv id or link, or else for a title (the title alone in id, with the first author’s surname and the year when you know them). Returns the BibTeX, how well the work found matches (exact or close) and what was found; a title with no close match is refused with the nearest works listed.',
+    schema: { id: z.string(), author: z.string().optional(), year: z.union([z.string(), z.number()]).optional() },
     readOnly: true,
-    run: (ctx, { id }) => fetchBibtex(id)
+    run: (ctx, { id, author, year }) => fetchBibtex(id, { author, year })
   },
   {
     name: 'list_todos',
