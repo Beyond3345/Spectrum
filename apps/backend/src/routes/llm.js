@@ -1,4 +1,5 @@
 import { callOpenAICompatible, listLiveModels } from '../services/llmService.js';
+import { testConnection } from '../services/modelCheck.js';
 import { PROVIDERS, providerFor } from '../services/providers.js';
 
 export function registerLLMRoutes(fastify) {
@@ -25,5 +26,11 @@ export function registerLLMRoutes(fastify) {
     const preset = providerFor('', provider);
     if (!preset?.live) return { ok: false, error: `Unknown provider: ${provider}` };
     return listLiveModels(preset, typeof endpoint === 'string' ? endpoint : '');
+  });
+
+  // Test connection: the provider's model list with the key as typed, which sends no message and spends nothing
+  fastify.post('/api/llm/test', async (req) => {
+    const { provider, endpoint, apiKey } = req.body || {};
+    return testConnection({ provider: typeof provider === 'string' ? provider : '', endpoint: typeof endpoint === 'string' ? endpoint : '', apiKey: typeof apiKey === 'string' ? apiKey : '' });
   });
 }

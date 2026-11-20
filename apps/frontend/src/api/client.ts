@@ -1534,6 +1534,14 @@ export function listLiveModels(provider: string, endpoint: string) {
   return request<{ ok: boolean; error?: string } & Partial<Pick<ProviderPreset, 'models' | 'recommended'>>>('/api/llm/models', json('POST', { provider, endpoint }));
 }
 
+/** What Test connection found: ok when the provider listed its models (models: their ids); message says it plainly. */
+export type ConnectionTest = { ok: boolean; kind: string; message: string; models?: string[] };
+
+/** Asks a provider for its model list with the key as typed: no message is sent, so it costs nothing. */
+export function testModelConnection(provider: string, endpoint: string, apiKey: string) {
+  return request<ConnectionTest>('/api/llm/test', json('POST', { provider, endpoint, apiKey }));
+}
+
 export async function visionToLatex(payload: {
   projectId: string;
   file: File;

@@ -20,7 +20,7 @@ A model is set up once, in #menu[Settings][Models]. Spectrum uses three of them,
 
 The quick and vision models follow the main model by default, shown as #ui[Same as main], and move with it when it changes. Choosing another provider for either one gives it its own endpoint, model and key, so that, for example, Gemini can read images while Claude writes the text.
 
-#shot("figures/03-assistant/settings-models.png", [#menu[Settings][Models] with the OpenAI preset. The endpoint and the recommended model are filled in by the preset, and only the API key is left to paste.], width: 70%) <fig-assistant-settings-models>
+#shot("figures/03-assistant/settings-models.png", [#menu[Settings][Models] with the OpenAI preset. The endpoint and the recommended model are filled in by the preset, and only the API key is left to paste, with #ui[Test connection] beside it.], width: 70%) <fig-assistant-settings-models>
 
 === Choosing a provider
 
@@ -51,6 +51,8 @@ The #ui[Provider] menu holds a preset for each provider below, as in @fig-assist
 Keys for Moonshot, GLM and Qwen only work in the region they were made in, so these presets also have a #ui[Region]. Meta's cheaper Contributor models are left out of the list on purpose, since Meta trains on what is sent to them.
 
 Two choices need no key at all. #ui[Ollama] runs models on your own computer, or on another computer on the network when its address is entered, and #ui[Refresh] reads the list of models from Ollama itself, so the list is whatever has been downloaded. Ollama keeps a short context by default, so raising its own #ui[Context length] to 32k or more lets a whole document fit. #ui[Other (OpenAI-compatible)] takes any server that speaks the OpenAI chat completions API, such as LM Studio or vLLM, and a server at a plain `http://` address needs no key. An endpoint whose address ends in `/messages` is called as Anthropic's Messages API, and one ending in `/responses` as OpenAI's Responses API. #ui[Ollama Cloud], on the other hand, runs larger models on Ollama's servers and needs a key from Ollama.
+
+Beside each #ui[API key] is #ui[Test connection]. It asks the provider for its list of models with the key as it stands, which sends no message and costs nothing, and says under the key what happened. The answer is one of these: connected, with the number of models the provider offers; the key refused; the server's name not found; the connection refused, dropped or timed out; or a certificate that could not be trusted. The models the provider lists then join the #ui[Model] menu after the presets, under their own names, for as long as Spectrum stays open, and for #ui[Other] they are offered as you type the model's name. When the chosen model is not in the list, the result says so. A test that passes shows that the address is right and that the provider took the key. It does not show that the model answers or that the account has credit left, since only a message can show that. OpenRouter and Ollama Cloud list their models to anyone, so for them the key is checked with their own free key and balance requests. Z.ai and Alibaba Qwen publish no list of models, so for them the test can only say that the server was reached.
 
 === Reasoning effort
 
@@ -85,7 +87,7 @@ In #ui[Assistant] mode the panel opens on "How can I help with your paper?" (@fi
 
 The model is told which language the open file is written in, LaTeX, Typst or Markdown, with that language's conventions, so an answer about a `.typ` file is written in Typst and not in LaTeX. This applies to every request in this chapter.
 
-A provider that is busy does not end a request. When it answers that it is overloaded or limiting requests, Spectrum waits and sends the request again, twice at most. It waits for as long as the provider asks, up to 20 seconds, or else for one second and then three. A rejected key, a wrong address and an account with no credit left are not sent again, since waiting does not mend them, and the message says which it was. When an answer stops at the model's output limit, the panel says "The answer was cut off by the model's output limit." under it, and #ui[Continue] asks the model to go on from where it stopped.
+A provider that is busy does not end a request. When it answers that it is overloaded or limiting requests, Spectrum waits and sends the request again, twice at most. It waits for as long as the provider asks, up to 20 seconds, or else for one second and then three. A rejected key, a wrong address and an account with no credit left are not sent again, since waiting does not mend them, and the message says which it was. A connection that drops before the provider answers, as one through a VPN sometimes does, is tried again in the same way. If it still fails, the message names the cause, such as a server name that was not found, a connection that was refused, dropped or timed out, or a certificate that could not be trusted. When an answer stops at the model's output limit, the panel says "The answer was cut off by the model's output limit." under it, and #ui[Continue] asks the model to go on from where it stopped.
 
 #shot("figures/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The bar at the bottom holds the image menu (+), the persona and the reasoning effort.], width: 85%) <fig-assistant-empty>
 
