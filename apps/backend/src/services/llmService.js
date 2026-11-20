@@ -37,11 +37,16 @@ export function resolveLLMConfig(llmConfig) {
   const env = hostOf(endpoint) === hostOf(envEndpoint);
   return {
     endpoint,
-    apiKey: (llmConfig?.apiKey || (env && process.env.SPECTRUM_LLM_API_KEY) || '').trim(),
+    // a pasted key often brings a line break or an invisible space along at either end
+    apiKey: (llmConfig?.apiKey || (env && process.env.SPECTRUM_LLM_API_KEY) || '').replace(/^[\s\u200b-\u200d\u2060\ufeff]+|[\s\u200b-\u200d\u2060\ufeff]+$/g, ''),
     // with no model named, a known provider gets its recommended one
     model: (llmConfig?.model || (env && process.env.SPECTRUM_LLM_MODEL) || providerFor(normalizeChatEndpoint(endpoint))?.recommended.main || DEFAULT_MODEL).trim()
   };
 }
+
+/** A key with a character no header can carry (a space, a line break or a curly quote inside it) is never sent. */
+export const badKey = (key) => /[^\x21-\x7e]/.test(key);
+export const BAD_KEY = 'The API key has a character that can’t be sent. Paste it again.';
 
 export const NO_API_KEY = 'No AI model is set up yet. Add an endpoint, model and API key in Settings › Models.';
 
@@ -119,7 +124,9 @@ const BUSY = [429, 500, 502, 503, 504, 529];
 const MAX_RETRIES = 2;
 // the longest one wait; a provider that asks for longer is not waited for
 const MAX_WAIT_MS = 20000;
-const BACKOFF_MS = [1000, 3000];
+export const BACKOFF_MS = [1000, 3000];
+// the causes of a failed connection that trying again never mends
+export const FINAL = ['refused', 'certificate', 'header', 'port'];
 
 /** How long a reply asks to be left alone, in ms, from Retry-After (seconds or a date) or OpenAI's retry-after-ms; null when it doesn't say. */
 export function retryAfterMs(headers, now = Date.now()) {
@@ -170,6 +177,31 @@ export function providerError(status, text) {
     // not JSON
   }
   return `The model provider returned an error (HTTP ${status})${detail ? `: ${detail}` : ''}.`;
+}
+
+/**
+ * Why a request got no answer at all, from what fetch threw: undici puts the system's code in `cause`, and an
+ * AggregateError there holds one error per address tried. kind is name, refused, reset, timeout, network, certificate,
+ * header (a key no header can carry), port (one fetch won't open) or other; only name, refused and other point at a mistake in the endpoint, so only they say to check it.
+ */
+export function unreachable(err, host) {
+  // a header fetch refused to build is thrown before anything is sent, with no cause
+  if (err?.name === 'TypeError' && !err.cause) return { kind: 'header', code: '', text: BAD_KEY };
+  const errors = [err?.cause, ...(err?.cause?.errors || []), err].filter(Boolean);
+  const code = String(errors.map((e) => e.code).find(Boolean) || '');
+  const kinds = [
+    ['name', /^(ENOTFOUND|EAI_AGAIN|EAI_NONAME|EAI_FAIL)$/, `The name ${host} couldn’t be found. Check the endpoint in Settings › Models, and your internet or VPN connection.`],
+    ['refused', /^ECONNREFUSED$/, `${host} refused the connection. Check the endpoint in Settings › Models, and that the server is running.`],
+    ['reset', /^(ECONNRESET|EPIPE|ECONNABORTED|UND_ERR_SOCKET|UND_ERR_CLOSED)$/, `The connection to ${host} was dropped before it answered, which a VPN or an unsteady network can do. Try again.`],
+    ['timeout', /^(ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT)$/, `Connecting to ${host} timed out. Check your internet or VPN connection, then try again.`],
+    ['network', /^(EHOSTUNREACH|ENETUNREACH|ENETDOWN)$/, `This computer has no route to ${host}. Check your internet or VPN connection.`],
+    ['certificate', /CERT|SSL|TLS|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER/, `The secure connection to ${host} failed because its certificate couldn’t be trusted (${code}). Check the endpoint; a VPN or proxy that inspects traffic can also cause this.`]
+  ];
+  const other = `Couldn’t reach ${host}. Check the endpoint in Settings › Models.`;
+  // fetch never opens a port the web keeps closed (such as 9 or 25)
+  if (err?.cause?.message === 'bad port') return { kind: 'port', code: '', text: other };
+  const [kind, , text] = kinds.find(([, re]) => re.test(code)) || ['other', null, other];
+  return { kind, code, text };
 }
 
 const textOf = (content) => (typeof content === 'string' ? content : flattenContent(content));
@@ -455,7 +487,8 @@ function visibleText(onText) {
  * For the presets in providers.js the level is mapped to that provider's fields and temperature is left
  * to the provider; any other endpoint gets reasoning_effort for an explicit level only.
  * provider: a preset id, otherwise it's worked out from the endpoint's host. signal: aborting it stops the request.
- * A busy provider (429, 500, 502, 503, 504, 529) or a reply that broke off part-way is tried again, `retries` times at
+ * A busy provider (429, 500, 502, 503, 504, 529), a connection that failed before any answer (onRetry hears `dropped`)
+ * or a reply that broke off part-way is tried again, `retries` times at
  * most (twice unless told), after the wait the provider names or 1 s then 3 s; the result's `retries` says how many
  * it took. An answer that stopped at the output limit comes back with `truncated: true`.
  * onText: asks the provider for a stream and hears the answer's text as it comes, piece by piece; the result is the
@@ -477,6 +510,7 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   const adapter = ADAPTERS[api];
   // a local Ollama takes no key, so a key typed for another server never goes there
   const key = provider?.local ? '' : resolved.apiKey;
+  if (badKey(key)) return { ok: false, error: BAD_KEY };
   // an Ollama model's effort levels come from Ollama itself
   const known = (provider?.live && (await liveModel(url, resolved.model))) || provider?.models.find((m) => m.id === resolved.model);
   let host = 'the model provider';
@@ -505,8 +539,8 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
   // asked to wait longer than Spectrum will: said in the error instead
   let longWait = null;
   // waits before another try, telling the caller; false once stopped
-  const again = async (ms, streamed) => {
-    onRetry?.({ attempt: retries + 2, of: maxRetries + 1, waitMs: ms, streamed });
+  const again = async (ms, streamed, dropped) => {
+    onRetry?.({ attempt: retries + 2, of: maxRetries + 1, waitMs: ms, streamed, ...(dropped && { dropped }) });
     await pause(ms, signal);
     retries += 1;
     return !signal?.aborted;
@@ -524,7 +558,14 @@ export async function chatCompletion({ messages, model, endpoint, apiKey, tools,
     } catch (err) {
       if (signal?.aborted) return stopped;
       if (err.name === 'TimeoutError') return tooSlow;
-      return { ok: false, error: provider?.local ? `Couldn’t reach Ollama at ${host}. ${NO_OLLAMA}` : `Couldn’t reach ${host}. Check the endpoint in Settings › Models.` };
+      // no answer came: a connection a VPN or a busy network dropped usually opens on the next try; a server that
+      // refused it, a certificate that can't be trusted or a header that can't be built never mends by waiting
+      const cause = unreachable(err, host);
+      if (!FINAL.includes(cause.kind) && retries < maxRetries) {
+        if (!(await again(BACKOFF_MS[retries] ?? BACKOFF_MS.at(-1), false, true))) return stopped;
+        continue;
+      }
+      return { ok: false, error: provider?.local ? `Couldn’t reach Ollama at ${host}. ${NO_OLLAMA}` : `${cause.text}${retries ? ` Spectrum tried ${retries + 1} times.` : ''}` };
     }
     // heard as it comes; a server that answers a stream request whole is read whole
     const streaming = res.ok && options.stream && /event-stream/i.test(res.headers.get('content-type') || '');
@@ -638,6 +679,7 @@ export async function callOpenAICompatible({ messages, model, endpoint, apiKey, 
 export async function nativeWebSearch({ query, purpose = 'chat', llmConfig }) {
   const config = resolveLLMConfig(llmConfig);
   if (missingKey(config)) throw new Error(NO_API_KEY);
+  if (badKey(config.apiKey)) throw new Error(BAD_KEY);
   const endpoint = normalizeChatEndpoint(config.endpoint);
   const provider = providerFor(endpoint);
   const messages = [{ role: 'user', content: [

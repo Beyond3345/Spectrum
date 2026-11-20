@@ -403,9 +403,9 @@ export function addRunEvent(old: AgentEvent[], e: AgentEvent) {
   return [...old, e];
 }
 
-/** What the page says while the agent waits to try a busy provider again. */
-export const retryLine = ({ attempt, of, waitMs }: { attempt: number; of: number; waitMs: number }) =>
-  waitMs >= 500 ? `The provider is busy. Retrying in ${Math.ceil(waitMs / 1000)} s, ${attempt} of ${of}…` : `The provider is busy. Trying again, ${attempt} of ${of}…`;
+/** What the page says while the agent waits to try a busy provider, or a connection that dropped, again. */
+export const retryLine = ({ attempt, of, waitMs, dropped }: { attempt: number; of: number; waitMs: number; dropped?: boolean }) =>
+  `${dropped ? 'The connection dropped.' : 'The provider is busy.'} ${waitMs >= 500 ? `Retrying in ${Math.ceil(waitMs / 1000)} s` : 'Trying again'}, ${attempt} of ${of}…`;
 
 /**
  * A turn's events as the transcript shows them while it happens: the same items a finished turn has (threadItems),
