@@ -1809,8 +1809,8 @@ function CheckpointsPane() {
         <span>
           Save a checkpoint before every change I apply
           <span className="field-hint">
-            When you review AI changes, one “Before AI changes” checkpoint is saved before the first change you apply, until you close the review. Turn this on
-            for one before each change instead.
+            When you review AI changes, one “Before AI changes” checkpoint covers every change you apply until you close the review. Turn this on to save one
+            before each change instead.
           </span>
         </span>
       </label>
