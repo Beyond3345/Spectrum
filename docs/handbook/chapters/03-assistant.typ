@@ -475,12 +475,12 @@ On macOS, a local agent also gets Spectrum's tools from a small server it starts
 
 An agent that reads the project and can also reach any site could be led to send the project somewhere, for example by an instruction hidden in a PDF, a `.bib` file or a web page that it reads. The #ui[Network] part of each agent's card in #menu[Settings][Agents] therefore has two choices (@fig-assistant-agent-network),
 
-- #ui[Listed hosts only] holds the agent to a list made of its provider's hosts, the scholarly sites that Spectrum's tools search and check references against, and the hosts you add, while
+- #ui[Listed hosts only] holds the agent to a list made of its provider's hosts, the sites that Spectrum's tools need and the hosts you add, where the tools need the scholarly sites they search and check references against and the two sites a compile downloads Typst packages and Tectonic's TeX files from, while
 - #ui[Any host] lets it reach every public host over HTTPS, as every agent did before version 2.7.
 
 Claude Agent starts on #ui[Listed hosts only], since its documentation names the hosts it needs and says that it honours the proxy settings the list relies on. Every other agent starts on #ui[Any host] with its list ready, and its card says why: Spectrum could not be sure from the agent's own documentation that it works when held to a list. A host is added by typing its name, such as `api.example.com`, or `*.example.com` for every host below one, and pressing #ui[Add host].
 
-#shot("figures/03-assistant/agent-network.png", [The #ui[Network] part of the Claude Agent card, with its provider's host and the hosts of Spectrum's tools.], width: 65%) <fig-assistant-agent-network>
+#shot("figures/03-assistant/agent-network.png", [The #ui[Network] part of the Claude Agent card, with its provider’s host and the hosts of Spectrum’s tools.], width: 65%) <fig-assistant-agent-network>
 
 When an agent on a list asks for a host that is not on it, the connection is refused and a #ui[Host refused] card naming the host appears in its session (@fig-assistant-host-refused). The button on the card, #ui[Allow for] with the agent's name, adds the host to that agent's list for every session, and the agent is told with its next task that it may try again. Allow a host only if you would trust it with what the agent can read, which is its copy of the project and its own sign-in. If an agent on a list finishes a task without asking for any host at all, the session says so once, since such an agent either could not reach its model or does not work through the list, and #ui[Any host] is then the choice to make.
 

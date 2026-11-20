@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'spectrum-agent-network-')));
 Object.assign(process.env, { SPECTRUM_DATA_DIR: path.join(tmp, 'data'), SPECTRUM_PROJECTS_DIR: path.join(tmp, 'projects') });
-const { cleanHost, cleanHosts, helloName, hostAllowed, nameStandIn, openGate, thisComputer, SCHOLARLY_HOSTS } = await import('../src/services/agentNetwork.js');
+const { cleanHost, cleanHosts, helloName, hostAllowed, nameStandIn, openGate, thisComputer, SCHOLARLY_HOSTS, TOOL_HOSTS } = await import('../src/services/agentNetwork.js');
 const { sandboxProfile, spawnAgentProcess } = await import('../src/services/agentSandbox.js');
 const { PROFILES, agentConfigs, agentEntry, allowAgentHost, agentHome, launchOptions, networkOf, profileFor, recordTest, saveAgentConfig } = await import('../src/services/agentProfiles.js');
 const servers = await import('../src/services/mcpServers.js');
@@ -189,7 +189,8 @@ test('each agent has its provider’s hosts; only one whose documentation is sur
   }
   assert.deepEqual(PROFILES.filter((p) => p.network === 'hosts').map((p) => p.id), ['claude']);
   const claude = networkOf(profileFor('claude'));
-  assert.deepEqual({ mode: claude.mode, provider: claude.provider, tools: claude.tools, hosts: claude.hosts }, { mode: 'hosts', provider: ['api.anthropic.com'], tools: SCHOLARLY_HOSTS, hosts: [] });
+  assert.deepEqual({ mode: claude.mode, provider: claude.provider, tools: claude.tools, hosts: claude.hosts }, { mode: 'hosts', provider: ['api.anthropic.com'], tools: TOOL_HOSTS, hosts: [] });
+  assert.ok(SCHOLARLY_HOSTS.every((host) => TOOL_HOSTS.includes(host)));
   assert.equal(claude.enforced, process.platform === 'darwin');
   // the two the owner's tests left as they are: any host, with the list ready
   for (const id of ['deepseek', 'codex']) assert.equal(networkOf(profileFor(id)).mode, 'any', id);
@@ -217,7 +218,7 @@ test('an agent’s network setting: saved only where it differs, a list checked,
   options = await launch();
   if (process.platform === 'darwin') {
     assert.equal(options.network, 'hosts');
-    assert.deepEqual(await options.hosts(), [...profileFor('qoder').hosts, ...SCHOLARLY_HOSTS, 'models.example.com']);
+    assert.deepEqual(await options.hosts(), [...profileFor('qoder').hosts, ...TOOL_HOSTS, 'models.example.com']);
     await recordTest('qoder', { ok: true, code: 'ready', program: options.program }, { setup: options.setup });
     // a host allowed from a session: on the list at once, and the Test stands
     assert.equal(await allowAgentHost('qoder', 'Extra.Example.com:443'), 'extra.example.com');
@@ -314,6 +315,27 @@ test('a listed agent that asks the gate for nothing is told once where Any host 
   assert.equal(told.length, 1, JSON.stringify(told));
   assert.match(told[0], /^Qoder is held to its list of hosts and asked for none of them in this task\..*choose Any host for it in Settings › Agents\.$/);
   assert.deepEqual(await quiet({ mode: 'any' }), []);
+});
+
+test('the built-in Typst and Tectonic ask the gate for their downloads, by the hosts every list has', { skip, timeout: 120000 }, async (t) => {
+  const { builtInTypst, builtInTectonic } = await import('../src/services/engineService.js');
+  const root = path.join(tmp, 'engines');
+  await fs.mkdir(path.join(root, 'home', 'tmp'), { recursive: true }); await fs.mkdir(path.join(root, 'work'));
+  await fs.writeFile(path.join(root, 'work', 'a.typ'), '#import "@preview/spectrum-stand-in:0.0.1"\nText\n');
+  await fs.writeFile(path.join(root, 'work', 'a.tex'), '\\documentclass{article}\\begin{document}Text\\end{document}\n');
+  // every host refused, so nothing is downloaded: what each asked for is what a list must hold
+  const asks = async (command, args) => {
+    const refused = new Set();
+    const child = await spawnAgentProcess({ command, args, workspace: path.join(root, 'work'), home: path.join(root, 'home'), runtimePaths: [path.dirname(command)], hosts: () => [], onRefused: (host) => refused.add(host) });
+    child.stdout.resume(); child.stderr.resume();
+    await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', resolve); });
+    return [...refused];
+  };
+  const [typst, tectonic] = [builtInTypst(), builtInTectonic()];
+  if (!typst && !tectonic) return t.skip('The built-in Typst and Tectonic are not in this checkout.');
+  if (typst) assert.deepEqual(await asks(typst, ['compile', 'a.typ']), ['packages.typst.org']);
+  if (tectonic) assert.deepEqual(await asks(tectonic, ['a.tex']), ['relay.fullyjustified.net']);
+  for (const host of ['packages.typst.org', 'relay.fullyjustified.net']) assert.ok(TOOL_HOSTS.includes(host), host);
 });
 
 // a stdio MCP server by hand, with one tool that asks a host for a page

@@ -15,6 +15,11 @@ import { lookup } from 'node:dns/promises';
 
 /** The hosts Spectrum's own tools server reaches from inside an agent's isolation (literature_search, fetch_bibtex, check_references). */
 export const SCHOLARLY_HOSTS = ['api.openalex.org', 'api.crossref.org', 'doi.org', 'data.crossref.org', 'api.datacite.org', 'data.crosscite.org', 'export.arxiv.org', 'arxiv.org', 'api.semanticscholar.org'];
+/**
+ * With those, what its compile downloads on first use, as an agent's private home starts with neither: a Typst
+ * package, and Tectonic's TeX files (the relay hands on to the data host). Both programs honour the proxy variables.
+ */
+export const TOOL_HOSTS = [...SCHOLARLY_HOSTS, 'packages.typst.org', 'relay.fullyjustified.net', 'data1.fullyjustified.net'];
 
 // a name with a dot, or *.name for every host below one; never an address
 const HOST = /^(\*\.)?(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/;

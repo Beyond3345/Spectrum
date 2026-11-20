@@ -554,7 +554,7 @@ function AgentCard({
                     Its provider: <span className="mono">{a.network.provider.join(', ')}</span>
                   </div>
                   <div className="field-hint">
-                    Spectrum’s tools, for searching the literature and checking references: <span className="mono">{a.network.tools.join(', ')}</span>
+                    Spectrum’s tools, for searching the literature, checking references and a compile’s downloads: <span className="mono">{a.network.tools.join(', ')}</span>
                   </div>
                   <div className="field-hint">{a.network.hosts.length ? 'Added by you:' : 'Add a host of your own, such as a gateway your provider’s traffic goes through:'}</div>
                   <HostList hosts={a.network.hosts} label={`A host ${a.name} may reach`} disabled={!!busy} onChange={(hosts) => act('Saving…', () => configureLocalAgent(a.id, { network: { hosts } }), false)} />

@@ -8,7 +8,7 @@ import { DATA_DIR } from '../config/constants.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 import { resolveExecutable, isolationAvailable, SYSTEM_READS } from './agentSandbox.js';
 import { safeJoin } from '../utils/pathUtils.js';
-import { SCHOLARLY_HOSTS, cleanHost, cleanHosts } from './agentNetwork.js';
+import { TOOL_HOSTS, cleanHost, cleanHosts } from './agentNetwork.js';
 // each adapter's whole tree, every package pinned with its checksum (npm install --package-lock-only from the version)
 import codexLock from '../data/adapters/codex/package-lock.json' with { type: 'json' };
 import claudeLock from '../data/adapters/claude/package-lock.json' with { type: 'json' };
@@ -100,14 +100,14 @@ export function profileFor(id) {
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /**
- * Where an agent may connect: mode 'hosts' (its provider's hosts, the scholarly sites of Spectrum's tools and the ones
- * the user added) or 'any' (every public HTTPS host), the user's choice or else the profile's; enforced: whether this
+ * Where an agent may connect: mode 'hosts' (its provider's hosts, the sites Spectrum's tools search, check references
+ * against and download a compile's packages from, and the ones the user added) or 'any' (every public HTTPS host), the user's choice or else the profile's; enforced: whether this
  * platform can hold an agent to a list (macOS; the Windows worker opens every public address or none); sure: whether
  * the agent's documentation was sure enough for it to start held to its list.
  */
 export function networkOf(profile, saved = {}) {
   const mode = ['hosts', 'any'].includes(saved.network?.mode) ? saved.network.mode : profile.network || 'any';
-  return { mode, provider: profile.hosts || [], tools: SCHOLARLY_HOSTS, hosts: cleanHosts(saved.network?.hosts), enforced: process.platform === 'darwin', sure: profile.network === 'hosts' };
+  return { mode, provider: profile.hosts || [], tools: TOOL_HOSTS, hosts: cleanHosts(saved.network?.hosts), enforced: process.platform === 'darwin', sure: profile.network === 'hosts' };
 }
 /** Adds host to the ones the user allows the agent, and gives the host as saved. */
 export async function allowAgentHost(id, value) {
