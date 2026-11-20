@@ -3178,6 +3178,8 @@ function Editor({ projectId }: { projectId: string }) {
             if (ownPage && ownPage !== value) setOwnPage(value);
           }
         }))),
+    // a setting of the project's compile, not one more colour to view with
+    { separator: true },
     { label: 'Compile with page colour', checked: !!ownPage, onSelect: () => setOwnPage(ownPage ? null : settings.pdfPageLight) }
   ];
 
