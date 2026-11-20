@@ -17,7 +17,7 @@ process.env.SPECTRUM_TEMPLATE_DIR = path.join(tmp, 'templates');
 delete process.env.SPECTRUM_TYPST;
 
 const { BUILT_IN_TYPST_VERSION, builtInTypst } = await import('../src/services/engineService.js');
-const { parseTypstDiagnostics, stopTypstWatch, typstElements } = await import('../src/services/typstService.js');
+const { exportTypst, parseTypstDiagnostics, stopTypstWatch, typstElements } = await import('../src/services/typstService.js');
 const { compileFolder, runCompile } = await import('../src/services/compileService.js');
 const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
 const { updateProjectSettings } = await import('../src/services/projectSettings.js');
@@ -379,6 +379,16 @@ test('a Typst document exports as PNG and SVG pages, HTML, PDF/A and PDF/UA, and
   assert.equal((await exported('docx')).status, 400);
   assert.equal((await exported('png', '../main.typ')).status, 400);
   await app.close();
+});
+
+test('the Typst templates without maths export as PDF/UA-1', async (t) => {
+  if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
+  const templates = path.join(import.meta.dirname, '..', '..', '..', 'templates');
+  for (const name of ['typst-document', 'typst-letter', 'typst-cv']) {
+    const dir = path.join(templates, name);
+    const made = await exportTypst(dir, path.join(dir, 'main.typ'), 'main.typ', 'pdf-ua');
+    assert.equal(made.ok, true, `${name}: ${made.error}`);
+  }
 });
 
 test.after(async () => {
