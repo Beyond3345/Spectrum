@@ -284,7 +284,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   snippets: DEFAULT_SNIPPETS,
   zoteroCompletion: true,
   // a new setting, so 1.x's saved compiler (compileEngine, left in place for it) doesn't carry over
-  compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false, syntaxCheck: true, typstVersion: '', markdownEngine: 'latex' },
+  compileDefaults: { engine: 'auto', autoCompile: 0, haltOnError: false, bibTool: 'auto', draft: false, syntaxCheck: true, precompile: true, typstVersion: '', markdownEngine: 'latex' },
   texFolder: '',
   xjyutpingFolder: '',
   openLogsOnFail: false,
@@ -405,13 +405,14 @@ function cleanCompile(value: unknown, fallback: CompileDefaults): CompileDefault
     bibTool: BIB_TOOLS.find(([tool]) => tool === v.bibTool)?.[0] ?? fallback.bibTool,
     draft: typeof v.draft === 'boolean' ? v.draft : fallback.draft,
     syntaxCheck: typeof v.syntaxCheck === 'boolean' ? v.syntaxCheck : fallback.syntaxCheck,
+    precompile: typeof v.precompile === 'boolean' ? v.precompile : fallback.precompile,
     typstVersion: typeof v.typstVersion === 'string' && /^\d+\.\d+\.\d+$/.test(v.typstVersion) ? v.typstVersion : fallback.typstVersion,
     markdownEngine: v.markdownEngine === 'latex' || v.markdownEngine === 'typst' ? v.markdownEngine : fallback.markdownEngine
   };
 }
 
 // the app's for every project (Settings › Engines › LaTeX); a project's own from before is left in its file, unread
-const APP_WIDE: (keyof CompileOptions)[] = ['haltOnError', 'syntaxCheck'];
+const APP_WIDE: (keyof CompileOptions)[] = ['haltOnError', 'syntaxCheck', 'precompile'];
 
 /** What a project compiles with: its own choices from .spectrum/settings.json, the app's defaults for the rest. */
 export const effectiveCompile = (project: CompileOptions | undefined, defaults: CompileDefaults) =>

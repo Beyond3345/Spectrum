@@ -2,6 +2,7 @@
 // the backend only accepts requests from this machine.
 
 import type { BibRecord, Finding } from '../editor/preflight/run';
+import { StreamSource } from './stream';
 
 // ─── Shared types ───
 
@@ -285,6 +286,8 @@ export interface CompileOptions {
   draft?: boolean;
   /** TexLab's syntax check before compiling (the editor runs it) */
   syntaxCheck?: boolean;
+  /** a pdfLaTeX pass starts from a format of the preamble, once one made behind a compile gave the same pages */
+  precompile?: boolean;
   /** the Typst version a Typst project pins ('' is the built-in one) */
   typstVersion?: string;
   /** the PDF engine a Markdown project compiles through */
@@ -539,7 +542,7 @@ export function importArxivSSE(
     const params = new URLSearchParams({ arxivIdOrUrl: payload.arxivIdOrUrl });
     if (payload.projectName) params.set('projectName', payload.projectName);
     if (payload.parentDir) params.set('parentDir', payload.parentDir);
-    const es = new EventSource(`/api/projects/import-arxiv-sse?${params.toString()}`);
+    const es = new StreamSource(`/api/projects/import-arxiv-sse?${params.toString()}`);
     signal?.addEventListener('abort', () => {
       es.close();
       reject(new DOMException('Aborted', 'AbortError'));
@@ -708,8 +711,10 @@ export interface CompileResult {
   pdf?: string;
   /** relative path of the PDF written next to the document, e.g. "main.pdf" */
   pdfPath?: string;
-  /** that copy wasn't updated (another program on Windows holds it), so only `pdf` is this compile's */
+  /** that copy wasn't updated (another program on Windows holds it, or this is one chapter alone), so only `pdf` is this compile's */
   pdfStale?: boolean;
+  /** Only the open chapter: the chapter this PDF holds, as the document \include's it */
+  only?: string;
   log?: string;
   status?: number;
   engine?: string;
@@ -770,6 +775,10 @@ export function compileProject(payload: {
   haltOnError?: boolean;
   bibTool?: BibTool;
   draft?: boolean;
+  /** Precompile the preamble (Settings › Engines › LaTeX) */
+  precompile?: boolean;
+  /** Only the open chapter: the open file, typeset alone when the document \include's it and a full compile's numbers are kept */
+  only?: string;
   fresh?: boolean;
   texFolder?: string;
   checkpoint?: boolean;
@@ -807,7 +816,7 @@ export function stopCompile(compileId: string) {
  * running first, then output text, the earlier text too when it was opened late, and Spectrum's status line. Returns the close.
  */
 export function watchCompile(compileId: string, on: { engine: (engine: string) => void; output: (text: string) => void; status?: (text: string) => void }) {
-  const es = new EventSource(`/api/compile/${encodeURIComponent(compileId)}/log`);
+  const es = new StreamSource(`/api/compile/${encodeURIComponent(compileId)}/log`);
   es.addEventListener('engine', (e) => on.engine(JSON.parse((e as MessageEvent).data)));
   es.addEventListener('output', (e) => on.output(JSON.parse((e as MessageEvent).data)));
   // Spectrum's own line while it downloads something for the compile (Biber), '' once it's done
@@ -2017,9 +2026,10 @@ export interface SystemCheck {
   platform: string;
 }
 
-/** texFolder: Settings › Engines › LaTeX's TeX folder, looked in first */
-export function systemCheck(texFolder?: string) {
-  return request<SystemCheck>(`/api/system/check${texFolder ? `?${new URLSearchParams({ texFolder })}` : ''}`);
+/** texFolder: Settings › Engines › LaTeX's TeX folder, looked in first. fresh: run every probe again (Check again). */
+export function systemCheck(texFolder?: string, fresh = false) {
+  const query = new URLSearchParams({ ...(texFolder && { texFolder }), ...(fresh && { fresh: '1' }) }).toString();
+  return request<SystemCheck>(`/api/system/check${query ? `?${query}` : ''}`);
 }
 
 /** Keys moved out of the window into the keychain: their references, in order. keep: the references still in use. */

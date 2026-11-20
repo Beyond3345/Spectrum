@@ -7,6 +7,7 @@ import { LSPClient, LSPPlugin, Workspace, hoverTooltips, jumpToDefinition, serve
 import type { LSPClientConfig, WorkspaceFile } from '@codemirror/lsp-client';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { getDiagnostics } from '../../api/client';
+import { StreamSource } from '../../api/stream';
 import { IS_MAC, IS_WINDOWS } from '../../app/platform';
 import type { TexlabSymbol } from './outline';
 import { lspTransport } from './transport';
@@ -175,7 +176,7 @@ const TEXLAB: LspServer = {
 
 /**
  * One project's line to its TexLab (or another server), from the editor's first look until close(). The backend's event stream says
- * hello with this editor's id and the project's root; when TexLab stops, the stream ends and EventSource connects again
+ * hello with this editor's id and the project's root; when TexLab stops, the stream ends and it connects again
  * (to a new TexLab), and a 503 (no TexLab) ends it for good. onAvailable hears each change.
  */
 export class Texlab {
@@ -183,7 +184,7 @@ export class Texlab {
   available = false;
   private rootUri = '';
   private connection: ReturnType<typeof lspTransport> | null = null;
-  private events: EventSource;
+  private events: StreamSource;
   private extensions = new Map<string, Extension>();
 
   constructor(
@@ -199,7 +200,7 @@ export class Texlab {
       ...server.config,
       extensions: [...(server.config.extensions ?? []), this.keys()]
     });
-    this.events = new EventSource(`/api/projects/${projectId}/${server.route}`);
+    this.events = new StreamSource(`/api/projects/${projectId}/${server.route}`);
     this.events.addEventListener('hello', (e) => this.hello(JSON.parse((e as MessageEvent<string>).data)));
     this.events.onmessage = (e) => this.connection?.receive(e.data);
     this.events.onerror = () => this.lost();

@@ -214,7 +214,8 @@ eq(effectiveCompile({ autoCompile: AS_YOU_TYPE }, defaults).autoCompile, AS_YOU_
 eq(effectiveCompile({ autoCompile: 0.5 }, defaults).autoCompile, 3, 'another fraction is not');
 eq([autoPauseMs(AS_YOU_TYPE, true), autoPauseMs(AS_YOU_TYPE, false), autoPauseMs(2, true), autoPauseMs(0, true)], [300, 1000, 2000, 0], 'as you type is Typst’s alone');
 eq(DEFAULT_SETTINGS.compileDefaults.syntaxCheck, true, 'the syntax check is on unless turned off');
-eq(effectiveCompile({ syntaxCheck: false, haltOnError: true }, defaults), defaults, 'error handling and the syntax check are the app’s, whatever a project kept from before');
+eq(effectiveCompile({ syntaxCheck: false, haltOnError: true, precompile: false }, defaults), defaults, 'error handling, the syntax check and the precompiled preamble are the app’s, whatever a project kept from before');
+eq(DEFAULT_SETTINGS.compileDefaults.precompile, true, 'the preamble is precompiled unless turned off');
 
 const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
 try {

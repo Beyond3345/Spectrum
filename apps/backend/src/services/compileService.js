@@ -11,6 +11,7 @@ import { biberCache, biberDownload, builtInTectonic, installBiber, tectonicBiber
 import { SANDBOX_EXEC, blockedNotes, compileSandbox, confinement } from './compileSandbox.js';
 import { isTrusted } from './trustService.js';
 import { documentRecipe } from './buildRecipe.js';
+import { FORMAT_ENGINES, formatKey, preambleOf, prepareFormat, readyFormat, refuseFormat } from './preambleFormat.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { withoutComments } from '../utils/texUtils.js';
 import { cachePath, getProjectRoot } from './projectService.js';
@@ -53,6 +54,9 @@ const keptFile = (rel) => !/\.(?:pdf|log|blg|ilg|glg|synctex\.gz)$/i.test(rel);
 // before a project file of the same name ("Writing file `./data.dat'", "File `data.dat' already exists on the system")
 const FILECONTENTS = /(?:Writing(?: or overwriting)? file|File) `(?:\.\/)?([^']+)'(?:\.| already exists)/g;
 const keptStore = (cache, doc, engine) => path.join(cache, 'build-files', doc, engine);
+// what Biber read to make the kept .bbl (biberReads), kept beside it as <main>.bibrun; never one of the files a
+// pass is taken to have changed
+const BIB_RECORD = '.bibrun';
 // written last, so a store a crash left half copied isn't read
 const KEPT_MARKER = '.complete';
 // a pass's log asking for another (LaTeX's labels, hyperref's outlines, longtable's widths, natbib's citations), but
@@ -66,6 +70,8 @@ const BIBTEX_BACKEND = /backend\s*=\s*bibtex/;
 const needsBiber = (tex) => BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKEND.test(tex);
 // Tectonic's bundle or a package couldn't be fetched (the bundle's own panic says it isn't cached)
 const TECTONIC_DOWNLOAD = /failed to download|failure downloading|couldn't get it from the internet/i;
+// what a format that doesn't suit the pass ends in: pdfTeX's own errors, never a document's
+const FORMAT_FAULT = /pdfTeX error|\(pdf backend\)|Fatal format file error/i;
 const ENGINE_NAMES = { pdflatex: 'pdfLaTeX', xelatex: 'XeLaTeX', lualatex: 'LuaLaTeX', tectonic: 'Tectonic', latexmk: 'Latexmk' };
 // the built-in Tectonic's LaTeX (2021-11-15) can't load xjyutping 2, which needs 2023-11-01
 const XJYUTPING_ENGINE_ERROR = 'Jyutping (xjyutping) needs XeLaTeX or LuaLaTeX from a TeX installation, and the built-in Tectonic’s LaTeX is too old for it. Install MacTeX, TeX Live or MiKTeX, or choose its folder in Settings › Engines › LaTeX.';
@@ -125,9 +131,12 @@ function buildCommand(engine, outDir, mainFile, { haltOnError = false, draft = f
     case 'lualatex': {
       // draft: images drawn as boxes, which the first line passes to graphicx; the file it inputs still names the job.
       // ponytail: a name TeX would read as code (with %, # or braces) keeps its images
-      const input = draft && !/[\\{}%#&~^$]/.test(mainFile) ? `${DRAFT_IMAGES}\\input{${mainFile}}` : mainFile;
-      // extra: the document's own options (buildRecipe.js), last before the file
-      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, shell, `-output-directory=${outDir}`, ...(options.extra ?? []), input] };
+      // only: the one \include'd chapter to typeset (\includeonly), by the same first line
+      const first = [options.only && `\\includeonly{${options.only}}`, draft && DRAFT_IMAGES].filter(Boolean).join('');
+      const input = first && !/[\\{}%#&~^$]/.test(mainFile) ? `${first}\\input{${mainFile}}` : mainFile;
+      // extra: the document's own options (buildRecipe.js), last before the file; format: the precompiled preamble's
+      // (preambleFormat.js)
+      return { cmd: engine, args: ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', ...halt, shell, `-output-directory=${outDir}`, ...(options.format ? [`-fmt=${options.format}`] : []), ...(options.extra ?? []), input] };
     }
     case 'latexmk':
       // -norc: a project's own latexmkrc is Perl, which could run anything. ponytail: in draft mode latexmk draws
@@ -224,6 +233,8 @@ const jobs = new AsyncLocalStorage();
 export const currentJob = () => jobs.getStore();
 const running = new Map();
 const stopped = () => jobs.getStore()?.stopped === true;
+/** fn() as work of Spectrum's own behind a compile, at low priority: no compile's Stop ends it, quitting does. */
+export const inBackground = (fn, searchPath) => jobs.run({ stopped: false, children: new Set(), searchPath, lowPriority: true }, fn);
 
 // Stops asked for before their compile had started (the editor saves first), kept for a minute
 const stoppedEarly = new Set();
@@ -655,13 +666,34 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     return { ok: false, error: 'This document’s folder has a file called tectonic-biber, which Tectonic would run as a program. Rename or remove it, or compile with another engine.' };
   }
   const buildRoot = options.buildDir || path.join(os.tmpdir(), 'spectrum-build');
-  const outDir = path.join(buildRoot, crypto.randomUUID());
+  const runDir = path.join(buildRoot, crypto.randomUUID());
   // a scratch build (compileFolder's) keeps nothing
   const cache = options.scratch ? null : await cachePath(projectRoot);
+  // kept under the .md for a Markdown document, so its next compile reuses them
+  const doc = options.markdownSource ? mainFile : docPath(projectRoot, absMain);
+  // latexmk builds in a folder of the document's own that stays between compiles, so it runs only what a change
+  // calls for, as it does on a command line. Not a draft, which draws the same files another way, nor while another
+  // compile of the document is using the folder: those build from nothing in a folder of their own, as every engine does
+  const own = engine === 'latexmk' && cache && !options.draft ? keptStore(cache, doc, engine) : null;
+  const held = own && !latexmkFolders.has(own) ? own : null;
+  if (held) latexmkFolders.add(held);
+  const outDir = held ?? runDir;
   await ensureDir(outDir);
   // the programs' temp files, beside the build rather than in it, where they would be taken for the document's own
-  const tmpDir = `${outDir}-tmp`;
+  const tmpDir = `${runDir}-tmp`;
   await ensureDir(tmpDir);
+  // this build's folders removed. latexmk's own stays as this build left it (keep: one without errors that ran to its
+  // end), or goes back to how the last such build left it, so a Stop, an error or a crash is never built on.
+  // ponytail: an exception past this leaves the folder marked as in use until the backend restarts, and later compiles
+  // of the document build from nothing meanwhile
+  const clean = async (keep = false) => {
+    if (held) {
+      if (!keep) await fs.rm(held, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
+      await (keep ? fs.rm(held + LATEXMK_LAST, { recursive: true, force: true, maxRetries: 5 }) : fs.rename(held + LATEXMK_LAST, held)).catch(() => {});
+      latexmkFolders.delete(held);
+    }
+    await cleanBuild(buildRoot, runDir);
+  };
   // Like TeXShop, LaTeX Workshop and Tectonic, run from the main file's folder so
   // \input paths are relative to the main file. The project root stays on the search
   // paths, so paths written relative to the root keep working as well.
@@ -669,8 +701,6 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   const mainName = path.basename(absMain);
   // a Markdown document's own folder, which pandoc's generated file may still read images from
   const mdDir = options.markdownSource ? path.dirname(options.markdownSource) : null;
-  // kept under the .md for a Markdown document, so its next compile reuses them
-  const doc = options.markdownSource ? mainFile : docPath(projectRoot, absMain);
   // a copy of the document (sourceCopy: Jyutping's auto mode's, or the page colour's), whose folders TeX looks in first:
   // the main file it runs, and auto mode's chapters, found there before the project's own
   const copy = options.sourceCopy;
@@ -678,7 +708,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // xjyutping (the user's folder, then Spectrum's) before TeX's own, and the bundled CJK fonts by file name, in every compile
   const jyutping = await jyutpingSearch(options.xjyutpingFolder);
   const before = (dirs, name) => [...dirs.map(slashed), process.env[name] ?? ''].join(path.delimiter);
-  const searchPath = (name, more = []) => before([...copyDirs.slice(0, 1), mainDir, ...copyDirs.slice(1), ...(mdDir && mdDir !== mainDir ? [mdDir] : []), projectRoot, ...more], name);
+  const sourceDirs = [...copyDirs.slice(0, 1), mainDir, ...copyDirs.slice(1), ...(mdDir && mdDir !== mainDir ? [mdDir] : []), projectRoot];
+  const searchPath = (name, more = []) => before([...sourceDirs, ...more], name);
   const binPath = jobs.getStore()?.searchPath;
   let texEnv = {
     ...process.env,
@@ -712,7 +743,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   let biber = engine === 'tectonic' ? tectonicBiber() : null;
   if (engine === 'tectonic' && !options.warmUp && !biber && needsBiber(tex)) biber = await fetchBiber(live, pushLog);
   if (stopped()) {
-    await cleanBuild(buildRoot, outDir);
+    await clean(true);
     return { ok: false, stopped: true, error: 'The compile was stopped.', log: logChunks.join(''), status: -1 };
   }
   texEnv = withBiber(texEnv, biber);
@@ -732,16 +763,20 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // Recompile from scratch: nothing an earlier compile of the document kept, with any engine
   // (one a virus scanner still holds is left: none of it is copied in, and keepBuild clears it again)
   if (options.fresh && cache) await fs.rm(path.join(cache, 'build-files', doc), { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
-  // ponytail: only the engines run pass by pass here keep files; latexmk and Tectonic choose their own passes from nothing
+  // ponytail: Tectonic chooses its own passes from nothing; latexmk has its folder (held)
   const multiPass = MULTI_PASS_ENGINES.includes(engine) && !steps;
   const store = cache && keptStore(cache, doc, engine);
   // first, so another document's .aux of the same name doesn't take the place of its own
-  const kept = multiPass && store && !options.fresh && (await copyKept(store, outDir));
+  // what latexmk can't see change: the engine it runs, the shell escape it is given, and which TeX (the PATH, the
+  // latexmk found on it, the xjyutping folders); with another of any, its folder starts from nothing
+  const latexmkStamp = held ? JSON.stringify([options.latexmkEngine ?? 'pdf', options.trusted ? 'trusted' : options.untrusted ? 'untrusted' : '', texEnv[PATH_KEY] ?? '', await aboutFile(await findExecutable('latexmk', texEnv[PATH_KEY])), jyutping.tex, jyutping.fonts]) : '';
+  const kept = held ? await openLatexmkFolder(held, latexmkStamp) : multiPass && store && !options.fresh && (await copyKept(store, outDir));
   // \include{chapters/x} writes chapters/x.aux into the output dir, so mirror the folders
   // as seen from the main file's folder and from the project root.
   // Other documents' kept .aux go in it too, where TeX looks first, for \externaldocument to find.
   const others = new Map(); // where each copy went, and its mtime then
-  for (const item of await listFilesRecursive(projectRoot)) {
+  const projectFiles = await listFilesRecursive(projectRoot);
+  for (const item of projectFiles) {
     if (item.type === 'dir') {
       await ensureDir(path.join(outDir, item.path));
       const fromMain = path.relative(mainDir, path.join(projectRoot, item.path));
@@ -769,9 +804,29 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
       others.set(rel, (await fs.stat(dest)).mtimeMs);
     }
   }
+  // taken out again before the next compile puts in those documents' newer ones
+  if (held) await fs.writeFile(path.join(held, LATEXMK_COPIES), JSON.stringify([...others]));
 
   const input = copy ? slashed(copy.main) : `./${mainName}`;
-  const { cmd, args } = buildCommand(engine, slashed(outDir), input, { ...options, extra: recipe.options });
+  // Only the open chapter: \includeonly for the chapter the editor has open (options.onlyFile), where the
+  // document \include's it and its kept files hold the other chapters' numbers from a compile without errors. One
+  // pass, no bibliography or index run, and the PDF beside the source stays the last full compile's (a chapter alone
+  // is not the document). Anything else compiles in full: another engine's passes, a recipe, from scratch, no kept
+  // files yet, a file that is no chapter of this document
+  const only = options.onlyFile && multiPass && kept && !/[\\{}%#&~^$]/.test(input) ? includedAs(tex, mainDir, path.resolve(projectRoot, String(options.onlyFile))) : null;
+  if (options.onlyFile && !only && multiPass) pushLog(Buffer.from('[spectrum note] This compiled the whole document: Only the open chapter needs the open file to be one the document \\include’s, and the numbers a full compile keeps.\n'));
+  if (only) pushLog(Buffer.from(`[spectrum note] Only ${only} was typeset, in one pass, with the other chapters’ numbers as the last full compile left them. The PDF beside the source is still that compile’s, and a citation or index entry added since waits for the next full compile (biblatex asking for Biber again here means only that).\n`));
+  // The precompiled preamble (preambleFormat.js), for a full pdfLaTeX compile of the document as it is, with Spectrum's
+  // own passes: not a draft, a copy with the page colour's or Jyutping's lines, a Markdown document's LaTeX, nor one
+  // with a recipe or engine options of its own. format: one made and tried for the preamble as it is now, or null
+  const preamble = options.precompile && FORMAT_ENGINES.includes(engine) && multiPass && cache && !options.draft && !only && !copy && !options.markdownSource && !recipe.options.length ? preambleOf(tex) : null;
+  const shell = options.untrusted ? '-no-shell-escape' : options.trusted ? '-shell-escape' : '-shell-restricted';
+  const formatOf = preamble && { preamble, dir: path.join(cache, 'build-files', doc, `${engine}.format`), key: await formatKey({ preamble, mainName, shell, env: texEnv, files: projectFiles }), projectRoot };
+  const format = formatOf && !options.noFormat ? await readyFormat(formatOf) : null;
+  // ([spectrum note]: a line for the log alone; the editor lists a plain [spectrum] line as an error)
+  if (format) pushLog(Buffer.from(`[spectrum note] This compile starts from a format of the preamble, made when the preamble last changed. The preamble’s own log, from then:\n${format.log}\n`));
+  const commandFor = (dir, fmt) => buildCommand(engine, slashed(dir), input, { ...options, only, extra: recipe.options, format: fmt && slashed(fmt) });
+  const { cmd, args } = commandFor(outDir, format?.file);
   // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
   const limit = PASS_TIMEOUT_MS[engine] || DEFAULT_PASS_TIMEOUT_MS;
   if (engine === 'tectonic') {
@@ -783,7 +838,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // MiKTeX asks before installing a missing package, in a window the hidden engine never shows, so the
   // compile would sit until its time limit; this installs it without asking. ponytail: latexmk's own
   // engine runs still ask; pass -pdflatex="pdflatex --enable-installer %O %S" if that bites
-  if (WINDOWS && multiPass && /[\\/]miktex[\\/]/i.test((await findExecutable(cmd)) || '')) args.unshift('--enable-installer');
+  const miktex = WINDOWS && multiPass && /[\\/]miktex[\\/]/i.test((await findExecutable(cmd)) || '');
+  if (miktex) args.unshift('--enable-installer');
   // the generated file's base for a Markdown document (main.md.tex), so the engine's log and PDF keep its name
   const base = path.basename(absMain, path.extname(absMain));
   // the whole log of the pass just run, which the log sent back may have cut short
@@ -797,19 +853,23 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     // Pass 1: generate .aux with \citation{} entries
     pass = steps ? await runRecipe(steps, { outDir, input, mainDir, base, options: { ...options, extra: recipe.options }, confined, pushLog }) : await confined(cmd, args, mainDir, limit);
     let log = await passLog();
+    // with nothing changed latexmk runs nothing and says only that; the editor's warnings come from a pass's log
+    if (held && pass.code === 0 && !/^This is \S*TeX/m.test(logChunks.join(''))) {
+      pushLog(Buffer.from(`[spectrum note] Nothing this document reads has changed, so latexmk ran no pass. The last pass said:\n${await fs.readFile(path.join(outDir, `${base}.log`), 'utf8').catch(() => '')}`));
+    }
     const carryOn = () => !pass.timedOut && !stopped() && !(options.haltOnError && pass.code !== 0);
     const keptFailed = () => kept && pass.code !== 0 && !pass.timedOut && !stopped() && keptFileFailed(log, kept);
     retry = keptFailed();
 
-    if (multiPass && !options.draft && !retry && carryOn()) {
+    if (multiPass && !options.draft && !only && !retry && carryOn()) {
       // what BibTeX reads, so a citation only a kept list put there (a caption's, from the .lof) goes again
       const cites = async () => (await auxWithInputs(outDir, `${base}.aux`)).match(/^\\(?:citation|bibdata|bibstyle)\{.*$/gm)?.join('\n') ?? '';
       let cited = await cites();
-      bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog);
+      bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog, { dirs: sourceDirs, searchPath: texEnv[PATH_KEY] });
       // Pass 2 + 3: resolve citations and cross-references, while the last pass asks for another or changed what
       // TeX reads back
       for (let n = 2; n <= 3 && carryOn(); n += 1) {
-        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog);
+        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog, { dirs: sourceDirs, searchPath: texEnv[PATH_KEY] });
         let now = await keptFiles(outDir);
         for (const { input, output, cmd: indexer, fallback, args: indexArgs } of INDEXERS) {
           // every glossary's files (the acronyms' too), or the main glossary's when the .aux names none
@@ -845,12 +905,20 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
       }
     }
   } catch (err) {
-    await cleanBuild(buildRoot, outDir);
+    await clean();
     return { ok: false, error: `${engine} isn’t available: ${err.message}` };
+  }
+  // a pass that started from the format and ended in an error of pdfTeX's own, or made no PDF: once more without it,
+  // and where that compiles, the format is never used again
+  if (format && !retry && pass.code !== 0 && !pass.timedOut && !stopped() && (FORMAT_FAULT.test(logChunks.join('')) || !(await exists(path.join(outDir, `${base}.pdf`))))) {
+    await clean();
+    const again = await compileWith(engine, projectRoot, absMain, mainFile, { ...options, noFormat: true });
+    if (again.status === 0) await refuseFormat(formatOf);
+    return again;
   }
   if (retry) {
     // a kept file TeX choked on (one from an older package version, say) never locks the document out
-    await cleanBuild(buildRoot, outDir);
+    await clean();
     const again = await compileWith(engine, projectRoot, absMain, mainFile, { ...options, fresh: true });
     return { ...again, log: `[spectrum] A file kept from the last compile couldn’t be read, so this compiled again from scratch.\n\n${again.log ?? ''}` };
   }
@@ -860,11 +928,11 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   let log = logChunks.join('');
   // the last PDF, SyncTeX and .aux stay as they were
   if (stopped()) {
-    await cleanBuild(buildRoot, outDir);
+    await clean();
     return { ok: false, stopped: true, error: 'The compile was stopped.', log, status: -1 };
   }
   if (pass.timedOut) {
-    await cleanBuild(buildRoot, outDir);
+    await clean();
     return { ok: false, error: 'The compile took too long and was stopped.', log, status: -1 };
   }
   // carrying on past errors, Tectonic still exits with 0
@@ -880,7 +948,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   if (notice) log += BIBLATEX_NOTE;
   // the built-in Tectonic fetches its bundle and each package on first use: offline, say what to do about it
   if (engine === 'tectonic' && code !== 0 && TECTONIC_DOWNLOAD.test(log)) {
-    await cleanBuild(buildRoot, outDir);
+    await clean();
     return { ok: false, error: TECTONIC_DOWNLOAD_ERROR, log, status: code ?? -1, ...notice };
   }
   let pdf;
@@ -889,11 +957,11 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   } catch {
     // a store Windows still holds is only reused, and a kept file TeX can't read compiles again from scratch
     if (multiPass && store) await fs.rm(store, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
-    await cleanBuild(buildRoot, outDir);
+    await clean();
     return { ok: false, error: 'No PDF was produced.', log, status: code ?? -1, ...notice };
   }
   if (!cache) {
-    await cleanBuild(buildRoot, outDir);
+    await clean();
     return { ok: true, pdf: pdf.toString('base64'), log, status: code ?? 0, ...notice };
   }
   // a Markdown document's PDF goes beside the .md (base there is main, not main.md)
@@ -903,20 +971,44 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // the copy on disk is older than this compile's, so the editor keeps showing the one it was sent
   let pdfStale = false;
   try {
-    const written = await writePdf(projectRoot, absPdf, pdf, log);
+    // (a chapter alone is shown, never written over the document's PDF)
+    const written = only ? { log, stale: true } : await writePdf(projectRoot, absPdf, pdf, log);
     log = written.log;
     pdfStale = written.stale;
     // SyncTeX jumps do not point into the .md, so a Markdown compile keeps none
-    if (!options.markdownSource) await keepSynctex(projectRoot, doc, path.join(outDir, `${base}.synctex.gz`), mainDir, copy?.root);
+    // (keepSynctex moves the file, and latexmk's folder keeps its own)
+    const synctex = path.join(outDir, `${base}.synctex.gz`);
+    const moved = held ? path.join(tmpDir, `${base}.synctex.gz`) : synctex;
+    if (held) await fs.copyFile(synctex, moved).catch(() => {});
+    if (!options.markdownSource) await keepSynctex(projectRoot, doc, moved, mainDir, copy?.root);
     // only a build without errors is read back; after one with errors the next compile starts from nothing. A draft
     // leaves the last full compile's: its .idx kept beside the old .ind would keep makeindex from running again
-    if (multiPass && !options.draft) await (code === 0 ? keepBuild(outDir, store, others, await passLog()) : fs.rm(store, { recursive: true, force: true })).catch(() => {});
-    await keepAux(outDir, auxStore(cache, doc), others);
+    if (only) {
+      // A chapter alone leaves the kept files as the last full compile made them, but for the chapter's own .aux (a
+      // label added in it is there for the next compile). The main .aux of such a pass would carry on what it was
+      // missing: biblatex notes there that it asked for Biber, and asks again in every later pass until the .bbl
+      // changes, which the right .bbl never does
+      if (code === 0) await fs.copyFile(path.join(outDir, `${only}.aux`), path.join(store, `${only}.aux`)).catch(() => {});
+    } else {
+      if (multiPass && !options.draft) await (code === 0 ? keepBuild(outDir, store, others, await passLog()) : fs.rm(store, { recursive: true, force: true })).catch(() => {});
+      await keepAux(outDir, auxStore(cache, doc), others, !held);
+    }
+    if (held && code === 0) {
+      // what filecontents wrote would be found before the source's new text, as in the other engines' kept files
+      for (const [, name] of (await passLog()).matchAll(FILECONTENTS)) if (!name.includes('..')) await fs.rm(path.join(held, name), { force: true }).catch(() => {});
+      // with what the folder was built with
+      await fs.writeFile(path.join(held, KEPT_MARKER), latexmkStamp);
+    }
   } finally {
-    await cleanBuild(buildRoot, outDir);
+    // only a build without errors is built on, as for the other engines
+    await clean(code === 0);
+  }
+  // a format for this preamble, made and tried behind this compile, for the next one
+  if (formatOf && !format && !options.noFormat && code === 0) {
+    prepareFormat({ ...formatOf, mainDir, mainName, base, shell, env: texEnv, trusted: !!options.trusted, store, passArgs: commandFor, first: miktex ? ['--enable-installer'] : [] });
   }
   const pdfPath = docPath(projectRoot, absPdf);
-  return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0, ...(pdfStale && { pdfStale }), ...notice };
+  return { ok: true, pdf: pdf.toString('base64'), pdfPath, log, status: code ?? 0, ...(pdfStale && { pdfStale }), ...(only && { only }), ...notice };
 }
 
 /**
@@ -955,7 +1047,7 @@ async function fetchBiber(live, pushLog) {
  * BibTeX or Biber after the first pass, when the .aux cites anything or names a bibliography: the tool chosen, else
  * a `% !BIB program = biber` comment's, else Biber for biblatex. Resolves 1 or Biber's code when Biber failed.
  */
-async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog) {
+async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog, { dirs = [], searchPath } = {}) {
   // with the \include'd chapters' .aux, where the citations and \bibliography may be
   const aux = await auxWithInputs(outDir, `${base}.aux`);
   // biblatex writes \abx@aux@... commands in .aux; traditional bibtex \citation and \bibdata
@@ -968,6 +1060,17 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
   // paths). Both find the project's .bib files through BIBINPUTS. biber must not get
   // --input-directory=<project>: it looks for the .bcf there and fails.
   const bibArgs = [base];
+  // Biber takes a second or two, most of an edit's compile, and makes the same .bbl from the same control file,
+  // .bib files and Biber: with all three as they were for the kept .bbl, it isn't run. ponytail: BibTeX always
+  // runs (a twentieth of a second)
+  const recordFile = path.join(outDir, base + BIB_RECORD);
+  const reads = useBiber ? await biberReads(outDir, base, dirs, searchPath) : null;
+  const made = reads && (await fs.readFile(recordFile, 'utf8').catch(() => ''));
+  if (reads && made === `${reads}\n${await fileHash(path.join(outDir, `${base}.bbl`))}`) {
+    pushLog(Buffer.from('[spectrum note] The bibliography is unchanged, so Biber wasn’t run.\n'));
+    return 0;
+  }
+  await fs.rm(recordFile, { force: true });
   // MiKTeX's bibtex asks before installing a missing .bst, as its engines do
   if (WINDOWS && bibCmd === 'bibtex' && /[\\/]miktex[\\/]/i.test((await findExecutable('bibtex')) || '')) bibArgs.unshift('--enable-installer');
   try {
@@ -978,6 +1081,8 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
       pushLog(Buffer.from('[spectrum] Biber failed. Fix the bibliography errors above and compile again.\n'));
       return bibliography.code || 1;
     }
+    const bbl = reads && (await fileHash(path.join(outDir, `${base}.bbl`)));
+    if (bbl) await fs.writeFile(recordFile, `${reads}\n${bbl}`);
   } catch (err) {
     if (useBiber) {
       pushLog(Buffer.from(`[spectrum] Biber could not run: ${err.message}. Install Biber with your TeX distribution and compile again.\n`));
@@ -986,6 +1091,54 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
     pushLog(Buffer.from(`[warn] ${bibCmd} not available, skipping bibliography pass.\n`));
   }
   return 0;
+}
+
+/**
+ * The name main's text \include's the file `abs` by, as written (\includeonly takes the same), or null: not one of
+ * its \include's, or a name TeX would read as more than a name.
+ */
+export function includedAs(tex, mainDir, abs) {
+  for (const [, name] of withoutComments(tex).matchAll(/\\include\s*\{([^}]+)\}/g)) {
+    const file = path.resolve(mainDir, /\.tex$/i.test(name.trim()) ? name.trim() : `${name.trim()}.tex`);
+    if (file === abs) return /[\\{}%#&~^$,\s]/.test(name) ? null : name;
+  }
+  return null;
+}
+
+const fileHash = async (file) => {
+  const bytes = await fs.readFile(file).catch(() => null);
+  return bytes ? crypto.createHash('sha256').update(bytes).digest('hex') : '';
+};
+// each file Biber is told to read: <bcf:datasource type="file" datatype="bibtex" glob="false">refs.bib</bcf:datasource>
+const BCF_SOURCE = /<bcf:datasource\b([^>]*)>([^<]*)<\/bcf:datasource>/g;
+
+/**
+ * Everything Biber reads for <base>.bcf, as one hash: the control file (the citations, the style's sorting and data
+ * model, the options), each .bib file's bytes, found as Biber finds it (the build folder, then BIBINPUTS' folders, dirs), the
+ * Biber it would run and the user's own biber.conf. null when it can't be told, and Biber then runs: no control file, a
+ * source that isn't a plain file in those folders (a pattern, an address, one TeX's own tree holds), or no Biber.
+ */
+async function biberReads(outDir, base, dirs, searchPath) {
+  const bcf = await fs.readFile(path.join(outDir, `${base}.bcf`), 'utf8').catch(() => null);
+  const biber = bcf && (await findExecutable('biber', searchPath));
+  if (!biber) return null;
+  const hash = crypto.createHash('sha256').update(bcf);
+  for (const [, attributes, name] of bcf.matchAll(BCF_SOURCE)) {
+    if (!/type="file"/.test(attributes) || /glob="true"/.test(attributes) || /[&*?[\]{}]|^\w+:\/\//.test(name)) return null;
+    let found = null;
+    for (const dir of [outDir, ...dirs]) {
+      const bytes = await fs.readFile(path.resolve(dir, name.trim())).catch(() => null);
+      if (bytes) {
+        found = bytes;
+        break;
+      }
+    }
+    if (!found) return null;
+    hash.update(`\n${name}\n`).update(found);
+  }
+  const home = os.homedir();
+  for (const file of [biber, path.join(home, '.biber.conf'), path.join(home, 'Library', 'biber', 'biber.conf'), path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'biber', 'biber.conf')]) hash.update(`\n${await aboutFile(file)}`);
+  return hash.digest('hex');
 }
 
 /**
@@ -1026,10 +1179,10 @@ async function auxWithInputs(outDir, rel, seen = new Set()) {
 }
 
 /** The files of the kind a compile keeps in outDir, with their bytes, to tell whether a pass changed any. */
-async function keptFiles(outDir) {
+export async function keptFiles(outDir) {
   const files = new Map();
   for (const { path: rel, type } of await listFilesRecursive(outDir)) {
-    if (type === 'file' && keptFile(rel)) files.set(rel, await fs.readFile(path.join(outDir, rel)));
+    if (type === 'file' && keptFile(rel) && !rel.endsWith(BIB_RECORD)) files.set(rel, await fs.readFile(path.join(outDir, rel)));
   }
   return files;
 }
@@ -1085,17 +1238,59 @@ async function keepBuild(outDir, store, others, log) {
   await fs.writeFile(path.join(store, KEPT_MARKER), '');
 }
 
+// the latexmk folders compiles are building in now
+const latexmkFolders = new Set();
+// beside latexmk's folder while a build runs in it: the folder as the last build without errors left it
+const LATEXMK_LAST = '.last';
+// other documents' .aux files the last compile copied into latexmk's folder: [[name, its time then]]
+const LATEXMK_COPIES = '.spectrum-copies';
+const aboutFile = async (file) => {
+  const stat = file ? await fs.stat(file).catch(() => null) : null;
+  return `${file}:${stat ? `${stat.size}:${stat.mtimeMs}` : ''}`;
+};
+
+/**
+ * latexmk's own folder for a document, made ready for a compile: as its last build without errors left it when that
+ * one was built with the same things (stamp, which the marker holds), else empty. A copy of it is kept beside it until
+ * this build ends (buildWith's clean puts it back unless this one ends well too); one still there now is from a build
+ * that never ended (a crash), and is put back first. The other documents' .aux files the last build copied in go,
+ * unless TeX wrote over them since. The names of the files in it, for telling an error in one of them
+ * (keptFileFailed), or null when it is empty.
+ */
+async function openLatexmkFolder(dir, stamp) {
+  const last = dir + LATEXMK_LAST;
+  const gone = { recursive: true, force: true, maxRetries: 5 };
+  if (await exists(last)) {
+    await fs.rm(dir, gone);
+    await fs.rename(last, dir);
+  }
+  const usable = (await fs.readFile(path.join(dir, KEPT_MARKER), 'utf8').catch(() => null)) === stamp;
+  if (!usable) await fs.rm(dir, gone).catch(() => {});
+  await ensureDir(dir);
+  if (!usable) return null;
+  // a clone where the disk makes them (APFS), so a large PDF costs nothing
+  await fs.cp(dir, last, { recursive: true, mode: fsConstants.COPYFILE_FICLONE });
+  const copies = await fs.readFile(path.join(dir, LATEXMK_COPIES), 'utf8').then(JSON.parse).catch(() => []);
+  for (const [rel, time] of Array.isArray(copies) ? copies : []) {
+    const file = path.join(dir, String(rel));
+    if ((await fs.stat(file).catch(() => null))?.mtimeMs === time) await fs.rm(file, { force: true });
+  }
+  return (await listFilesRecursive(dir)).filter((item) => item.type === 'file').map((item) => slashed(item.path));
+}
+
 /**
  * Replace the document's kept .aux with this build's, \include'd chapters' too, but not other documents'
  * (a copy TeX wrote over is this document's own).
  */
-async function keepAux(outDir, store, others) {
+async function keepAux(outDir, store, others, move = true) {
   await fs.rm(store, { recursive: true, force: true });
   for (const { path: rel, type } of await listFilesRecursive(outDir)) {
     if (type !== 'file' || !rel.endsWith('.aux')) continue;
     if (others.has(rel) && others.get(rel) === (await fs.stat(path.join(outDir, rel))).mtimeMs) continue;
     await ensureDir(path.dirname(path.join(store, rel)));
-    await renameOver(path.join(outDir, rel), path.join(store, rel));
+    // latexmk's folder keeps its own
+    if (move) await renameOver(path.join(outDir, rel), path.join(store, rel));
+    else await fs.copyFile(path.join(outDir, rel), path.join(store, rel));
   }
 }
 

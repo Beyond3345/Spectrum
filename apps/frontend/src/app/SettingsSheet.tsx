@@ -497,8 +497,11 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
 
   useEffect(() => {
     if (check || checkError) return;
-    systemCheck(settings.texFolder || undefined).then(setCheck).catch((err) => setCheckError(err instanceof Error ? err.message : String(err)));
+    systemCheck(settings.texFolder || undefined, checkAgain.current).then(setCheck).catch((err) => setCheckError(err instanceof Error ? err.message : String(err)));
+    checkAgain.current = false;
   }, [check, checkError]);
+  // Check again runs every program afresh; opening the sheet takes what the backend already found
+  const checkAgain = useRef(false);
 
   const recheck = () => {
     setCheck(null);
@@ -1000,7 +1003,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 <div className="kv-row"><span>Default projects folder</span><code>{settings.projectsDir || check?.projectsDir || '…'}</code></div>
               </div>
               <div>
-                <button className="btn small" onClick={recheck} disabled={!check && !checkError}>
+                <button className="btn small" onClick={() => { checkAgain.current = true; recheck(); }} disabled={!check && !checkError}>
                   <Icon name="arrow.clockwise" /> Check again
                 </button>
               </div>
@@ -1703,6 +1706,15 @@ function EnginesPane() {
         <span>
           Fast draft mode
           <span className="field-hint">One pass with images drawn as boxes, for quick previews. Numbers and references can lag behind until a full compile.</span>
+        </span>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={defaults.precompile} onChange={(e) => set({ precompile: e.target.checked })} />
+        <span>
+          Precompile the preamble
+          <span className="field-hint">
+            pdfLaTeX starts each pass from a saved copy of the preamble’s packages and settings, which roughly halves a pass for notes with TikZ, pgfplots or siunitx. Spectrum makes the copy behind a compile, uses it only once the pages come out the same with it, and makes it again when the preamble or a file it reads changes.
+          </span>
         </span>
       </label>
       <label className="checkbox-row">
