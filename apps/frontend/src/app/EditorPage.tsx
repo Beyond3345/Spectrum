@@ -161,6 +161,7 @@ import { definitionCompletions, languageCompartment, languageFor, loadTypst, ref
 import type { TypstDefinition } from '../editor/languages';
 import { numberTypstOutline, parseMarkdownOutline, parseTypstOutline, typstDocumentOutline } from '../editor/outlines';
 import type { TypstNumbers } from '../editor/outlines';
+import { currentKeymap, keymapCompartment, keymapExtension } from '../editor/keymaps';
 import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
 import { ZOTERO_CITE, zoteroCompletionSource } from '../editor/zotero';
 import { ZoteroCite, addZoteroHit } from '../editor/ZoteroCite';
@@ -884,7 +885,7 @@ function Editor({ projectId }: { projectId: string }) {
       clearGhost();
       view.setState(saved && saved.doc.toString() === content ? saved : EditorState.create({ doc: content, extensions: extensionsRef.current }));
       // a saved state keeps its own language configuration, so every open says again which file this is
-      view.dispatch({ effects: languageCompartment.reconfigure(languageFor(path)) });
+      view.dispatch({ effects: [languageCompartment.reconfigure(languageFor(path)), keymapCompartment.reconfigure(currentKeymap())] });
       if (docKind(path) === 'typst') loadTypst().then((language) => { if (language && activeRef.current === path) viewRef.current?.dispatch({ effects: languageCompartment.reconfigure(language) }); });
       activeRef.current = path;
       attachTexlab();
@@ -2517,6 +2518,8 @@ function Editor({ projectId }: { projectId: string }) {
       ])
     ]);
     extensionsRef.current = [
+      // Vim or Emacs, ahead of Spectrum's own keys
+      keymapCompartment.of([]),
       keys,
       editorBasics,
       indentation,
@@ -2638,6 +2641,14 @@ function Editor({ projectId }: { projectId: string }) {
       viewRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    keymapExtension(settings.editorKeymap, () => actions.current.save()).then((ext) => live && viewRef.current?.dispatch({ effects: keymapCompartment.reconfigure(ext) }));
+    return () => {
+      live = false;
+    };
+  }, [settings.editorKeymap]);
 
   // ?file=: a file opened from Finder or Explorer (App.tsx)
   const [params, setParams] = useSearchParams();

@@ -7,6 +7,7 @@ import { IS_DESKTOP, followFullscreen } from './app/desktop';
 import { IS_WINDOWS } from './app/platform';
 import { applyTheme, followSharedSettings, loadSettings, updateSettings } from './app/settings';
 import { followEditorTheme } from './editor/editorThemes';
+import { followKeys } from './app/keys';
 // the bundled editor fonts, latin only (the plain 400.css would bundle every script)
 import '@fontsource/jetbrains-mono/latin-400.css';
 import '@fontsource/jetbrains-mono/latin-400-italic.css';
@@ -42,6 +43,7 @@ applyTheme(loadSettings().theme);
 followEditorTheme();
 followAppearance();
 followSharedSettings();
+followKeys();
 // lets the stylesheets leave room for the traffic lights in the macOS app (Windows has its title bar above the page)
 document.documentElement.classList.toggle('desktop', IS_DESKTOP && !IS_WINDOWS);
 document.documentElement.classList.toggle('windows', IS_WINDOWS);

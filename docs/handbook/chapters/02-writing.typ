@@ -59,6 +59,8 @@ Environments are listed once `\beg` is typed (@fig-writing-begin). #key("Tab") f
 
 #shot("figures/02-writing/complete-begin.png", [Environments listed after `\beg`, each with the package it comes from. The project's own environments are marked this project.], width: 60%) <fig-writing-begin>
 
+Vim's or Emacs's keys can take the place of the standard ones, in #ui[Editing keys] under #menu[Settings][Editor]. Both are off by default. With Vim, a bar under the source shows the mode and the command being typed, and `:w` saves. Spectrum's own shortcuts still work, apart from any that Vim or Emacs uses for itself.
+
 A grey suggestion after the cursor is AI autocomplete, which @ch-assistant covers. It is asked for with #key("⌥", "/"), and #key("Tab") accepts it, #key("→") accepts its next word and #key("Esc") dismisses it.
 
 === Finding and moving around
@@ -78,6 +80,10 @@ Spectrum writes three languages: LaTeX, Typst and Markdown. Each document is com
 === LaTeX
 
 A LaTeX document compiles with pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk or the built-in Tectonic. Auto, the default, reads a `% !TEX program` comment in the main file, uses XeLaTeX when the document needs Unicode fonts and pdfLaTeX otherwise. When no TeX is installed, Auto uses Tectonic, which downloads its TeX bundle and each package the first time a document needs it, and a compile that cannot reach the server says so. Latexmk always runs with `-norc`, so a project's own `latexmkrc` cannot run code.
+
+A document can set its own steps in a `% !TEX recipe` comment, which then takes the place of Spectrum's passes for pdfLaTeX, XeLaTeX and LuaLaTeX. The steps are separated by semicolons, for example `% !TEX recipe = pdflatex; pythontex %DOC%; pdflatex`. An engine step runs as Spectrum runs that engine, with any options in the step added before the file, and every other step runs in the build folder, where `%DOC%` is the document's name without `.tex`, `%OUTDIR%` is the build folder and `%DIR%` is the document's own folder. A `% !TEX options` comment, such as `% !TEX options = -8bit`, adds options to every pass of the engine. Each step of a recipe appears in Tools › Logs.
+
+Because these comments arrive with a project from someone else, a project that is not trusted (@sec-writing-trust) runs only TeX's own programs in a recipe, which are the three engines, BibTeX, Biber, makeindex, makeglossaries, bib2gls and PythonTeX, and only options that leave shell escape alone, such as `-8bit` and `-recorder`. Every step runs in the same sandbox as the rest of the compile. A trusted project's recipe can run any program, such as `python3 %DIR%/figures.py`. When a recipe asks for more than the project may have, the compile uses Spectrum's own passes and the log says why.
 
 The LaTeX tab of #menu[Settings][Engines] holds the defaults for every project: the compiler, auto compile, compile error handling, the bibliography tool, fast draft mode and the syntax check, which @sec-writing-compile describes. Below them it has the following,
 
@@ -147,7 +153,7 @@ Unlike the other settings in the menu, the choice is kept on this computer, in t
 
 #shot("figures/02-writing/trust-project.png", [Turning on Trust this project asks first and says what the project's documents can then do.], width: 62%) <fig-writing-trust>
 
-#note[On Windows a compile is not confined yet. It runs with TeX's restricted shell escape, and #ui[Trust this project] only turns on full shell escape there.]
+#note[On Windows a compile is not confined yet. It runs with TeX's restricted shell escape, and #ui[Trust this project] only turns on full shell escape there. A document's `% !TEX recipe` runs on Windows only in a trusted project.]
 
 === Several documents in one project
 

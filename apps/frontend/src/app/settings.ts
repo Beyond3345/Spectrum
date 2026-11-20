@@ -22,6 +22,8 @@ import { NO_FOLDERS, cleanFolders } from './folders';
 import type { ProjectFolders } from './folders';
 import { STARTER_PERSONAS, isUnchangedStarter } from '../editor/personas';
 import type { Persona } from '../editor/personas';
+import { editorKeymap } from '../editor/keymaps';
+import type { EditorKeymap } from '../editor/keymaps';
 
 export { IS_DESKTOP } from './desktop';
 
@@ -132,6 +134,10 @@ export type AppSettings = {
   /** switching to another document's .tex shows that document's PDF, and Compile builds it */
   pdfFollowsFile: boolean;
   editorFontSize: number;
+  /** the source editor's keys: the standard ones, Vim's or Emacs's (Settings › Editor) */
+  editorKeymap: EditorKeymap;
+  /** once a day, ask the release page whether a newer Spectrum is out, and say so on the projects page (this computer's) */
+  updateCheck: boolean;
   /** parent folder for new projects; '' = the backend default (~/Documents/Spectrum) */
   projectsDir: string;
   searchProvider: SearchProvider;
@@ -272,6 +278,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   checkpointEveryApply: false,
   pdfFollowsFile: true,
   editorFontSize: 13,
+  editorKeymap: 'default',
+  updateCheck: true,
   projectsDir: '',
   searchProvider: 'llm',
   searchProviderKey: '',
@@ -486,6 +494,8 @@ function parse(raw: string | null): AppSettings {
     if (!REASONING_EFFORTS.some(([value]) => value === merged.reasoningEffort)) merged.reasoningEffort = 'default';
     merged.modelPrices = cleanPrices(merged.modelPrices);
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
+    merged.editorKeymap = editorKeymap(merged.editorKeymap);
+    merged.updateCheck = merged.updateCheck !== false;
     if (typeof merged.shortcuts !== 'object' || !merged.shortcuts) merged.shortcuts = {};
     if (typeof merged.providerSaved !== 'object' || !merged.providerSaved) merged.providerSaved = {};
     // 1.6 kept one search key and left it in place when switching to a provider without a key field: it was
@@ -640,7 +650,7 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
  * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, or this switch.
  */
 const SHARED_KEYS = [
-  'theme', 'accent', 'colourStyle', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize',
+  'theme', 'accent', 'colourStyle', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize', 'editorKeymap',
   'autoInsertCite', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
   'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear', 'composerVectorNotation',
   'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery', 'composerDark', 'composerMinimap'
