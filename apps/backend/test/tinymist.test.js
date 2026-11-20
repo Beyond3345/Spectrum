@@ -110,6 +110,7 @@ test('the bridge does the handshake, relays an editor’s messages and runs no c
   assert.deepEqual(start.args, ['lsp']);
   assert.equal(initialize.params.initializationOptions.exportPdf, 'never');
   assert.equal(initialize.params.initializationOptions.formatterMode, 'typstyle');
+  assert.deepEqual(initialize.params.initializationOptions.lint, { enabled: true, when: 'onType' });
   assert.deepEqual(received().find((m) => m.method === 'workspace/executeCommand').params, { command: 'tinymist.pinMain', arguments: [path.join(p.path, 'main.typ')] });
   await until(() => received().find((m) => m.id === 'config-1')?.result?.[0]?.exportPdf === 'never', 'answered the settings');
 

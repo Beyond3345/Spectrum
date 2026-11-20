@@ -9,6 +9,9 @@ import { latex } from '../latex/lang';
 import { compileLint } from './compileMarks';
 import { latexFoldService, latexHighlight, mathsWrap } from './latexEditor';
 import { docKind } from './shared';
+import { includedPath } from './outlines';
+import { EditorView } from '@codemirror/view';
+import { IS_MAC } from '../app/platform';
 
 // The editor's language for a file, swapped as files open: LaTeX has its own mode, highlighting and folding, Typst
 // loads its Lezer mode (no WebAssembly) the first time one opens, and Markdown uses CodeMirror's own.
@@ -109,6 +112,38 @@ export function definitionCompletions({ path, defs, version }: { path: () => str
     });
     return options.length ? { from: word.from, options, validFor: /^[\p{L}\p{N}_-]*$/u } : null;
   };
+}
+
+/**
+ * The project file a quoted path at pos names, in a Typst file (#include, image, bibliography, read, json…): from the
+ * file it is in, or from the project's root for one starting with /; null when pos is in no such string.
+ */
+export function typstPathAt(text: string, pos: number, from: string, files: ReadonlySet<string>): string | null {
+  const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+  const lineEnd = text.indexOf('\n', pos);
+  const line = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
+  for (const m of line.matchAll(/"([^"\\\n]+)"/g)) {
+    const start = lineStart + (m.index ?? 0);
+    if (pos < start || pos > start + m[0].length) continue;
+    const path = includedPath(from, m[1]);
+    return files.has(path) ? path : null;
+  }
+  return null;
+}
+
+/** ⌘-click (Ctrl-click) on a project file's path in a Typst file opens it; anywhere else the click goes on to Go to definition. */
+export function typstPathClick({ path, files, open }: { path: () => string; files: () => ReadonlySet<string>; open: (path: string) => void }) {
+  return EditorView.domEventHandlers({
+    mousedown(e, view) {
+      if (e.button !== 0 || !(IS_MAC ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey || docKind(path()) !== 'typst') return false;
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+      const target = pos == null ? null : typstPathAt(view.state.doc.toString(), pos, path(), files());
+      if (!target) return false;
+      e.preventDefault();
+      open(target);
+      return true;
+    }
+  });
 }
 
 const latexLanguage = (): Extension => [latex(), syntaxHighlighting(latexHighlight), foldService.of(latexFoldService), mathsWrap];

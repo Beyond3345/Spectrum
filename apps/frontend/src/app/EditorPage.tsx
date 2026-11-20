@@ -151,7 +151,7 @@ import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/r
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
-import { definitionCompletions, languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions, typstDefinitions } from '../editor/languages';
+import { definitionCompletions, languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions, typstDefinitions, typstPathClick } from '../editor/languages';
 import type { TypstDefinition } from '../editor/languages';
 import { numberTypstOutline, parseMarkdownOutline, parseTypstOutline, typstDocumentOutline } from '../editor/outlines';
 import type { TypstNumbers } from '../editor/outlines';
@@ -2548,6 +2548,8 @@ function Editor({ projectId }: { projectId: string }) {
         }
       }),
       grammarMarks,
+      // before Tinymist's Go to definition, which takes the clicks this leaves
+      Prec.high(typstPathClick({ path: () => activeRef.current, files: () => a().files(), open: (path) => void a().showFile(path) })),
       texlabSlot.of([]),
       // an image dropped on the editor goes to the Floats panel's Insert figure instead of into the text
       EditorView.domEventHandlers({

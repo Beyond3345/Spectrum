@@ -3,7 +3,7 @@
 import { EditorState } from '@codemirror/state';
 import { CompletionContext } from '@codemirror/autocomplete';
 import { ensureSyntaxTree } from '@codemirror/language';
-import { definitionCompletions, languageFor, referenceCompletions, typstDefinitions } from './languages.ts';
+import { definitionCompletions, languageFor, referenceCompletions, typstDefinitions, typstPathAt } from './languages.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(what + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
@@ -34,6 +34,12 @@ eq(defsAt('chapters/one.typ', '0.14.2', '#let mine = 2\nA #no'), ['note', 'width
 eq(defsAt('chapters/one.typ', '', '#figure(image("a.png", width: wi'), ['note', 'width', 'mine'], 'in a call’s arguments');
 eq(defsAt('chapters/one.typ', '', 'Plain no'), [], 'not in plain text');
 eq(defsAt('main.tex', '', '#no'), [], 'not in LaTeX');
+
+// a quoted path in a Typst file names the project file ⌘-click opens
+const files = new Set(['chapters/one.typ', 'figures/a.png', 'refs.bib']);
+const src = '#include "one.typ"\n#image("/figures/a.png", alt: "x")\n#bibliography("../refs.bib")\n#include "gone.typ"';
+const at = (part: string) => src.indexOf(part) + 2;
+eq(['clude', 'one.typ', 'figures/a', 'refs.bib', '"x"', 'gone'].map((part) => typstPathAt(src, at(part), 'chapters/main.typ', files)), [null, 'chapters/one.typ', 'figures/a.png', 'refs.bib', null, null], 'paths under the click');
 
 // Markdown: front matter, maths, GitHub tables and ```latex blocks are their own nodes
 const md = ['---', 'title: A', '---', '', 'Cost $5 and $6, maths $x_1$ and', '$$', '\\frac{a}{b}', '$$', '', '| a | b |', '| - | - |', '| 1 | 2 |', '', '```latex', '\\ref{x}', '```', ''].join('\n');

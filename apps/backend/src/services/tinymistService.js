@@ -63,10 +63,14 @@ const REQUESTS = new Set([
 // Tinymist's notifications the editor has no use for (the outline comes with every change)
 const QUIET = new Set(['window/logMessage', '$/progress', 'telemetry/event', 'tinymist/documentOutline', 'tinymist/preview/dispose', 'tinymist/preview/windowState']);
 
-/** Tinymist's settings: Spectrum keeps its own PDF, and the project's fonts folder and the bundled Chinese fonts are read as the compiles read them. */
+/**
+ * Tinymist's settings: Spectrum keeps its own PDF, the project's fonts folder and the bundled Chinese fonts are read as
+ * the compiles read them, and its linter runs as you type (Spectrum's editor sends no saves).
+ */
 const settings = (root) => {
   const fonts = path.join(root, 'fonts');
-  return { formatterMode: 'typstyle', exportPdf: 'never', compileStatus: 'enable', semanticTokens: 'disable', systemFonts: true, fontPaths: [fonts, CJK_FONTS_DIR].filter((dir) => existsSync(dir)) };
+  // lint: Tinymist's checks of the code (an unused variable, a set rule that does nothing) as you type, beside its errors
+  return { formatterMode: 'typstyle', exportPdf: 'never', compileStatus: 'enable', semanticTokens: 'disable', lint: { enabled: true, when: 'onType' }, systemFonts: true, fontPaths: [fonts, CJK_FONTS_DIR].filter((dir) => existsSync(dir)) };
 };
 
 // project id → its session, a promise while it starts (null: no Tinymist)
