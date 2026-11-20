@@ -14,7 +14,7 @@
 //           stops here for the user (ask before each file), which is no failure
 //   retry   { attempt, of, waitMs, streamed }   before a wait to try the provider again; streamed: the text of the
 //           try given up is to be dropped
-//   usage   { input, output, cacheRead?, cacheWrite?, total, model }   one model call's tokens, and the turn's so far
+//   usage   { input, output, cacheRead?, cacheWrite?, cost?, total, model }   one model call's tokens (and OpenRouter's cost), and the turn's so far
 //   todo    { text, link? }              a to-do the agent suggests
 //   instruction { text }                 a line the agent suggests for the project's AGENTS.md
 //   plan    { entries }                  the approved plan's steps ([{ content, status }]) after one was ticked

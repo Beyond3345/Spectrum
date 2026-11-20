@@ -233,3 +233,27 @@ test('a server with no preset speaks the format its address names, with the effo
   assert.equal(chat.message.content, 'from Chat');
   assert.deepEqual([seen.at(-1).path, seen.at(-1).body.reasoning_effort], ['/v1/chat/completions', 'low']);
 });
+
+test('OpenRouter’s reported cost reaches the usage, streamed and whole, with the upstream charge on the user’s own key; another server’s is not read', async () => {
+  // streamed: the last piece before [DONE] carries the usage and repeats the finish reason, as OpenRouter sends it
+  replies.push((res) => sse(res, [
+    delta({ role: 'assistant', content: 'Hello.' }),
+    delta({}, { finish_reason: 'stop' }),
+    { ...delta({}, { finish_reason: 'stop' }), usage: { prompt_tokens: 1200, completion_tokens: 30, prompt_tokens_details: { cached_tokens: 1000 }, cost: 0.00123, is_byok: false, cost_details: { upstream_inference_cost: null } } },
+    '[DONE]'
+  ]));
+  const { result: streamed, heard } = await call('openrouter');
+  assert.deepEqual(heard, ['Hello.']);
+  assert.deepEqual(streamed.usage, { input: 1200, output: 30, cacheRead: 1000, cost: 0.00123 });
+  assert.equal('usage' in seen[0].body, false, 'nothing to ask for: OpenRouter reports it unasked');
+  // whole, on the user's own provider key: OpenRouter's fee and what that provider charged
+  replies.push((res) => json(res, 200, { choices: [{ message: { role: 'assistant', content: 'whole' } }], usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0.0001, is_byok: true, cost_details: { upstream_inference_cost: 0.002 } } }));
+  const whole = await chatCompletion({ apiKey: 'k', endpoint: `${base}/v1/chat/completions`, provider: 'openrouter', messages: [{ role: 'user', content: 'Hi' }] });
+  assert.deepEqual(whole.usage, { input: 10, output: 2, cost: 0.0021 });
+  // a cost that is not a number is no cost, never a zero
+  replies.push((res) => json(res, 200, { choices: [{ message: { role: 'assistant', content: 'x' } }], usage: { prompt_tokens: 10, completion_tokens: 2, cost: 'free' } }));
+  assert.deepEqual((await chatCompletion({ apiKey: 'k', endpoint: `${base}/v1/chat/completions`, provider: 'openrouter', messages: [{ role: 'user', content: 'Hi' }] })).usage, { input: 10, output: 2 });
+  // a server that is not OpenRouter: its `cost` might be in any unit, so it is left alone
+  replies.push((res) => json(res, 200, { choices: [{ message: { role: 'assistant', content: 'x' } }], usage: { prompt_tokens: 10, completion_tokens: 2, cost: 5 } }));
+  assert.deepEqual((await chatCompletion({ apiKey: 'k', endpoint: `${base}/v1/chat/completions`, messages: [{ role: 'user', content: 'Hi' }] })).usage, { input: 10, output: 2 });
+});
