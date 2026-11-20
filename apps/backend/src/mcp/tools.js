@@ -277,16 +277,20 @@ const MATCHER = new vm.Script('lines.flatMap((line, i) => (test(line) ? [i] : []
 
 /**
  * The lines of the project's text files that hold the query: plain text (any case unless caseSensitive), or with
- * regex a regular expression. Returns { matches: [{ file, line, text }], more? }, the first 100. path: a file or a
- * folder to look in. Hidden and secret files are never read, nor is anything through a link. A regular expression that
- * takes over a second on one file is stopped, as one written to never finish would hold the app.
+ * regex a regular expression; wholeWord only where no letter, digit or _ touches it on either side. Returns
+ * { matches: [{ file, line, text }], more? }, the first 100. path: a file or a folder to look in. Hidden and secret
+ * files are never read, nor is anything through a link. A regular expression that takes over a second on one file is
+ * stopped, as one written to never finish would hold the app. The editor's Search in the sidebar comes here too.
  */
-export async function searchText(root, { query, regex = false, caseSensitive = false, path: within = '' } = {}) {
+export async function searchText(root, { query, regex = false, caseSensitive = false, wholeWord = false, path: within = '' } = {}) {
   if (typeof query !== 'string' || !query) throw new Error('Give text to search for.');
   let test;
-  if (regex) {
+  if (regex || wholeWord) {
     let re;
-    try { re = new RegExp(query, caseSensitive ? 'u' : 'iu'); } catch (err) { throw new Error(`Not a regular expression: ${err.message}`); }
+    const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+      re = new RegExp(wholeWord ? `(?<![\\p{L}\\p{N}_])(?:${source})(?![\\p{L}\\p{N}_])` : source, caseSensitive ? 'u' : 'iu');
+    } catch (err) { throw new Error(`Not a regular expression: ${err.message}`); }
     test = (line) => re.test(line);
   } else {
     const needle = caseSensitive ? query : query.toLowerCase();
@@ -400,8 +404,8 @@ export const TOOLS = [
   },
   {
     name: 'search_text',
-    description: 'Find text in the project’s files: file, line and the line for each match. Plain text in any case, or a regular expression with regex. path: a file or folder to look in.',
-    schema: { query: z.string(), regex: z.boolean().optional(), caseSensitive: z.boolean().optional(), path: z.string().optional() },
+    description: 'Find text in the project’s files: file, line and the line for each match. Plain text in any case, or a regular expression with regex; wholeWord for whole words only. path: a file or folder to look in.',
+    schema: { query: z.string(), regex: z.boolean().optional(), caseSensitive: z.boolean().optional(), wholeWord: z.boolean().optional(), path: z.string().optional() },
     readOnly: true,
     run: async (ctx, input) => searchText(await ctx.root(), input),
     show: (r) => ({ text: r.matches.length ? r.matches.slice(0, 20).map((m) => `${m.file}:${m.line}: ${m.text}`).join('\n') : 'No match.' })

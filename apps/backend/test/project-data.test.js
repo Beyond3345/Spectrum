@@ -457,3 +457,14 @@ test('a checkpoint shows and compares Typst and Markdown source as text', async 
   await fs.writeFile(path.join(p.path, 'main.typ'), '= Review\nTypst prose, revised.\n');
   assert.deepEqual((await compareWithCurrent(p.path, version.id)).find((c) => c.path === 'main.typ'), { path: 'main.typ', status: 'modified', added: 1, removed: 1, binary: false });
 });
+
+test('Search in the sidebar finds a phrase in the project’s text, with its file and line, as search_text does', async () => {
+  const p = await newProject('Thesis', { 'main.tex': '\\documentclass{article}\n\\input{chapters/intro}\n', 'chapters/intro.tex': 'The quick brown fox\nquickly\n', '.spectrum/notes.txt': 'quick brown\n' });
+  const search = async (query) => (await api(`/api/projects/${p.id}/search?${new URLSearchParams(query)}`)).json;
+  assert.deepEqual(await search({ q: 'quick brown' }), { ok: true, matches: [{ file: 'chapters/intro.tex', line: 1, text: 'The quick brown fox' }] });
+  assert.deepEqual((await search({ q: 'quick', word: '1' })).matches.map((m) => m.line), [1]);
+  assert.deepEqual((await search({ q: 'QUICK', case: '1' })).matches, []);
+  assert.deepEqual((await search({ q: '^quick\\w+$', regex: '1' })).matches.map((m) => m.line), [2]);
+  assert.match((await search({ q: '(', regex: '1' })).error, /Not a regular expression/);
+  assert.match((await search({ q: '' })).error, /Give text/);
+});
