@@ -130,7 +130,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Moving figures into folders and switching template write the document through a temporary file
 - The backend's tests can no longer reach the network
 - Local agents in isolation can look host names up again. Isolation refused the system's resolver, so Codex, Claude Agent, DeepSeek Harness and any other agent that uses it could not reach its provider and ended a task with a connection error
-- OpenCode 2 starts: Spectrum no longer gives it the port options that only OpenCode 1 takes
+- OpenCode is listed as unsupported for now: OpenCode 2's agent mode needs a local port of its own choosing, which isolation does not open
+- DeepSeek Harness is no longer marked experimental
 - Claude Agent keeps its temporary files in its private home, where isolation lets it write
 - The PDF menu has a line above Compile with page colour, which is a setting of the project and not one more page colour
 

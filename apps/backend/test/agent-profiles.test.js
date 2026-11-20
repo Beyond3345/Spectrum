@@ -156,25 +156,10 @@ test('Claude Agent always starts with the claude.ai sign-in hidden', { skip: nod
   assert.equal(options.env.CLAUDE_CODE_TMPDIR, path.join(dir, 'tmp'));
 });
 
-const native = process.platform === 'darwin' && process.env.SPECTRUM_NATIVE_AGENT_TESTS === '1';
-test('OpenCode gets its port flags only when its ACP mode takes them', { skip: knownFolders || (!native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.') }, async () => {
-  // a stand-in that answers its help as OpenCode 2 does: no --port, no --hostname
-  const file = await program('.opencode/bin/opencode');
-  const help = (flags) => `#!/bin/sh\ncase "$*" in *--help*) printf 'USAGE\\n  opencode acp [flags]\\nFLAGS\\n${flags}\\n';; *) exit 1;; esac\n`;
-  await fs.writeFile(file, help('  --login'), { mode: 0o755 });
-  assert.equal((await listed('opencode')).program, file, 'the stand-in, never an OpenCode installed on this computer');
-  let options = await launchOptions('opencode', { workspace: dir, home: dir });
-  assert.deepEqual(options.args, ['acp']);
-  assert.equal(options.internalPort, undefined);
-  assert.equal(options.env.OPENCODE_SERVER_PASSWORD, undefined);
-  // and as OpenCode 1 does: the port isolation opens for it, and the password of its local server
-  await fs.writeFile(file, help('  --port\\n  --hostname'), { mode: 0o755 });
-  await fs.utimes(file, new Date(), new Date(Date.now() + 60000));
-  options = await launchOptions('opencode', { workspace: dir, home: dir });
-  assert.deepEqual([options.args[0], options.args[1], options.args[3], options.args[4]], ['acp', '--port', '--hostname', '127.0.0.1']);
-  assert.equal(options.args[2], String(options.internalPort));
-  assert.ok(options.env.OPENCODE_SERVER_PASSWORD);
-  await fs.rm(file);
+test('OpenCode is listed as unsupported and never started', async () => {
+  assert.match(profileFor('opencode').unavailable, /does not run inside Spectrum’s isolation/);
+  await assert.rejects(launchOptions('opencode', { workspace: dir, home: dir }), /isolation/);
+  assert.equal(profileFor('deepseek').experimental, undefined);
 });
 
 test('Pi: the adapter is told where Pi is, with its package readable and never the home folder', { skip: nodeAdapters || knownFolders }, async () => {

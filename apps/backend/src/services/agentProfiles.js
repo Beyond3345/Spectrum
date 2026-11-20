@@ -3,11 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { DATA_DIR } from '../config/constants.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
-import { resolveExecutable, isolationAvailable, spawnAgentProcess, killAgentProcess, SYSTEM_READS } from './agentSandbox.js';
+import { resolveExecutable, isolationAvailable, SYSTEM_READS } from './agentSandbox.js';
 import { safeJoin } from '../utils/pathUtils.js';
 // each adapter's whole tree, every package pinned with its checksum (npm install --package-lock-only from the version)
 import codexLock from '../data/adapters/codex/package-lock.json' with { type: 'json' };
@@ -31,7 +30,7 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  * startable.
  */
 export const PROFILES = [
-  { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', windows: 'OpenCode does not run inside Windows isolation yet. Its runtime needs to read the top of drive C:, and its internal server has not passed Spectrum’s Windows checks. Spectrum never runs an agent outside isolation.' },
+  { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', unsupported: 'OpenCode 2 does not run inside Spectrum’s isolation: its agent mode starts a private server on a port it chooses itself, which isolation does not open. Spectrum never runs an agent outside isolation.' },
   { id: 'codex', name: 'Codex', command: 'codex-acp', args: [], url: 'https://github.com/agentclientprotocol/codex-acp', keys: ['OPENAI_API_KEY'], login: ['.codex/auth.json'], signIn: 'codex login', adapter: { package: '@agentclientprotocol/codex-acp', version: '2.7.0', bin: 'dist/index.js', integrity: 'sha512-fFFU/tV5DltBzN4cZIh5tJEWGTZFXbwHU7I5RxPkmrGraw3jhAIuvTeudYwK3wAbV311WgIi7qONl2I8uRV2jw==', official: true, publisher: ACP_PROJECT, size: { arm64: '370 MB', x64: '395 MB' } }, windows: NODE_ON_WINDOWS },
   // never “Claude Code”: an API key only, with the claude.ai sign-in hidden (Anthropic's Agent SDK terms)
   { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
@@ -42,7 +41,7 @@ export const PROFILES = [
   { id: 'hermes', name: 'Hermes', command: 'hermes', args: ['acp'], url: 'https://hermes-agent.nousresearch.com/docs/user-guide/features/acp', keys: ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'], login: ['.hermes/config.yaml', '.hermes/auth.json', '.hermes/.env'], signIn: 'hermes model', install: 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash' },
   { id: 'qoder', name: 'Qoder', command: 'qoder', alt: ['qodercli'], args: ['--acp'], url: 'https://docs.qoder.com/cli/acp', keys: ['QODER_PERSONAL_ACCESS_TOKEN'], login: [], install: 'npm install -g @qoder-ai/qodercli', app: { name: 'Qoder' }, experimental: 'The ACP registry has paused Qoder because its ACP start failed in some releases. Test checks the version you have.' },
   { id: 'pi', name: 'Pi', command: 'pi-acp', args: [], url: 'https://github.com/svkozak/pi-acp', keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY'], login: ['.pi/agent/auth.json', '.pi/agent/models.json', '.pi/agent/settings.json'], signIn: 'pi', then: 'Type /login.', adapter: { package: 'pi-acp', version: '0.0.34', bin: 'dist/index.js', integrity: 'sha512-MrCp37UbpUzkTkzTIMJQf1RYrT+kr4fgGDGFoLmBN26UupuCZp0XxVIY+7XYsMo3yDnzDeZUJ0jPyM3Si6Bkkg==', official: false, publisher: 'svkozak', size: { arm64: '7 MB', x64: '7 MB' } }, needs: { name: 'Pi', command: 'pi', install: 'npm install -g @earendil-works/pi-coding-agent', env: 'PI_ACP_PI_COMMAND' }, experimental: 'Uses a community adapter. Pi edits files and runs commands itself, so Spectrum does not show them as they happen, and Spectrum’s tools do not reach it.', windows: NODE_ON_WINDOWS },
-  { id: 'deepseek', name: 'DeepSeek Harness', command: 'dsh', args: ['--profile', 'acp'], url: 'https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/acp', keys: ['DEEPSEEK_API_KEY'], login: [], install: 'npm install -g @deepseek-ai/dsh@next', app: { name: 'DeepSeek Harness', bin: 'Contents/Resources/runtime/cli/bin/dsh' }, experimental: 'A pre-release on npm. Its ACP mode is built for automation, so the workspace shows no plans, questions or terminals for it.' },
+  { id: 'deepseek', name: 'DeepSeek Harness', command: 'dsh', args: ['--profile', 'acp'], url: 'https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/acp', keys: ['DEEPSEEK_API_KEY'], login: [], install: 'npm install -g @deepseek-ai/dsh@next', app: { name: 'DeepSeek Harness', bin: 'Contents/Resources/runtime/cli/bin/dsh' } },
   // the adapter's own default lets ZCode act without asking, so it always starts in build mode
   { id: 'zcode', name: 'ZCode', command: 'zcode-acp-server', args: [], url: 'https://github.com/william0wang/zcode-acp', keys: [], login: ['.zcode/v2/config.json', '.zcode/v2/credentials.json'], appSignIn: true, adapter: { package: 'zcode-acp-server', version: '0.76.3', bin: 'dist/cli.js', integrity: 'sha512-ClEiDU4z+TQLGM0RselWe7qw7m5WuRQoapoKng/L1Bkpbdkn/k5k5/BCU4INVHSyvF374Wvyny10GX56axuctQ==', official: false, publisher: 'william0wang', size: { arm64: '330 MB', x64: '330 MB' } }, needs: { name: 'ZCode', command: 'zcode', app: 'ZCode', install: 'Install the ZCode app from Z.ai.', env: 'ZCODE_BIN' }, experimental: 'Uses a community adapter that drives ZCode’s internal app server. The adapter also installs about 330 MB of packages from other publishers, including a community DeepSeek harness. Spectrum always starts it in build mode, as its own default lets it act without asking.', windows: NODE_ON_WINDOWS },
   { id: 'workbuddy', name: 'WorkBuddy', command: '', args: [], url: 'https://open.workbuddy.cn/en/docs/openapi', keys: [], login: [], planned: 'Planned. WorkBuddy needs a registered application secret that cannot live in a desktop app, so it will connect through its official platform with remote support in a later release.' }
@@ -86,7 +85,7 @@ export function recordTest(id, result, { setup, fromSession } = {}) {
 export function profileFor(id) {
   const profile = PROFILES.find((p) => p.id === id);
   if (!profile) throw Object.assign(new Error('Unknown agent.'), { statusCode: 400 });
-  const unavailable = profile.planned || (process.platform === 'win32' && profile.windows) || undefined;
+  const unavailable = profile.planned || profile.unsupported || (process.platform === 'win32' && profile.windows) || undefined;
   return { ...profile, key: profile.keys[0] || '', unavailable };
 }
 
@@ -222,29 +221,6 @@ export async function findProgram(profile, saved = {}) {
   return found && result(found.real, 'found', found.dir);
 }
 
-// what `<program> acp --help` says of --port, for the program as it is now
-const acpHelps = new Map();
-/**
- * Whether this OpenCode's ACP mode takes --port and --hostname, by its own help, read in isolation as every run of an
- * agent is. A program that does not answer is taken for the newer kind, which has no such flags.
- */
-async function acpTakesPort(options) {
-  const stamp = `${options.program}:${(await fs.stat(options.program).catch(() => null))?.mtimeMs}`;
-  if (!acpHelps.has(stamp)) {
-    acpHelps.set(stamp, (async () => {
-      const child = await spawnAgentProcess({ ...options, args: [...options.args, '--help'] });
-      let said = '';
-      for (const out of [child.stdout, child.stderr]) out.on('data', (chunk) => { if (said.length < 65536) said += chunk; });
-      child.stdin.end();
-      const timer = setTimeout(() => killAgentProcess(child), 15000);
-      await new Promise((resolve) => child.once('close', resolve).once('error', resolve));
-      clearTimeout(timer);
-      return /--port\b/.test(said);
-    })().catch(() => false));
-  }
-  return acpHelps.get(stamp);
-}
-
 /** Everything a session or a Test starts the agent with, through spawnAgentProcess(): its program, arguments, key and folders. */
 export async function launchOptions(id, { workspace, home: agentHomeDir, forbiddenRoots = [] }) {
   const profile = profileFor(id);
@@ -272,18 +248,6 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
     runtimePaths: [...new Set([...(saved.runtimePaths || []), ...found.reads, ...found.needs?.reads || []])], forbiddenRoots, env,
     program: found.program, secrets: [saved.apiKey].filter(Boolean), setup: setupOf(saved)
   };
-  // OpenCode 1 serves its ACP mode from a local port, which isolation opens for it alone. OpenCode 2 needs none and
-  // refuses the flags.
-  if (id === 'opencode' && await acpTakesPort(options)) {
-    const server = createServer();
-    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    const port = server.address().port;
-    await new Promise((resolve) => server.close(resolve));
-    options.internalPort = port;
-    options.args = [...options.args, '--port', String(port), '--hostname', '127.0.0.1'];
-    options.env.OPENCODE_SERVER_PASSWORD = crypto.randomBytes(32).toString('hex');
-    options.secrets.push(options.env.OPENCODE_SERVER_PASSWORD);
-  }
   return options;
 }
 
