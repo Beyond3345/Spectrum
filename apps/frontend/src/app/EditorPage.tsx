@@ -151,7 +151,8 @@ import { applyEdits, crossReferred, newName, renameEdits } from '../editor/lsp/r
 import { syntaxErrors } from '../editor/lsp/syntax';
 import { outlineDelay, symbolHeadings } from '../editor/lsp/outline';
 import { ENGINES_CHANGED, LANGUAGES_CHANGED, PROJECT_DATA_CHANGED, VERSIONS_CHANGED, docKind, errorText, figureSnippet, isDeletion, isDocument, isSource, keptMainFile, NO_ANSWER, withRetries, type DocKind } from '../editor/shared';
-import { languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions } from '../editor/languages';
+import { definitionCompletions, languageCompartment, languageFor, loadTypst, referenceCompletions, typstCompletions, typstDefinitions } from '../editor/languages';
+import type { TypstDefinition } from '../editor/languages';
 import { numberTypstOutline, parseMarkdownOutline, parseTypstOutline, typstDocumentOutline } from '../editor/outlines';
 import type { TypstNumbers } from '../editor/outlines';
 import { autocompletePrompt, docLanguage } from '../../../backend/src/utils/docLanguage.js';
@@ -2497,6 +2498,7 @@ function Editor({ projectId }: { projectId: string }) {
         override: [
           latexCompletionSource(() => projectScanRef.current, () => activeRef.current),
           tinymistCompletions(() => tinymistRef.current, typstCompletions({ path: () => activeRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' })),
+          definitionCompletions({ path: () => activeRef.current, defs: () => (tinymistRef.current?.available ? [] : typstDefsRef.current), version: () => compileOptionsRef.current.typstVersion ?? '' }),
           referenceCompletions({ path: () => activeRef.current, keys: () => projectScanRef.current.bib.map((entry) => entry.key), labels: () => typstLabelsRef.current, version: () => compileOptionsRef.current.typstVersion ?? '' }),
           zoteroCompletionSource({
             enabled: () => loadSettings().zoteroCompletion,
@@ -3061,10 +3063,13 @@ function Editor({ projectId }: { projectId: string }) {
   const [typstLabels, setTypstLabels] = useState<string[]>([]);
   const typstLabelsRef = useRef<string[]>([]);
   typstLabelsRef.current = typstLabels;
+  // and its #let functions and values, which only Tinymist would complete otherwise
+  const typstDefsRef = useRef<TypstDefinition[]>([]);
   const includeFileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file' && /\.typ$/i.test(i.path) && !conflicts[i.path]).map((i) => i.path)), [items, conflicts]);
   useEffect(() => {
     if (!includeFileSet.size) {
       setTypstLabels([]);
+      typstDefsRef.current = [];
       return;
     }
     let live = true;
@@ -3073,6 +3078,7 @@ function Editor({ projectId }: { projectId: string }) {
       const labels = new Set<string>();
       for (const text of texts) for (const m of text.matchAll(/<([A-Za-z0-9_:.-]+)>/g)) labels.add(m[1]);
       setTypstLabels([...labels]);
+      typstDefsRef.current = texts.flatMap(typstDefinitions);
     });
     return () => {
       live = false;

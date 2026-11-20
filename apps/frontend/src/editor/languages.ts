@@ -80,6 +80,37 @@ export function referenceCompletions({ path, keys, labels, version }: { path: ()
   };
 }
 
+/** A Typst definition: a #let name, a function when it takes arguments. */
+export type TypstDefinition = { name: string; fn: boolean };
+const LET = /(?:^|[^\p{L}\p{N}_-])let\s+([\p{L}_][\p{L}\p{N}_-]*)\s*(\(|=)/gu;
+
+/** The #let definitions of Typst source (comments and all: a commented one is rare and does no harm offered). */
+export const typstDefinitions = (text: string): TypstDefinition[] => [...text.matchAll(LET)].map((m) => ({ name: m[1], fn: m[2] === '(' }));
+
+/**
+ * The project's own Typst functions and values (defs: from its .typ files) after # in markup, or in a call's arguments
+ * on that line. Typst's own completions list the open file's, so those are left out where they run (version).
+ * ponytail: code mode is guessed from the line, not the syntax tree, so a #{ … } block over several lines gets none
+ */
+export function definitionCompletions({ path, defs, version }: { path: () => string; defs: () => TypstDefinition[]; version: () => string }) {
+  return (context: CompletionContext): CompletionResult | null => {
+    if (docKind(path()) !== 'typst') return null;
+    const word = context.matchBefore(/[\p{L}_][\p{L}\p{N}_-]*$/u) ?? (context.explicit ? { from: context.pos, to: context.pos, text: '' } : null);
+    if (!word) return null;
+    const line = context.state.doc.lineAt(context.pos);
+    const before = context.state.sliceDoc(line.from, word.from);
+    if (!before.endsWith('#') && !/#[^\s]*[({][^)}]*$/.test(before)) return null;
+    const own = ownCompletions(version()) ? new Set(typstDefinitions(context.state.doc.toString()).map((d) => d.name)) : new Set<string>();
+    const seen = new Set<string>();
+    const options = defs().flatMap(({ name, fn }) => {
+      if (own.has(name) || seen.has(name)) return [];
+      seen.add(name);
+      return [{ label: name, type: fn ? 'function' : 'variable', detail: 'this project' }];
+    });
+    return options.length ? { from: word.from, options, validFor: /^[\p{L}\p{N}_-]*$/u } : null;
+  };
+}
+
 const latexLanguage = (): Extension => [latex(), syntaxHighlighting(latexHighlight), foldService.of(latexFoldService), mathsWrap];
 
 const mathsTag = Tag.define();
