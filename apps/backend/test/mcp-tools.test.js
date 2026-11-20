@@ -286,15 +286,40 @@ test('a scratch compile takes the Windows preview’s TeX settings from its envi
   assert.deepEqual(await fs.readdir(draft), ['main.tex'], 'nothing was written beside it');
 });
 
-test('an untrusted compile runs no Biber, which reads and writes wherever the document says', { skip: !hasTeX && 'Needs TeX.' }, async () => {
-  const { compileFolder } = await import('../src/services/compileService.js');
-  const outside = path.join(tmp, 'outside-bib', 'secret.bib').split(path.sep).join('/');
-  await write(outside, '@book{secret, title = {SECRET-BIB}, author = {A}, year = {2020}}\n');
+// the options a Windows compile of an agent's draft takes (agentService's compileOptions, compileIsolated's)
+const { findExecutable } = await import('../src/services/compileService.js');
+const helpers = hasTeX && (await Promise.all(['biber', 'makeindex', 'latexmk'].map((tool) => findExecutable(tool)))).every(Boolean);
+test('a Windows draft compile runs the user’s compile’s helpers, Biber and makeindex, with no shell escape', { skip: !helpers && 'Needs TeX with Biber, makeindex and latexmk.' }, async () => {
+  const { PREVIEW_TEX_ENV } = await import('../src/services/agentSessionService.js');
   const draft = path.join(tmp, 'biber-draft');
-  await write(path.join(draft, 'main.tex'), `\\documentclass{article}\\usepackage[backend=biber]{biblatex}\\addbibresource{${outside}}\\begin{document}\\cite{secret}\\printbibliography\\end{document}\n`);
-  const result = await compileFolder({ root: draft, mainFile: 'main.tex', engine: 'pdflatex', untrusted: true, env: { openin_any: 'p', openout_any: 'p', shell_escape: 'f' } });
-  assert.match(result.log, /Biber doesn’t run for a preview/);
-  assert.doesNotMatch(result.log, /Found BibTeX data source/);
+  await write(path.join(draft, 'refs.bib'), '@book{known, title = {A Known Book}, author = {Author, A.}, year = {2020}}\n');
+  await write(path.join(draft, 'main.tex'), '\\documentclass{article}\\usepackage[backend=biber]{biblatex}\\addbibresource{refs.bib}\\usepackage{makeidx}\\makeindex\n\\begin{document}Hi\\index{hi} \\cite{known}.\\immediate\\write18{echo WRITE18-RAN}\\printbibliography\\printindex\\end{document}\n');
+  for (const engine of ['pdflatex', 'latexmk']) {
+    const state = path.join(tmp, `biber-state-${engine}`);
+    const result = await tools.compile(draft, state, { main: 'main.tex', engine }, { untrusted: true, env: PREVIEW_TEX_ENV });
+    const log = await fs.readFile(path.join(state, 'last.log'), 'utf8');
+    assert.equal(result.ok, true, log);
+    assert.deepEqual(result.undefined, [], `${engine}: Biber resolved the citation`);
+    assert.match(log, /Found BibTeX data source/, engine);
+    assert.doesNotMatch(log, /makeindex didn’t run/, engine);
+    assert.doesNotMatch(log, /write18 enabled|WRITE18-RAN\n/, `${engine}: no shell escape`);
+  }
+  assert.deepEqual((await fs.readdir(draft)).sort(), ['main.tex', 'refs.bib'], 'nothing was written beside it');
+});
+
+test('the Windows preview of a draft takes the user’s compile’s engines, latexmk and Tectonic too', async () => {
+  const { windowsPreviewRefusal } = await import('../src/services/agentSessionService.js');
+  const live2025 = 'pdfTeX 3.141592653-2.6-1.40.27 (TeX Live 2025)', live2026 = 'pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)';
+  for (const engine of ['auto', 'pdflatex', 'xelatex', 'lualatex', 'latexmk']) {
+    assert.equal(windowsPreviewRefusal('main.tex', engine, live2025), null, engine);
+    assert.equal(windowsPreviewRefusal('main.tex', engine, 'MiKTeX-pdfTeX 4.20 (MiKTeX 25.4)'), null, engine);
+    assert.match(windowsPreviewRefusal('main.tex', engine, live2026), /TeX Live 2025 or earlier/, engine);
+    assert.match(windowsPreviewRefusal('main.tex', engine, ''), /TeX Live 2025 or earlier/, `${engine}: a TeX that would not say`);
+  }
+  assert.equal(windowsPreviewRefusal('main.tex', 'tectonic', null), null);
+  assert.equal(windowsPreviewRefusal('main.tex', 'tectonic', live2026), null, 'Tectonic is not TeX Live');
+  assert.equal(windowsPreviewRefusal('main.tex', 'auto', null), null, 'no TeX installed: Auto takes Tectonic');
+  assert.match(windowsPreviewRefusal('paper.typ', 'auto', null), /LaTeX drafts only/);
 });
 
 test('the Windows preview compiles only with a TeX that can be told to read only the draft', async () => {

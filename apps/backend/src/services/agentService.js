@@ -541,8 +541,8 @@ export async function runToolAgent({
     await copy.done;
     return work;
   };
-  // Windows has no sandbox for a compile: the agent's draft is compiled with no shell escape and none of the Perl and
-  // Lua helpers TeX's own limits don't reach (Biber among them), as a local agent's preview is there
+  // Windows has no sandbox for a compile: the agent's draft is compiled as the user's own is there (Biber and the other
+  // helpers included), but with no shell escape and TeX told to read and write only below it, as a local agent's preview is
   const windows = process.platform === 'win32';
   const compileOptions = { signal, ...(windows && { untrusted: true, env: (await import('./agentSessionService.js')).PREVIEW_TEX_ENV }) };
   // the last compile the agent ran: of which proposals, and how it went
