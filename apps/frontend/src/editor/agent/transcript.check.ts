@@ -228,6 +228,7 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
   eq(view.waiting, 'The provider is busy. Retrying in 4 s, 2 of 3…', 'the wait');
   eq(lastOf(view.items)?.type, 'tool', 'the half answer is gone');
   eq(retryLine({ attempt: 3, of: 3, waitMs: 0 }), 'The provider is busy. Trying again, 3 of 3…', 'no wait to speak of');
+  eq(retryLine({ attempt: 2, of: 3, waitMs: 1000, dropped: true }), 'The connection dropped. Retrying in 1 s, 2 of 3…', 'a dropped connection says so');
 
   // the edit with its diff, a compile that says how it went, a message steered in, a to-do, then the result
   const rest = [

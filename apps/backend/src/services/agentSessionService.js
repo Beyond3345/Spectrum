@@ -965,7 +965,9 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       const child = r.child;
       if (!r.cancelled && child?.pid && child.exitCode === null && child.signalCode === null) await timeout(new Promise((resolve) => child.once('exit', resolve)), 500, 'still running').catch(() => {});
       const told = r.status === 'failed' && child && (child.exitCode !== null || child.signalCode !== null);
-      outcome = r.cancelled ? ['interrupted', 'Stopped.'] : ['failed', told ? undefined : err.message];
+      // ACP's "authentication required": the agent has no key or login inside isolation, which its own words don't say how to give
+      const signIn = err.code === -32000 ? ' Add its API key, or copy its login, in Settings › Agents.' : '';
+      outcome = r.cancelled ? ['interrupted', 'Stopped.'] : ['failed', told ? undefined : `${err.message}${signIn}`];
       disconnect(r);
     }
     finally {

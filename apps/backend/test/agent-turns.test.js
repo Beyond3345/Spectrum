@@ -122,6 +122,14 @@ test('the agent’s usage reaches the session’s events, which the transcript d
   assert.ok(!run.events.some((e) => e.data?.sessionUpdate === 'usage_update'), 'once, as usage');
 });
 
+test('a task refused for want of a sign-in says where to add the key', { skip, timeout: 120000 }, async () => {
+  const { open, turn } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' }, { args: ['--auth-on-prompt'] });
+  await turn(run, 'anything', 'failed');
+  const last = run.events.filter((e) => e.type === 'state').at(-1);
+  assert.match(JSON.stringify(last), /Authentication required Add its API key, or copy its login, in Settings › Agents\./);
+});
+
 // r-agentic-08, A-15: a review session's agent waits between turns instead of starting again for each
 test('a finished turn’s agent is kept for the next, and starts again when it stopped, its setup changed or the turn failed', { skip, timeout: 120000 }, async () => {
   const { open, turn, closeAgentRun, testAgent, stored } = await setup();
