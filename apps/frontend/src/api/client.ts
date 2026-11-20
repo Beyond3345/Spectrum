@@ -2103,7 +2103,14 @@ export interface LocalAgent {
   adapter?: { package: string; version: string; official: boolean; publisher: string; size: string; folder: string; platform: string; installed?: string };
   test?: AgentTest;
   state: AgentState; setUp: boolean;
+  network: AgentNetwork;
 }
+/**
+ * Where an agent may connect: 'hosts' (its provider's, the scholarly sites of Spectrum's tools and the ones the user
+ * added) or 'any' public HTTPS host; enforced: whether this computer can hold an agent to a list (a Mac can); sure:
+ * whether the agent's own documentation was sure enough for it to start held to its list
+ */
+export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools: string[]; hosts: string[]; enforced: boolean; sure: boolean }
 /**
  * type 'update' carries an ACP session/update; 'todo' a to-do the agent suggested ({ text, link? }); 'reset' the paths a
  * rejection put back in the draft. first: a stored event that joins streamed pieces names its first piece's id, and
@@ -2133,7 +2140,7 @@ export interface LocalAgentSession {
 }
 export const listLocalAgents = () => request<{ ok: boolean; agents: LocalAgent[] }>('/api/agents');
 /** Only what changed: command '' finds the program automatically again; apiKey '' removes the saved key. */
-export const configureLocalAgent = (id: string, value: { command?: string; args?: string[]; runtimePaths?: string[]; apiKey?: string; keyEnv?: string }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
+export const configureLocalAgent = (id: string, value: { command?: string; args?: string[]; runtimePaths?: string[]; apiKey?: string; keyEnv?: string; network?: { mode?: 'hosts' | 'any'; hosts?: string[] } }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
 export const importLocalAgentLogin = (id: string) => request<{ ok: boolean; files: number }>(`/api/agents/${id}/import-login`, json('POST', {}));
 /** Starts the agent in isolation without a prompt; resolves to its listing with the result. */
 export const testLocalAgent = (id: string) => request<{ ok: boolean; agent: LocalAgent }>(`/api/agents/${id}/test`, json('POST', {}));
@@ -2150,6 +2157,8 @@ export const stopLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/
 /** The workspace left the session: its agent, if waiting between turns, stops. */
 export const closeLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/close`, json('POST', {}));
 export const answerLocalAgent = (id: string, requestId: string, answer: unknown) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/answer`, json('POST', { requestId, answer }));
+/** Allows the session's agent a host it was refused, from its next try. */
+export const allowLocalAgentHost = (id: string, host: string) => request<{ ok: boolean; host: string }>(`/api/agent-sessions/${id}/allow-host`, json('POST', { host }));
 export const setLocalAgentOption = (id: string, configId: string, value: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/option`, json('POST', { configId, value }));
 export const getLocalAgentChanges = (id: string) => request<{ ok: boolean; changes: AgentChange[] }>(`/api/agent-sessions/${id}/changes`);
 export const recoverLocalAgentApply = (id: string, recoveryId: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/recover`, json('POST', { recoveryId }));
@@ -2317,10 +2326,12 @@ export const transferWithAgent = (payload: { sourceProjectId: string; targetTemp
   request<{ newProjectId: string }>('/api/transfer/agent', json('POST', payload));
 
 /** Settings › Agents › MCP servers: the user's own, for the Spectrum agent. */
-export type McpServer = { name: string; command: string; args: string[]; on: boolean; checked: boolean };
+/** hosts: the ones it may reach; anyHost: every public HTTPS host instead; refused: hosts it asked for that its list leaves out */
+export type McpServer = { name: string; command: string; args: string[]; on: boolean; checked: boolean; hosts: string[]; anyHost: boolean; refused: string[] };
 export type McpTool = { name: string; description: string; readOnly: boolean };
 export const listMcpServers = () => request<{ servers: McpServer[] }>('/api/mcp-servers');
-export const addMcpServer = (server: { name: string; command: string; args: string[] }) => request<{ ok: boolean }>('/api/mcp-servers', json('POST', server));
+export const addMcpServer = (server: { name: string; command: string; args: string[]; hosts?: string[]; anyHost?: boolean }) => request<{ ok: boolean }>('/api/mcp-servers', json('POST', server));
 export const removeMcpServer = (name: string) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
 export const checkMcpServer = (name: string) => request<{ tools: McpTool[] }>(`/api/mcp-servers/${encodeURIComponent(name)}/check`, json('POST'));
+export const setMcpServerNetwork = (name: string, network: { hosts?: string[]; anyHost?: boolean }) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, json('PUT', network));
 export const setMcpServerOn = (name: string, on: boolean) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, json('PUT', { on }));

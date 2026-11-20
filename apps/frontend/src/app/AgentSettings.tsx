@@ -12,7 +12,7 @@ import { pickFile } from './desktop';
 import { IS_WINDOWS, tildify } from './platform';
 import { toast } from './Toast';
 import { useSettings } from './settings';
-import McpServers from './McpServers';
+import McpServers, { HostList } from './McpServers';
 
 /** The card the agent workspace asks Settings › Agents to open (its agent, when that isn't ready), read once. */
 export const AGENT_CARD_KEY = 'spectrum-agent-card';
@@ -516,6 +516,48 @@ function AgentCard({
                       </button>
                     )}
                   </div>
+                </div>
+              )}
+              {!a.planned && (
+                <div className="agent-section">
+                  <h4 id={`${id}-network`}>Network</h4>
+                  {a.network.enforced ? (
+                    <>
+                      <Select
+                        labelId={`${id}-network`}
+                        value={a.network.mode}
+                        options={[
+                          ['hosts', 'Listed hosts only'],
+                          ['any', 'Any host']
+                        ]}
+                        onChange={(mode) => mode !== a.network.mode && act('Saving…', () => configureLocalAgent(a.id, { network: { mode: mode as 'hosts' | 'any' } }))}
+                      />
+                      <div className="field-hint">
+                        {a.network.mode === 'hosts'
+                          ? `${a.name} reaches only the hosts below, over HTTPS. Another host it asks for is refused and shown in its session, where you can allow it.`
+                          : `${a.name} reaches any public host over HTTPS, so what it reads could be sent anywhere. Listed hosts only holds it to the hosts below.`}
+                      </div>
+                      {!a.network.sure && (
+                        <div className="field-hint">
+                          {a.name}’s own documentation does not say enough for Spectrum to be sure it works held to a list, so it starts on Any host. If you choose the
+                          list and a task then fails, come back to Any host.
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="field-hint">
+                      On Windows, isolation opens every public address to an agent or none, so {a.name} is not held to a list of hosts yet. The hosts below are kept for a
+                      Mac.
+                    </div>
+                  )}
+                  <div className="field-hint">
+                    Its provider: <span className="mono">{a.network.provider.join(', ')}</span>
+                  </div>
+                  <div className="field-hint">
+                    Spectrum’s tools, for searching the literature and checking references: <span className="mono">{a.network.tools.join(', ')}</span>
+                  </div>
+                  <div className="field-hint">{a.network.hosts.length ? 'Added by you:' : 'Add a host of your own, such as a gateway your provider’s traffic goes through:'}</div>
+                  <HostList hosts={a.network.hosts} label={`A host ${a.name} may reach`} disabled={!!busy} onChange={(hosts) => act('Saving…', () => configureLocalAgent(a.id, { network: { hosts } }), false)} />
                 </div>
               )}
               {a.adapter && (
