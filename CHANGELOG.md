@@ -2,6 +2,21 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.7.0 (not released)
+
+### Added
+
+- Search in the sidebar finds text in the project's files too, with Match case, Whole words and Regular expression, and a click opens the line with the match selected
+- A LaTeX compile's errors are underlined in the source, at the command TeX stopped after or along the line, beside TexLab's own
+- A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
+- Go to a file or heading (⌘P) opens a project file or an Outline heading by its name
+- Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
+
+### Changed
+
+- Tools opens on Logs when the last compile had errors
+- The agents' text search can match whole words
+
 ## 2.6.0 (21 November 2026)
 
 ### Security
