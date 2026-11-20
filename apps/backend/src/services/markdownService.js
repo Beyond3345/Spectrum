@@ -1,6 +1,7 @@
 import os from 'os';
 import path from 'path';
 import { existsSync, promises as fs } from 'fs';
+import { crc32 } from 'zlib';
 import { fileURLToPath } from 'url';
 import { CJK_FONTS_DIR } from '../config/constants.js';
 import { chineseForms } from '../language/detect.js';
@@ -28,6 +29,11 @@ const APA_CSL = fileURLToPath(new URL('../data/csl/apa.csl', import.meta.url));
 // Spectrum's own Lua filter for @fig:x, @tbl:x, @eq:x and @sec:x (data/pandoc/crossref.lua), run before --citeproc
 const CROSSREF = fileURLToPath(new URL('../data/pandoc/crossref.lua', import.meta.url));
 const crossrefArgs = () => (existsSync(CROSSREF) ? ['--lua-filter=' + CROSSREF] : []);
+// a ```mermaid block's picture, drawn by the editor with the composer's Mermaid, in the project's hidden folder (which
+// Typst, rooted at the project, reads too): <sha1 of its code, whitespace collapsed>.png, which crossref.lua looks for
+const MERMAID_DIR = ['.spectrum', 'mermaid'];
+const mermaidEnv = (projectRoot) => ({ ...process.env, SPECTRUM_MERMAID_DIR: path.join(projectRoot, ...MERMAID_DIR) });
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const CJK_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const HANGUL = /\p{Script=Hangul}/u;
 // a front matter field with a value (an empty one is read as [])
@@ -344,11 +350,11 @@ async function pandocProblem(kind) {
 }
 
 /** Runs pandoc and collects its log; nothing about stopping is decided here. */
-async function runPandoc(args, cwd) {
+async function runPandoc(args, cwd, env = process.env) {
   const log = collector();
   let run;
   try {
-    run = await runSpawn(await pandocPath(), args, cwd, log.push, process.env);
+    run = await runSpawn(await pandocPath(), args, cwd, log.push, env);
   } catch (err) {
     return { code: null, timedOut: false, log: log.text(), error: err };
   }
@@ -389,7 +395,8 @@ export async function markdownToLatex({ projectRoot, absMain, mainFile, generate
     sandboxed ? '--sandbox' : '--extract-media=' + path.join(generatedDir, 'media'),
     '-o', generatedFile
   ];
-  const run = await runPandoc(args, path.dirname(absMain));
+  // a new project from the .md keeps its Mermaid blocks as code (their pictures are this project's)
+  const run = await runPandoc(args, path.dirname(absMain), sandboxed ? process.env : mermaidEnv(projectRoot));
   if (vetted) run.log = vetted.log + run.log;
   let text = await fs.readFile(generatedFile, 'utf8').catch(() => null);
   if (run.code !== 0 || text === null) return { ...pandocFailure(run, mainFile), ...(text === null && !run.error && !run.timedOut && { error: PANDOC_UNREADABLE }) };
@@ -509,7 +516,7 @@ export async function markdownToTypst({ projectRoot, absMain, mainFile, generate
     '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter),
     '-o', generatedFile
   ];
-  const run = await runPandoc(args, path.dirname(absMain));
+  const run = await runPandoc(args, path.dirname(absMain), mermaidEnv(projectRoot));
   let text = await fs.readFile(generatedFile, 'utf8').catch(() => null);
   if (run.code !== 0 || text === null) return { ...pandocFailure(run, mainFile), ...(text === null && !run.error && !run.timedOut && { error: PANDOC_UNREADABLE }) };
   text = typstCjkFont(source, meta) + rootRelativeImages(text, projectRoot, path.dirname(absMain));
@@ -601,9 +608,38 @@ export async function pandocDocx(projectRoot, absMain, output) {
     const vetted = await vettedMarkdown(projectRoot, absMain, json);
     if (!vetted.ok) return { ok: false, log: vetted.log };
     const resources = '--resource-path=' + [path.dirname(absMain), projectRoot].join(path.delimiter);
-    const run = await runPandoc([json, '--from=json', ...crossrefArgs(), '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), ...cslArgs(meta), resources, '-o', output], path.dirname(absMain));
+    const run = await runPandoc([json, '--from=json', ...crossrefArgs(), '--citeproc', ...(await bibliographyArgs(projectRoot, meta)), ...cslArgs(meta), resources, '-o', output], path.dirname(absMain), mermaidEnv(projectRoot));
     return { ok: run.code === 0 && !run.timedOut && !run.error, log: vetted.log + run.log };
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
+}
+
+/**
+ * Saves the editor's pictures of a document's ```mermaid blocks ({ sha1: PNG bytes }, each drawn at 3 × its size and
+ * marked 288 dpi so it prints at that size) and answers which of `wanted` have none yet. ponytail: pictures of blocks
+ * since changed stay in .spectrum/mermaid; a sweep by age if the folder ever grows large
+ */
+export async function saveMermaid(projectRoot, wanted, images) {
+  const dir = path.join(projectRoot, ...MERMAID_DIR);
+  await ensureDir(dir);
+  for (const [hash, png] of Object.entries(images)) await fs.writeFile(path.join(dir, hash + '.png'), withDpi(png, 288));
+  return wanted.filter((hash) => !existsSync(path.join(dir, hash + '.png')));
+}
+
+/** A PNG with a pHYs chunk (after IHDR) saying `dpi`, which pandoc, TeX, Typst and Word read as its print size. */
+export function withDpi(png, dpi) {
+  if (!png.subarray(0, 8).equals(PNG) || png.toString('latin1', 12, 16) !== 'IHDR') throw new Error('Not a PNG.');
+  const end = 8 + 12 + png.readUInt32BE(8);
+  const body = Buffer.alloc(13);
+  body.write('pHYs', 0, 'latin1');
+  const perMetre = Math.round(dpi / 0.0254);
+  body.writeUInt32BE(perMetre, 4);
+  body.writeUInt32BE(perMetre, 8);
+  body[12] = 1;
+  const chunk = Buffer.alloc(21);
+  chunk.writeUInt32BE(9, 0);
+  body.copy(chunk, 4);
+  chunk.writeUInt32BE(crc32(body), 17);
+  return Buffer.concat([png.subarray(0, end), chunk, png.subarray(end)]);
 }

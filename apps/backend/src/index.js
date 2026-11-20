@@ -45,6 +45,7 @@ import { registerZoteroRoutes } from './routes/zotero.js';
 import { registerEngineRoutes } from './routes/engines.js';
 import { registerUniverseRoutes } from './routes/universe.js';
 import { registerJyutpingRoutes } from './routes/jyutping.js';
+import { registerMarkdownRoutes } from './routes/markdown.js';
 import { seedTemplates, syncTemplates } from './services/templateService.js';
 import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectService.js';
 import { migrateToV2 } from './services/mirrorService.js';
@@ -161,6 +162,7 @@ registerZoteroRoutes(fastify);
 registerEngineRoutes(fastify);
 registerUniverseRoutes(fastify);
 registerJyutpingRoutes(fastify);
+registerMarkdownRoutes(fastify);
 
 // Serve the built frontend (production and desktop modes)
 if (existsSync(FRONTEND_DIST)) {

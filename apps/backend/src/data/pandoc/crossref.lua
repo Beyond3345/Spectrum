@@ -238,10 +238,35 @@ local function cite(el)
   return out
 end
 
+-- A ```mermaid block (or {.mermaid caption="…" #fig:x}) as the picture the editor drew of it, which Spectrum keeps as
+-- SPECTRUM_MERMAID_DIR/<sha1 of the code, its whitespace collapsed>.png; a figure when it has a caption. Typst reads
+-- it from the project's root. Without the picture the block stays code, with a warning.
+local mermaid_dir = os.getenv('SPECTRUM_MERMAID_DIR')
+
+local function mermaid(el)
+  if not el.classes:includes('mermaid') then return nil end
+  local code = el.text:gsub('%s+', ' '):gsub('^ ', ''):gsub(' $', '')
+  local name = pandoc.utils.sha1(code) .. '.png'
+  local file = io.open(mermaid_dir .. '/' .. name, 'rb')
+  if not file then
+    warn('A Mermaid diagram is printed as its code: compile in the editor to draw it, or correct the error it shows.')
+    return nil
+  end
+  file:close()
+  local src = is_typst() and '/.spectrum/mermaid/' .. name or mermaid_dir .. '/' .. name
+  local caption = el.attributes.caption
+  local image = pandoc.Image(caption and {} or { pandoc.Str('Diagram') }, src)
+  if not caption then return pandoc.Para({ image }) end
+  local inlines = pandoc.utils.blocks_to_inlines(pandoc.read(caption, 'markdown').blocks)
+  image.caption = inlines
+  return pandoc.Figure(pandoc.Plain({ image }), { long = { pandoc.Plain(inlines) } }, pandoc.Attr(el.identifier))
+end
+
 function Pandoc(doc)
   numbered_sections = truthy(doc.meta.numbersections) or truthy(doc.meta['number-sections'])
   -- pandoc's Typst template numbers headings by section-numbering, not by numbersections
   if numbered_sections and is_typst() and not doc.meta['section-numbering'] then doc.meta['section-numbering'] = '1.1.1' end
+  if mermaid_dir then doc = doc:walk({ CodeBlock = mermaid }) end
   doc = doc:walk({ Inlines = equations })
   doc = blocks(doc)
   return doc:walk({ Cite = cite })

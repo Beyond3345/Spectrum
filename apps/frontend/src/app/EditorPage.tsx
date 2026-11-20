@@ -72,6 +72,7 @@ import { referenceEdits } from '../editor/references';
 import { SaveTemplateSheet, openProjectsOn } from './ProjectPage';
 import ConvertSheet from './ConvertSheet';
 import JyutpingSheet from './JyutpingSheet';
+import { drawMermaid } from '../editor/mermaidBlocks';
 import { jyutpingWrap, loadsXjyutping } from '../editor/jyutping';
 import { switcherList, switcherStart } from './ProjectSwitcher';
 import { withDeletionCheck } from './github';
@@ -1819,6 +1820,8 @@ function Editor({ projectId }: { projectId: string }) {
     try {
       await saveNow();
       const startedAt = Date.now();
+      // a Markdown document's ```mermaid blocks drawn first, with the composer's Mermaid, for pandoc to put in as pictures
+      const drawn = /\.(md|markdown)$/i.test(doc) ? await drawMermaid(projectId, doc, await readText(doc)).catch(() => []) : [];
       const res = await compileProject({
         projectId,
         mainFile: doc,
@@ -1856,7 +1859,7 @@ function Editor({ projectId }: { projectId: string }) {
       const problem = checkpointProblem(res.checkpoint, skippedToldRef.current);
       if (problem && settings.checkpointNotice) notify(problem, 'error');
       setCompileLog(`Engine: ${engineLabel(actual)}\nDocument: ${built}\n\n${res.log || ''}`.trim());
-      setCompileDiagnostics(res.errors ?? null);
+      setCompileDiagnostics(drawn.length ? [...(res.errors ?? []), ...drawn] : (res.errors ?? null));
       setCompileNotice(res.code ? { code: res.code, version: res.version, from: res.from, builtIn: res.builtIn } : null);
       setCompileGenerated(res.generated ?? null);
       // an install from Logs' notice changes what the compile menu can offer
