@@ -120,6 +120,8 @@ export type AppSettings = {
   continueLists: boolean;
   /** $, \( and \[, and \left( and the like bring their closers in LaTeX and Typst (smartTyping.ts) */
   closeMaths: boolean;
+  /** the maths at the cursor rendered under it, in LaTeX and Markdown (mathPreview.ts) */
+  mathPreview: boolean;
   /** Settings › Snippets: the user's own, typed by trigger then Tab or picked from Insert; the starters are seeded once */
   snippets: UserSnippet[];
   /** \cite{…} completion also lists the Zotero library, after the project's keys (Settings › Zotero; this computer's, as Zotero is) */
@@ -275,6 +277,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoInsertCite: true,
   continueLists: true,
   closeMaths: true,
+  mathPreview: true,
   snippets: DEFAULT_SNIPPETS,
   zoteroCompletion: true,
   // a new setting, so 1.x's saved compiler (compileEngine, left in place for it) doesn't carry over
@@ -503,6 +506,7 @@ function parse(raw: string | null): AppSettings {
     merged.zoteroCompletion = merged.zoteroCompletion !== false;
     merged.continueLists = merged.continueLists !== false;
     merged.closeMaths = merged.closeMaths !== false;
+    merged.mathPreview = merged.mathPreview !== false;
     merged.snippets = cleanSnippets(merged.snippets);
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system';
     if (!REASONING_EFFORTS.some(([value]) => value === merged.reasoningEffort)) merged.reasoningEffort = 'default';
@@ -665,7 +669,7 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
  */
 const SHARED_KEYS = [
   'theme', 'accent', 'colourStyle', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize', 'editorKeymap',
-  'autoInsertCite', 'continueLists', 'closeMaths', 'snippets', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
+  'autoInsertCite', 'continueLists', 'closeMaths', 'mathPreview', 'snippets', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
   'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear', 'composerVectorNotation',
   'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery', 'composerDark', 'composerMinimap'
 ] as const satisfies readonly (keyof AppSettings)[];

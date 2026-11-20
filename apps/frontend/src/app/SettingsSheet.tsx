@@ -1320,6 +1320,17 @@ function EditorPane() {
           </span>
         </span>
       </label>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.mathPreview} onChange={(e) => update({ mathPreview: e.target.checked })} />
+        <span>
+          Show the maths at the cursor
+          <span className="field-hint">
+            In LaTeX and Markdown, the equation the cursor is in is drawn under it. Your own commands from <code>\newcommand</code>, <code>\def</code> and{' '}
+            <code>\DeclareMathOperator</code> are used; a command from a package it doesn’t know, or one with an optional argument, shows a note instead. Esc hides it
+            until the cursor leaves the equation.
+          </span>
+        </span>
+      </label>
 
       <h3 className="form-section-title">Jump between source and PDF</h3>
       <label className="checkbox-row">
