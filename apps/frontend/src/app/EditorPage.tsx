@@ -108,6 +108,8 @@ import SyncBanners from '../editor/SyncBanners';
 import { conflictCopyPath, onDiskChange } from '../editor/heldFiles';
 import FileTree from '../editor/FileTree';
 import type { FileTreeHandle } from '../editor/FileTree';
+import TextSearch from '../editor/TextSearch';
+import { matchRange } from '../editor/textMatches';
 import PdfPreview, { MAX_ZOOM, MIN_ZOOM, PageBox, pdfThumbnail, rememberPage } from '../editor/PdfPreview';
 import type { PdfDest, PdfHandle, PdfOutlineItem, PdfZoom } from '../editor/PdfPreview';
 import PdfSidebar from '../editor/PdfSidebar';
@@ -1269,6 +1271,16 @@ function Editor({ projectId }: { projectId: string }) {
     view.dispatch({ selection: { anchor: Math.min(from, end), head: end }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
     cursorPlacedRef.current = true;
     view.focus();
+  };
+
+  /** Search's In text: the file at the line, with the match selected (the line as it is now). */
+  const openMatch = async (file: string, line: number, pattern: RegExp) => {
+    await jumpTo(file, line);
+    const view = viewRef.current;
+    if (!view || activeRef.current !== file) return;
+    const at = view.state.doc.line(Math.min(Math.max(1, line), view.state.doc.lines));
+    const range = matchRange(at.text, pattern);
+    if (range) await select(file, at.from + range[0], at.from + range[1]);
   };
 
   /**
@@ -3414,7 +3426,7 @@ function Editor({ projectId }: { projectId: string }) {
               <span className="spacer" />
               <button
                 className={`icon-btn small ${searchOpen ? 'active' : ''}`}
-                title={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
+                title={sidebarTab === 'files' ? 'Search files and text' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
                 aria-label="Search"
                 onClick={() => {
                   setSearchOpen((v) => !v);
@@ -3432,7 +3444,7 @@ function Editor({ projectId }: { projectId: string }) {
                 <input
                   autoFocus
                   value={filter}
-                  placeholder={sidebarTab === 'files' ? 'Search files' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
+                  placeholder={sidebarTab === 'files' ? 'Search files and text' : sidebarTab === 'research' ? 'Search research' : 'Search to-dos'}
                   aria-label="Search"
                   onChange={(e) => setFilter(e.target.value)}
                   onKeyDown={(e) => {
@@ -3478,6 +3490,7 @@ function Editor({ projectId }: { projectId: string }) {
                 onNewBib={() => createBibFile().catch((err) => notify(`Couldn’t create the .bib file: ${errorText(err)}`, 'error'))}
                 notify={notify}
               />
+              {sidebarTab === 'files' && <TextSearch projectId={projectId} query={filter} beforeSearch={() => saveNow()} onOpen={(file, line, pattern) => void openMatch(file, line, pattern)} />}
             </div>
             {/* mounted while hidden, so a search running keeps its answer */}
             <div className="sidebar-list" hidden={sidebarTab !== 'research'}>

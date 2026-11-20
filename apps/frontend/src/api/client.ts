@@ -327,6 +327,17 @@ export function getProjectTree(id: string) {
   );
 }
 
+/** A line of the project's text that holds a search, from 1, and the line itself (trimmed, at most 300 characters). */
+export type TextMatch = { file: string; line: number; text: string };
+export type TextSearchOptions = { caseSensitive: boolean; wholeWord: boolean; regex: boolean };
+
+/** Search in the sidebar's In text: the agents' search_text, the first 100 matches (more: what to do about the rest). */
+export function searchProjectText(id: string, query: string, options: TextSearchOptions, signal?: AbortSignal) {
+  const flags = { case: options.caseSensitive, word: options.wholeWord, regex: options.regex };
+  const params = new URLSearchParams({ q: query, ...Object.fromEntries(Object.entries(flags).filter(([, on]) => on).map(([k]) => [k, '1'])) });
+  return request<{ ok: boolean; matches?: TextMatch[]; more?: string; error?: string }>(`/api/projects/${id}/search?${params}`, { signal });
+}
+
 type FileText = { content: string; hash: string };
 // reads asked for in the same moment, which go as one request: the to-do list reads every text file as a project opens,
 // 650 requests in a project of 1,800 files that waited on each other for over a second

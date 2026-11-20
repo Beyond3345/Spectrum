@@ -22,7 +22,7 @@ const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 const isDocument = (p: string) => /\.(?:tex|ltx|typ|md|markdown)$/i.test(p);
 
-function fileIcon(path: string) {
+export function fileIcon(path: string) {
   const ext = path.toLowerCase().split('.').pop() || '';
   if (ext === 'tex') return 'doc.text';
   if (ext === 'bib') return 'books.vertical';
