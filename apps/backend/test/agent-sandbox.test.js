@@ -56,6 +56,29 @@ test('native agent sandbox contains files, descendants, and local services', { s
   } finally { await new Promise((resolve) => server.close(resolve)); await fs.rm(root, { recursive: true, force: true }); }
 });
 
+test('an isolated agent reaches the system’s name lookup, and a program with no network does not', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.' }, async () => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-lookup-')));
+  try {
+    await fs.mkdir(path.join(root, 'home', 'tmp'), { recursive: true }); await fs.mkdir(path.join(root, 'work'));
+    // the socket getaddrinfo asks: without it every host is ENOTFOUND to Node, Rust and whatever else uses the system's resolver
+    const script = `
+      const socket = require('node:net').connect('/private/var/run/mDNSResponder');
+      socket.on('connect', () => { console.log('reached'); process.exit(0); });
+      socket.on('error', (err) => { console.log(err.code); process.exit(0); });
+      setTimeout(() => process.exit(3), 3000).unref();
+    `;
+    const said = async (offline) => {
+      const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', script], workspace: path.join(root, 'work'), home: path.join(root, 'home'), offline });
+      let output = '';
+      child.stdout.on('data', (c) => output += c);
+      await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', resolve); });
+      return output.trim();
+    };
+    assert.equal(await said(false), 'reached');
+    assert.equal(await said(true), 'EPERM');
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
 test('an agent started from an app reads and runs that bundle, not another app beside it', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.' }, async () => {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-app-')));
   const workspace = path.join(root, 'work'), home = path.join(root, 'home');

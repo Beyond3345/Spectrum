@@ -58,7 +58,9 @@ ${offline ? '' : `(allow system-socket (require-all (socket-domain AF_SYSTEM) (s
 ; HTTPS is available; local HTTP APIs and Unix sockets are not.
 (allow network-outbound (require-all (remote tcp "*:443")
   (require-not (remote ip "localhost:*"))))
-(allow network-outbound (remote udp "*:53"))`}
+(allow network-outbound (remote udp "*:53"))
+; names go through the system's resolver, which is how most programs look one up
+(allow network-outbound (literal "/private/var/run/mDNSResponder"))`}
 ${Number.isInteger(internalPort) && internalPort > 0 && internalPort < 65536 ? `(allow network-bind network-inbound (local tcp "localhost:${internalPort}"))\n(allow network-outbound (remote tcp "localhost:${internalPort}"))` : ''}
 `;
 }

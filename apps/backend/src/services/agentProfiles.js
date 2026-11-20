@@ -7,7 +7,7 @@ import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { DATA_DIR } from '../config/constants.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
-import { resolveExecutable, isolationAvailable, SYSTEM_READS } from './agentSandbox.js';
+import { resolveExecutable, isolationAvailable, spawnAgentProcess, killAgentProcess, SYSTEM_READS } from './agentSandbox.js';
 import { safeJoin } from '../utils/pathUtils.js';
 // each adapter's whole tree, every package pinned with its checksum (npm install --package-lock-only from the version)
 import codexLock from '../data/adapters/codex/package-lock.json' with { type: 'json' };
@@ -222,6 +222,29 @@ export async function findProgram(profile, saved = {}) {
   return found && result(found.real, 'found', found.dir);
 }
 
+// what `<program> acp --help` says of --port, for the program as it is now
+const acpHelps = new Map();
+/**
+ * Whether this OpenCode's ACP mode takes --port and --hostname, by its own help, read in isolation as every run of an
+ * agent is. A program that does not answer is taken for the newer kind, which has no such flags.
+ */
+async function acpTakesPort(options) {
+  const stamp = `${options.program}:${(await fs.stat(options.program).catch(() => null))?.mtimeMs}`;
+  if (!acpHelps.has(stamp)) {
+    acpHelps.set(stamp, (async () => {
+      const child = await spawnAgentProcess({ ...options, args: [...options.args, '--help'] });
+      let said = '';
+      for (const out of [child.stdout, child.stderr]) out.on('data', (chunk) => { if (said.length < 65536) said += chunk; });
+      child.stdin.end();
+      const timer = setTimeout(() => killAgentProcess(child), 15000);
+      await new Promise((resolve) => child.once('close', resolve).once('error', resolve));
+      clearTimeout(timer);
+      return /--port\b/.test(said);
+    })().catch(() => false));
+  }
+  return acpHelps.get(stamp);
+}
+
 /** Everything a session or a Test starts the agent with, through spawnAgentProcess(): its program, arguments, key and folders. */
 export async function launchOptions(id, { workspace, home: agentHomeDir, forbiddenRoots = [] }) {
   const profile = profileFor(id);
@@ -240,6 +263,8 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const env = {
     ...(saved.apiKey && keyEnv && { [keyEnv]: saved.apiKey }),
     ...(id === 'zcode' && { ZCODE_ACP_MODE: 'build' }),
+    // Claude Code keeps its own temporary files in /tmp/claude-<uid>, which isolation does not open: its private home's instead
+    ...(id === 'claude' && { CLAUDE_CODE_TMPDIR: path.join(agentHomeDir, 'tmp') }),
     ...(found.needs?.env && found.needs.path && { [found.needs.env]: found.needs.path })
   };
   const options = {
@@ -247,7 +272,9 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
     runtimePaths: [...new Set([...(saved.runtimePaths || []), ...found.reads, ...found.needs?.reads || []])], forbiddenRoots, env,
     program: found.program, secrets: [saved.apiKey].filter(Boolean), setup: setupOf(saved)
   };
-  if (id === 'opencode') {
+  // OpenCode 1 serves its ACP mode from a local port, which isolation opens for it alone. OpenCode 2 needs none and
+  // refuses the flags.
+  if (id === 'opencode' && await acpTakesPort(options)) {
     const server = createServer();
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     const port = server.address().port;
