@@ -30,6 +30,8 @@ lines.on('line', async (line) => {
     // sent before the answer that names the session
     update({ sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'review', description: 'Review the draft' }] });
     send({ id: m.id, result: { sessionId } });
+  } else if (m.method === 'session/prompt' && process.argv.includes('--auth-on-prompt')) {
+    send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
   } else if (m.method === 'session/prompt') {
     const text = m.params.prompt[0].text;
     const asked = text.split('\n\n').at(-1);
