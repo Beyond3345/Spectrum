@@ -53,6 +53,9 @@ const keptFile = (rel) => !/\.(?:pdf|log|blg|ilg|glg|synctex\.gz)$/i.test(rel);
 // before a project file of the same name ("Writing file `./data.dat'", "File `data.dat' already exists on the system")
 const FILECONTENTS = /(?:Writing(?: or overwriting)? file|File) `(?:\.\/)?([^']+)'(?:\.| already exists)/g;
 const keptStore = (cache, doc, engine) => path.join(cache, 'build-files', doc, engine);
+// what Biber read to make the kept .bbl (biberReads), kept beside it as <main>.bibrun; never one of the files a
+// pass is taken to have changed
+const BIB_RECORD = '.bibrun';
 // written last, so a store a crash left half copied isn't read
 const KEPT_MARKER = '.complete';
 // a pass's log asking for another (LaTeX's labels, hyperref's outlines, longtable's widths, natbib's citations), but
@@ -678,7 +681,8 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // xjyutping (the user's folder, then Spectrum's) before TeX's own, and the bundled CJK fonts by file name, in every compile
   const jyutping = await jyutpingSearch(options.xjyutpingFolder);
   const before = (dirs, name) => [...dirs.map(slashed), process.env[name] ?? ''].join(path.delimiter);
-  const searchPath = (name, more = []) => before([...copyDirs.slice(0, 1), mainDir, ...copyDirs.slice(1), ...(mdDir && mdDir !== mainDir ? [mdDir] : []), projectRoot, ...more], name);
+  const sourceDirs = [...copyDirs.slice(0, 1), mainDir, ...copyDirs.slice(1), ...(mdDir && mdDir !== mainDir ? [mdDir] : []), projectRoot];
+  const searchPath = (name, more = []) => before([...sourceDirs, ...more], name);
   const binPath = jobs.getStore()?.searchPath;
   let texEnv = {
     ...process.env,
@@ -805,11 +809,11 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
       // what BibTeX reads, so a citation only a kept list put there (a caption's, from the .lof) goes again
       const cites = async () => (await auxWithInputs(outDir, `${base}.aux`)).match(/^\\(?:citation|bibdata|bibstyle)\{.*$/gm)?.join('\n') ?? '';
       let cited = await cites();
-      bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog);
+      bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog, { dirs: sourceDirs, searchPath: texEnv[PATH_KEY] });
       // Pass 2 + 3: resolve citations and cross-references, while the last pass asks for another or changed what
       // TeX reads back
       for (let n = 2; n <= 3 && carryOn(); n += 1) {
-        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog);
+        if (n > 2 && cited !== (cited = await cites())) bibliographyStatus = await runBibliography(outDir, base, tex, options, confined, pushLog, { dirs: sourceDirs, searchPath: texEnv[PATH_KEY] });
         let now = await keptFiles(outDir);
         for (const { input, output, cmd: indexer, fallback, args: indexArgs } of INDEXERS) {
           // every glossary's files (the acronyms' too), or the main glossary's when the .aux names none
@@ -955,7 +959,7 @@ async function fetchBiber(live, pushLog) {
  * BibTeX or Biber after the first pass, when the .aux cites anything or names a bibliography: the tool chosen, else
  * a `% !BIB program = biber` comment's, else Biber for biblatex. Resolves 1 or Biber's code when Biber failed.
  */
-async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog) {
+async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog, { dirs = [], searchPath } = {}) {
   // with the \include'd chapters' .aux, where the citations and \bibliography may be
   const aux = await auxWithInputs(outDir, `${base}.aux`);
   // biblatex writes \abx@aux@... commands in .aux; traditional bibtex \citation and \bibdata
@@ -968,6 +972,17 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
   // paths). Both find the project's .bib files through BIBINPUTS. biber must not get
   // --input-directory=<project>: it looks for the .bcf there and fails.
   const bibArgs = [base];
+  // Biber takes a second or two, most of an edit's compile, and makes the same .bbl from the same control file,
+  // .bib files and Biber: with all three as they were for the kept .bbl, it isn't run. ponytail: BibTeX always
+  // runs (a twentieth of a second)
+  const recordFile = path.join(outDir, base + BIB_RECORD);
+  const reads = useBiber ? await biberReads(outDir, base, dirs, searchPath) : null;
+  const made = reads && (await fs.readFile(recordFile, 'utf8').catch(() => ''));
+  if (reads && made === `${reads}\n${await fileHash(path.join(outDir, `${base}.bbl`))}`) {
+    pushLog(Buffer.from('[spectrum] The bibliography is unchanged, so Biber wasn’t run.\n'));
+    return 0;
+  }
+  await fs.rm(recordFile, { force: true });
   // MiKTeX's bibtex asks before installing a missing .bst, as its engines do
   if (WINDOWS && bibCmd === 'bibtex' && /[\\/]miktex[\\/]/i.test((await findExecutable('bibtex')) || '')) bibArgs.unshift('--enable-installer');
   try {
@@ -978,6 +993,8 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
       pushLog(Buffer.from('[spectrum] Biber failed. Fix the bibliography errors above and compile again.\n'));
       return bibliography.code || 1;
     }
+    const bbl = reads && (await fileHash(path.join(outDir, `${base}.bbl`)));
+    if (bbl) await fs.writeFile(recordFile, `${reads}\n${bbl}`);
   } catch (err) {
     if (useBiber) {
       pushLog(Buffer.from(`[spectrum] Biber could not run: ${err.message}. Install Biber with your TeX distribution and compile again.\n`));
@@ -986,6 +1003,46 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
     pushLog(Buffer.from(`[warn] ${bibCmd} not available, skipping bibliography pass.\n`));
   }
   return 0;
+}
+
+const fileHash = async (file) => {
+  const bytes = await fs.readFile(file).catch(() => null);
+  return bytes ? crypto.createHash('sha256').update(bytes).digest('hex') : '';
+};
+// each file Biber is told to read: <bcf:datasource type="file" datatype="bibtex" glob="false">refs.bib</bcf:datasource>
+const BCF_SOURCE = /<bcf:datasource\b([^>]*)>([^<]*)<\/bcf:datasource>/g;
+
+/**
+ * Everything Biber reads for <base>.bcf, as one hash: the control file (the citations, the style's sorting and data
+ * model, the options), each .bib file's bytes, found as Biber finds it (the build folder, then BIBINPUTS' folders, dirs), the
+ * Biber it would run and the user's own biber.conf. null when it can't be told, and Biber then runs: no control file, a
+ * source that isn't a plain file in those folders (a pattern, an address, one TeX's own tree holds), or no Biber.
+ */
+async function biberReads(outDir, base, dirs, searchPath) {
+  const bcf = await fs.readFile(path.join(outDir, `${base}.bcf`), 'utf8').catch(() => null);
+  const biber = bcf && (await findExecutable('biber', searchPath));
+  if (!biber) return null;
+  const hash = crypto.createHash('sha256').update(bcf);
+  for (const [, attributes, name] of bcf.matchAll(BCF_SOURCE)) {
+    if (!/type="file"/.test(attributes) || /glob="true"/.test(attributes) || /[&*?[\]{}]|^\w+:\/\//.test(name)) return null;
+    let found = null;
+    for (const dir of [outDir, ...dirs]) {
+      const bytes = await fs.readFile(path.resolve(dir, name.trim())).catch(() => null);
+      if (bytes) {
+        found = bytes;
+        break;
+      }
+    }
+    if (!found) return null;
+    hash.update(`\n${name}\n`).update(found);
+  }
+  const home = os.homedir();
+  const about = async (file) => {
+    const stat = await fs.stat(file).catch(() => null);
+    return `${file}:${stat ? `${stat.size}:${stat.mtimeMs}` : ''}`;
+  };
+  for (const file of [biber, path.join(home, '.biber.conf'), path.join(home, 'Library', 'biber', 'biber.conf'), path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'biber', 'biber.conf')]) hash.update(`\n${await about(file)}`);
+  return hash.digest('hex');
 }
 
 /**
@@ -1029,7 +1086,7 @@ async function auxWithInputs(outDir, rel, seen = new Set()) {
 async function keptFiles(outDir) {
   const files = new Map();
   for (const { path: rel, type } of await listFilesRecursive(outDir)) {
-    if (type === 'file' && keptFile(rel)) files.set(rel, await fs.readFile(path.join(outDir, rel)));
+    if (type === 'file' && keptFile(rel) && !rel.endsWith(BIB_RECORD)) files.set(rel, await fs.readFile(path.join(outDir, rel)));
   }
   return files;
 }
