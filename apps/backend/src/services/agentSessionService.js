@@ -30,7 +30,7 @@ const runs = new Map();
 export const directTurn = (projectId) => [...runs.values()].some((r) => r.projectId === projectId && r.mode === 'direct' && r.busy);
 const ID = /^[a-f0-9-]{36}$/;
 const textLimit = (value, max = 100000) => typeof value === 'string' ? value.slice(0, max) : '';
-const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount, ...(r.title && { title: r.title }), ...(r.persona && { persona: r.persona }), ...(r.compile && { compile: r.compile }), ...(r.notes?.length && { notes: r.notes }) });
+const metadata = (r) => ({ id: r.id, projectId: r.projectId, agentId: r.agentId, mode: r.mode, createdAt: r.createdAt, updatedAt: r.updatedAt, status: r.status, events: r.events, remoteId: r.remoteId, resolved: [...r.resolved], turnCount: r.turnCount, ...(r.title && { title: r.title }), ...(r.persona && { persona: r.persona }), ...(r.compile && { compile: r.compile }), ...(r.notes?.length && { notes: r.notes }), ...(r.withheld?.length && { withheld: r.withheld }) });
 const persist = (r) => {
   r.saveChain = (r.saveChain || Promise.resolve()).catch(() => {}).then(() => writeJsonAtomic(path.join(r.dir, 'session.json'), metadata(r)));
   return r.saveChain;
@@ -133,6 +133,33 @@ const firstLine = (text) => {
   const line = String(text || '').trim().split('\n')[0].trim();
   return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 };
+/**
+ * Tells the user, once each time it changes, which AGENTS.md files an Isolated copy leaves out as unapproved
+ * (r.withheld) and how to approve the one at the top, or that a direct session's agent reads them in the project; an
+ * Isolated session's agent hears of it too, so it doesn't write one that would never be offered.
+ */
+function tellWithheld(r) {
+  const now = r.withheld || [];
+  const was = r.toldWithheld || [];
+  if (String(now) === String(was)) return;
+  r.toldWithheld = now;
+  const list = (rels) => rels.map((rel) => `“${rel}”`).join(', ');
+  const isTop = (rel) => rel.toLowerCase() === 'agents.md';
+  const top = now.some(isTop);
+  const others = now.filter((rel) => !isTop(rel));
+  if (r.mode === 'direct') {
+    if (now.length) emit(r, 'notice', { message: `This session works in your project’s folder, so the agent can read ${list(now)}, which you haven’t approved. An Isolated session leaves ${now.length > 1 ? 'them' : 'it'} out.` });
+    return;
+  }
+  const released = !top && was.some(isTop);
+  emit(r, 'notice', { message: [
+    top ? 'Your project’s AGENTS.md is left out of the agent’s copy until you approve it: press the AGENTS.md chip in the Spectrum agent tab, then Use it. It reaches the agent with its next task.' : released ? 'Your project’s AGENTS.md is no longer left out of the agent’s copy.' : '',
+    others.length ? `${top ? 'Also left out' : released ? 'Still left out' : 'Left out of the agent’s copy'}, as only the AGENTS.md at the top of a project can be approved: ${list(others)}.` : ''
+  ].filter(Boolean).join(' ') });
+  const added = now.filter((rel) => !was.includes(rel));
+  if (added.length) r.notes.push(`${list(now)} ${now.length > 1 ? 'are' : 'is'} left out of your copy until the user approves ${now.length > 1 ? 'them' : 'it'}. Do not write a file by ${now.length > 1 ? 'those names' : 'that name'}: it would not be offered for review.`);
+  else if (released) r.notes.push('AGENTS.md is no longer left out of your copy.');
+}
 const state = (r, status, error) => { r.status = status; emit(r, 'state', { status, ...(error && { error }) }); void persist(r); };
 const busyProject = (r) => [...runs.values()].some((other) => other !== r && other.projectId === r.projectId && (other.busy || other.reviewing));
 /** A session of the project has a turn, a preview or a review under way (Move to this computer and Locate… wait). */
@@ -167,7 +194,7 @@ async function loadAgentRun(id) {
   const data = JSON.parse(await fs.readFile(path.join(dir, 'session.json'), 'utf8'));
   profileFor(data.agentId);
   const root = await getProjectRoot(data.projectId);
-  const r = { ...data, id, dir, root, workspace: data.mode === 'direct' ? root : path.join(dir, 'work'), home: await agentHome(data.agentId), resolved: new Set(data.resolved || []), events: data.events || [], sequence: data.events?.at(-1)?.id || 0, listeners: new Set(), pending: new Map(), terminals: new Map(), busy: false, turnCount: data.turnCount || 0, notes: data.notes || [] };
+  const r = { ...data, id, dir, root, toldWithheld: data.withheld || [], workspace: data.mode === 'direct' ? root : path.join(dir, 'work'), home: await agentHome(data.agentId), resolved: new Set(data.resolved || []), events: data.events || [], sequence: data.events?.at(-1)?.id || 0, listeners: new Set(), pending: new Map(), terminals: new Map(), busy: false, turnCount: data.turnCount || 0, notes: data.notes || [] };
   r.eventBytes = r.events.reduce((total, e) => total + sizeOf(e), 0);
   // 1.10 kept a change it had seen by its path alone, and rebuilt the copy on the next prompt
   const legacy = [...r.resolved].filter((key) => !key.includes('\0'));
@@ -254,7 +281,8 @@ export async function newAgentRun({ projectId, agentId, mode = 'review', persona
   runs.set(id, r);
   try {
     await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-    r.workspace = await initialiseWorkspace(root, dir, mode);
+    ({ workspace: r.workspace, withheld: r.withheld } = await initialiseWorkspace(root, dir, mode));
+    tellWithheld(r);
     r.home = await agentHome(agentId);
     state(r, 'starting');
     r.ready = connect(r).then(() => { r.busy = false; state(r, 'ready'); idle(r); }).catch((err) => { r.busy = false; state(r, r.cancelled ? 'interrupted' : 'failed', [err.message, r.diagnostic].filter(Boolean).join('\n')); disconnect(r); throw err; });
@@ -903,12 +931,13 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
         await fs.rm(path.join(r.dir, 'baseline'), { recursive: true, force: true });
         await fs.rm(path.join(r.dir, 'proposal'), { recursive: true, force: true });
         await fs.rm(path.join(r.dir, 'proposal.json'), { force: true });
-        r.workspace = await initialiseWorkspace(r.root, r.dir, r.mode);
+        ({ workspace: r.workspace, withheld: r.withheld } = await initialiseWorkspace(r.root, r.dir, r.mode));
         r.resolved.clear();
       } else if (r.mode === 'review') {
         // best effort: a link left in the draft is told of when the turn's changes are taken
         await refreshDraft(r, (rel) => draftWriter(r, rel)).catch((err) => emit(r, 'notice', { message: `The agent’s copy wasn’t brought up to date with your project: ${err.message}` }));
       }
+      tellWithheld(r);
       if (r.cancelled) throw new Error('Task cancelled.');
       if (r.forceNew) disconnect(r);
       // the agent kept from the last turn goes on, unless it has stopped or would now start otherwise

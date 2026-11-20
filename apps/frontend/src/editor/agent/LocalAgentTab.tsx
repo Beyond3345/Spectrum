@@ -388,7 +388,7 @@ export default function LocalAgentTab({
         ) : (
           <Select
             className="agent-mode"
-            title="Isolated: the agent works on a copy and you review its changes. Direct: it edits your project, with a checkpoint saved before each task."
+            title="Isolated: the agent works on a copy and you review its changes; an AGENTS.md you haven’t approved is left out of it. Direct: it edits your project, with a checkpoint saved before each task, and reads AGENTS.md there."
             value={mode}
             // Windows can't keep a direct session's agent from making .git or .env in the project (the backend refuses one)
             options={IS_WINDOWS ? [['review', 'Isolated']] : [['review', 'Isolated'], ['direct', 'Direct']]}

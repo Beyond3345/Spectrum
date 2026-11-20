@@ -18,7 +18,7 @@ test('review snapshots preserve bytes, reject stale proposals, and protect concu
     await fs.writeFile(path.join(root, 'main.tex'), 'original\n');
     await fs.writeFile(path.join(root, 'delete.txt'), 'keep until approved');
     const run = { root, dir: runDir, mode: 'review', busy: false };
-    run.workspace = await initialiseWorkspace(root, runDir, 'review');
+    ({ workspace: run.workspace } = await initialiseWorkspace(root, runDir, 'review'));
     await fs.writeFile(path.join(run.workspace, 'main.tex'), 'agent\n');
     await fs.writeFile(path.join(run.workspace, 'figure.bin'), Buffer.from([0, 255, 1]));
     await fs.unlink(path.join(run.workspace, 'delete.txt'));
@@ -66,7 +66,7 @@ test('a change the user made too (the same file deleted, or made with the same t
     await fs.mkdir(root); await fs.mkdir(runDir);
     await fs.writeFile(path.join(root, 'gone.tex'), 'bye\n');
     const run = { root, dir: runDir, mode: 'review', busy: false };
-    run.workspace = await initialiseWorkspace(root, runDir, 'review');
+    ({ workspace: run.workspace } = await initialiseWorkspace(root, runDir, 'review'));
     await fs.unlink(path.join(run.workspace, 'gone.tex'));
     await fs.writeFile(path.join(run.workspace, 'new.tex'), 'same\n');
     await captureAgentProposal(run);
@@ -93,7 +93,7 @@ test('a review sitting saves one checkpoint before its first apply, or one befor
       await fs.mkdir(root); await fs.mkdir(runDir);
       for (let i = 0; i < 20; i++) await fs.writeFile(path.join(root, `f${i}.tex`), `mine ${i}\n`);
       const run = { root, dir: runDir, mode: 'review', busy: false };
-      run.workspace = await initialiseWorkspace(root, runDir, 'review');
+      ({ workspace: run.workspace } = await initialiseWorkspace(root, runDir, 'review'));
       for (let i = 0; i < 20; i++) await fs.writeFile(path.join(run.workspace, `f${i}.tex`), `agent ${i}\n`);
       await captureAgentProposal(run);
       const changes = await workspaceChanges(run);
@@ -114,7 +114,7 @@ test('a review sitting saves one checkpoint before its first apply, or one befor
     await fs.mkdir(root); await fs.mkdir(runDir);
     await fs.writeFile(path.join(root, 'main.tex'), 'mine\n');
     const run = { root, dir: runDir, mode: 'review', busy: false };
-    run.workspace = await initialiseWorkspace(root, runDir, 'review');
+    ({ workspace: run.workspace } = await initialiseWorkspace(root, runDir, 'review'));
     await fs.writeFile(path.join(run.workspace, 'main.tex'), 'agent\n');
     await captureAgentProposal(run);
     const [change] = await workspaceChanges(run);
@@ -137,7 +137,7 @@ test('workspace creation refuses links and omits secrets and app identity', asyn
     for (const name of ['id_rsa', 'ID_ED25519', '.netrc', '.npmrc', '.pypirc', 'cert.p12', 'Store.JKS', 'putty.ppk']) await fs.writeFile(path.join(dir, name), 'do not copy');
     const run = await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-copy-'));
     try {
-      const workspace = await initialiseWorkspace(dir, run, 'review');
+      const { workspace } = await initialiseWorkspace(dir, run, 'review');
       await assert.rejects(fs.stat(path.join(workspace, '.env')), { code: 'ENOENT' });
       await assert.rejects(fs.stat(path.join(workspace, '.ENV.local')), { code: 'ENOENT' });
       await assert.rejects(fs.stat(path.join(workspace, '.spectrum')), { code: 'ENOENT' });
@@ -163,7 +163,7 @@ test('direct editing does not start when the checkpoint before it could not hold
     // a file only an agent can never reach doesn't stop it
     await fs.writeFile(path.join(dir, '.env'), 'secret');
     await fs.chmod(path.join(dir, '.env'), 0);
-    assert.equal(await initialiseWorkspace(dir, path.join(run, 'ok'), 'direct'), dir);
+    assert.equal((await initialiseWorkspace(dir, path.join(run, 'ok'), 'direct')).workspace, dir);
   } finally {
     await fs.chmod(path.join(dir, '.env'), 0o600).catch(() => {});
     await fs.rm(dir, { recursive: true, force: true }); await fs.rm(run, { recursive: true, force: true });
