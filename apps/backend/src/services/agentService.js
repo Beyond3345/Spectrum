@@ -74,6 +74,18 @@ export async function userInstructions({ instructions, skill, projectRoot } = {}
   return parts.join('\n\n');
 }
 
+/**
+ * The user's own word on a project, last in a system text, where it changes only when they approve AGENTS.md or change
+ * a remembered line (so a provider's cache keeps the prefix): the approved AGENTS.md (agentInstructions.js), then the
+ * lines they chose to remember (agentMemory.js). Given to every request that writes for the user in the project: the
+ * Spectrum agent's turns, Fix with AI and the Assistant's chat and rewrites; never autocomplete. '' without either.
+ */
+export async function projectNotes(projectRoot) {
+  if (!projectRoot) return '';
+  const [rules, remembered] = await Promise.all([instructionsBlock(projectRoot).catch(() => ''), memoryBlock(projectRoot).catch(() => '')]);
+  return [rules, remembered].filter(Boolean).join('\n\n');
+}
+
 const READ_ONLY_TOOLS = ['web_search'];
 // what these answer is a skill's own text, a method to follow; every other tool's answer is material to read
 const SKILL_TOOLS = ['load_skill', 'read_skill_file'];
@@ -604,10 +616,8 @@ export async function runToolAgent({
   const planning = interactive && planFirst;
   const offered = planning ? mine.filter((t) => t.readOnly || PLAN_TOOLS.includes(t.name)) : mine;
   const toolSpecs = offered.map(toolSpec);
-  // the user's own file of standing instructions for this project, once they have approved it as it is
-  const projectRules = projectRoot && !readOnly ? await instructionsBlock(projectRoot).catch(() => '') : '';
-  // and what they chose for Spectrum to remember there: last, since it changes only when they add or edit a line
-  const remembered = projectRoot && !readOnly ? await memoryBlock(projectRoot).catch(() => '') : '';
+  // the approved AGENTS.md and the remembered lines, the read-only chat's too
+  const notes = await projectNotes(projectRoot);
   const system = [readOnly ? [
     'You are a helpful writing assistant in read-only chat mode. Answer normally; do not propose edits, patches or JSON.',
     hasDocument(activePath, mainFile) ? languageLine(language) : '',
@@ -638,7 +648,7 @@ export async function runToolAgent({
     DATA_RULE,
     // said once: a skill picked with / brings the line with it
     skills.length && !instructions.includes(SKILL_RULE) ? SKILL_RULE : ''
-  ].filter(Boolean).join(' '), skillsList(skills), instructions, projectRules, remembered].filter(Boolean).join('\n\n');
+  ].filter(Boolean).join(' '), skillsList(skills), instructions, notes].filter(Boolean).join('\n\n');
 
   // The conversation: the job's own from its earlier turns, while it is the same model's and still fits; else the
   // thread's last texts, as before there were jobs.
