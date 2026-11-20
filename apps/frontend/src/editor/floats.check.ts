@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableTitle, tableRules, tableTypst, typstMarkup, typstPlacement, uniqueName } from './floats';
+import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, imageOf, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableTitle, tableRules, tableTypst, typstMarkup, typstPlacement, uniqueName } from './floats';
 import type { FigureSet, FigureSize, TableModel } from './floats';
 import { TYPST_SUBFIGURE, addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -10,6 +10,11 @@ const eq = (actual: unknown, expected: unknown, what: string) => {
 const lines = (...l: string[]) => l.join('\n');
 
 // ─── figures ───
+// a composer diagram: its PDF for LaTeX and Typst, its PNG for Markdown (which Word shows), else the one there is
+eq(imageOf('diagrams/flow.mmd', ['diagrams/flow.pdf', 'diagrams/flow.png']), 'diagrams/flow.pdf', 'a diagram’s PDF first');
+eq(imageOf('diagrams/flow.mmd', ['diagrams/flow.pdf', 'diagrams/flow.png'], true), 'diagrams/flow.png', 'its PNG first in Markdown');
+eq(imageOf('diagrams/flow.mmd', ['diagrams/flow.pdf'], true), 'diagrams/flow.pdf', 'or the PDF there is');
+
 
 eq(figureKind('a.PNG', 'image/png'), 'keep', 'PNG goes in as it is');
 eq(figureKind('a.jpeg', ''), 'keep', 'JPEG');
