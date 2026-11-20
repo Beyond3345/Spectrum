@@ -115,6 +115,14 @@ eq(
 
 eq(shape([ev('reset', { paths: ['a.tex'] })]), [['notice', 'Rejected: the agent’s copy of “a.tex” is back to your version, and the agent is told with its next task.']], 'a rejection');
 
+// a host isolation refused the agent is a card, and allowing it answers that card; refused again later, it is a new one
+eq(
+  project([ev('network', { host: 'a.example.com' }), ev('network', { host: 'b.example.com' }), ev('network', { host: 'a.example.com', allowed: true }), ev('network', { host: 'c.example.com', allowed: true })]).items.map((i) => i.type === 'network' && [i.host, i.allowed]),
+  [['a.example.com', true], ['b.example.com', false]],
+  'refused hosts: one card each, allowed in place, and an allowance with no card adds none'
+);
+eq(project([ev('network', { host: 'a.example.com' }), ev('network', { host: 'a.example.com', allowed: true }), ev('network', { host: 'a.example.com' })]).items.map((i) => i.type === 'network' && i.allowed), [true, false], 'a host refused again after it was allowed');
+
 // a stored event that joins pieces replaces the ones held from its first on; a live piece is added; a repeat is not
 {
   const piece = (n: number, text: string, first?: number): AgentEvent => ({ id: n, type: 'update', data: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } }, at: at(n), ...(first && { first }) });

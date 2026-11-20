@@ -32,6 +32,7 @@ import { bracketMatching, defaultHighlightStyle, foldAll, foldCode, foldGutter, 
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 import { gotoLine, highlightSelectionMatches, searchKeymap, selectNextOccurrence, selectSelectionMatches } from '@codemirror/search';
 import { IS_MAC, OS_NAME } from './platform';
+import { previewFigure } from '../editor/figurePreview';
 
 // Keyboard shortcuts in CodeMirror notation ("Mod-Shift-k": Mod is ⌘ on a Mac, Ctrl elsewhere).
 // Settings stores only the ones the user changed; '' means the user removed the shortcut.
@@ -96,6 +97,9 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'bold', label: 'Bold (\\textbf)', group: 'Editing', key: 'Mod-b', run: wrapIn('textbf') },
   { id: 'italic', label: 'Italic (\\textit)', group: 'Editing', key: 'Mod-i', run: wrapIn('textit') },
   { id: 'emph', label: 'Emphasis (\\emph)', group: 'Editing', key: 'Shift-Mod-e', run: wrapIn('emph') },
+  // the tikzpicture, table or equation at the cursor compiled alone (editor/figurePreview.ts); ⌥⇧P on Windows, where
+  // Ctrl-Alt is AltGr
+  { id: 'previewFigure', label: 'Preview this figure', group: 'Editing', key: IS_MAC ? 'Mod-Alt-p' : 'Shift-Alt-p', run: previewFigure },
   { id: 'nextMatch', label: 'Add next match to selection', group: 'Selection', key: 'Mod-d', run: selectNextOccurrence },
   { id: 'allMatches', label: 'Select all matches', group: 'Selection', key: 'Shift-Mod-l', run: selectSelectionMatches },
   { id: 'cursorAbove', label: 'Add cursor above', group: 'Selection', key: 'Mod-Alt-ArrowUp', run: addCursorAbove },

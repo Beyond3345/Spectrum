@@ -6,6 +6,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Security
 
+- On a Mac, a local agent can be held to a list of hosts: its provider's, the sites Spectrum's tools need and any you add (Settings › Agents › Network). Every agent starts on Any host with its list ready. A host an agent on a list is refused shows in its session, with Allow for that agent, and such an agent cannot look names up itself
+- On a Mac, an MCP server you add reaches only the hosts you list for it, or any host if you tick that, and Check shows what it asked for
 - API keys are kept in the keychain on a Mac and encrypted for your Windows account on Windows, not in the window's storage. Keys from earlier versions move there on first start, and stay where they were, still working, if the keychain cannot be used
 
 ### Added
@@ -15,6 +17,11 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
 - Go to a file or heading (⌘P) opens a project file or an Outline heading by its name
 - Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
+- The maths at the cursor is drawn under it in LaTeX and Markdown, with the document's own `\newcommand`s
+- Preview this figure (⌥⌘P): the tikzpicture, table, figure or equation at the cursor compiled on its own with the document's preamble
+- Your own snippets in Settings › Snippets: a trigger then Tab, or from Insert (+)
+- Return after an `\item` continues the list, and on an empty item ends it, in Typst lists too
+- `$`, `\(`, `\[` and `\left(` bring their closers in LaTeX (`$` in Typst), and Backspace in an empty pair removes both
 - The projects page says when a newer Spectrum is out, asking the release page at most once a day and sending nothing about you. A switch in Settings › System turns it off
 - Vim or Emacs keys in the source editor, in Settings › Editor
 - Agents you run yourself, such as Claude Code, Codex or Cursor, can use a project's Spectrum tools once you turn on Use from another agent in the Local agents bar. The secret is new each time and ends when Spectrum quits

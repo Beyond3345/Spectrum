@@ -108,3 +108,15 @@ Only if you use it. Install the DeepSeek Harness app for Windows, then look in `
 
 - **Should happen:** nothing yet. Spectrum looks for `dsh` on the PATH only, and Windows isolation starts native `.exe` programs only, so an npm install (`dsh.cmd`) cannot start.
 - **Send back:** the app's folder, the path of any `dsh.exe` (or other program) inside it and what Settings, Agents shows on the DeepSeek Harness card after Check.
+
+## 9. The hosts an agent may reach
+
+On a Mac, an agent or an MCP server can be held to a list of hosts (Settings, Agents, the Network part of a card). On Windows no list is enforced yet, and nothing here was run on Windows.
+
+The reason is the isolation worker. It starts a program with the `internetClient` capability, which opens every public address and port, or without it, which opens none. The list on a Mac works through a port on the computer itself where Spectrum checks each host, and Windows isolation refuses a program every address of its own computer, which is what the first test of step 1 proves ("denies … loopback"). Lifting that needs a loopback exemption, which only an administrator can give (`CheckNetIsolation LoopbackExempt`), so Spectrum does not ask for it.
+
+So on Windows the choice in the Network part is saved but changes nothing: every agent and every MCP server reaches any public address, as in 2.6.
+
+- **Should happen:** an agent's card shows, under Network, "On Windows, isolation opens every public address to an agent or none, so … is not held to a list of hosts yet", with its provider's hosts and the box that adds one. Under MCP servers there is no box for hosts and no Any host tick, and the note below says a server reaches any public address.
+- **Send back:** a picture of both, and whether adding a host in a card saves (the chip appears) without an error.
+- **Not tested here:** that the card and the MCP servers part look so on Windows, since the wording was only read in code, and that a saved choice of Listed hosts only starts an agent exactly as Any host does there (`launchOptions` gives `network: 'any'` off a Mac, which the backend test "an agent’s network setting" checks only when it runs on Windows).

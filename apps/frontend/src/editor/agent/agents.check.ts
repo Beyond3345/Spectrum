@@ -22,6 +22,7 @@ const agent = (id: string, state: AgentState, extra: Partial<LocalAgent> = {}): 
   loginFound: false,
   loginCopied: false,
   configured: false,
+  network: { mode: 'any', provider: [], tools: [], hosts: [], enforced: true, sure: false },
   state,
   setUp: ['ready', 'untested'].includes(state),
   ...extra

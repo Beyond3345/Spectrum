@@ -59,14 +59,26 @@ const NEXT_ARG = /(?:\s|%[^\n]*\n)*[{[]/y;
 
 // what's open: an environment by name, a maths delimiter ($, $$, \(, \[), { for the argument of \text and
 // friends, or \ensuremath{ for that of \ensuremath (maths)
-type Frame = { open: string; env: boolean; depth: number };
+// at: where its content starts, after the opening
+type Frame = { open: string; env: boolean; depth: number; at: number };
 
 /** The context at `pos`, from one pass over the text before it. */
-export function texContext(text: string, pos: number): TexContext {
+export const texContext = (text: string, pos: number): TexContext => scanContext(text, pos)[0];
+
+/**
+ * The maths the cursor is in: how it opened ('$', '$$', '\(', '\[' or an environment's name) and where its content
+ * starts, after the opening; null in text, or in maths that \ensuremath or a definition holds.
+ */
+export function mathOpening(text: string, pos: number) {
+  const [ctx, frame] = scanContext(text, pos);
+  return ctx.mode === 'math' && frame && frame.open !== '\\ensuremath{' ? { open: frame.open, from: frame.at } : null;
+}
+
+function scanContext(text: string, pos: number): [TexContext, Frame | undefined] {
   const src = text.slice(0, pos);
   const stack: Frame[] = [];
   let depth = 0;
-  const push = (open: string, env = false) => stack.push({ open, env, depth });
+  const push = (open: string, env = false) => stack.push({ open, env, depth, at: TOKEN.lastIndex });
   const close = (i: number) => i !== -1 && (stack.length = i);
   const last = (test: (f: Frame) => boolean) => {
     for (let i = stack.length - 1; i >= 0; i -= 1) if (test(stack[i])) return i;
@@ -158,7 +170,7 @@ export function texContext(text: string, pos: number): TexContext {
   const mathEnv = top?.env ? top.open : null;
   const display = mathEnv ? !NOT_DISPLAY.includes(mathEnv) : top?.open === '\\[' || top?.open === '$$';
   const openEnvs = stack.filter((f) => f.env).map((f) => f.open);
-  return {
+  const context: TexContext = {
     mode: defAt !== -1 ? 'both' : inMath() ? 'math' : 'text',
     mathEnv,
     numbered: display && !!mathEnv && !mathEnv.endsWith('*') && mathEnv !== 'displaymath',
@@ -166,6 +178,7 @@ export function texContext(text: string, pos: number): TexContext {
     preamble: !openEnvs.includes('document') && text.indexOf('\\begin{document}', pos) !== -1,
     openEnvs
   };
+  return [context, top];
 }
 
 /** Commands whose argument is a label. */

@@ -15,7 +15,7 @@ import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileServi
 import { builtInTectonic, builtInTypst } from './engineService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { checkedImages, openTodos, suggestedTodo } from './agentService.js';
-import { AGENT_DIR, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter } from './agentProfiles.js';
+import { AGENT_DIR, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter, allowAgentHost } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, isolationAvailable } from './agentSandbox.js';
 import { initialiseWorkspace, workspaceChanges, workspaceFiles, applyWorkspaceChanges, captureAgentProposal, fileHash, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
@@ -308,6 +308,25 @@ function requestUser(r, kind, params) {
   });
 }
 
+/** A host off the agent's list was asked for: said once a session, until the user allows it. */
+function refusedHost(r, host) {
+  r.refused ||= new Set();
+  // ponytail: 20 hosts a session are shown; an agent asking for more is refused them unseen, so it cannot bury the conversation in cards
+  if (r.refused.has(host) || r.refused.size >= 20 || r.status === 'closed') return;
+  r.refused.add(host);
+  emit(r, 'network', { host });
+  void persist(r);
+}
+/** The user allows the session's agent a host it was refused: for that agent, in every session, from its next try. */
+export async function allowSessionHost(r, value) {
+  const host = await allowAgentHost(r.agentId, value);
+  r.refused?.delete(host);
+  emit(r, 'network', { host, allowed: true });
+  r.notes.push(`The user now allows you to reach ${host}. If you needed it, try again.`);
+  void persist(r);
+  return host;
+}
+
 export function answerAgentRequest(r, requestId, answer) {
   const pending = r.pending.get(requestId);
   if (!pending) throw new Error('That request is no longer waiting for an answer.');
@@ -342,6 +361,8 @@ async function connect(r) {
   if (installing.has(r.agentId)) throw new Error(`${profile.name}’s adapter is being changed. Try again when it finishes.`);
   r.processOptions = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] });
   r.limits = limitsOf(r.processOptions, await skillsKey(r));
+  // an agent held to its list: a host off it is shown in the session, where the user can allow it
+  if (r.processOptions.hosts) r.processOptions.onRefused = (host) => refusedHost(r, host);
   await syncAgentSkills(r).catch((err) => emit(r, 'notice', { message: `The project’s skills weren’t copied for the agent: ${err.message}` }));
   const tools = await toolsServer(r).catch((err) => { emit(r, 'notice', { message: `Spectrum’s tools aren’t available to the agent this turn: ${err.message}` }); return null; });
   if (tools) r.processOptions.runtimePaths = [...r.processOptions.runtimePaths, ...tools.reads];
@@ -349,6 +370,8 @@ async function connect(r) {
   r.connectionAbort.signal.throwIfAborted();
   r.child = await spawnAgentProcess(r.processOptions);
   if (r.cancelled || r.connectionAbort.signal.aborted) { killAgentProcess(r.child); throw new Error('Task cancelled.'); }
+  // the tools server starts with the environment Spectrum names, so it is told of the agent's gate here
+  if (tools && r.child.gateEnv) tools.server.env.push(...Object.entries(r.child.gateEnv).map(([name, value]) => ({ name, value })));
   let stderr = '';
   const redact = (text) => hide(text, r.processOptions.secrets);
   r.child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-12000); r.diagnostic = redact(stderr); });
@@ -933,7 +956,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
     r.forceNew = true;
   }
   state(r, 'running');
-  let outcome;
+  let outcome, sent = false, unreached = false;
   const task = (async () => {
     // kept from the start, should Spectrum close, Stop be pressed or the agent fail to start
     const asked = emit(r, 'user', { text: prompt, ...(Object.keys(context).length && { context: Object.keys(context) }) });
@@ -968,11 +991,13 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       const notes = r.notes.length && `Since your last turn:\n${r.notes.map((note) => `- ${note}`).join('\n')}`;
       const handoff = earlier && `Previous conversation (a new agent session was required):\n${earlier}`;
       const text = [persona, intro, notes, handoff, prompt].filter(Boolean).join('\n\n');
+      sent = true;
       const result = await timeout(r.peer.request('session/prompt', { sessionId: r.remoteId, prompt: [{ type: 'text', text }, ...contextBlocks(r, context)] }), 30 * 60 * 1000, 'The agent task exceeded 30 minutes.', r.connectionAbort.signal);
       // told once the prompt is through: a failed one, or a session whose first prompt never landed, tells them again
       r.notes = [];
       r.openedNew = r.freshSession = false;
       r.turnCount++;
+      unreached = r.child?.gateAsked?.() === 0;
       emit(r, 'complete', result);
       // the turn's tokens, where the agent counts them: { turn: { totalTokens, inputTokens, outputTokens, … } }
       if (result.usage) emit(r, 'usage', { turn: result.usage });
@@ -981,6 +1006,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       // an agent that stopped by itself is told of by its exit, with its last words: wait a moment for that, so the
       // protocol's own word for a closed pipe doesn't take its place
       const child = r.child;
+      // one that never got its task, or wants a sign-in, asked for no host for that reason, which its own message covers
+      unreached = sent && err.code !== -32000 && child?.gateAsked?.() === 0;
       if (!r.cancelled && child?.pid && child.exitCode === null && child.signalCode === null) await timeout(new Promise((resolve) => child.once('exit', resolve)), 500, 'still running').catch(() => {});
       const told = r.status === 'failed' && child && (child.exitCode !== null || child.signalCode !== null);
       // ACP's "authentication required": the agent has no key or login inside isolation, which its own words don't say how to give
@@ -1006,6 +1033,12 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
         if (r.mode === 'review') r.notes.push(`Spectrum couldn’t take your changes for review: ${err.message} Put that right so the user can review your work.`);
       }
       for (const todo of await takeSuggestions(r).catch(() => [])) emit(r, 'todo', todo);
+      // held to its list, an agent that works asks the gate for its model at least: one that asked for nothing either
+      // ignores the proxy variables or never got that far, and the user is told once where the choice is
+      if (unreached && !r.cancelled && !r.toldUnreached) {
+        r.toldUnreached = true;
+        emit(r, 'notice', { message: `${profileFor(r.agentId).name} is held to its list of hosts and asked for none of them in this task. If it could not reach its model, it may not work through the list: choose Any host for it in Settings › Agents.` });
+      }
       // the turn's end is told once its changes are in and the next prompt can be taken
       r.busy = false;
       state(r, ...outcome);

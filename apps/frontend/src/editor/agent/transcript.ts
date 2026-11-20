@@ -44,6 +44,8 @@ export type Item =
   /** a line the Spectrum agent suggests to remember for the project */
   | { type: 'instruction'; key: string; text: string }
   | { type: 'notice'; key: string; text: string; error: boolean }
+  /** a host isolation refused the agent, as it is not on its list; allowed once the user allowed it from here */
+  | { type: 'network'; key: string; host: string; allowed: boolean }
   | { type: 'checkpoint'; key: string; checkpoint: Checkpoint };
 
 export interface Projection {
@@ -92,6 +94,7 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
   const items: Item[] = [];
   const tools = new Map<string, ToolCall>();
   const requests = new Map<string, Extract<Item, { type: 'request' }>>();
+  const refused = new Map<string, Extract<Item, { type: 'network' }>>();
   const out: Projection = { items, plan: [], commands: [], configOptions: [], modes: null, terminals: {} };
   const saved = [...checkpoints].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   let next = 0;
@@ -135,6 +138,15 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
     } else if (e.type === 'answered') {
       const item = requests.get(d.requestId);
       if (item) item.answered = true;
+    } else if (e.type === 'network' && typeof d.host === 'string') {
+      // allowing a host answers the card that said it was refused
+      const said = refused.get(d.host);
+      if (d.allowed && said) said.allowed = true;
+      else if (!d.allowed) {
+        const item = { type: 'network' as const, key: `network-${e.id}`, host: d.host, allowed: false };
+        refused.set(d.host, item);
+        items.push(item);
+      }
     } else if (e.type === 'notice' || (e.type === 'state' && d.error)) {
       const message = String(d.error || d.message || '');
       // a task stopped by the user ends with an error too, but only a failure is shown as one

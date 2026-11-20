@@ -2041,6 +2041,15 @@ button.chip.active:hover {
   border-top: 1px solid var(--border);
 }
 
+/* Settings › Snippets: a snippet's trigger after its name */
+.snippet-trigger {
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--fill);
+  font-size: 11px;
+}
+
 /* Settings › Skills */
 .skills-bar {
   align-items: center;
@@ -2175,6 +2184,11 @@ textarea.skill-file-text {
   flex-direction: column;
   gap: 6px;
   overflow-wrap: anywhere;
+}
+
+/* an MCP server's hosts, under its row */
+.mcp-hosts {
+  margin-top: 6px;
 }
 
 .agent-section > h4 {
