@@ -66,7 +66,7 @@ Below the effort, #ui[Prices] takes a model's input, cached input and output pri
 
 === Where keys are kept
 
-A key is kept in Spectrum's own settings on this computer and is only ever sent to the address it was entered for. Each provider's key is kept when switching between providers, so going back to one does not need its key again. Keys never go to GitHub, even with #ui[Keep my settings in a private repository] turned on (@ch-references).
+A key is kept by the system on this computer, in the login keychain on a Mac and encrypted for your Windows account on Windows, and Spectrum's settings keep only a reference to it. The key is therefore out of reach of anything that runs in Spectrum's window, and it is only ever sent to the address it was entered for. Keys entered in an earlier version move to the keychain the first time the new version starts, and a key typed into Settings moves a second after it is typed. A saved key shows as dots, and clicking the field selects it, so a new key pasted in replaces it whole. If the keychain cannot be used, the keys stay in Spectrum's settings and keep working as before, and #menu[Settings][Models] says why at the top. Each provider's key is kept when switching between providers, so going back to one does not need its key again. Keys never go to GitHub, even with #ui[Keep my settings in a private repository] turned on (@ch-references).
 
 The model settings can also be given in a `.env` file in Spectrum's data folder, `~/Library/Application Support/com.beyond3345.spectrum/.env` on a Mac and `%APPDATA%\com.beyond3345.spectrum\.env` on Windows. Settings entered in the application take priority over the `.env` file, and a key in the file is also only sent to its own address.
 
