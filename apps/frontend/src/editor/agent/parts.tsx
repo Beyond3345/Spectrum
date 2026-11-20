@@ -872,6 +872,10 @@ export function AgentComposer({
     setResearch(draft.research);
     inputRef.current?.focus();
   }, [draft?.n]);
+  // a task that came as the workspace opened, before its skills were listed, picks its skill once they are
+  useEffect(() => {
+    if (draft?.skill && !skill && skills.some((s) => s.id === draft.skill)) setSkill(draft.skill);
+  }, [skills]);
 
   // a triple click selects the line's break too
   const lines = api.selectionText ? api.selectionText.replace(/\n$/, '').split('\n').length : 0;
