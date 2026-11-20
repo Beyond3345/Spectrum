@@ -17,6 +17,7 @@ import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
 import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge } from '../floats';
+import { typstTableRows } from '../outlines';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -1820,10 +1821,11 @@ function TableHelp() {
   );
 }
 
-// ─── Image → LaTeX ───
+// ─── Image → LaTeX, or Typst in a Typst document ───
 
 function ImageToLatex() {
   const api = useEditor();
+  const typst = docKind(api.activePath) === 'typst';
   const [mode, setMode] = useState<VisionMode>('equation');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState('');
@@ -1867,7 +1869,7 @@ function ImageToLatex() {
     setBusy(true);
     setResult('');
     try {
-      const res = await visionToLatex({ projectId: api.projectId, file, mode, prompt: prompt.trim() || VISION_HINTS[mode], llmConfig: api.llm.vision });
+      const res = await visionToLatex({ projectId: api.projectId, file, mode, prompt: prompt.trim() || (typst ? undefined : VISION_HINTS[mode]), llmConfig: api.llm.vision, kind: docKind(api.activePath) });
       if (!res.ok) throw new Error(res.error || 'The image couldn’t be read.');
       setResult(res.latex || '');
       if (res.assetPath) await api.refreshTree();
@@ -1881,7 +1883,7 @@ function ImageToLatex() {
   return (
     <section className="tool-card" onPaste={onPaste}>
       <div className="tool-card-title">
-        <Icon name="text.viewfinder" /> Image → LaTeX
+        <Icon name="text.viewfinder" /> Image → {typst ? 'Typst' : 'LaTeX'}
       </div>
       <div className="field">
         <label id="image-latex-mode">Convert to</label>
@@ -1942,7 +1944,7 @@ function ImageToLatex() {
           rows={2}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. only the tabular, no caption"
+          placeholder={typst ? 'e.g. only the table, no caption' : 'e.g. only the tabular, no caption'}
         />
       </div>
       <div className="row">
@@ -1965,6 +1967,10 @@ function ImageToLatex() {
 
 // ─── Table → chart ───
 
+/** Cells as a LaTeX tabular, the form the plotting script and the model read. */
+const asTabular = (rows: string[][]) =>
+  `\\begin{tabular}{${'l'.repeat(Math.max(...rows.map((r) => r.length)))}}\n${rows.map((r) => r.map((c) => c.replace(/\\/g, '').replace(/[&%]/g, '\\$&')).join(' & ') + ' \\\\').join('\n')}\n\\end{tabular}`;
+
 function TableToChart() {
   const api = useEditor();
   const [type, setType] = useState<'bar' | 'line' | 'heatmap'>('bar');
@@ -1980,14 +1986,17 @@ function TableToChart() {
   const [editing, setEditing] = useState(false);
   const [failed, setFailed] = useState('');
   const [asset, setAsset] = useState<{ path: string; at: number } | null>(null);
-  const table = api.selectionText;
+  // a Typst #table goes to the model and the plot as the tabular they read
+  const typst = docKind(api.activePath) === 'typst';
+  const typstRows = typst ? typstTableRows(api.selectionText) : null;
+  const table = typstRows ? asTabular(typstRows) : api.selectionText;
   const hasTable = table.includes('\\begin{tabular') || table.includes('\\begin{table');
 
   /** Asks the model for the code, which is shown and never run until Run this code. again: with the last run's error. */
   const write = async (again = false) => {
     const tableLatex = again ? source : table;
     if (!again && !hasTable) {
-      setStatus('Select a LaTeX table (tabular) in the editor first.');
+      setStatus(typst ? 'Select a Typst table (#table) in the editor first.' : 'Select a LaTeX table (tabular) in the editor first.');
       return;
     }
     setBusy('write');
@@ -2028,7 +2037,10 @@ function TableToChart() {
       setStatus(`Chart saved to ${res.assetPath}.`);
       await api.refreshTree();
       // after the selected table, not over it
-      if (autoInsert) api.insertAtCursor(figureSnippet(res.assetPath), { block: true, afterSelection: true });
+      if (autoInsert) {
+        const figure = docKind(api.activePath) === 'typst' ? figureTypst({ path: res.assetPath, width: 0.9, caption: 'Caption.', label: figureLabel(res.assetPath) }) : figureSnippet(res.assetPath);
+        api.insertAtCursor(figure, { block: true, afterSelection: true });
+      }
     } catch (err) {
       setFailed(errorText(err));
     } finally {

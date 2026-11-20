@@ -118,25 +118,14 @@ function closing(text: string, at: number) {
   return -1;
 }
 
-const SUPPLEMENT: Record<string, string> = { image: 'Figure', table: 'Table', raw: 'Listing' };
-/** Content as it reads: markup, labels and function names gone. */
-const readable = (content: string) =>
-  content
-    .replace(/<[\w:.-]+>/g, '')
-    .replace(/#[\w.-]+/g, '')
-    .replace(/[*_`$[\]()"]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-/** A #figure( at `at` (its #): its kind's supplement and its caption as it reads, or null for one without a caption. */
-export function typstFigure(text: string, at: number): { supplement: string; caption: string } | null {
-  const open = text.indexOf('(', at);
-  const end = open === -1 ? -1 : closing(text, open);
+/**
+ * The arguments of the call whose ( is at `open`, each to its comma at that depth: { name, value } with name '' for a
+ * positional one; a trailing content block after the ) is the last. null when it never closes.
+ */
+export function typstArgs(text: string, open: number): { name: string; value: string }[] | null {
+  const end = closing(text, open);
   if (end === -1) return null;
-  // its own arguments, each to its comma, not those of a figure inside it
-  let caption = '';
-  let kind = '';
-  let body = '';
+  const args: { name: string; value: string }[] = [];
   for (let i = open + 1; i < end; i += 1) {
     if (/[\s,]/.test(text[i])) continue;
     const named = /^([A-Za-z][\w-]*)\s*:\s*/.exec(text.slice(i, i + 40));
@@ -147,14 +136,43 @@ export function typstFigure(text: string, at: number): { supplement: string; cap
       else if (text[j] === '"') j = text.indexOf('"', j + 1);
       if (j === -1) return null;
     }
-    const value = text.slice(start, j).trim();
-    if (!named) body ||= value;
-    else if (named[1] === 'caption' && value.startsWith('[')) caption = value.slice(1, -1);
-    else if (named[1] === 'kind') kind = value.replace(/"/g, '');
+    args.push({ name: named?.[1] ?? '', value: text.slice(start, j).trim() });
     i = j;
   }
-  // #figure(caption: […])[body]
-  if (!body && text[end + 1] === '[') body = text.slice(end + 1, closing(text, end + 1));
+  for (let at = end + 1; text[at] === '['; ) {
+    const close = closing(text, at);
+    if (close === -1) break;
+    args.push({ name: '', value: text.slice(at, close + 1) });
+    at = close + 1;
+  }
+  return args;
+}
+
+const SUPPLEMENT: Record<string, string> = { image: 'Figure', table: 'Table', raw: 'Listing' };
+/** Content as it reads: markup, labels and function names gone. */
+export const readable = (content: string) =>
+  content
+    .replace(/<[\w:.-]+>/g, '')
+    .replace(/#[\w.-]+/g, '')
+    .replace(/[*_`$[\]"]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** A #figure( at `at` (its #): its kind's supplement and its caption as it reads, or null for one without a caption. */
+export function typstFigure(text: string, at: number): { supplement: string; caption: string } | null {
+  const open = text.indexOf('(', at);
+  if (open === -1) return null;
+  // its own arguments, not those of a figure inside it
+  let caption = '';
+  let kind = '';
+  let body = '';
+  const args = typstArgs(text, open);
+  if (!args) return null;
+  for (const { name, value } of args) {
+    if (!name) body ||= value;
+    else if (name === 'caption' && value.startsWith('[')) caption = value.slice(1, -1);
+    else if (name === 'kind') kind = value.replace(/"/g, '');
+  }
   if (!readable(caption)) return null;
   // Typst's kind: what the body is, else the first table, image or raw block in it
   const found = kind || (/^(table|image)\(/.exec(body)?.[1] ?? /^`/.exec(body)?.[0]) || /(?:#|\b)(table|image)\(|```/.exec(body)?.[0] || 'image';
@@ -230,4 +248,36 @@ export function numberTypstOutline<T extends OutlineItem>(items: T[], numbers: T
     cursor.heading = at + 1;
     return headings[at].number ? { ...item, title: `${headings[at].number} ${item.title}` } : item;
   });
+}
+
+/**
+ * A selected Typst #table's cells, row by row, as its text reads (markup gone, a colspan's cell followed by blanks);
+ * null when the text holds no table(…) with its columns.
+ */
+export function typstTableRows(text: string): string[][] | null {
+  const at = /(?:^|[^\w.-])table\s*\(/.exec(text);
+  if (!at) return null;
+  const args = typstArgs(text, at.index + at[0].length - 1);
+  const columns = args?.find((a) => a.name === 'columns')?.value ?? '';
+  // columns: 3, or (auto, 1fr, 2cm), one column a item
+  const count = /^\d+$/.test(columns) ? Number(columns) : columns.startsWith('(') ? (typstArgs(columns, 0)?.length ?? 0) : 0;
+  if (!args || count < 1) return null;
+  const cells: string[] = [];
+  const cell = (value: string) => {
+    const call = /^(table\.(?:header|footer|cell)|\w[\w.]*)\s*\(/.exec(value);
+    if (!call) return void cells.push(readable(value.replace(/^"|"$/g, '')));
+    if (/^table\.(?:hline|vline)$/.test(call[1])) return;
+    const inner = typstArgs(value, call[0].length - 1) ?? [];
+    if (call[1] === 'table.header' || call[1] === 'table.footer') return inner.filter((a) => !a.name).forEach((a) => cell(a.value));
+    if (call[1] === 'table.cell') {
+      const span = Number(inner.find((a) => a.name === 'colspan')?.value) || 1;
+      cells.push(readable(inner.find((a) => !a.name)?.value ?? ''), ...Array<string>(span - 1).fill(''));
+      return;
+    }
+    cells.push(readable(value));
+  };
+  for (const { name, value } of args) if (!name) cell(value);
+  const rows: string[][] = [];
+  for (let i = 0; i < cells.length; i += count) rows.push(cells.slice(i, i + count));
+  return rows.length ? rows : null;
 }

@@ -1550,10 +1550,13 @@ export async function visionToLatex(payload: {
   mode: 'equation' | 'table' | 'figure' | 'algorithm' | 'ocr';
   prompt?: string;
   llmConfig?: Partial<LLMConfig>;
+  /** the document's language: Typst gets Typst, anything else LaTeX */
+  kind?: string | null;
 }) {
   const form = new FormData();
   form.append('projectId', payload.projectId);
   form.append('mode', payload.mode);
+  if (payload.kind) form.append('kind', payload.kind);
   if (payload.prompt) form.append('prompt', payload.prompt);
   if (payload.llmConfig) form.append('llmConfig', JSON.stringify(payload.llmConfig));
   form.append('image', payload.file);
