@@ -22,11 +22,15 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The Spectrum agent can search the project's text, read the project map and the bibliography, edit by replacing exact text and propose deleting a file
 - The Spectrum agent can show a plan before it changes anything: untick or edit its steps, then Approve and run, Approve and ask before each file or Keep planning. Plan, under the message box, asks for one, and the agent plans by itself before a larger task. The approved steps stay at the top of the thread and are ticked as it works
 - The Spectrum agent asks a question when a request is unclear, with answers to choose from. A plan or a question waits in the thread, through a reload and a restart, with no request to the model open
-- `AGENTS.md` at the top of a project holds your standing instructions for the Spectrum agent. The agent can suggest a line for it, which is added only when you press Add
+- `AGENTS.md` at the top of a project holds your standing instructions for the Spectrum agent
+- The Spectrum agent can suggest a line to remember for a project, which is kept only when you press Add. Memory, under the message box, lists what it remembers for the project, to edit, delete or add to
+- The remembered lines go to the Spectrum agent and Fix with AI with every request. They are kept on this computer, apart from the project's files and from `AGENTS.md`
 - Each agent tab shows what a turn used: tokens and the share served from the cache, and for a local agent how full its context is and the cost it reports
-- The Spectrum agent shows an estimate of a thread's cost when you type your model's prices in Settings › Models. Spectrum keeps no price list of its own
+- The Spectrum agent shows what a thread cost: the figure OpenRouter reports, in US dollars, or an estimate from the prices you type in Settings › Models for any of the provider's models. Spectrum keeps no price list of its own
+- A price can be typed in any of 14 currencies. Each cost is shown in its own currency, with a symbol no other currency shares such as US$, A$, HK$ and CN¥, and two currencies are never added together
 - Choose the Spectrum agent's model and thinking for each thread in its tab
 - Review an agent's or the assistant's changes one at a time: Apply, Reject or Edit each change, with J, K, A, R and E
+- A review saves one “Before AI changes” checkpoint, before the first change you apply, and it covers every change until you close the review. Settings › Checkpoints › Save a checkpoint before every change I apply saves one for each change instead, and a deletion you apply always has its own
 - A change that overlaps your own edit shows both versions: keep yours, use the agent's, take both or edit the result
 - Review has a PDF before and after view, for the Spectrum agent and the assistant too
 - A long review is grouped under the document's headings, with counts, and an agent's change of line endings is offered as a change of its own
