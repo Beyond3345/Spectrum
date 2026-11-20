@@ -1623,6 +1623,7 @@ function EnginesPane() {
         <div className="field-hint">
           Auto reads a <code>% !TEX program</code> comment, uses XeLaTeX when the document needs Unicode fonts, and pdfLaTeX otherwise.
           When no TeX is installed, Auto uses the built-in Tectonic, which downloads each package the first time a document needs it.
+          A <code>% !TEX recipe</code> comment runs the document’s own steps in place of Spectrum’s passes, and <code>% !TEX options</code> adds options for the engine.
         </div>
         {warmUp && (
           <div className="field-hint" role="status">
