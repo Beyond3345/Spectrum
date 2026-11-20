@@ -34,7 +34,7 @@ The Windows version is a preview. Version 2.0 was built and tested on a Windows 
 - the icons are Microsoft's Fluent UI System Icons, since Apple's SF Symbols may only be used on Apple platforms,
 - the shortcuts use `Ctrl` for `⌘`, `Alt` for `⌥` and `Shift` for `⇧`, so Compile is `Ctrl+Enter`. Fold and unfold are `Ctrl+Shift+[` and `Ctrl+Shift+]`, find next and previous are `F3` and `Shift+F3`, and redo is `Ctrl+Y`,
 - Show in Finder is Show in File Explorer, and projects are moved to the Recycle Bin,
-- local agents get no Spectrum tools yet. Preview PDF in the agent workspace needs MiKTeX or TeX Live 2025 or earlier, since TeX Live 2026 no longer limits which files a compile reads,
+- local agents get no Spectrum tools yet. An agent's draft is compiled as your own compile is, with Biber, the index and glossary tools, latexmk and Tectonic, but never with shell escape, and TeX is told to read and write only inside the draft. Preview PDF in the agent workspace shows LaTeX drafts only and, when the draft is compiled with TeX Live, needs MiKTeX or TeX Live 2025 or earlier, since TeX Live 2026 no longer limits which files a compile reads,
 - MiKTeX installs a missing package without asking, since its question would appear in a hidden window and
 - settings are kept in `%APPDATA%\com.beyond3345.spectrum` and new projects are placed in `Documents\Spectrum`.
 

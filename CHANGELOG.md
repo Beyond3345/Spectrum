@@ -45,6 +45,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 ### Changed
 
 - Fix with AI compiles its fix before you review it and says “Builds.” or where it still fails
+- On Windows the agent's compile and Preview PDF run Biber, the index tools, latexmk and Tectonic as your own compile does, so a biblatex draft shows its citations
 - A later message in a Spectrum agent thread keeps what the agent read earlier, so it does not read the same files again
 - Requests to Claude and OpenAI models ask for prompt caching, and the Spectrum agent's instructions are about 2 KB shorter
 - A busy provider's wait is shown while the Spectrum agent waits
