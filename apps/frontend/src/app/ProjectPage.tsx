@@ -39,6 +39,7 @@ import {
 } from '../api/client';
 import type { GitHubProblem, MigrationNotice, ProjectMeta, TemplateCategory, TemplateMeta, UniverseTemplate } from '../api/client';
 import Icon from './Icon';
+import UpdateNotice from './UpdateNotice';
 import Segmented, { radioKeys, radioTab } from './Segmented';
 import { ContextMenu, MenuButton } from './Menu';
 import type { MenuItems } from './Menu';
@@ -1092,6 +1093,7 @@ export default function ProjectPage() {
         </header>
 
         <div className="panel-body" style={{ '--tile': `${Math.round(116 * prefs.iconSize)}px` } as CSSProperties}>
+          <UpdateNotice />
           {view === 'all' && notice && <MoveNotice notice={notice} onMove={moveHere} onDismiss={dismissNotice} />}
           {view === 'github' ? (
             <GitHubView

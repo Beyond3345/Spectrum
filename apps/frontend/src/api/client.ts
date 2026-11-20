@@ -1941,6 +1941,11 @@ export function systemCheck(texFolder?: string) {
   return request<SystemCheck>(`/api/system/check${texFolder ? `?${new URLSearchParams({ texFolder })}` : ''}`);
 }
 
+/** A newer Spectrum than this one, from the release page (asked by the backend at most once a day). */
+export function getUpdateNotice() {
+  return request<{ available: boolean; version?: string; url?: string }>('/api/system/update');
+}
+
 // ─── This computer and the sync apps' folders ───
 
 export function getSyncSettings() {

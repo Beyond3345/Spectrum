@@ -1003,6 +1003,13 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                   <Icon name="doc.text" /> Licences
                 </button>
               </div>
+              <label className="checkbox-row">
+                <input type="checkbox" role="switch" checked={settings.updateCheck} onChange={(e) => update({ updateCheck: e.target.checked })} />
+                <span>
+                  Tell me when a newer Spectrum is out
+                  <span className="field-hint">Once a day Spectrum asks its release page on GitHub for the latest version, sending nothing about you or your projects, and the projects page links to a newer one. Nothing is downloaded.</span>
+                </span>
+              </label>
             </>
           )}
         </div>
