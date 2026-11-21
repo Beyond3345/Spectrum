@@ -327,3 +327,84 @@ test('The Spectrum agent reads a source as untrusted text and records a claim, a
   const { listClaims } = await import('../src/services/claimsLedger.js');
   assert.equal((await listClaims(root)).length, 1);
 });
+
+test('the bibliography read is the one the document in question loads, whatever its name, and the answer says which', async () => {
+  const { documentBib, allBibEntries } = await import('../src/mcp/tools.js');
+  const { checkReferences, checkSummary } = await import('../src/services/referenceCheck.js');
+  const entry = (key) => `@misc{${key},\n  title = {Work ${key}},\n  howpublished = {\\url{https://example.org/${key}}}\n}\n`;
+  let n = 0;
+  const project = async (files) => {
+    const root = path.join(tmp, `bibs-${n++}`);
+    for (const [file, text] of Object.entries(files)) {
+      await fs.mkdir(path.dirname(path.join(root, file)), { recursive: true });
+      await fs.writeFile(path.join(root, file), text);
+    }
+    return root;
+  };
+  const doc = (load) => `\\documentclass{article}\n${load}\n\\begin{document}\n\\cite{probeA}\n\\end{document}\n`;
+  const read = async (root, file, state) => {
+    const { document, bibs, entries } = await documentBib(root, state, file);
+    return [document, bibs, entries.map((e) => e.key)];
+  };
+
+  // the owner's project: a template's main.tex that loads a references.bib it does not have, and a second paper
+  const probe = await project({
+    'main.tex': doc('\\usepackage{biblatex}\n\\addbibresource{references.bib}'),
+    'research-probe.tex': doc('\\usepackage{biblatex}\n\\addbibresource{research-probe.bib}'),
+    'research-probe.bib': entry('probeA') + entry('probeB')
+  });
+  const agent = { mainFile: 'main.tex' };
+  // the agent names the document it works on: its own .bib is checked
+  const named = checkSummary(await checkReferences(probe, { state: agent, file: 'research-probe.tex' }));
+  assert.equal(named.checked, 2);
+  assert.equal(named.document, 'research-probe.tex');
+  assert.deepEqual(named.bibFiles, ['research-probe.bib']);
+  assert.equal(named.note, undefined);
+  // left to the main file, it reads that one's, and says why there was nothing, never a bare 0
+  const left = checkSummary(await checkReferences(probe, { state: agent }));
+  assert.equal(left.checked, 0);
+  assert.equal(left.document, 'main.tex');
+  assert.deepEqual(left.bibFiles, []);
+  assert.equal(left.note, 'main.tex loads references.bib, which is not in the project.');
+  // keys asked for that the main file's bibliography lacks are named, with the way to the other document
+  const keys = checkSummary(await checkReferences(probe, { state: agent, keys: ['probeA'] }));
+  assert.match(keys.note, /probeA is not in any \.bib file read\. If another document loads it, check again with that document as file\./);
+  await assert.rejects(checkReferences(probe, { state: agent, file: 'nowhere.tex' }), /There is no document nowhere\.tex/);
+  // a key the agent reads a source by, or records a claim with, is found whichever document loads it
+  assert.deepEqual((await allBibEntries(probe)).map((e) => e.key), ['probeA', 'probeB']);
+
+  // \bibliography without the extension, Typst, Markdown (one name or a list)
+  assert.deepEqual(await read(await project({ 'p.tex': doc('\\bibliography{research-probe}'), 'research-probe.bib': entry('a'), 'other.bib': entry('z') }), 'p.tex'), ['p.tex', ['research-probe.bib'], ['a']]);
+  assert.deepEqual(await read(await project({ 'paper.typ': '= Hi\n@a\n#bibliography("x.bib")\n', 'x.bib': entry('a'), 'other.bib': entry('z') })), ['paper.typ', ['x.bib'], ['a']]);
+  assert.deepEqual(await read(await project({ 'paper.md': '---\ntitle: T\nbibliography: x.bib\n---\n\n[@a]\n', 'x.bib': entry('a'), 'other.bib': entry('z') })), ['paper.md', ['x.bib'], ['a']]);
+  assert.deepEqual(await read(await project({ 'paper.md': '---\nbibliography: [x.bib, y.bib]\n---\n\n[@a]\n', 'x.bib': entry('a'), 'y.bib': entry('b'), 'other.bib': entry('z') })), ['paper.md', ['x.bib', 'y.bib'], ['a', 'b']]);
+  // a .bib in a subfolder: by its path, from a document in a folder of its own, or found by name as BIBINPUTS would
+  assert.deepEqual(await read(await project({ 'p.tex': doc('\\addbibresource{bib/refs.bib}'), 'bib/refs.bib': entry('a'), 'refs.bib': entry('z') }), 'p.tex'), ['p.tex', ['bib/refs.bib'], ['a']]);
+  assert.deepEqual(await read(await project({ 'paper/p.tex': doc('\\bibliography{refs}'), 'paper/refs.bib': entry('a'), 'refs.bib': entry('z') }), 'paper/p.tex'), ['paper/p.tex', ['paper/refs.bib'], ['a']]);
+  assert.deepEqual(await read(await project({ 'p.tex': doc('\\bibliography{refs}'), 'bib/refs.bib': entry('a') }), 'p.tex'), ['p.tex', ['bib/refs.bib'], ['a']]);
+  // two .bib files loaded, both read, and one left out is not
+  const two = await project({ 'p.tex': doc('\\addbibresource{a.bib}\n\\addbibresource{b.bib}'), 'a.bib': entry('a'), 'b.bib': entry('b'), 'c.bib': entry('c') });
+  assert.deepEqual(await read(two, 'p.tex'), ['p.tex', ['a.bib', 'b.bib'], ['a', 'b']]);
+  // none named: every .bib, said; none at all, said
+  assert.equal(checkSummary(await checkReferences(await project({ 'p.tex': doc(''), 'a.bib': entry('a') }), { file: 'p.tex' })).note, 'p.tex loads no .bib file, so every .bib in the project was read.');
+  assert.equal(checkSummary(await checkReferences(await project({ 'p.tex': doc('') }), { file: 'p.tex' })).note, 'p.tex loads no .bib file and the project has none.');
+
+  // Review's References exist checks the document reviewed, and says what it read
+  const { default: Fastify } = await import('fastify');
+  const { registerReferenceRoutes } = await import('../src/routes/references.js');
+  const { createProject, getProjectRoot } = await import('../src/services/projectService.js');
+  const app = Fastify();
+  registerReferenceRoutes(app);
+  const p = await createProject({ name: 'Probe' });
+  const root = await getProjectRoot(p.id);
+  await fs.writeFile(path.join(root, 'main.tex'), doc('\\addbibresource{references.bib}'));
+  await fs.rm(path.join(root, 'references.bib'), { force: true });
+  await fs.writeFile(path.join(root, 'research-probe.tex'), doc('\\addbibresource{research-probe.bib}'));
+  await fs.writeFile(path.join(root, 'research-probe.bib'), entry('probeA'));
+  const reviewed = (await app.inject({ url: '/api/references/check', method: 'POST', payload: { projectId: p.id, doc: 'research-probe.tex' } })).json();
+  assert.deepEqual([reviewed.bibFiles, reviewed.rows.map((r) => r.key), reviewed.note], [['research-probe.bib'], ['probeA'], '']);
+  const main = (await app.inject({ url: '/api/references/check', method: 'POST', payload: { projectId: p.id } })).json();
+  assert.equal(main.note, 'main.tex loads references.bib, which is not in the project.');
+  assert.equal((await app.inject({ url: '/api/references/check', method: 'POST', payload: { projectId: p.id, doc: 7 } })).statusCode, 400);
+  await app.close();
+});

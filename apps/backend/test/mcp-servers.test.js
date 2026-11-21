@@ -176,3 +176,64 @@ test('a server the user added runs only once checked and on, isolated, and asks 
   await servers.removeServer('notes');
   assert.deepEqual(await servers.listServers(), []);
 });
+
+// behaves as `npx -y some-server` does: asks the gate for the npm registry first, and without it prints npm's long
+// error, whose last line is a log's path, and exits; with it (a stand-in on this computer), serves its one tool
+const NPX = `import http from 'node:http';
+import readline from 'node:readline';
+const proxy = new URL(process.env.HTTPS_PROXY);
+const status = await new Promise((resolve) => {
+  const req = http.request({ host: proxy.hostname, port: proxy.port, method: 'CONNECT', path: 'registry.npmjs.org:443' });
+  req.on('connect', (res, socket) => { socket.destroy(); resolve(res.statusCode); });
+  req.on('error', (e) => resolve(e.code));
+  req.end();
+});
+if (status !== 200) {
+  console.error(['npm error code E403', 'npm error 403 403 Forbidden - GET https://registry.npmjs.org/some-server', ...Array.from({ length: 40 }, (_, i) => 'npm verbose stack at fetch.js:' + i), 'npm error A complete log of this run can be found in: ' + process.env.HOME + '/.npm/_logs/debug-0.log'].join('\\n'));
+  process.exit(1);
+}
+readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  const m = JSON.parse(line);
+  if (m.id === undefined) return;
+  const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) + '\\n');
+  if (m.method === 'initialize') return reply({ protocolVersion: m.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'memory', version: '1' } });
+  if (m.method === 'tools/list') return reply({ tools: [{ name: 'recall', description: 'Recalls', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } }] });
+});
+`;
+
+test('a Check that fails after the gate refused a host names the host first, with the program’s own error kept as details', { skip: !mac && 'macOS isolation' }, async () => {
+  const { registerMcpServerRoutes } = await import('../src/routes/mcpServers.js');
+  const { nameStandIn } = await import('../src/services/agentNetwork.js');
+  const settings = Fastify();
+  registerMcpServerRoutes(settings);
+  const npx = path.join(fixture, 'npx.mjs');
+  await fs.writeFile(npx, NPX);
+  // the registry, as a socket on this computer that the gate opens a tunnel to once it is listed
+  const registry = (await import('node:net')).createServer((socket) => socket.on('error', () => {}));
+  await new Promise((resolve) => registry.listen(0, '127.0.0.1', resolve));
+  nameStandIn('registry.npmjs.org', registry.address().port);
+  try {
+    assert.equal((await settings.inject({ method: 'POST', url: '/api/mcp-servers', payload: { name: 'memory', command: process.execPath, args: [npx] } })).statusCode, 200);
+    const failed = await settings.inject({ method: 'POST', url: '/api/mcp-servers/memory/check' });
+    assert.equal(failed.statusCode, 502);
+    const body = failed.json();
+    assert.deepEqual(body.refused, ['registry.npmjs.org']);
+    assert.match(body.error, /^“memory” stopped before it gave its tools\. It asked for registry\.npmjs\.org, which Spectrum’s isolation refused/);
+    assert.doesNotMatch(body.error, /complete log/);
+    assert.match(body.details, /npm error code E403[\s\S]*A complete log of this run/);
+    // the list Settings reads after a failed Check offers it too
+    const listed = (await settings.inject({ url: '/api/mcp-servers' })).json().servers.find((s) => s.name === 'memory');
+    assert.deepEqual(listed.refused, ['registry.npmjs.org']);
+    // allowed, the same Check passes and nothing is offered any more
+    await settings.inject({ method: 'PUT', url: '/api/mcp-servers/memory', payload: { hosts: ['registry.npmjs.org'] } });
+    const passed = await settings.inject({ method: 'POST', url: '/api/mcp-servers/memory/check' });
+    assert.equal(passed.statusCode, 200, passed.body);
+    assert.deepEqual(passed.json().tools.map((t) => t.name), ['recall']);
+    assert.deepEqual((await settings.inject({ url: '/api/mcp-servers' })).json().servers.find((s) => s.name === 'memory').refused, []);
+  } finally {
+    nameStandIn('registry.npmjs.org');
+    await servers.removeServer('memory');
+    registry.close();
+    await settings.close();
+  }
+});

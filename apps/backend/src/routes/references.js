@@ -1,6 +1,6 @@
 import { getProjectRoot } from '../services/projectService.js';
 import { resolveReferences, addReference } from '../services/referenceService.js';
-import { checkReferences } from '../services/referenceCheck.js';
+import { checkNote, checkReferences } from '../services/referenceCheck.js';
 
 const MAX_INPUT_CHARS = 50_000;
 
@@ -23,11 +23,16 @@ async function withProject(req, reply, run) {
 export function registerReferenceRoutes(fastify) {
   // Review's References exist: each entry against its record, by code
   fastify.post('/api/references/check', async (req, reply) => {
-    const { keys } = req.body || {};
+    // doc: the document reviewed, whose own .bib files are checked
+    const { keys, doc } = req.body || {};
     if (keys != null && (!Array.isArray(keys) || keys.length > 300 || keys.some((k) => typeof k !== 'string'))) {
       return reply.code(400).send({ ok: false, error: 'Invalid keys.' });
     }
-    return withProject(req, reply, (projectRoot) => checkReferences(projectRoot, { keys: keys ?? undefined }));
+    if (doc != null && typeof doc !== 'string') return reply.code(400).send({ ok: false, error: 'Invalid document.' });
+    return withProject(req, reply, async (projectRoot) => {
+      const result = await checkReferences(projectRoot, { keys: keys ?? undefined, file: doc || undefined });
+      return { ...result, note: checkNote(result) };
+    });
   });
 
   fastify.post('/api/references/resolve', async (req, reply) => {

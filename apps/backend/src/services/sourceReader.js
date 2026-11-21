@@ -4,7 +4,7 @@
 // on this computer or the local network, each redirect checked, 50 MB at most. Without an open copy the abstract is
 // read, and the answer says so. What it returns is the paper's text, which the agent's loop marks as untrusted.
 import { promises as fs } from 'fs';
-import { projectBibEntries } from '../mcp/tools.js';
+import { allBibEntries } from '../mcp/tools.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { bibIdentity, cleanDoi, detectInput } from './referenceService.js';
 import { downloadPdf } from './researchService.js';
@@ -113,7 +113,8 @@ export async function findSource(root, { doi, arxiv, key, path: file } = {}) {
     return { kind: 'full text', ...(await document(`${abs}:${mtimeMs}`, async () => fromPdf(file)(await fs.readFile(abs)))) };
   }
   if (key) {
-    const entry = (await projectBibEntries(root)).find((e) => e.key === key);
+    // whichever document loads it: a project may hold a second paper with its own .bib
+    const entry = (await allBibEntries(root)).find((e) => e.key === key);
     if (!entry) throw new Error(`The bibliography has no entry ${key}. Look it up with bib_search.`);
     // the paper Get PDF saved, under its key
     const saved = `research/papers/${key.replace(/[^A-Za-z0-9_-]+/g, '-')}.pdf`;

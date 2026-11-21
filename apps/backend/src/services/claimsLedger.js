@@ -5,7 +5,7 @@
 // as to-dos are kept, so two computers' ledgers join.
 import crypto from 'crypto';
 import { promises as fs } from 'fs';
-import { projectBibEntries } from '../mcp/tools.js';
+import { allBibEntries } from '../mcp/tools.js';
 import { readItems } from '../routes/todos.js';
 import { writeJsonAtomic } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
@@ -64,7 +64,7 @@ export async function recordClaim(root, input, { checkPath = (p) => p } = {}) {
   if (!Number.isInteger(line) || !claimAt(text, line, claim)) throw new Error(`The claim is not at ${file}:${line}. Give the line read_file or search_text shows it on.`);
   const keys = [...new Set((Array.isArray(input.keys) ? input.keys : []).map(String).filter(Boolean))].slice(0, 20);
   if (keys.length) {
-    const known = new Set((await projectBibEntries(root)).map((e) => e.key));
+    const known = new Set((await allBibEntries(root)).map((e) => e.key));
     const missing = keys.filter((k) => !known.has(k));
     if (missing.length) throw new Error(`The bibliography has no ${missing.join(', ')}.`);
   }

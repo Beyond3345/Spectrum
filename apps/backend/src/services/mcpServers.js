@@ -213,6 +213,8 @@ async function started(server) {
     const named = [];
     for (const arg of server.args) if (path.isAbsolute(arg) && (await fs.stat(arg).catch(() => null))) named.push(path.dirname(arg));
     const env = await variablesOf(server);
+    // the hosts the gate refused this process: what a failure names first
+    const asked = new Set();
     const child = await spawnAgentProcess({
       command: server.command, args: server.args, workspace: path.join(dir, 'work'), home: path.join(dir, 'home'), runtimePaths: [...new Set(named)],
       env, localPorts: server.ports,
@@ -220,26 +222,43 @@ async function started(server) {
       ...(!server.anyHost && {
         hosts: async () => (await listServers()).find((s) => s.name === server.name)?.hosts || [],
         // ponytail: the first 20 it asks for are kept to offer
-        onRefused: (host) => { const set = refused.get(server.name) || new Set(); if (set.size < 20) refused.set(server.name, set.add(host)); }
+        onRefused: (host) => { asked.add(host); const set = refused.get(server.name) || new Set(); if (set.size < 20) refused.set(server.name, set.add(host)); }
       })
     });
-    let error = '';
-    child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-2000); });
     const client = new Client({ name: 'spectrum', version: APP_VERSION });
-    run = { client, child, secrets: Object.values(env) };
+    run = { client, child, server, secrets: Object.values(env), asked, stderr: '' };
+    child.stderr.on('data', (chunk) => { run.stderr = (run.stderr + chunk).slice(-4000); });
     running.set(server.name, run);
     child.once('exit', () => running.get(server.name) === run && running.delete(server.name));
     try {
       await client.connect(childTransport(child), { timeout: 30000 });
     } catch (err) {
-      stop(server.name);
-      throw new Error(`“${server.name}” did not start as an MCP server: ${hide(error.trim().split('\n').at(-1) || err.message, run.secrets).slice(0, 300)}`);
+      throw await failure(run, err);
     }
   }
   clearTimeout(run.idle);
   run.idle = setTimeout(() => stop(server.name), IDLE_MS);
   run.idle.unref?.();
   return run;
+}
+
+/**
+ * Why a server's process failed, stopping it: the hosts the gate refused it first, as a program that cannot download
+ * what it runs (npx, uvx) says only its own long error, then that error. err.refused and err.details (the program's
+ * own words) go to Settings, which offers Allow for each host and keeps the details under a disclosure.
+ */
+async function failure(run, err) {
+  stop(run.server.name);
+  // what it printed as it ended arrives after its exit: wait for its output to close, a second at most
+  if (run.child.stderr.readable) await new Promise((resolve) => { run.child.once('close', resolve); setTimeout(resolve, 1000).unref(); });
+  const { name, hosts } = run.server;
+  const details = hide(run.stderr.trim() || err.message, run.secrets);
+  const asked = [...run.asked].filter((host) => !hostAllowed(host, hosts));
+  const them = asked.length > 1 ? 'them' : 'it';
+  const message = asked.length
+    ? `“${name}” stopped before it gave its tools. It asked for ${asked.join(', ')}, which Spectrum’s isolation refused as ${asked.length > 1 ? 'they are' : 'it is'} not on its list. Allow ${them} for this server in Settings › Agents › MCP servers and check it again.`
+    : `“${name}” did not start as an MCP server: ${details.split('\n').at(-1).slice(0, 300)}`;
+  return Object.assign(new Error(message), { refused: asked, details: details.slice(-4000) });
 }
 
 const hashOf = (tools) => crypto.createHash('sha256').update(JSON.stringify(tools.map(({ name, description, inputSchema, annotations }) => ({ name, description, inputSchema, annotations })))).digest('hex');
@@ -249,8 +268,11 @@ export async function checkServer(name) {
   const servers = await listServers();
   const server = servers.find((s) => s.name === name);
   if (!server) throw httpError('No such server.', 404);
-  const { client, secrets } = await started(server);
-  const { tools } = await client.listTools();
+  const run = await started(server);
+  let tools;
+  // a server that ends while it is asked is a failure too
+  try { ({ tools } = await run.client.listTools()); } catch (err) { throw await failure(run, err); }
+  const { secrets } = run;
   await save(servers.map((s) => (s.name === name ? { ...s, tools: hashOf(tools) } : s)));
   return tools.map((t) => ({ name: t.name, description: hide(String(t.description || '').slice(0, 300), secrets), readOnly: t.annotations?.readOnlyHint === true }));
 }

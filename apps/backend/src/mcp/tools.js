@@ -4,7 +4,8 @@ import vm from 'node:vm';
 import { z } from 'zod';
 import { compileFolder, unwrap } from '../services/compileService.js';
 import { pdfPagePng } from '../services/typstService.js';
-import { parseBibEntries, texIncludesBib } from '../services/referenceService.js';
+import { parseBibEntries } from '../services/referenceService.js';
+import { parseFrontMatter } from '../services/markdownService.js';
 import { fetchBibtex, literatureSearch } from '../services/researchTools.js';
 import { checkReferences, checkSummary } from '../services/referenceCheck.js';
 import { SKILL_ID, readFrontMatter, skillBody } from '../services/skillService.js';
@@ -108,20 +109,47 @@ async function documentFiles(root, main) {
   return files;
 }
 
-/** The project's .bib entries: the files the document names, else every .bib in the project. */
+const TYPST_BIBLIOGRAPHY = /#bibliography\(\s*(\([^)]*\)|"[^"]*")/g;
+/**
+ * The .bib files a document's files name, each with the file that names it: LaTeX's \bibliography and \addbibresource,
+ * Typst's #bibliography, a Markdown front matter's bibliography.
+ */
+function bibNames(files) {
+  return files.flatMap(({ file, text }) => {
+    const kind = kindOf(file);
+    const names =
+      kind === 'latex' ? [...text.matchAll(BIBLIOGRAPHY)].flatMap((m) => m[1].split(',')).map((n) => n.trim()).filter(Boolean).map((n) => (/\.bib$/i.test(n) ? n : `${n}.bib`))
+      : kind === 'typst' ? [...text.matchAll(TYPST_BIBLIOGRAPHY)].flatMap((m) => [...m[1].matchAll(/"([^"]*)"/g)].map((q) => q[1]))
+      : [parseFrontMatter(text).meta.bibliography].flat().filter((n) => typeof n === 'string');
+    return names.filter((n) => /\.bib$/i.test(n)).map((name) => ({ name, from: file }));
+  });
+}
+
+/**
+ * The .bib files a document loads and their entries: { bibs, missing (names it gives that are no file of the project),
+ * everyBib (it names none, so every .bib of the project was read), entries }. A name is looked up where its compile
+ * looks (a LaTeX one from the main file's folder, a Typst or Markdown one from the file that names it, a leading /
+ * from the project), else as any .bib of that name, as BIBINPUTS would find one in another folder.
+ */
 async function bibEntries(root, files) {
-  const named = files.flatMap(({ text }) => [...text.matchAll(BIBLIOGRAPHY)].flatMap((m) => m[1].split(',').map((n) => n.trim()).filter(Boolean)).map((n) => (n.endsWith('.bib') ? n : `${n}.bib`)));
   const all = (await listFilesRecursive(root)).filter((f) => visible(f) && /\.bib$/i.test(f.path)).map((f) => f.path);
-  // Typst's #bibliography and a Markdown front matter's bibliography, as an add to the .bib finds them
-  const others = files.filter(({ file }) => kindOf(file) !== 'latex').map(({ text }) => text);
-  const loaded = (f) => named.some((n) => f === slashed(path.normalize(n)) || f.endsWith(`/${path.posix.basename(n)}`)) || texIncludesBib(others, f);
-  const bibs = named.length || all.some(loaded) ? all.filter(loaded) : all;
+  const named = bibNames(files);
+  const found = [];
+  const missing = [];
+  for (const { name, from } of named) {
+    const at = slashed(path.normalize(name.startsWith('/') ? name.slice(1) : path.join(path.dirname(kindOf(from) === 'latex' ? files[0].file : from), name)));
+    const base = path.posix.basename(name.replace(/\\/g, '/')).toLowerCase();
+    const hits = all.includes(at) ? [at] : all.filter((f) => path.posix.basename(f).toLowerCase() === base);
+    if (hits.length) found.push(...hits);
+    else if (!missing.includes(name)) missing.push(name);
+  }
+  const bibs = named.length ? [...new Set(found)] : all;
   const entries = [];
   for (const file of bibs) {
     const text = await readText(root, file).catch(() => '');
     for (const entry of parseBibEntries(text)) entries.push({ ...entry, file, line: lineOf(text, entry.at) });
   }
-  return { bibs, entries };
+  return { bibs, missing, everyBib: !named.length, entries };
 }
 
 /** The document's language, outline, labels, inputs, citations, unresolved references and citations, main file and engine. */
@@ -167,23 +195,37 @@ export async function projectMap(root, state) {
   };
 }
 
-/** Every entry of the project's bibliography as read: { key, type, fields, file, line }. */
-export async function projectBibEntries(root, state) {
-  const main = await mainFile(root, state);
-  return (await bibEntries(root, main ? await documentFiles(root, main) : [])).entries;
+/**
+ * The bibliography of a document: the one named (its main file, such as a second paper beside the project's main.tex),
+ * else the project's main file. { document, bibs, missing, everyBib, entries }, entries as { key, type, fields, file, line }.
+ */
+export async function documentBib(root, state, file) {
+  if (file && (agentHidden(file) || !(await fs.stat(safeJoin(root, file)).catch(() => null))?.isFile())) throw new Error(`There is no document ${file} in the project.`);
+  const document = file || (await mainFile(root, state));
+  return { document, ...(await bibEntries(root, document ? await documentFiles(root, document) : [])) };
 }
 
-/** Every entry of the project's bibliography, briefly. */
-export async function listBibEntries(root, state) {
-  const entries = await projectBibEntries(root, state);
+/** Every entry of a document's bibliography (the main file's when none is named). */
+export async function projectBibEntries(root, state, file) {
+  return (await documentBib(root, state, file)).entries;
+}
+
+/** Every entry of every .bib in the project: where a key is looked up, whichever document loads it. */
+export async function allBibEntries(root) {
+  return (await bibEntries(root, [])).entries;
+}
+
+/** Every entry of a document's bibliography, briefly. */
+export async function listBibEntries(root, state, file) {
+  const entries = await projectBibEntries(root, state, file);
   return entries.map(({ key, type, fields, file }) => ({ key, type, title: fields.title, author: fields.author, year: fields.year || fields.date, ...(fields.doi && { doi: fields.doi }), file }));
 }
 
 /** Entries whose key, title, authors, DOI or year hold every word of the query. */
-export async function searchBibEntries(root, state, query) {
+export async function searchBibEntries(root, state, query, file) {
   const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) throw new Error('Give words to search for.');
-  return (await listBibEntries(root, state)).filter((e) => words.every((w) => [e.key, e.title, e.author, e.doi, e.year].some((v) => String(v || '').toLowerCase().includes(w))));
+  return (await listBibEntries(root, state, file)).filter((e) => words.every((w) => [e.key, e.title, e.author, e.doi, e.year].some((v) => String(v || '').toLowerCase().includes(w))));
 }
 
 /** "file:line: message" for each error in a log (of its last pass, for a LaTeX log of several), and how many warnings it has. */
@@ -366,6 +408,8 @@ export async function searchText(root, { query, regex = false, caseSensitive = f
 // A tool added here reaches both agents: mcp/server.js registers every one, and so does agentService.js, beside the
 // tools that are the Spectrum agent's alone (its files and proposals, which a local agent does with its own tools).
 
+// the document whose bibliography a tool reads, for a project with more than one
+const BIB_FILE = 'file: the document whose bibliography to read, by its main file (such as paper.tex, which loads its own .bib); the project’s main file when left out.';
 const ENGINES = ['auto', 'pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
 const todoLink = z.object({ file: z.string().optional(), line: z.number().int().optional(), doc: z.string().optional(), page: z.number().int().optional(), key: z.string().optional() });
 // what a compile found, its own errors first: the compile's one-line failure only when the log named none
@@ -455,17 +499,17 @@ export const TOOLS = [
   },
   {
     name: 'bib_entries',
-    description: 'Every bibliography entry: key, type, title, authors, year, DOI and file.',
-    schema: {},
+    description: `Every bibliography entry: key, type, title, authors, year, DOI and file. ${BIB_FILE}`,
+    schema: { file: z.string().optional() },
     readOnly: true,
-    run: async (ctx) => listBibEntries(await ctx.root(), ctx.state)
+    run: async (ctx, { file }) => listBibEntries(await ctx.root(), ctx.state, file)
   },
   {
     name: 'bib_search',
-    description: 'Bibliography entries whose key, title, authors, DOI or year hold every word of the query. Search before adding an entry, so a work never gets a second key.',
-    schema: { query: z.string() },
+    description: `Bibliography entries whose key, title, authors, DOI or year hold every word of the query. Search before adding an entry, so a work never gets a second key. ${BIB_FILE}`,
+    schema: { query: z.string(), file: z.string().optional() },
     readOnly: true,
-    run: async (ctx, { query }) => searchBibEntries(await ctx.root(), ctx.state, query)
+    run: async (ctx, { query, file }) => searchBibEntries(await ctx.root(), ctx.state, query, file)
   },
   {
     name: 'search_text',
@@ -491,11 +535,11 @@ export const TOOLS = [
   },
   {
     name: 'check_references',
-    description: 'Check the bibliography against the sources, by code: each entry’s DOI in Crossref or doi.org, its arXiv id in arXiv, or its title in OpenAlex, comparing title, first author and year and reading retractions. Returns the keys found as they are, and for each other entry its status (differs, not-found, retracted, unchecked), what differs, the record read and where. keys: only these entries. Slow for a long bibliography: check the keys you need.',
-    schema: { keys: z.array(z.string()).max(300).optional() },
+    description: `Check the bibliography against the sources, by code: each entry’s DOI in Crossref or doi.org, its arXiv id in arXiv, or its title in OpenAlex, comparing title, first author and year and reading retractions. Returns the keys found as they are, and for each other entry its status (differs, not-found, retracted, unchecked), what differs, the record read and where. keys: only these entries. Slow for a long bibliography: check the keys you need. Says which document and .bib files it read. ${BIB_FILE}`,
+    schema: { keys: z.array(z.string()).max(300).optional(), file: z.string().optional() },
     readOnly: true,
-    run: async (ctx, { keys }) => checkSummary(await checkReferences(await ctx.root(), { keys, state: ctx.state })),
-    show: (r) => ({ text: [`${r.found.length} of ${r.checked} found as they are`, ...r.problems.map((p) => `${p.key} (${p.at}): ${p.status}${p.differences ? `, ${p.differences.map((d) => d.field).join(', ')} differ` : ''}${p.retraction ? `, ${p.retraction}` : ''}`)].join('\n') })
+    run: async (ctx, { keys, file }) => checkSummary(await checkReferences(await ctx.root(), { keys, state: ctx.state, file })),
+    show: (r) => ({ text: [`${r.found.length} of ${r.checked} found as they are, from ${r.bibFiles.join(', ') || 'no .bib file'} (${r.document || 'no document'})`, ...(r.note ? [r.note] : []), ...r.problems.map((p) => `${p.key} (${p.at}): ${p.status}${p.differences ? `, ${p.differences.map((d) => d.field).join(', ')} differ` : ''}${p.retraction ? `, ${p.retraction}` : ''}`)].join('\n') })
   },
   {
     name: 'list_todos',
