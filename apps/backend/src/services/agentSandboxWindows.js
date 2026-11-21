@@ -19,7 +19,7 @@ export async function spawnWindowsAgent({ executable, args, workspace, home, run
   const workRoot = await fs.realpath(workspace), homeRoot = await fs.realpath(home);
   const roots = [...new Set(await Promise.all([runtimeExecutable || executable, ...runtimePaths].map((p) => fs.realpath(p))))];
   for (const root of roots) {
-    if (inside(os.homedir(), root) || root === path.parse(root).root || inside(workRoot, root) || inside(homeRoot, root) || forbiddenRoots.some((p) => inside(p, root) || inside(root, p))) {
+    if (inside(path.resolve(os.homedir()), root) || root === path.parse(root).root || inside(workRoot, root) || inside(homeRoot, root) || forbiddenRoots.some((p) => inside(path.resolve(p), root) || inside(root, path.resolve(p)))) {
       throw new Error('Choose a specific runtime folder that does not include a home folder, project, or private agent state.');
     }
   }

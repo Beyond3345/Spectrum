@@ -81,7 +81,7 @@ for (const engine of ['xelatex', 'lualatex']) {
     assert.match(log, /校haau6:w長zoeng2:w/);
     // the package that was loaded is Spectrum's, though TeX may have one of its own
     const sty = log.match(/\(([^()]*?xjyutping\.sty)/)?.[1];
-    assert.equal(path.resolve(sty), path.join(TEX_DIR, 'xjyutping', 'xjyutping.sty'));
+    assert.equal(path.relative(path.join(TEX_DIR, 'xjyutping', 'xjyutping.sty'), path.resolve(sty)), '');
     // the copy's paths aren't in the log (it's in the cache, and gone): the project's are
     assert.ok(!log.includes(path.join(tmp, 'data', 'cache').split(path.sep).join('/')), 'no path of the copy');
     assert.deepEqual(await fs.readdir(path.join(tmp, 'data', 'cache', made.id, 'jyutping')), []);
