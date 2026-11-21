@@ -11,7 +11,7 @@
   // the grid at each decade and every 10 dB, then the frame and its numbers
   for e in range(1, 6) {
     place(line(start: at(calc.pow(10, e), -25), end: at(calc.pow(10, e), 25), stroke: 0.4pt + luma(210)))
-    label(calc.pow(10, e), -26, top + center, $10^#e$)
+    label(calc.pow(10, e), -26, top + center, math.equation(alt: "10 to the " + str(e), $10^#e$))
   }
   for g in (-20, -10, 0, 10, 20) {
     place(line(start: at(10, g), end: at(1e5, g), stroke: 0.4pt + luma(210)))
