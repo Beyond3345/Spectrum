@@ -200,7 +200,8 @@ export default function McpServers() {
         // the hosts the failed Check was refused that are still off its list, said in its card rather than below
         const asked = fail ? fail.refused.filter((h) => !s.hosts.includes(h)) : [];
         const download = s.anyHost || IS_WINDOWS ? null : downloadHosts(s.command, s.args);
-        const needs = download && !s.checked && !fail?.refused.length ? download.hosts.filter((h) => !s.hosts.includes(h)) : [];
+        // offered before its first Check; once refused, the line that says so offers it instead
+        const needs = download && !s.checked ? download.hosts.filter((h) => !s.hosts.includes(h) && !s.refused.includes(h)) : [];
         return (
           <div key={s.name} className="mcp-server">
             <div className="row">
