@@ -416,8 +416,9 @@ export function threadItems(messages: ChatThread['messages']): Item[] {
         : ask?.kind === 'plan' ? { type: 'plan', key: `p${i}`, steps: ask.steps }
           : ask ? { type: 'request', key: `q${i}`, request: askRequest(ask, `q${i}`), answered: false }
             : { type: 'assistant', key: `a${i}`, text: m.content },
-      // the words a stopped turn had said, marked as cut short there
-      ...(m.role === 'assistant' && meta.resume === 'stopped' && !meta.error ? [{ type: 'notice' as const, key: `x${i}`, text: 'You stopped the agent here.', error: false }] : []),
+      // the words a stopped turn had said, marked as cut short there once the thread goes on (as its last word, the
+      // line with Continue under it says so)
+      ...(m.role === 'assistant' && meta.resume === 'stopped' && !meta.error && i < messages.length - 1 ? [{ type: 'notice' as const, key: `x${i}`, text: 'You stopped the agent here.', error: false }] : []),
       ...(meta.todos || []).map((todo, j): Item => ({ type: 'todo', key: `t${i}-${j}`, todo })),
       ...(meta.instructions || []).map((text, j): Item => ({ type: 'instruction', key: `i${i}-${j}`, text })),
       ...(meta.checkpoints || []).map((checkpoint): Item => ({ type: 'checkpoint', key: `c${i}-${checkpoint.id}`, checkpoint }))

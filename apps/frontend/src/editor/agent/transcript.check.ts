@@ -375,7 +375,8 @@ console.log('transcript: all checks passed');
   eq(kept, { text: 'Here is half an answ', error: false }, 'the reply is the words, and no failure');
   const changes = storedChanges([{ filePath: 'main.tex', original: 'a', proposed: 'b' }]);
   const thread = [{ role: 'user' as const, content: 'Go', createdAt: '' }, { role: 'assistant' as const, content: kept.text, createdAt: '', meta: { steps: [edit], resume: 'stopped' as const, changes } }];
-  eq(shown(threadItems(thread)), [['user', 'Go', null], ['tool', 'Edit “main.tex”', null], ['assistant', 'Here is half an answ', null], ['notice', 'You stopped the agent here.', false]], 'kept in the thread, marked as stopped');
+  eq(shown(threadItems(thread)), [['user', 'Go', null], ['tool', 'Edit “main.tex”', null], ['assistant', 'Here is half an answ', null]], 'kept in the thread, the line with Continue under it');
+  eq(shown(threadItems([...thread, { role: 'user', content: 'Go on', createdAt: '' }])).slice(2), [['assistant', 'Here is half an answ', null], ['notice', 'You stopped the agent here.', false], ['user', 'Go on', null]], 'marked as stopped once the thread goes on');
   void openChanges({ id: 's', title: '', createdAt: '', updatedAt: '', mode: 'assistant', messages: thread }, async () => 'a').then((open) => eq(open.map((c) => c.filePath), ['main.tex'], 'the change made before Stop stays in the tray'));
   // stopped before a word: a plain line, not a failure, and nothing for the history
   const none = turnReply({ ok: false, reply: '', incomplete: 'stopped' }, false);
