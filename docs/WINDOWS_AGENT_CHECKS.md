@@ -1,6 +1,6 @@
 # Windows agent checks
 
-Written 20 November 2026 for Spectrum 2.7.0. These are the agent checks that only a Windows computer can settle. Run them in order on scratch data, and send back what each one asks for. Steps 1 to 3 need a source checkout of the release branch, set up as [Building Spectrum on Windows](BUILDING_ON_WINDOWS.md) says, with the isolation worker built (`node scripts/build-agent-sandbox.mjs`). Steps 4 to 8 need the app built from that branch and a model set up in Settings, as the Spectrum agent makes the changes they review. Never point a step at your own projects or at `%APPDATA%\com.beyond3345.spectrum`.
+Written 20 November 2026 for Spectrum 2.6.0. These are the agent checks that only a Windows computer can settle. Run them in order on scratch data, and send back what each one asks for. Steps 1 to 3 need a source checkout of the release branch, set up as [Building Spectrum on Windows](BUILDING_ON_WINDOWS.md) says, with the isolation worker built (`node scripts/build-agent-sandbox.mjs`). Steps 4 to 8 need the app built from that branch and a model set up in Settings, as the Spectrum agent makes the changes they review. Never point a step at your own projects or at `%APPDATA%\com.beyond3345.spectrum`.
 
 ## 1. The native agent tests
 
