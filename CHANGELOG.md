@@ -83,7 +83,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Send to agent on PDF notes, to-dos and Review's rows and AI points, each with its file, line and source lines
 - A `% !TEX recipe` comment runs a document's own build steps, and `% !TEX options` adds engine options, inside the compile's sandbox
 - Auto compile has an As you type choice for Typst documents, which compiles 0.3 s after typing stops
-- Live in the PDF bar shows a Typst document as you type it, through Tinymist's preview
+- Live in the PDF bar shows a Typst document as you type it, through Tinymist's preview, and says why, with Back to the PDF, when the preview cannot be shown
 - The Typst outline covers the whole document across nested includes, with the last compile's numbers and the figures and tables
 - Typst completion lists the project's own `#let` functions and values without Tinymist, and ⌘-click on a path in a Typst file opens that file
 - A failed Typst export lists every error in Logs and marks them in the editor, with what PDF/UA-1 needs. Insert figure asks for alt text in a Typst document, and the Typst document template exports as PDF/UA-1
