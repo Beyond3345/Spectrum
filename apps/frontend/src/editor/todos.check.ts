@@ -2,7 +2,7 @@
 // npx esbuild apps/frontend/src/editor/todos.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/todos.cjs && node <scratch>/todos.cjs
 import type { Todo } from '../api/client';
 import { isSource } from './shared';
-import { MAX_NOTE, emptyText, findKey, findLine, scanTodos, snippetOf, sortTodos, todoCounts, todoMatches, withNote } from './todos';
+import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, emptyText, findKey, findLine, groupName, groupNamed, groupOf, moveGroup, newGroup, orderedGroups, scanTodos, snippetOf, sortTodos, todoCounts, todoMatches, withNote } from './todos';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -116,5 +116,26 @@ eq(emptyText({ total: 0, show: 'open', search: '' }).startsWith('Nothing to do y
 eq(emptyText({ total: 3, show: 'open', search: 'zz' }), 'No to-dos match “zz”.', 'empty: a search');
 eq(emptyText({ total: 3, show: 'open', search: '' }), 'All done. Ticked ones are under Done.', 'empty: nothing open');
 eq(emptyText({ total: 3, show: 'done', search: '' }), 'Nothing ticked off yet.', 'empty: nothing done');
+
+// ─── groups ───
+
+const groups = { b: { name: 'Spelling', order: 2 }, a: { name: 'Checking', order: 1 }, c: { name: 'References', order: 2 } };
+eq(orderedGroups(groups).map((g) => g.id), ['a', 'c', 'b'], 'groups in their order, by name where two share a place');
+eq(groupOf({ ...own, group: 'a' }, groups), 'a', 'a to-do in a group');
+eq(groupOf(own, groups), '', 'a to-do in none');
+eq(groupOf({ ...own, group: 'gone' }, groups), '', 'a group deleted on another computer: in none, not lost');
+eq(groupOf({ ...own, group: 'toString' }, groups), '', 'not a group: what every object has');
+eq(groupNamed(groups, '  spelling '), 'b', 'a group found by its name in any case');
+eq(groupNamed(groups, 'Figures'), '', 'no group by that name');
+eq(groupName(`  Still\n to   write ${'x'.repeat(100)}`).length, MAX_GROUP_NAME, 'a name is one line, capped');
+eq(newGroup(groups, ' Figures '), { name: 'Figures', order: 3 }, 'a new group goes last');
+eq(newGroup({}, 'Checking'), { name: 'Checking', order: 1 }, 'the first group');
+eq(moveGroup(groups, 'b', -1), { c: { name: 'References', order: 3 } }, 'move up past one sharing its place: renumbered, only what changed');
+eq(orderedGroups({ ...groups, ...moveGroup(groups, 'a', 1) }).map((g) => g.id), ['c', 'a', 'b'], 'move down');
+eq(moveGroup(groups, 'a', -1), {}, 'the first moves no higher');
+eq(moveGroup(groups, 'b', 1), {}, 'the last moves no lower');
+eq(moveGroup(groups, 'gone', 1), {}, 'a group that is gone stays gone');
+eq(STARTER_GROUPS, ['Checking', 'Spelling', 'References', 'Still to write'], 'the groups offered at first');
+eq(todoMatches('spell', own, '', 'Spelling'), true, 'search finds a to-do by its group’s name');
 
 console.log('todos: all checks passed');

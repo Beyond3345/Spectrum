@@ -44,7 +44,7 @@ const SCRIPT = [
   ['read_skill_file', { id: 'alpha', path: 'references/apis.md' }],
   ['read_skill_file', { id: 'alpha', path: '../../../state.json' }],
   ['list_todos', {}],
-  ['suggest_todo', { text: 'Check the references', link: { file: 'main.tex', line: 2, extra: true } }],
+  ['suggest_todo', { text: 'Check the references', link: { file: 'main.tex', line: 2, extra: true }, group: '  References ' }],
   ['suggest_todo', { text: '' }],
   ['apply_patch', { path: 'main.tex', patch: '--- main.tex\n+++ main.tex\n@@ -1,2 +1,2 @@\n line one\n-line two\n+line 2\n' }],
   ['read_file', { path: './main.tex' }],
@@ -149,10 +149,12 @@ const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
 test('the Spectrum agent loads skills, reads and suggests to-dos, and proposes changes that build on each other', async () => {
   const p = await createProject({ name: 'Spectrum agent', populate: async (root) => {
     await write(path.join(root, 'main.tex'), 'line one\nline two\n');
-    await write(path.join(root, '.spectrum', 'todos', 'a.json'), JSON.stringify({ id: 'a', text: 'Open item', done: false, createdAt: '1', updatedAt: '1' }));
+    await write(path.join(root, '.spectrum', 'todos', 'a.json'), JSON.stringify({ id: 'a', text: 'Open item', done: false, createdAt: '1', updatedAt: '1', group: 'g1' }));
+    // in a group deleted on another computer: listed in none
+    await write(path.join(root, '.spectrum', 'todos', 'c.json'), JSON.stringify({ id: 'c', text: 'Loose item', done: false, createdAt: '3', updatedAt: '3', group: 'gone' }));
     await write(path.join(root, '.spectrum', 'todos', 'b.json'), JSON.stringify({ id: 'b', text: 'Finished', done: true, createdAt: '2', updatedAt: '2' }));
   } });
-  await updateProjectSettings(p.path, () => ({ skills: { on: [], off: ['beta'] } }));
+  await updateProjectSettings(p.path, () => ({ skills: { on: [], off: ['beta'] }, todoGroups: { g1: { name: 'Checking', order: 1 } } }));
   calls.length = 0;
   const off = await run({ task: 'polish', prompt: 'improve', mode: 'tools', projectId: p.id, llmConfig: llmConfig('tools'), skill: 'beta' });
   assert.equal(off.status, 403, 'a skill off in the project isn’t sent');
@@ -172,12 +174,12 @@ test('the Spectrum agent loads skills, reads and suggests to-dos, and proposes c
   assert.deepEqual(JSON.parse(outputs[0]), { id: 'alpha', description: 'Finds papers first', body: 'Search before you write.', files: ['SKILL.md', 'references/apis.md'] });
   assert.equal(outputs[1], 'Use OpenAlex.');
   assert.match(outputs[2], /^Error: /);
-  assert.deepEqual(JSON.parse(outputs[3]), { todos: [{ text: 'Open item' }] });
+  assert.deepEqual(JSON.parse(outputs[3]), { todos: [{ text: 'Open item', group: 'Checking' }, { text: 'Loose item' }] }, 'list_todos names a to-do’s group');
   assert.match(outputs[5], /^Error: /);
   assert.equal(outputs[7], 'line one\nline 2\n', 'reading a changed file sees the change');
   assert.deepEqual(outputs.slice(10), ['Error: That skill is off for this project.', 'Error: That skill is off for this project.'], 'nor can it be loaded');
 
-  assert.deepEqual(json.todos, [{ text: 'Check the references', link: { file: 'main.tex', line: 2 } }]);
+  assert.deepEqual(json.todos, [{ text: 'Check the references', link: { file: 'main.tex', line: 2 }, group: 'References' }], 'suggest_todo carries a group’s name');
   assert.deepEqual(json.changes, [
     { path: 'main.tex', kind: 'modified', binary: false, beforeHash: sha('line one\nline two\n'), afterHash: sha('line one\nline 2\nline three\n'), size: 27, original: 'line one\nline two\n', proposed: 'line one\nline 2\nline three\n' },
     { path: 'sections/new.tex', kind: 'created', binary: false, beforeHash: null, afterHash: sha('New section\n'), size: 12, original: '', proposed: 'New section\n' }

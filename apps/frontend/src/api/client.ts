@@ -1239,13 +1239,24 @@ export interface Todo {
   link?: TodoLink;
   /** a few lines of detail, since 2.6; older versions keep it through their saves */
   note?: string;
+  /** the id of the group it is in, since 2.6; one that isn't in the project's groups (deleted) is no group */
+  group?: string;
 }
 
-/** A to-do an agent suggests (its suggest_todo tool); it is only saved when the user adds it */
-export type SuggestedTodo = { text: string; link?: TodoLink };
+/** One of the user's to-do groups, kept in the project's settings by its id */
+export type TodoGroup = { name: string; order: number };
+export type TodoGroups = Record<string, TodoGroup>;
+
+/** A to-do an agent suggests (its suggest_todo tool); it is only saved when the user adds it. group: a group's name */
+export type SuggestedTodo = { text: string; link?: TodoLink; group?: string };
 
 export function listTodos(projectId: string) {
-  return request<{ todos: Todo[] }>(`/api/projects/${projectId}/todos`);
+  return request<{ todos: Todo[]; groups?: TodoGroups }>(`/api/projects/${projectId}/todos`);
+}
+
+/** Adds, changes (a group) or deletes (null) the groups given; the others stay. Resolves to all of them. */
+export function changeTodoGroups(projectId: string, groups: Record<string, TodoGroup | null>) {
+  return request<{ groups: TodoGroups }>(`/api/projects/${projectId}/todo-groups`, json('PATCH', { groups }));
 }
 
 export function saveTodo(projectId: string, todo: Todo) {

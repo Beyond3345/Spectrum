@@ -254,7 +254,7 @@ export default function SpectrumAgentTab({
       if (note) prompt += `\n\n[Earlier run] ${note}`;
       // to-dos and a research session's papers are text from outside, marked as such; the backend adds the project's outline
       const list = context.todos ? openTodos(todos) : [];
-      if (list.length) prompt += `\n\n[Open to-dos]\n${untrusted('open to-dos', list.map((t) => `- ${t.text}`).join('\n'))}`;
+      if (list.length) prompt += `\n\n[Open to-dos]\n${untrusted('open to-dos', list.map((t) => `- ${t.text}${t.group ? ` (${t.group})` : ''}`).join('\n'))}`;
       if (research) prompt += `\n\n[Research session]\n${untrusted('research session', sessionContext((await getResearch(a.projectId, research)).session))}`;
       // the thread's last texts, which a run without a conversation of its own starts from
       const history = base.messages

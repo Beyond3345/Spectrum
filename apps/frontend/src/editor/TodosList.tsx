@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { deleteTodo, getFile, listTodos, saveTodo } from '../api/client';
-import type { Todo, TodoLink } from '../api/client';
+import { changeTodoGroups, deleteTodo, getFile, listTodos, saveTodo } from '../api/client';
+import type { Todo, TodoGroup, TodoGroups, TodoLink } from '../api/client';
 import Icon from '../app/Icon';
+import { MenuButton } from '../app/Menu';
+import type { MenuItems } from '../app/Menu';
 import Segmented from '../app/Segmented';
 import { toast } from '../app/Toast';
 import { PROJECT_DATA_CHANGED, errorText } from './shared';
-import { MAX_NOTE, emptyText, findLine, scanTodos, sortTodos, todoCounts, todoMatches, withNote } from './todos';
+import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, emptyText, findLine, groupNamed, groupOf, moveGroup, newGroup, orderedGroups, scanTodos, sortTodos, todoCounts, todoMatches, withNote } from './todos';
 import { useEditor } from './EditorContext';
 import { sendLocated } from './agent/handoff';
 import type { Located } from './agent/handoff';
@@ -16,7 +18,8 @@ const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 export type TodosState = ReturnType<typeof useTodos>;
 
 /**
- * The project's to-dos: the user's own (one file each in .spectrum/todos) and the marks in the source. Both load
+ * The project's to-dos: the user's own (one file each in .spectrum/todos), their groups (in the project's settings)
+ * and the marks in the source. They load
  * with the project and again when the window comes back; the source is scanned again a moment after the files
  * change, from the open files' own text and the others as last read.
  */
@@ -38,6 +41,7 @@ export function useTodos({
 }) {
   const [mine, setMine] = useState<Todo[] | null>(null);
   const [source, setSource] = useState<SourceTodo[]>([]);
+  const [groups, setGroups] = useState<TodoGroups>({});
   // the files that aren't open, as last read from disk
   const readRef = useRef(new Map<string, string>());
   // counts changes made here, so a list asked for before one can't put back what it changed
@@ -66,7 +70,11 @@ export function useTodos({
   const reload = () => {
     const changes = changesRef.current;
     listTodos(projectId)
-      .then((res) => changes === changesRef.current && setMine(res.todos || []))
+      .then((res) => {
+        if (changes !== changesRef.current) return;
+        setMine(res.todos || []);
+        setGroups(res.groups || {});
+      })
       .catch((err) => {
         setMine((prev) => prev ?? []);
         latest.current.notify(`Couldn’t load your to-dos: ${errorText(err)}`, 'error');
@@ -126,10 +134,39 @@ export function useTodos({
     }
   };
 
-  /** A new to-do, optionally linked to a line, a PDF page or a reference. */
-  const add = (text: string, link?: TodoLink) => {
+  /** A new to-do, optionally linked to a line, a PDF page or a reference, and in a group (its id). */
+  const add = (text: string, link?: TodoLink, group?: string) => {
     const now = new Date().toISOString();
-    return save({ id: crypto.randomUUID(), text, done: false, createdAt: now, updatedAt: now, ...(link && { link }) });
+    return save({ id: crypto.randomUUID(), text, done: false, createdAt: now, updatedAt: now, ...(link && { link }), ...(group && { group }) });
+  };
+
+  /** Adds, changes or deletes (null) the groups given, showing it at once; a failed change puts them back. Resolves to whether it saved. */
+  const changeGroups = async (changes: Record<string, TodoGroup | null>) => {
+    changesRef.current += 1;
+    const before = groups;
+    const next = { ...groups };
+    for (const [id, g] of Object.entries(changes)) {
+      if (g) next[id] = g;
+      else delete next[id];
+    }
+    setGroups(next);
+    try {
+      const res = await changeTodoGroups(projectId, changes);
+      setGroups(res.groups);
+      return true;
+    } catch (err) {
+      setGroups(before);
+      latest.current.notify(`Couldn’t change the to-do groups: ${errorText(err)}`, 'error');
+      return false;
+    }
+  };
+
+  /** The id of the group with this name, made when there is none (a group an agent suggested); '' when it couldn't be. */
+  const groupFor = async (name: string) => {
+    const found = groupNamed(groups, name);
+    if (found || !name.trim()) return found;
+    const id = crypto.randomUUID();
+    return (await changeGroups({ [id]: newGroup(groups, name) })) ? id : '';
   };
 
   /** The line a line link is on now, found again by its text as the link itself is when opened. */
@@ -140,7 +177,7 @@ export function useTodos({
 
   // the open ones: yours not ticked, and every mark still in the source
   const { open } = todoCounts(mine || [], source);
-  return { mine, source, open, reload, save, remove, add, lineOf };
+  return { mine, source, groups, open, reload, save, remove, add, lineOf, changeGroups, groupFor };
 }
 
 /** A link of a kind this version knows; a later version's other kinds are kept but not shown. */
@@ -148,12 +185,14 @@ const knownLink = (link?: TodoLink): link is TodoLink => !!link && ('file' in li
 
 
 type Show = 'open' | 'done' | 'all';
-type Group = 'mine' | 'source';
+// what folds: a group by its id, and the marks found in the files (an id never has a colon)
+const SOURCE = ':source';
 
 /**
- * The sidebar's To-dos tab: an add box with +, Open, Done and All with their counts, then your own to-dos (tick,
- * edit, a note, delete, and the line, page or reference each links to) and the ones in the source, which go to their
- * line. Each group folds away. A source to-do is done once its mark is taken out of the source.
+ * The sidebar's To-dos tab: an add box with + (and the group to add to, once there are groups), Open, Done and All
+ * with their counts, then your own to-dos (tick, edit, a note, move to a group, delete, and the line, page or reference
+ * each links to): those in no group first, then each group under its title, which folds and has its own menu. Then
+ * the marks found in the files' comments, which go to their line and are done once the mark is taken out.
  */
 export default function TodosList({
   todos,
@@ -169,15 +208,18 @@ export default function TodosList({
 }) {
   const [draft, setDraft] = useState('');
   const [show, setShow] = useState<Show>('open');
-  const [folded, setFolded] = useState<Partial<Record<Group, boolean>>>({});
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
   // the to-do being edited, and whether its note was asked for
   const [editing, setEditing] = useState<{ id: string; note: boolean } | null>(null);
   // the notes shown in full
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const [added, setAdded] = useState(0);
+  // the group new to-dos go in ('' none), and the group being named: '' a new one, else the one being renamed
+  const [addTo, setAddTo] = useState('');
+  const [naming, setNaming] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const { mine, source, reload, save, remove, add, lineOf } = todos;
+  const { mine, source, groups, reload, save, remove, add, lineOf, changeGroups } = todos;
   const api = useEditor();
   /** A to-do for the agent, at the line or the page it links to. */
   const located = (todo: Todo): Located => {
@@ -203,13 +245,22 @@ export default function TodosList({
   const linkTitle = (link: TodoLink) =>
     'file' in link ? `${link.file}, line ${lineOf(link)}` : 'doc' in link ? `${link.doc.replace(/\.tex$/i, '.pdf')}, page ${link.page}` : `Go to ${link.key}`;
 
+  const ordered = orderedGroups(groups);
+  const target = groupOf({ group: addTo }, groups);
   const needle = filter.trim().toLowerCase();
   const counts = todoCounts(mine || [], source);
   const shownMine = sortTodos(
-    (mine || []).filter((t) => (show === 'all' || t.done === (show === 'done')) && todoMatches(needle, t, knownLink(t.link) ? linkLabel(t.link) : ''))
+    (mine || []).filter(
+      (t) => (show === 'all' || t.done === (show === 'done')) && todoMatches(needle, t, knownLink(t.link) ? linkLabel(t.link) : '', groups[groupOf(t, groups)]?.name ?? '')
+    )
   );
   const shownSource = show === 'done' ? [] : source.filter((t) => todoMatches(needle, t, t.file));
   const shownDone = shownMine.filter((t) => t.done);
+  const ungrouped = shownMine.filter((t) => !groupOf(t, groups));
+  // a group shows with its to-dos, and empty too while nothing narrows the list, so a new one is seen
+  const shownGroups = ordered
+    .map((g) => ({ ...g, todos: shownMine.filter((t) => groupOf(t, groups) === g.id) }))
+    .filter((g) => g.todos.length || (!needle && show !== 'done'));
 
   // a new one is scrolled to, at the end of the open ones
   useEffect(() => {
@@ -223,10 +274,10 @@ export default function TodosList({
     if (!text) return;
     setDraft('');
     if (show === 'done') setShow('open');
-    setFolded((f) => ({ ...f, mine: false }));
+    setFolded((f) => ({ ...f, [target]: false }));
     setAdded((n) => n + 1);
     // what was typed comes back when it couldn't be saved
-    add(text).then((saved) => saved || setDraft((d) => d || text));
+    add(text, undefined, target).then((saved) => saved || setDraft((d) => d || text));
   };
 
   /** Ends an edit: saves what changed; from the keyboard, the focus goes back to the to-do's tick box. */
@@ -236,18 +287,113 @@ export default function TodosList({
     if (keyboard) requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(`[data-todo="${todo.id}"] input[type='checkbox']`)?.focus());
   };
 
-  const groupTitle = (group: Group, label: string, count: number) => (
-    <button
-      className="sidebar-section-title todo-group-head"
-      aria-expanded={!folded[group]}
-      onClick={() => setFolded((f) => ({ ...f, [group]: !f[group] }))}
-    >
+  /** Puts a to-do in a group, or in none (''). */
+  const moveTo = (todo: Todo, group: string) => {
+    const { group: _old, ...rest } = todo;
+    save({ ...rest, ...(group && { group }), updatedAt: new Date().toISOString() });
+  };
+
+  /** A group made from a name, or the one being renamed renamed; a name another group has is refused. Resolves to whether it was. */
+  const nameGroup = async (name: string, id = '') => {
+    const clean = name.replace(/\s+/g, ' ').trim();
+    const other = groupNamed(groups, clean);
+    if (!clean || (id && groups[id]?.name === clean)) return true;
+    if (other && other !== id) {
+      toast(`There’s a group called “${groups[other].name}” already`, { tone: 'error' });
+      return false;
+    }
+    if (id) return changeGroups({ [id]: { ...groups[id], name: clean } });
+    return changeGroups({ [crypto.randomUUID()]: newGroup(groups, clean) });
+  };
+
+  /** Deletes a group, with Undo; its to-dos keep its id, so they show in no group until it comes back. */
+  const deleteGroup = async (id: string) => {
+    const old = groups[id];
+    if (await changeGroups({ [id]: null })) toast(`Deleted the group “${old.name}”. Its to-dos have no group now.`, { action: { label: 'Undo', onClick: () => void changeGroups({ [id]: old }) } });
+  };
+
+  /** One of your own to-dos: tick, text, note, link, and its buttons while it is pointed at or in focus. */
+  const row = (todo: Todo) => {
+    const edit = editing?.id === todo.id;
+    const full = opened.has(todo.id);
+    const current = groupOf(todo, groups);
+    const moves: MenuItems = [
+      { label: 'Move to', heading: true },
+      { label: 'No group', checked: !current, onSelect: () => current && moveTo(todo, '') },
+      ...ordered.map((g) => ({ label: g.name, checked: current === g.id, onSelect: () => current !== g.id && moveTo(todo, g.id) }))
+    ];
+    return (
+      <div key={todo.id} role="listitem" data-todo={todo.id} className={`todo-row ${todo.done ? 'done' : ''}`}>
+        <input
+          type="checkbox"
+          checked={todo.done}
+          aria-label={todo.done ? `Mark “${todo.text}” as not done` : `Mark “${todo.text}” as done`}
+          onChange={() => save({ ...todo, done: !todo.done, updatedAt: new Date().toISOString() })}
+        />
+        <div className="todo-body">
+          {edit ? (
+            <TodoEditor todo={todo} note={editing.note} onClose={(next, keyboard) => finish(todo, next, keyboard)} />
+          ) : (
+            <>
+              <span className="todo-text" onDoubleClick={() => setEditing({ id: todo.id, note: false })}>
+                {todo.text}
+              </span>
+              {todo.note && (
+                <button
+                  className={`todo-note ${full ? 'open' : ''}`}
+                  aria-expanded={full}
+                  title={full ? 'Show less' : 'Show the whole note'}
+                  onClick={() => setOpened((o) => (o.has(todo.id) ? new Set([...o].filter((id) => id !== todo.id)) : new Set([...o, todo.id])))}
+                  onDoubleClick={() => setEditing({ id: todo.id, note: true })}
+                >
+                  <span>{todo.note}</span>
+                </button>
+              )}
+            </>
+          )}
+          {knownLink(todo.link) && (
+            <button className="todo-link" title={linkTitle(todo.link)} onClick={() => onOpen(todo.link!)}>
+              <Icon name={'file' in todo.link ? 'doc.text' : 'doc' in todo.link ? 'doc.richtext' : 'tag'} />
+              <span>{linkLabel(todo.link)}</span>
+            </button>
+          )}
+        </div>
+        {!edit && (
+          <div className="todo-actions">
+            {!todo.note && (
+              <button className="icon-btn small" title="Add a note" aria-label={`Add a note to “${todo.text}”`} onClick={() => setEditing({ id: todo.id, note: true })}>
+                <Icon name="note.text.badge.plus" />
+              </button>
+            )}
+            {ordered.length > 0 && <MenuButton icon="folder" className="icon-btn small" title={`Move “${todo.text}” to a group`} items={moves} align="end" />}
+            <button className="icon-btn small" title="Send to agent" aria-label={`Send “${todo.text}” to the agent`} onClick={() => void sendLocated([located(todo)], api.ensureFileContent)}>
+              <Icon name="paperplane" />
+            </button>
+            <button className="icon-btn small" title="Edit" aria-label={`Edit “${todo.text}”`} onClick={() => setEditing({ id: todo.id, note: false })}>
+              <Icon name="pencil" />
+            </button>
+            <button className="icon-btn small destructive" title="Delete" aria-label={`Delete “${todo.text}”`} onClick={() => remove([todo])}>
+              <Icon name="trash" />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /** A title that folds what is under it away, with its count. */
+  const foldTitle = (key: string, label: string, count: number) => (
+    <button className="sidebar-section-title todo-group-head" aria-expanded={!folded[key]} onClick={() => setFolded((f) => ({ ...f, [key]: !f[key] }))}>
       <span>
         {label} <span className="todo-count">{count}</span>
       </span>
-      <Icon name="chevron.right" className={`disclosure ${folded[group] ? '' : 'open'}`} />
+      <Icon name="chevron.right" className={`disclosure ${folded[key] ? '' : 'open'}`} />
     </button>
   );
+
+  // the starter groups not made yet: offered until a group of the user's own is made, then while naming one
+  const starters = STARTER_GROUPS.filter((name) => !groupNamed(groups, name));
+  const offer = naming === '' || ordered.every((g) => STARTER_GROUPS.includes(g.name));
 
   return (
     <div className="todos">
@@ -262,12 +408,25 @@ export default function TodosList({
           <input
             ref={field}
             value={draft}
-            placeholder="Add a to-do"
-            aria-label="Add a to-do"
+            placeholder={target ? `Add a to-do to ${groups[target].name}` : 'Add a to-do'}
+            aria-label={target ? `Add a to-do to ${groups[target].name}` : 'Add a to-do'}
             maxLength={2000}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === 'Escape' && draft && (e.stopPropagation(), setDraft(''))}
           />
+          {ordered.length > 0 && (
+            <MenuButton
+              icon="folder"
+              className={`icon-btn small ${target ? 'ready' : ''}`}
+              title={target ? `New to-dos go in ${groups[target].name}` : 'Choose a group for new to-dos'}
+              align="end"
+              items={[
+                { label: 'Add to', heading: true },
+                { label: 'No group', checked: !target, onSelect: () => setAddTo('') },
+                ...ordered.map((g) => ({ label: g.name, checked: target === g.id, onSelect: () => setAddTo(g.id) }))
+              ]}
+            />
+          )}
           <button type="submit" className={`icon-btn small ${draft.trim() ? 'ready' : ''}`} title="Add to-do (Return)" aria-label="Add to-do">
             <Icon name="plus" />
           </button>
@@ -294,113 +453,154 @@ export default function TodosList({
       </div>
 
       <div className="todo-items" ref={list}>
-        {shownMine.length > 0 && (
-          <div className="todo-group">
-            {groupTitle('mine', 'Mine', shownMine.length)}
-            {!folded.mine && (
-              <>
-                <div role="list" aria-label="Mine" className="todo-list">
-                  {shownMine.map((todo) => {
-                    const edit = editing?.id === todo.id;
-                    const full = opened.has(todo.id);
-                    return (
-                      <div key={todo.id} role="listitem" data-todo={todo.id} className={`todo-row ${todo.done ? 'done' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={todo.done}
-                          aria-label={todo.done ? `Mark “${todo.text}” as not done` : `Mark “${todo.text}” as done`}
-                          onChange={() => save({ ...todo, done: !todo.done, updatedAt: new Date().toISOString() })}
-                        />
-                        <div className="todo-body">
-                          {edit ? (
-                            <TodoEditor todo={todo} note={editing.note} onClose={(next, keyboard) => finish(todo, next, keyboard)} />
-                          ) : (
-                            <>
-                              <span className="todo-text" onDoubleClick={() => setEditing({ id: todo.id, note: false })}>
-                                {todo.text}
-                              </span>
-                              {todo.note && (
-                                <button
-                                  className={`todo-note ${full ? 'open' : ''}`}
-                                  aria-expanded={full}
-                                  title={full ? 'Show less' : 'Show the whole note'}
-                                  onClick={() => setOpened((o) => (o.has(todo.id) ? new Set([...o].filter((id) => id !== todo.id)) : new Set([...o, todo.id])))}
-                                  onDoubleClick={() => setEditing({ id: todo.id, note: true })}
-                                >
-                                  <span>{todo.note}</span>
-                                </button>
-                              )}
-                            </>
-                          )}
-                          {knownLink(todo.link) && (
-                            <button className="todo-link" title={linkTitle(todo.link)} onClick={() => onOpen(todo.link!)}>
-                              <Icon name={'file' in todo.link ? 'doc.text' : 'doc' in todo.link ? 'doc.richtext' : 'tag'} />
-                              <span>{linkLabel(todo.link)}</span>
-                            </button>
-                          )}
-                        </div>
-                        {!edit && (
-                          <div className="todo-actions">
-                            {!todo.note && (
-                              <button className="icon-btn small" title="Add a note" aria-label={`Add a note to “${todo.text}”`} onClick={() => setEditing({ id: todo.id, note: true })}>
-                                <Icon name="note.text.badge.plus" />
-                              </button>
-                            )}
-                            <button className="icon-btn small" title="Send to agent" aria-label={`Send “${todo.text}” to the agent`} onClick={() => void sendLocated([located(todo)], api.ensureFileContent)}>
-                              <Icon name="paperplane" />
-                            </button>
-                            <button className="icon-btn small" title="Edit" aria-label={`Edit “${todo.text}”`} onClick={() => setEditing({ id: todo.id, note: false })}>
-                              <Icon name="pencil" />
-                            </button>
-                            <button className="icon-btn small destructive" title="Delete" aria-label={`Delete “${todo.text}”`} onClick={() => remove([todo])}>
-                              <Icon name="trash" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+        {!shownMine.length && !shownSource.length && mine && (
+          <div className="sidebar-hint todo-empty">{emptyText({ total: counts.all, show, search: filter.trim() })}</div>
+        )}
+
+        {ungrouped.length > 0 && (
+          <div role="list" aria-label={ordered.length ? 'To-dos in no group' : 'Your to-dos'} className="todo-list">
+            {ungrouped.map(row)}
+          </div>
+        )}
+
+        {shownGroups.map((g) => (
+          <div key={g.id} className="todo-group">
+            {naming === g.id ? (
+              <GroupNameField name={g.name} label={`Rename the group “${g.name}”`} onDone={(name) => (name === null ? (setNaming(null), true) : nameGroup(name, g.id).then((ok) => (ok && setNaming(null), ok)))} />
+            ) : (
+              <div className="todo-group-bar">
+                {foldTitle(g.id, g.name, g.todos.length)}
+                <MenuButton
+                  icon="ellipsis"
+                  className="icon-btn small"
+                  title={`Rename, move or delete “${g.name}”`}
+                  align="end"
+                  items={[
+                    { label: 'Rename…', icon: 'pencil', onSelect: () => setNaming(g.id) },
+                    { label: 'Move up', icon: 'chevron.up', disabled: ordered[0].id === g.id, onSelect: () => void changeGroups(moveGroup(groups, g.id, -1)) },
+                    { label: 'Move down', icon: 'chevron.down', disabled: ordered[ordered.length - 1].id === g.id, onSelect: () => void changeGroups(moveGroup(groups, g.id, 1)) },
+                    { separator: true },
+                    { label: 'Delete group', icon: 'trash', destructive: true, onSelect: () => void deleteGroup(g.id) }
+                  ]}
+                />
+              </div>
+            )}
+            {!folded[g.id] &&
+              (g.todos.length ? (
+                <div role="list" aria-label={g.name} className="todo-list">
+                  {g.todos.map(row)}
                 </div>
-                {shownDone.length > 0 && (
-                  <button className="btn small ghost todo-clear" onClick={() => remove(shownDone)}>
-                    Clear done
+              ) : (
+                <div className="sidebar-hint todo-group-empty">
+                  {(mine || []).some((t) => groupOf(t, groups) === g.id) ? 'Nothing open here.' : 'Nothing here yet. A to-do’s folder button moves it here.'}
+                </div>
+              ))}
+          </div>
+        ))}
+
+        {shownDone.length > 0 && (
+          <button className="btn small ghost todo-clear" onClick={() => remove(shownDone)}>
+            Clear done
+          </button>
+        )}
+
+        {!needle && mine && (
+          <div className="todo-new-group">
+            {naming === '' ? (
+              <GroupNameField name="" label="New group" onDone={(name) => (name === null ? (setNaming(null), true) : nameGroup(name).then((ok) => (ok && setNaming(null), ok)))} />
+            ) : (
+              <button className="btn small ghost" onClick={() => setNaming('')}>
+                <Icon name="folder.badge.plus" />
+                New group
+              </button>
+            )}
+            {offer && starters.length > 0 && (
+              <div className="chip-row" role="group" aria-label="Suggested groups">
+                {starters.map((name) => (
+                  <button key={name} type="button" className="chip" title={`Make a group called ${name}`} onMouseDown={(e) => e.preventDefault()} onClick={() => void nameGroup(name).then((ok) => ok && setNaming(null))}>
+                    <Icon name="plus" />
+                    {name}
                   </button>
-                )}
-              </>
+                ))}
+              </div>
             )}
           </div>
         )}
 
         {shownSource.length > 0 && (
           <div className="todo-group">
-            {groupTitle('source', 'In the source', shownSource.length)}
-            {!folded.source &&
-              shownSource.map((todo) => (
-                <button
-                  key={`${todo.file}:${todo.line}:${todo.text}`}
-                  className="todo-row source"
-                  title={`${todo.kind === todo.kind.toUpperCase() ? todo.kind : `\\${todo.kind}`} in ${todo.file}, line ${todo.line}`}
-                  onClick={() => onOpen({ file: todo.file, line: todo.line })}
-                >
-                  <span className="todo-mark" />
-                  <span className="todo-body">
-                    <span className="todo-text">{todo.text}</span>
-                    <span className="todo-where">
-                      {nameOf(todo.file)}:{todo.line}
+            {foldTitle(SOURCE, 'From comments in your files', shownSource.length)}
+            {!folded[SOURCE] && (
+              <>
+                <p className="sidebar-hint todo-source-hint">
+                  From <code>% TODO</code> and <code>\todo</code> in LaTeX, <code>// TODO</code> in Typst and <code>&lt;!-- TODO --&gt;</code> in Markdown. Delete
+                  the comment to tick it off.
+                </p>
+                {shownSource.map((todo) => (
+                  <button
+                    key={`${todo.file}:${todo.line}:${todo.text}`}
+                    className="todo-row source"
+                    title={`${todo.kind === todo.kind.toUpperCase() ? todo.kind : `\\${todo.kind}`} in ${todo.file}, line ${todo.line}`}
+                    onClick={() => onOpen({ file: todo.file, line: todo.line })}
+                  >
+                    <span className="todo-mark" />
+                    <span className="todo-body">
+                      <span className="todo-text">{todo.text}</span>
+                      <span className="todo-where">
+                        {nameOf(todo.file)}:{todo.line}
+                      </span>
                     </span>
-                  </span>
-                </button>
-              ))}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
-        )}
-
-        {!shownMine.length && !shownSource.length && mine && (
-          <div className="sidebar-hint todo-empty">{emptyText({ total: counts.all, show, search: filter.trim() })}</div>
         )}
       </div>
     </div>
   );
 }
+
+/**
+ * A group's name being typed: Return or clicking away keeps it (onDone with the name, which resolves to whether it was
+ * taken), Esc leaves it as it was (onDone with null).
+ */
+function GroupNameField({ name, label, onDone }: { name: string; label: string; onDone(name: string | null): boolean | Promise<boolean> }) {
+  const [value, setValue] = useState(name);
+  const busy = useRef(false);
+  const done = async (next: string | null) => {
+    if (busy.current) return;
+    busy.current = true;
+    // a name refused leaves the field open to change it
+    if (!(await onDone(next))) busy.current = false;
+  };
+  return (
+    <input
+      className="input todo-group-name"
+      autoFocus
+      // a name being changed is selected, to type over
+      onFocus={(e) => e.currentTarget.select()}
+      value={value}
+      placeholder="Group name"
+      aria-label={label}
+      maxLength={MAX_GROUP_NAME}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => void done(value.trim() ? value : null)}
+      onKeyDown={(e) => {
+        if (e.nativeEvent.isComposing) return;
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void done(value.trim() ? value : null);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          void done(null);
+        }
+      }}
+    />
+  );
+}
+
 
 /**
  * A to-do's text, and its note when it has one or one was asked for. Return in the text, or ⌘ or Ctrl Return in the
