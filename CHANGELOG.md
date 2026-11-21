@@ -55,6 +55,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Return or Space on a part in the circuit composer places it
 - Search in the sidebar finds text in the project's files too, with Match case, Whole words and Regular expression, and a click opens the line with the match selected
 - A LaTeX compile's errors are underlined in the source, at the command TeX stopped after or along the line, beside TexLab's own
+- Overfull and underfull box warnings stay in Logs but are not underlined in the source, unless Settings › Engines turns that on
 - A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
 - Go to a file or heading (⌘P) opens a project file or an Outline heading by its name
 - Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
@@ -81,6 +82,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The Typst outline covers the whole document across nested includes, with the last compile's numbers and the figures and tables
 - Typst completion lists the project's own `#let` functions and values without Tinymist, and ⌘-click on a path in a Typst file opens that file
 - A failed Typst export lists every error in Logs and marks them in the editor, with what PDF/UA-1 needs. Insert figure asks for alt text in a Typst document, and the Typst document template exports as PDF/UA-1
+- The Typst report, maths notes, electronics notes and coding report templates download as PDF/UA-1, with alt text on every equation
 - Image to LaTeX writes Typst in a Typst document, and Table to chart takes a Typst `#table`
 - Tinymist's linter runs as you type
 - Markdown documents refer to figures, tables, equations and sections by number: `@fig:plot` prints “Figure 1” in the PDF and in Word. Typing @ lists the document's labels, and Insert (+) has Reference
