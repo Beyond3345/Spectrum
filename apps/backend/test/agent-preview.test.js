@@ -29,6 +29,12 @@ test('the draft’s preview PDF is compiled where TeX reads only the draft, into
     await run.task;
     const before = (await fs.readdir(run.workspace, { recursive: true })).sort();
 
+    if (process.platform === 'win32') {
+      const result = await previewDraft(run);
+      assert.equal(result.pdf, null);
+      assert.match(result.log, /Review the changes as text/);
+      return;
+    }
     // outside isolation the same compile reads the file, so the check below means something
     const { compile } = await import('../src/mcp/tools.js');
     const state = path.join(dir, 'unconfined');
