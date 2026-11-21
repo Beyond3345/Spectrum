@@ -55,6 +55,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Return or Space on a part in the circuit composer places it
 - Search in the sidebar finds text in the project's files too, with Match case, Whole words and Regular expression, and a click opens the line with the match selected
 - A LaTeX compile's errors are underlined in the source, at the command TeX stopped after or along the line, beside TexLab's own
+- Overfull and underfull box warnings stay in Logs but are not underlined in the source, unless Settings › Engines turns that on
 - A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
 - Go to a file or heading (⌘P) opens a project file or an Outline heading by its name
 - Get started on Home and All projects says which TeX compiles, whether a model is set up and how to start from a template
@@ -69,6 +70,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Vim or Emacs keys in the source editor, in Settings › Editor
 - Agents you run yourself, such as Claude Code, Codex or Cursor, can use a project's Spectrum tools once you turn on Use from another agent in the Local agents bar. The secret is new each time and ends when Spectrum quits
 - Your own MCP servers for the Spectrum agent in Settings › Agents: added off, checked, run isolated, and a tool that may change something asks first
+- MCP servers take environment variables, such as an API key, kept in the keychain (encrypted for your account on Windows), shown as dots, given to that server alone and hidden wherever the server repeats them
+- On a Mac, an MCP server can reach the local ports you add for it, such as 23119 for Zotero, and never Spectrum's own
 - Spectrum compiles after you apply an agent's changes, and offers Fix with AI if that compile fails (Settings › Agents › Automations)
 - Change template › With an agent moves a paper into a LaTeX or Typst template, with the new spectrum-template-transfer skill
 - Pictures go with a message to either agent: paste, drop or choose one, sent to models that read images. A model that does not read images is told a picture was left out, and says so
@@ -81,6 +84,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - The Typst outline covers the whole document across nested includes, with the last compile's numbers and the figures and tables
 - Typst completion lists the project's own `#let` functions and values without Tinymist, and ⌘-click on a path in a Typst file opens that file
 - A failed Typst export lists every error in Logs and marks them in the editor, with what PDF/UA-1 needs. Insert figure asks for alt text in a Typst document, and the Typst document template exports as PDF/UA-1
+- The Typst report, maths notes, electronics notes and coding report templates download as PDF/UA-1, with alt text on every equation
 - Image to LaTeX writes Typst in a Typst document, and Table to chart takes a Typst `#table`
 - Tinymist's linter runs as you type
 - Markdown documents refer to figures, tables, equations and sections by number: `@fig:plot` prints “Figure 1” in the PDF and in Word. Typing @ lists the document's labels, and Insert (+) has Reference

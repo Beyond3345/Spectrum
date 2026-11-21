@@ -98,7 +98,7 @@ const store = () => stores[process.platform] ?? null;
 /** Whether keys can be kept outside the window here (a Mac or Windows). */
 export const keyStoreAvailable = () => !!store();
 
-// { salt, keys: { id: { value, at } } }, read once and kept; writes one at a time
+// { salt, keys: { id: { value, at } }, held?: { name: { variable: value } } }, read once and kept; writes one at a time
 let cache = null;
 let queue = Promise.resolve();
 const serial = (fn) => {
@@ -150,7 +150,7 @@ export function storeKeys(values, keep = [], now = Date.now()) {
     for (const [id, entry] of Object.entries(current.keys)) {
       if (!keys[id] && (kept.has(id) || now - entry.at < UNUSED_FOR)) keys[id] = entry;
     }
-    const next = { salt: current.salt, keys };
+    const next = { ...current, keys };
     if (JSON.stringify(next) !== JSON.stringify(current)) await save(next);
     return ids.map((id) => `spectrum-key:${id}`);
   });
@@ -181,6 +181,22 @@ export async function withKeys(value) {
   };
   return swap(value);
 }
+
+/**
+ * Values Spectrum holds under a name of its own (an MCP server's environment variables): never given a reference, so
+ * no window can have them sent anywhere, and never dropped as unused. holdValues(name, null) forgets them.
+ */
+export async function heldValues(name) {
+  const values = (await load()).held?.[name];
+  return values && typeof values === 'object' ? values : {};
+}
+export const holdValues = (name, values) => serial(async () => {
+  const current = await load();
+  const held = { ...current.held };
+  if (values && Object.keys(values).length) held[name] = values;
+  else delete held[name];
+  if (JSON.stringify(held) !== JSON.stringify(current.held || {})) await save({ ...current, held });
+});
 
 /** The keys' route, and the hook that hands every route its keys. Registered before the other routes. */
 export function registerKeyRoutes(fastify) {

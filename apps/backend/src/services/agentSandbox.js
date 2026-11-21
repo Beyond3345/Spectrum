@@ -33,9 +33,10 @@ const HIDDEN = `\\.spectrum|\\.git|\\.claude|${secretNamePattern(AGENT_SECRET_EX
 /**
  * offline: no network at all (a chart's script), where an agent has HTTPS. gatePort: the one way out is that port on
  * this computer, where Spectrum's gate checks each host against a list (agentNetwork.js): no other address, and no
- * name lookup, which would carry text out in the names asked for.
+ * name lookup, which would carry text out in the names asked for. localPorts: ports on this computer it may also reach
+ * (an MCP server's local service), checked by the caller against Spectrum's own.
  */
-export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort, offline = false, gatePort }) {
+export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort, offline = false, gatePort, localPorts = [] }) {
   const reads = [...new Set([...SYSTEM_READS, ...developerReads(), path.dirname(runtimeExecutable), ...runtimePaths])];
   return `(version 1)
 (deny default)
@@ -68,7 +69,8 @@ ${gatePort ? `; the gate is the only way out
 ; names go through the system's resolver, which is how most programs look one up
 (allow network-outbound (literal "/private/var/run/mDNSResponder"))`}
 ; the kernel's sockets that say which route and source address a connection takes, as every sandboxed network client has
-(allow network-outbound (control-name "com.apple.netsrc") (control-name "com.apple.network.statistics"))`}
+(allow network-outbound (control-name "com.apple.netsrc") (control-name "com.apple.network.statistics"))
+${localPorts.filter((p) => Number.isInteger(p) && p > 0 && p < 65536).map((p) => `(allow network-outbound (remote tcp "localhost:${p}"))`).join('\n')}`}
 ${Number.isInteger(internalPort) && internalPort > 0 && internalPort < 65536 ? `(allow network-bind network-inbound (local tcp "localhost:${internalPort}"))\n(allow network-outbound (remote tcp "localhost:${internalPort}"))` : ''}
 `;
 }
@@ -89,10 +91,10 @@ export async function resolveExecutable(command, envPath = process.env.PATH || '
 
 /**
  * hosts: a function giving the hosts the process may reach now, for one held to a list (none: any public HTTPS host,
- * as before); onRefused(host): it asked for one off the list. macOS only: the Windows worker opens every public
- * address or none, so there a list is not enforced.
+ * as before); onRefused(host): it asked for one off the list. localPorts: see sandboxProfile. macOS only: the Windows
+ * worker opens every public address or none and never this computer's, so there neither is enforced or reachable.
  */
-export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false, hosts, onRefused }) {
+export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false, hosts, onRefused, localPorts }) {
   if (!['darwin', 'win32'].includes(process.platform)) throw new Error('Native agent isolation is unavailable on this platform.');
   const executable = await resolveExecutable(command);
   if (process.platform === 'win32') return spawnWindowsAgent({ executable, args, workspace, home, runtimeExecutable, runtimePaths, forbiddenRoots, cwd, env, offline });
@@ -104,7 +106,7 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
   const reads = [...SYSTEM_READS, ...developerReads(), workRoot, homeRoot, ...roots, path.dirname(runtimeExecutable || executable)];
   if (!reads.some((root) => executable === root || executable.startsWith(root + path.sep))) throw new Error('This command is outside the approved runtime folders. Add its specific runtime folder in Setup.');
   const gate = hosts && !offline ? await openGate({ hosts, onRefused }) : null;
-  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline, gatePort: gate?.port });
+  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline, gatePort: gate?.port, localPorts });
   const child = spawn('/bin/sh', ['-c', WATCHDOG, 'sh', profile, executable, ...args], {
     cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
     env: {

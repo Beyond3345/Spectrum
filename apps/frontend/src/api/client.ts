@@ -2356,11 +2356,14 @@ export const transferWithAgent = (payload: { sourceProjectId: string; targetTemp
 
 /** Settings › Agents › MCP servers: the user's own, for the Spectrum agent. */
 /** hosts: the ones it may reach; anyHost: every public HTTPS host instead; refused: hosts it asked for that its list leaves out */
-export type McpServer = { name: string; command: string; args: string[]; on: boolean; checked: boolean; hosts: string[]; anyHost: boolean; refused: string[] };
+/** env: the names of its variables (the values stay in the backend); envWhy: why they are not in the keychain; ports: on this computer. */
+export type McpServer = { name: string; command: string; args: string[]; on: boolean; checked: boolean; hosts: string[]; anyHost: boolean; refused: string[]; env: string[]; envWhy: string; ports: number[] };
 export type McpTool = { name: string; description: string; readOnly: boolean };
 export const listMcpServers = () => request<{ servers: McpServer[] }>('/api/mcp-servers');
 export const addMcpServer = (server: { name: string; command: string; args: string[]; hosts?: string[]; anyHost?: boolean }) => request<{ ok: boolean }>('/api/mcp-servers', json('POST', server));
 export const removeMcpServer = (name: string) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
 export const checkMcpServer = (name: string) => request<{ tools: McpTool[] }>(`/api/mcp-servers/${encodeURIComponent(name)}/check`, json('POST'));
-export const setMcpServerNetwork = (name: string, network: { hosts?: string[]; anyHost?: boolean }) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, json('PUT', network));
+export const setMcpServerNetwork = (name: string, network: { hosts?: string[]; anyHost?: boolean; ports?: (number | string)[] }) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, json('PUT', network));
+/** { NAME: value } sets a variable, { NAME: null } removes it. */
+export const setMcpServerVariables = (name: string, env: Record<string, string | null>) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, json('PUT', { env }));
 export const setMcpServerOn = (name: string, on: boolean) => request<{ ok: boolean }>(`/api/mcp-servers/${encodeURIComponent(name)}`, json('PUT', { on }));
