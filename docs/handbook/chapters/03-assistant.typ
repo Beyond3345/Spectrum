@@ -480,7 +480,7 @@ On macOS, a local agent also gets Spectrum's tools from a small server it starts
 An agent that reads the project and can also reach any site could be led to send the project somewhere, for example by an instruction hidden in a PDF, a `.bib` file or a web page that it reads. The #ui[Network] part of each agent's card in #menu[Settings][Agents] therefore has two choices (@fig-assistant-agent-network),
 
 - #ui[Listed hosts only] holds the agent to a list made of its provider's hosts, the sites that Spectrum's tools need and the hosts you add, where the tools need the scholarly sites they search and check references against and the two sites a compile downloads Typst packages and Tectonic's TeX files from, while
-- #ui[Any host] lets it reach every public host over HTTPS, as every agent did before version 2.7.
+- #ui[Any host] lets it reach every public host over HTTPS, as every agent did before version 2.6.
 
 Every agent starts on #ui[Any host], with its list ready, since none has yet been run on its list for real tasks inside Spectrum, and an agent that does not work through a list would fail to connect. Its card says how far its own documentation goes: Claude Agent's names the hosts it needs and says that it honours the proxy settings the list relies on, while the other agents' do not say enough to be sure. To hold an agent to its list, choose #ui[Listed hosts only] in its card, and come back to #ui[Any host] if a task then fails to connect. A host is added by typing its name, such as `api.example.com`, or `*.example.com` for every host below one, and pressing #ui[Add host].
 
