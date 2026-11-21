@@ -4,12 +4,14 @@ import crypto from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
 import os from 'node:os';
 import { createServer } from 'node:net';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // unstable: plan_update, plan_removed and the systemPrompt session capability, which the stable entry lacks
 import { client, ndJsonStream } from '@agentclientprotocol/sdk/unstable';
 import { APP_VERSION, DATA_DIR } from '../config/constants.js';
 import { appPath, cachePath, detectMainFile, getProjectRoot, mutateProjectRoot, readMeta } from './projectService.js';
-import { compileFolder, SUPPORTED_ENGINES } from './compileService.js';
+import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileService.js';
 import { builtInTectonic, builtInTypst } from './engineService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { checkedImages, openTodos, suggestedTodo } from './agentService.js';
@@ -22,6 +24,7 @@ import { agentHidden, agentHiddenNameSource, safeJoin } from '../utils/pathUtils
 import { skillText, untrusted } from '../utils/outsideText.js';
 import { writeFileAtomic, writeJsonAtomic } from '../utils/fsUtils.js';
 
+const execFileAsync = promisify(execFile);
 const runs = new Map();
 /** A direct session's turn is changing the project's own files now, which a GitHub pull waits for. */
 export const directTurn = (projectId) => [...runs.values()].some((r) => r.projectId === projectId && r.mode === 'direct' && r.busy);
@@ -711,10 +714,17 @@ async function takeSuggestions(r) {
 // Whether TeX on Windows can be told to read only below the draft, by its --version: MiKTeX through AllowUnsafeInputFiles,
 // TeX Live through openin_any only until 2026, which made that a no-op
 export const confinableTeX = (version) => /MiKTeX/i.test(version) || Number(String(version).match(/TeX Live (\d{4})/)?.[1]) < 2026;
-export function windowsPreviewRefusal(main) {
-  if (/\.typ$/i.test(main)) return null;
+/**
+ * Why a Windows preview of a draft isn't compiled, or null: version is pdflatex's --version, null when there is none
+ * (Auto then compiles with Tectonic, as the user's own compile does). Its engines and helpers are the user's own compile's.
+ * Typst reads nothing outside its --root (the draft's copy) but fonts and packages, and runs nothing, on any system.
+ * ponytail: Markdown stays refused: pandoc reads any image or bibliography a draft names, which no TeX limit reaches
+ */
+export function windowsPreviewRefusal(main, engine, version) {
   if (/\.(md|markdown)$/i.test(main)) return 'Preview PDF on Windows doesn’t compile Markdown drafts yet. Review its changes as text.';
-  return 'LaTeX draft previews need Windows isolation for the compiler and its helpers. Review the changes as text.';
+  if (/\.typ$/i.test(main)) return null;
+  if (engine !== 'tectonic' && version != null && !confinableTeX(version)) return 'Preview PDF on Windows needs MiKTeX, or TeX Live 2025 or earlier: later TeX Live can’t limit what a compile reads, so the draft isn’t compiled. Review its changes as text.';
+  return null;
 }
 /**
  * What a Windows preview's TeX is told: read and write only below the draft and its build folder, and no shell escape,
@@ -722,6 +732,19 @@ export function windowsPreviewRefusal(main) {
  * value set in its own configuration overrides, so previewDraft checks what MiKTeX makes of them).
  */
 export const PREVIEW_TEX_ENV = { openin_any: 'p', openout_any: 'p', shell_escape: 'f', MIKTEX_CORE_ALLOWUNSAFEINPUTFILES: '0', MIKTEX_CORE_ALLOWUNSAFEOUTPUTFILES: '0', MIKTEX_CORE_SHELLCOMMANDMODE: 'Forbidden' };
+const MIKTEX_EXPECTED = { AllowUnsafeInputFiles: /^(false|0)$/i, AllowUnsafeOutputFiles: /^(false|0)$/i, ShellCommandMode: /^forbidden$/i };
+
+/** Whether MiKTeX, with PREVIEW_TEX_ENV, really limits a compile: none of its own settings put back what it takes away. */
+async function mikTeXConfined() {
+  const initexmf = await findExecutable('initexmf');
+  if (!initexmf) return false;
+  for (const [name, expected] of Object.entries(MIKTEX_EXPECTED)) {
+    const { stdout } = await execFileAsync(initexmf, [`--show-config-value=[Core]${name}`], { timeout: 20000, windowsHide: true, env: { ...process.env, ...PREVIEW_TEX_ENV } }).catch(() => ({ stdout: '' }));
+    if (!expected.test(stdout.trim())) return false;
+  }
+  return true;
+}
+
 // The document a preview compiles, and with what: the project's main file and engine unless the request names them
 async function previewTarget(r, { mainFile, engine }) {
   const main = mainFile || (await readMeta(r.root).catch(() => ({}))).mainFile || await detectMainFile(r.workspace).catch(() => null);
@@ -743,7 +766,12 @@ const reviewCompiles = new Set();
 /**
  * A folder as a PDF: { ok, pdf (base64, or null), log }, compiled into this computer's cache (under `name`), never into
  * the folder. On macOS inside isolation, where it can read nothing but the folder and TeX, the folder read-only and the
- * project (root) out of reach. On Windows only Typst compiles from a link-free copy.
+ * project (root) out of reach. On Windows a link-free copy of the folder, as the user's own compile is there, with the same engines and helpers
+ * (Biber, latexmk, the index and glossary tools, Tectonic), but with no shell escape and TeX told to read and write
+ * only below the folder (MiKTeX's AllowUnsafeInputFiles, TeX Live's openin_any before 2026), and with no preview where
+ * TeX can't be told: TeX Live 2026 and later, and a MiKTeX whose own settings win over the preview's. The helpers are
+ * Perl and Lua, which those limits don't reach, so they read what the user's own compile's would (Biber a .bib
+ * anywhere the draft names). children: where the compile's process is kept while it runs, to be stopped from.
  */
 async function compileIsolated({ root, workspace, name, main, engine, choices, children }) {
   // a fresh folder for each, and a home kept between them for TeX's own caches
@@ -753,8 +781,12 @@ async function compileIsolated({ root, workspace, name, main, engine, choices, c
   await fs.mkdir(out, { recursive: true, mode: 0o700 });
   await fs.mkdir(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
   if (process.platform === 'win32') {
-    const refused = windowsPreviewRefusal(main);
+    // TeX's limits, checked where TeX runs: Tectonic (the user's own compile's engine when no TeX is installed) has none
+    const tex = engine === 'tectonic' || /\.(typ|md|markdown)$/i.test(main) ? null : await findExecutable('pdflatex');
+    const version = tex ? (await execFileAsync(tex, ['--version'], { timeout: 20000, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout : null;
+    const refused = windowsPreviewRefusal(main, engine, version);
     if (refused) return { ok: false, pdf: null, log: refused };
+    if (/MiKTeX/i.test(version) && !(await mikTeXConfined())) return { ok: false, pdf: null, log: 'Spectrum couldn’t confirm that MiKTeX will limit what the compile reads, writes and runs (a setting in MiKTeX’s own configuration may take precedence), so the draft isn’t compiled. Review its changes as text.' };
     // outside isolation, so never the agent's own folder, where a link it made could lead TeX elsewhere: a copy made by
     // the isolated reader, which refuses links and leaves hidden names out
     const draft = await cachePath(root, 'agent-preview', `${name}-draft`);

@@ -313,11 +313,22 @@ test('a Windows draft compile runs the user’s compile’s helpers, Biber and m
   assert.deepEqual((await fs.readdir(draft)).sort(), ['main.tex', 'refs.bib'], 'nothing was written beside it');
 });
 
-test('Windows draft review offers PDFs only for Typst', async () => {
+test('the Windows preview of a draft takes the user’s compile’s engines, latexmk and Tectonic too', async () => {
   const { windowsPreviewRefusal } = await import('../src/services/agentSessionService.js');
-  assert.equal(windowsPreviewRefusal('main.typ'), null);
-  assert.match(windowsPreviewRefusal('main.md'), /Markdown drafts/);
-  for (const file of ['main.tex', 'main.ltx', 'unknown']) assert.match(windowsPreviewRefusal(file), /Review the changes as text/);
+  const live2025 = 'pdfTeX 3.141592653-2.6-1.40.27 (TeX Live 2025)', live2026 = 'pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)';
+  for (const engine of ['auto', 'pdflatex', 'xelatex', 'lualatex', 'latexmk']) {
+    assert.equal(windowsPreviewRefusal('main.tex', engine, live2025), null, engine);
+    assert.equal(windowsPreviewRefusal('main.tex', engine, 'MiKTeX-pdfTeX 4.20 (MiKTeX 25.4)'), null, engine);
+    assert.match(windowsPreviewRefusal('main.tex', engine, live2026), /TeX Live 2025 or earlier/, engine);
+    assert.match(windowsPreviewRefusal('main.tex', engine, ''), /TeX Live 2025 or earlier/, `${engine}: a TeX that would not say`);
+  }
+  assert.equal(windowsPreviewRefusal('main.tex', 'tectonic', null), null);
+  assert.equal(windowsPreviewRefusal('main.tex', 'tectonic', live2026), null, 'Tectonic is not TeX Live');
+  assert.equal(windowsPreviewRefusal('main.tex', 'auto', null), null, 'no TeX installed: Auto takes Tectonic');
+  // Typst keeps to its --root on any system, whatever TeX is installed; pandoc reads what a Markdown draft names
+  assert.equal(windowsPreviewRefusal('paper.typ', 'auto', null), null);
+  assert.equal(windowsPreviewRefusal('paper.typ', 'auto', live2026), null);
+  assert.match(windowsPreviewRefusal('notes.md', 'auto', null), /Markdown drafts/);
 });
 
 test('the Windows preview compiles only with a TeX that can be told to read only the draft', async () => {
