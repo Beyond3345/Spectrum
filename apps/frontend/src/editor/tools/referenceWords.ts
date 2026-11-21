@@ -61,3 +61,7 @@ export function checkReport(rows: ReferenceCheckRow[]) {
   if (found) out.push(`- ${found} ${found === 1 ? 'entry was' : 'entries were'} found as they are.`);
   return out;
 }
+
+/** Which .bib files References exist read, and what it noticed (a file the document loads that is missing, none at all). */
+export const existRead = ({ bibFiles, note }: { bibFiles?: string[]; note?: string }) =>
+  [bibFiles?.length ? `Read ${bibFiles.join(', ')}.` : '', note || ''].filter(Boolean).join(' ');

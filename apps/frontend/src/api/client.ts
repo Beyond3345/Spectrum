@@ -1868,8 +1868,9 @@ export interface ReferenceCheckRow {
   note?: string;
 }
 
-export function checkReferences(projectId: string, keys?: string[], signal?: AbortSignal) {
-  return request<{ ok: boolean; rows: ReferenceCheckRow[]; bibFiles: string[] }>('/api/references/check', { ...json('POST', { projectId, keys }), signal });
+/** doc: the document whose own .bib files are checked (the project's main file when left out). */
+export function checkReferences(projectId: string, keys?: string[], signal?: AbortSignal, doc?: string) {
+  return request<{ ok: boolean; rows: ReferenceCheckRow[]; bibFiles: string[]; note?: string }>('/api/references/check', { ...json('POST', { projectId, keys, doc }), signal });
 }
 
 // ─── Zotero (its local API and Better BibTeX, through the backend) ───

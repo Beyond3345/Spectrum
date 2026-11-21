@@ -12,7 +12,7 @@ import { GROUPS, isScanned, preflightGaps, runPreflight } from '../preflight/run
 import type { Finding, PdfPage, PreflightGroup } from '../preflight/run';
 import { Markdown, errorText, fixTitle, fixWithAI, isSource, relativeTime } from '../shared';
 import ReferenceCheckRows from './ReferenceCheck';
-import { checkCounts, checkReport } from './referenceWords';
+import { checkCounts, checkReport, existRead } from './referenceWords';
 import { mergePart, partLine, partsLimit } from './reviewParts';
 import { sendLocated } from '../agent/handoff';
 import type { Located } from '../agent/handoff';
@@ -40,7 +40,7 @@ type Run = {
   /** what pdf.js read from the PDF, for the screen reader view */
   pages: PdfPage[] | null;
   /** References exist: each .bib entry looked up; null: not asked for */
-  exist?: null | { running: true } | { error: string } | { rows: ReferenceCheckRow[] };
+  exist?: null | { running: true } | { error: string } | { rows: ReferenceCheckRow[]; read?: string };
   /** null: not asked for */
   ai: null | { running: true } | { error: string } | { review: Omit<PartsReview, 'findings'> & { findings: AiRow[] } };
 };
@@ -82,7 +82,7 @@ function reportText(run: Run, hidden: Set<string>) {
     if (list.length) out.push('', ...list.map((f) => `- ${SEVERITY_WORD[f.severity]}: ${f.message}${where(f) ? ` (${where(f)})` : ''}`));
     else if (!run.gaps[group]) out.push('', 'No problems found.');
   }
-  if (run.exist) out.push('', `## ${EXIST_LABEL}`, '', ...('rows' in run.exist ? checkReport(run.exist.rows) : 'error' in run.exist ? [run.exist.error] : []));
+  if (run.exist) out.push('', `## ${EXIST_LABEL}`, '', ...('rows' in run.exist ? [...(run.exist.read ? [run.exist.read, ''] : []), ...checkReport(run.exist.rows)] : 'error' in run.exist ? [run.exist.error] : []));
   if (run.ai) out.push('', `## ${AI_LABEL}`);
   if (run.ai && 'error' in run.ai) out.push('', run.ai.error);
   if (review) {
@@ -246,8 +246,8 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       });
       if (ticks.exist) {
         setStep('Looking up the references…');
-        const exist = await checkReferences(projectId, undefined, abort.signal).then(
-          (res) => ({ rows: res.rows }),
+        const exist = await checkReferences(projectId, undefined, abort.signal, reviewed).then(
+          (res) => ({ rows: res.rows, read: existRead(res) }),
           (err) => ({ error: abort.signal.aborted ? 'Stopped.' : `The references couldn’t be looked up: ${errorText(err)}` })
         );
         setRun((was) => ({ ...was, exist }));
@@ -526,6 +526,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
                       after={(r) => notes[`exist|${r.key}`] && <Markdown>{notes[`exist|${r.key}`]}</Markdown>}
                     />
                   )}
+                  {'rows' in run.exist && run.exist.read && <div className="tool-footnote">{run.exist.read}</div>}
                 </>
               )}
             </section>

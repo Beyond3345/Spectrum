@@ -20,8 +20,8 @@ This is an audit, not an edit. The author decides what to change; your job is to
 
 ## 2. Match each claim to its sources
 
-- Note the citation keys attached to the claim and find each entry in the bibliography (`bib_entries`, or the `.bib` files).
-- Run `check_references` on those keys before you read anything. An entry that is retracted, not found or differs from its record is a finding in itself: say so for every claim that cites it.
+- Note the citation keys attached to the claim and find each entry in the bibliography (`bib_entries`, or the `.bib` files). When the document is not the project's main file, give it as `file` to `bib_entries` and `check_references`, so they read the `.bib` files that document loads.
+- Run `check_references` on those keys before you read anything. Its answer names the document and the `.bib` files it read: if a key is not among them, say so rather than reporting nothing checked. An entry that is retracted, not found or differs from its record is a finding in itself: say so for every claim that cites it.
 - A claim with no citation that needs one is a finding in itself: mark it "needs a source".
 
 ## 3. Read the sources

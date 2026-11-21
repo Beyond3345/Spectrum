@@ -1,6 +1,6 @@
 // Review’s References exist in words. Run: bundle with esbuild (see .claude/stages/RULES.md) and run with node.
 import type { ReferenceCheckRow } from '../../api/client';
-import { checkCounts, checkHead, checkReport, dateWords } from './referenceWords';
+import { checkCounts, checkHead, checkReport, dateWords, existRead } from './referenceWords';
 
 const assert = {
   equal: (actual: unknown, expected: unknown) => {
@@ -36,4 +36,8 @@ assert.deepEqual(checkReport(rows), [
   '  - year: “2015” in the .bib, “2005” in the record',
   '- 2 entries were found as they are.'
 ]);
+// which .bib files were read is said, and why none were, so 0 entries is never left bare
+assert.equal(existRead({ bibFiles: ['research-probe.bib'] }), 'Read research-probe.bib.');
+assert.equal(existRead({ bibFiles: [], note: 'main.tex loads references.bib, which is not in the project.' }), 'main.tex loads references.bib, which is not in the project.');
+assert.equal(existRead({ bibFiles: ['a.bib', 'b.bib'], note: 'x' }), 'Read a.bib, b.bib. x');
 console.log('referenceWords.check.ts: ok');

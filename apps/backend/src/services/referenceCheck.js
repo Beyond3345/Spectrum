@@ -4,7 +4,7 @@
 // Watch's among them) and OpenAlex's flag. No model is used. Each row carries what was read and where, so the user can
 // open the record and see the difference for themselves.
 import { latexToText } from '../latex/conversion.js';
-import { projectBibEntries } from '../mcp/tools.js';
+import { documentBib } from '../mcp/tools.js';
 import { bibIdentity, crossrefBase, get, recordFor, summaryOf, yearOf } from './referenceService.js';
 import { RETRACTED_MARK, compareWork, firstAuthorOf, surname } from './referenceMatch.js';
 import { getJson, openAlexBase } from './searchService.js';
@@ -143,11 +143,12 @@ function finish(row, want, record, read, retraction, notices) {
 }
 
 /**
- * Checks the project's bibliography (the .bib files its document loads, else every .bib): every entry, or the keys
- * named. Returns { rows, bibFiles, more? }, in the order of the files.
+ * Checks a document's bibliography (the .bib files it loads, else every .bib; the main file's when no document is
+ * named): every entry, or the keys named. Returns { rows, document, bibFiles (the files read), missing (the ones it
+ * names that are not there), everyBib, absent (keys asked for that no file read holds) }, rows in the order of the files.
  */
-export async function checkReferences(root, { keys, state } = {}) {
-  const all = await projectBibEntries(root, state);
+export async function checkReferences(root, { keys, state, file } = {}) {
+  const { document, bibs, missing, everyBib, entries: all } = await documentBib(root, state, file);
   const wanted = Array.isArray(keys) && keys.length ? all.filter((e) => keys.includes(e.key)) : all;
   const entries = wanted.slice(0, MAX_ENTRIES);
   const rows = new Array(entries.length);
@@ -159,13 +160,31 @@ export async function checkReferences(root, { keys, state } = {}) {
     }
   }));
   const more = wanted.slice(MAX_ENTRIES).map((e) => ({ key: e.key, file: e.file, line: e.line, title: plainText(e.fields.title), status: 'unchecked', note: `Only the first ${MAX_ENTRIES} entries are checked at a time.` }));
-  return { rows: [...rows, ...more], bibFiles: [...new Set(all.map((e) => e.file))] };
+  const absent = Array.isArray(keys) ? [...new Set(keys)].filter((k) => !all.some((e) => e.key === k)) : [];
+  return { rows: [...rows, ...more], document, bibFiles: bibs, missing, everyBib, absent };
+}
+
+/** What a check read, said when it is not plainly the document's own .bib files: so 0 entries is never left bare. */
+export function checkNote({ document, bibFiles = [], missing = [], everyBib, absent = [], rows }) {
+  const are = (list) => (list.length > 1 ? 'are' : 'is');
+  if (!document) return 'The project has no LaTeX, Typst or Markdown document, so no bibliography was read.';
+  const notes = [];
+  if (missing.length) notes.push(`${document} loads ${missing.join(', ')}, which ${are(missing)} not in the project.`);
+  if (everyBib) notes.push(bibFiles.length ? `${document} loads no .bib file, so every .bib in the project was read.` : `${document} loads no .bib file and the project has none.`);
+  if (bibFiles.length && !rows.length && !absent.length) notes.push(`${bibFiles.join(', ')} ${bibFiles.length > 1 ? 'hold' : 'holds'} no entries.`);
+  if (absent.length) notes.push(`${absent.join(', ')} ${are(absent)} not in ${bibFiles.join(', ') || 'any .bib file read'}. If another document loads ${absent.length > 1 ? 'them' : 'it'}, check again with that document as file.`);
+  return notes.join(' ');
 }
 
 /** The rows as a model reads them: one short object each, the found ones in a list of keys. */
-export function checkSummary({ rows }) {
+export function checkSummary(result) {
+  const { rows } = result;
   const found = rows.filter((r) => r.status === 'found');
+  const note = checkNote(result);
   return {
+    document: result.document,
+    bibFiles: result.bibFiles,
+    ...(note && { note }),
     checked: rows.length,
     found: found.map((r) => r.key),
     problems: rows.filter((r) => r.status !== 'found').map((r) => ({
