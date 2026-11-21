@@ -170,7 +170,7 @@ export const orderedGroups = (groups: TodoGroups): GroupEntry[] =>
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 
 /** The group a to-do is in, '' for none: also when it names a group that is gone, deleted here or on another computer. */
-export const groupOf = (todo: { group?: string }, groups: TodoGroups) => (todo.group && Object.hasOwn(groups, todo.group) ? todo.group : '');
+export const groupOf = (todo: { group?: string }, groups: TodoGroups) => (todo.group && Object.prototype.hasOwnProperty.call(groups, todo.group) ? todo.group : '');
 
 /** A name as a group keeps it: one line, trimmed, capped. */
 export const groupName = (name: string) => name.replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);

@@ -391,7 +391,9 @@ export default function TodosList({
     </button>
   );
 
+  // the starter groups not made yet: offered until a group of the user's own is made, then while naming one
   const starters = STARTER_GROUPS.filter((name) => !groupNamed(groups, name));
+  const offer = naming === '' || ordered.every((g) => STARTER_GROUPS.includes(g.name));
 
   return (
     <div className="todos">
@@ -461,7 +463,7 @@ export default function TodosList({
           </div>
         )}
 
-        {shownGroups.map((g, i) => (
+        {shownGroups.map((g) => (
           <div key={g.id} className="todo-group">
             {naming === g.id ? (
               <GroupNameField name={g.name} label={`Rename the group “${g.name}”`} onDone={(name) => (name === null ? (setNaming(null), true) : nameGroup(name, g.id).then((ok) => (ok && setNaming(null), ok)))} />
@@ -471,11 +473,11 @@ export default function TodosList({
                 <MenuButton
                   icon="ellipsis"
                   className="icon-btn small"
-                  title={`Group “${g.name}”`}
+                  title={`Rename, move or delete “${g.name}”`}
                   align="end"
                   items={[
                     { label: 'Rename…', icon: 'pencil', onSelect: () => setNaming(g.id) },
-                    { label: 'Move up', icon: 'chevron.up', disabled: i === 0 && ordered[0].id === g.id, onSelect: () => void changeGroups(moveGroup(groups, g.id, -1)) },
+                    { label: 'Move up', icon: 'chevron.up', disabled: ordered[0].id === g.id, onSelect: () => void changeGroups(moveGroup(groups, g.id, -1)) },
                     { label: 'Move down', icon: 'chevron.down', disabled: ordered[ordered.length - 1].id === g.id, onSelect: () => void changeGroups(moveGroup(groups, g.id, 1)) },
                     { separator: true },
                     { label: 'Delete group', icon: 'trash', destructive: true, onSelect: () => void deleteGroup(g.id) }
@@ -490,7 +492,7 @@ export default function TodosList({
                 </div>
               ) : (
                 <div className="sidebar-hint todo-group-empty">
-                  {(mine || []).some((t) => groupOf(t, groups) === g.id) ? 'Nothing open here.' : 'Empty. Choose it with the folder in the box above, or move a to-do here from its row.'}
+                  {(mine || []).some((t) => groupOf(t, groups) === g.id) ? 'Nothing open here.' : 'Nothing here yet. A to-do’s folder button moves it here.'}
                 </div>
               ))}
           </div>
@@ -512,7 +514,7 @@ export default function TodosList({
                 New group
               </button>
             )}
-            {(naming === '' || !ordered.length) && starters.length > 0 && (
+            {offer && starters.length > 0 && (
               <div className="chip-row" role="group" aria-label="Suggested groups">
                 {starters.map((name) => (
                   <button key={name} type="button" className="chip" title={`Make a group called ${name}`} onMouseDown={(e) => e.preventDefault()} onClick={() => void nameGroup(name).then((ok) => ok && setNaming(null))}>
@@ -531,8 +533,8 @@ export default function TodosList({
             {!folded[SOURCE] && (
               <>
                 <p className="sidebar-hint todo-source-hint">
-                  Found in the files: <code>% TODO</code> and <code>\todo</code> in LaTeX, <code>// TODO</code> in Typst, <code>&lt;!-- TODO --&gt;</code> in Markdown. Take the
-                  comment out of the file to tick it off.
+                  From <code>% TODO</code> and <code>\todo</code> in LaTeX, <code>// TODO</code> in Typst and <code>&lt;!-- TODO --&gt;</code> in Markdown. Delete
+                  the comment to tick it off.
                 </p>
                 {shownSource.map((todo) => (
                   <button
@@ -576,6 +578,8 @@ function GroupNameField({ name, label, onDone }: { name: string; label: string; 
     <input
       className="input todo-group-name"
       autoFocus
+      // a name being changed is selected, to type over
+      onFocus={(e) => e.currentTarget.select()}
       value={value}
       placeholder="Group name"
       aria-label={label}

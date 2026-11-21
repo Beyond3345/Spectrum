@@ -746,8 +746,77 @@
 }
 
 .todo-row:hover .todo-actions,
-.todo-row:focus-within .todo-actions {
+.todo-row:focus-within .todo-actions,
+.todo-actions:has(.open) {
   visibility: visible;
+}
+
+/* a group's title, with its menu at the end while it's pointed at or in focus */
+.todo-group-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.todo-group-bar .todo-group-head {
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-group-bar > .icon-btn {
+  position: absolute;
+  top: 50%;
+  right: 22px;
+  transform: translateY(-50%);
+  visibility: hidden;
+}
+
+.todo-group-bar:hover > .icon-btn,
+.todo-group-bar:focus-within > .icon-btn,
+.todo-group-bar > .icon-btn.open {
+  visibility: visible;
+}
+
+.todo-group-name.input {
+  height: 26px;
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+
+.todo-group-empty,
+.todo-source-hint {
+  margin: 0 0 4px;
+  padding: 0 8px 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.todo-source-hint code {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.todo-new-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.todo-new-group .chip-row {
+  padding: 0 4px;
+}
+
+.todo-new-group .chip {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+.todo-new-group .chip .sf {
+  width: 10px;
+  height: 10px;
 }
 
 .todo-clear.btn {

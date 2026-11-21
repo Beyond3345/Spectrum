@@ -266,7 +266,7 @@ export function ToolCard({ call, terminals }: { call: ToolCall; terminals: Recor
 
 /** The open to-dos, the user's and the source's, as they go with a message. */
 export const openTodos = (todos: TodosState): SuggestedTodo[] => [
-  ...(todos.mine || []).filter((t) => !t.done).map((t) => ({ text: t.text, ...(t.link && { link: t.link }) })),
+  ...(todos.mine || []).filter((t) => !t.done).map((t) => ({ text: t.text, ...(t.link && { link: t.link }), ...(todos.groups[t.group ?? '']?.name && { group: todos.groups[t.group!].name }) })),
   ...todos.source.map((t) => ({ text: t.text, link: { file: t.file, line: t.line } }))
 ];
 
@@ -280,9 +280,10 @@ function TodoCard({ todo, todos }: { todo: SuggestedTodo; todos: TodosState }) {
       <div className="grow">
         <div className="agent-card-label">Suggested to-do</div>
         <div>{todo.text}</div>
-        {todo.link && <div className="field-hint">{linkText(todo.link)}</div>}
+        {(todo.link || todo.group) && <div className="field-hint">{[todo.link && linkText(todo.link), todo.group && `In ${todo.group}`].filter(Boolean).join(' · ')}</div>}
       </div>
-      <button className="btn small" disabled={added} onClick={() => void todos.add(todo.text, todo.link)}>
+      {/* in the group it names, made when the project hasn't one by that name */}
+      <button className="btn small" disabled={added} onClick={async () => void todos.add(todo.text, todo.link, todo.group ? await todos.groupFor(todo.group) : undefined)}>
         {added ? 'Added' : 'Add'}
       </button>
     </div>

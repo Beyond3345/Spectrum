@@ -120,7 +120,7 @@ test('to-dos are saved one file each and checked', async () => {
   const p = await newProject('To-dos');
   const url = `/api/projects/${p.id}/todos`;
   const todo = (id, extra = {}) => ({ id, text: 'Fix the figure', done: false, createdAt: '2026-10-24T01:00:00.000Z', updatedAt: '2026-10-24T01:00:00.000Z', ...extra });
-  assert.deepEqual((await api(url)).json, { ok: true, todos: [] });
+  assert.deepEqual((await api(url)).json, { ok: true, todos: [], groups: {} });
 
   const line = await api(`${url}/b`, 'PUT', todo('b', { link: { file: 'main.tex', line: 3, snippet: 'x'.repeat(3000) }, junk: 1 }));
   assert.equal(line.status, 200);
@@ -162,6 +162,44 @@ test('to-dos are saved one file each and checked', async () => {
   await fs.writeFile(path.join(p.path, '.spectrum', 'todos', 'o.json'), old);
   assert.deepEqual((await api(url)).json.todos.find((t) => t.id === 'o'), JSON.parse(old));
   assert.equal(await fs.readFile(path.join(p.path, '.spectrum', 'todos', 'o.json'), 'utf8'), old);
+});
+
+test('to-do groups are kept in the project settings, changed one by one, and a to-do names its own', async () => {
+  const p = await newProject('To-do groups');
+  const url = `/api/projects/${p.id}`;
+  const settingsFile = path.join(p.path, '.spectrum', 'settings.json');
+  await api(`${url}/settings`, 'PATCH', { compile: { engine: 'xelatex' } });
+  const change = (groups) => api(`${url}/todo-groups`, 'PATCH', { groups });
+
+  assert.deepEqual((await change({ check: { name: ' Checking ', order: 1 }, spell: { name: 'Spelling', order: 2 } })).json.groups, { check: { name: 'Checking', order: 1 }, spell: { name: 'Spelling', order: 2 } });
+  // one at a time: the others stay, and so do the project's other settings and a group's fields a later version adds
+  const stored = await readJson(settingsFile);
+  await fs.writeFile(settingsFile, JSON.stringify({ ...stored, todoGroups: { ...stored.todoGroups, spell: { ...stored.todoGroups.spell, colour: 'blue' } } }));
+  assert.deepEqual((await change({ spell: { name: 'Spelling and grammar', order: 2 } })).json.groups.spell, { name: 'Spelling and grammar', order: 2, colour: 'blue' });
+  assert.deepEqual((await change({ check: null })).json.groups, { spell: { name: 'Spelling and grammar', order: 2, colour: 'blue' } });
+  assert.equal((await readJson(settingsFile)).compile.engine, 'xelatex');
+  // the project settings route, which an older Spectrum also has, keeps them
+  await api(`${url}/settings`, 'PATCH', { compile: { engine: null } });
+  assert.deepEqual(Object.keys((await readJson(settingsFile)).todoGroups), ['spell']);
+  assert.deepEqual((await change({ spell: null })).json.groups, {});
+  assert.equal('todoGroups' in (await readJson(settingsFile)), false, 'none left: the key goes');
+
+  for (const groups of [null, [], { 'bad id': { name: 'A', order: 1 } }, { a: { name: '', order: 1 } }, { a: { name: ' ', order: 1 } }, { a: { name: 'x'.repeat(81), order: 1 } }, { a: { name: 'A' } }, { a: { name: 'A', order: 'first' } }, { a: 'A' }]) {
+    assert.equal((await api(`${url}/todo-groups`, 'PATCH', { groups })).status, 400, JSON.stringify(groups));
+  }
+  assert.equal((await change(Object.fromEntries(Array.from({ length: 101 }, (_, i) => [`g${i}`, { name: `G${i}`, order: i }])))).status, 400, 'at most 100');
+
+  // a hand-edited group that can't be read is left out of the list, not an error
+  await change({ ok: { name: 'Checking', order: 1 } });
+  await fs.writeFile(settingsFile, JSON.stringify({ ...(await readJson(settingsFile)), todoGroups: { ok: { name: 'Checking', order: 1 }, bad: { name: 5 }, 'no way': { name: 'X', order: 1 } } }));
+  assert.deepEqual((await api(`${url}/todos`)).json.groups, { ok: { name: 'Checking', order: 1 } });
+
+  // a to-do's group is a group's id, kept as it is even when the group is gone
+  const todo = (extra) => ({ id: 't', text: 'Cite Smith', done: false, createdAt: '2026-11-21T00:00:00.000Z', updatedAt: '2026-11-21T00:00:00.000Z', ...extra });
+  assert.equal((await api(`${url}/todos/t`, 'PUT', todo({ group: 'ok' }))).json.todo.group, 'ok');
+  assert.equal((await api(`${url}/todos/t`, 'PUT', todo({ group: 'deleted-elsewhere' }))).json.todo.group, 'deleted-elsewhere');
+  for (const group of ['no way', 5, { id: 'ok' }]) assert.equal((await api(`${url}/todos/t`, 'PUT', todo({ group }))).status, 400, String(group));
+  assert.equal((await readJson(path.join(p.path, '.spectrum', 'todos', 't.json'))).group, 'deleted-elsewhere');
 });
 
 test('PDF notes are saved one file each and listed per document', async () => {

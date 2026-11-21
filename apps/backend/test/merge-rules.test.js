@@ -45,6 +45,12 @@ test('project.json and settings.json merge key by key, one level into a group, a
   assert.deepEqual(rules.mergeMeta({}, { skills: { on: ['x'] } }, { skills: { on: ['y'], off: ['z'] } }), { skills: { on: ['x'], off: ['z'] } });
   // only one level: deeper groups go whole
   assert.deepEqual(rules.mergeMeta({ a: { b: { c: 1, d: 1 } } }, { a: { b: { c: 2, d: 1 } } }, { a: { b: { c: 1, d: 2 } } }), { a: { b: { c: 2, d: 1 } } });
+  // to-do groups, one key each: a group made on each computer, one renamed here and one deleted there all hold
+  const groupsBase = { todoGroups: { a: { name: 'Checking', order: 1 }, b: { name: 'Spelling', order: 2 } } };
+  assert.deepEqual(
+    rules.mergeMeta(groupsBase, { todoGroups: { a: { name: 'Checks', order: 1 }, b: { name: 'Spelling', order: 2 }, c: { name: 'Figures', order: 3 } } }, { todoGroups: { a: { name: 'Checking', order: 1 }, d: { name: 'Still to write', order: 3 } } }),
+    { todoGroups: { a: { name: 'Checks', order: 1 }, c: { name: 'Figures', order: 3 }, d: { name: 'Still to write', order: 3 } } }
+  );
   // LanguageTool's ignored rules, one key each: two computers ignoring different German rules keep both, and one
   // taking a rule back while the other left it takes it back
   const ignoredBase = { languageToolIgnored: { 'de:A': true } };
