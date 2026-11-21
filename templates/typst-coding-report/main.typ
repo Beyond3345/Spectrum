@@ -13,6 +13,10 @@
 #set par(justify: true)                         // straight right margins, as LaTeX sets them
 #set heading(numbering: "1.1")                  // numbered headings: 1, 1.1, 1.1.1
 
+// Alt text: each equation's words for a screen reader, which PDF/UA-1 needs, are listed in alt-text.typ
+#import "alt-text.typ": alt-text
+#show: alt-text
+
 // Figures and tables
 #show figure.where(kind: table): set figure.caption(position: top) // captions above tables, below figures
 

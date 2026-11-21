@@ -32,6 +32,10 @@
   it
 }
 
+// Alt text: each equation's words for a screen reader, which PDF/UA-1 needs, are listed in alt-text.typ
+#import "alt-text.typ": alt-text
+#show: alt-text
+
 // Figures and tables
 #show figure.where(kind: table): set figure.caption(position: top) // captions above tables, below figures
 
@@ -102,7 +106,7 @@ Throughout, $A$ is a real $2 times 2$ matrix and $upright(bold(x))(t) in RR^2$.
 
 #example[
   Solve $upright(bold(x))' = A upright(bold(x))$ with
-  #math.equation(block: true, numbering: none, $
+  #math.equation(block: true, numbering: none, alt: "A equals the matrix with rows 1, 2 and 2, 1, and vector x of 0 equals the vector 2, 0", $
     A = mat(1, 2; 2, 1), quad upright(bold(x))(0) = vec(2, 0).
   $)
 ] <ex:saddle>
@@ -110,11 +114,11 @@ Throughout, $A$ is a real $2 times 2$ matrix and $upright(bold(x))(t) in RR^2$.
 #solution[
   By @eq:char, $p(lambda) = (1 - lambda)^2 - 4 = (lambda - 3)(lambda + 1)$, so the eigenvalues are
   $lambda_1 = 3$ and $lambda_2 = -1$. Solving $(A - lambda I) upright(bold(v)) = upright(bold(0))$ gives
-  #math.equation(block: true, numbering: none, $
+  #math.equation(block: true, numbering: none, alt: "vector v 1 equals the vector 1, 1, and vector v 2 equals the vector 1, minus 1", $
     upright(bold(v))_1 = vec(1, 1), quad upright(bold(v))_2 = vec(1, -1).
   $)
   At $t = 0$, @eq:general needs $c_1 + c_2 = 2$ and $c_1 - c_2 = 0$, so $c_1 = c_2 = 1$ and
-  #math.equation(block: true, numbering: none, $
+  #math.equation(block: true, numbering: none, alt: "x 1 of t equals e to the 3 t plus e to the minus t, and x 2 of t equals e to the 3 t minus e to the minus t", $
     x_1(t) &= e^(3t) + e^(-t), \
     x_2(t) &= e^(3t) - e^(-t).
   $)

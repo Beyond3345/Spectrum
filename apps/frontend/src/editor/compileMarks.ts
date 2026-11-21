@@ -13,15 +13,19 @@ const TOKEN = /^"(?:[^"\\\n]|\\.)*"|^[\p{L}\p{N}_.-]+/u;
 // the command TeX's context ends with: what it stopped after
 const LAST_COMMAND = /\\(?:[A-Za-z@]+|.)$/;
 
+// TeX's Overfull and Underfull \hbox and \vbox warnings: many in a long document, so underlined only when asked
+const BOX_WARNING = /^(?:Over|Under)full \\[hv]box\b/;
+
 /**
  * The errors and warnings a compile found in the file at path, as squiggles in its text. Typst counts lines from 1 and
  * columns from 0 in characters, not UTF-16 units. TeX gives a line only, and for an error what it had read of it: the
  * command that ends that is marked, else the line's text. A line past the end of the text (it was cut since the
- * compile) is left out.
+ * compile) is left out, and so are box warnings unless boxes is set (Settings › Engines).
  */
-export function compileMarks(errors: CompileError[], path: string, doc: Text): Diagnostic[] {
+export function compileMarks(errors: CompileError[], path: string, doc: Text, boxes = false): Diagnostic[] {
   return errors.flatMap((e) => {
     if (e.file !== path || e.line == null || e.line < 1 || e.line > doc.lines) return [];
+    if (!boxes && e.severity === 'warning' && BOX_WARNING.test(e.message)) return [];
     const line = doc.line(e.line);
     if (e.column == null) {
       // TeX shortens a long context to its end, after "..."

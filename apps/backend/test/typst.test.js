@@ -381,10 +381,12 @@ test('a Typst document exports as PNG and SVG pages, HTML, PDF/A and PDF/UA, and
   await app.close();
 });
 
-test('the Typst templates without maths export as PDF/UA-1', async (t) => {
+test('every Typst template exports as PDF/UA-1, with alt text on each equation', async (t) => {
   if (!builtInTypst()) return t.skip('the built-in Typst is not in this checkout');
   const templates = path.join(import.meta.dirname, '..', '..', '..', 'templates');
-  for (const name of ['typst-document', 'typst-letter', 'typst-cv']) {
+  const names = (await fs.readdir(templates)).filter((name) => name.startsWith('typst-')).sort();
+  assert.deepEqual(names, ['typst-coding-report', 'typst-cv', 'typst-document', 'typst-electronics-notes', 'typst-letter', 'typst-maths-notes', 'typst-report']);
+  for (const name of names) {
     const dir = path.join(templates, name);
     const made = await exportTypst(dir, path.join(dir, 'main.typ'), 'main.typ', 'pdf-ua');
     assert.equal(made.ok, true, `${name}: ${made.error}`);
