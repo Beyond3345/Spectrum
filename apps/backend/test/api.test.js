@@ -1916,7 +1916,9 @@ test('the app’s pages run only the app’s own scripts and draw and fetch only
     assert.equal(policy['base-uri'], "'none'");
     assert.equal(policy['form-action'], "'none'");
     assert.equal(policy['frame-ancestors'], "'none'");
-    for (const sources of Object.values(policy)) assert.doesNotMatch(sources, /unsafe-eval|https?:\/\/(?!ipc\.localhost)|\*/);
+    // the one other address: Tinymist's preview page, framed by the Live view
+    assert.equal(policy['frame-src'], "'self' blob: http://localhost:*");
+    for (const [name, sources] of Object.entries(policy)) if (name !== 'frame-src') assert.doesNotMatch(sources, /unsafe-eval|https?:\/\/(?!ipc\.localhost)|\*/);
     assert.deepEqual(Object.keys(policy).filter((name) => policy[name].includes("'unsafe-inline'")), ['style-src']);
   }
   assert.equal((await fetch(`${base}/api/health`)).headers.get('content-security-policy'), null);

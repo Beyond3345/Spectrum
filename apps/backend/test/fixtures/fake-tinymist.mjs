@@ -46,15 +46,18 @@ function handle({ id, method, params }) {
     send({ method: 'tinymist/compileStatus', params: { status: 'compileSuccess', path: '/main.typ', pageCount: 1, wordsCount: { words, chars: text.length, cjkChars: 0, spaces: 0 } } });
   } else if (method === 'textDocument/hover') send({ id, result: { contents: `Hover at ${params.position.line}:${params.position.character}` } });
   else if (method === 'workspace/executeCommand' && params.command === 'tinymist.doStartPreview') {
-    // a preview: its page on one port, and on another a data plane that takes a WebSocket and says nothing
-    const page = http.createServer((req, res) => res.end('<!doctype html><title>Fake preview</title>')).listen(0, '127.0.0.1', () => {
-      const plane = http.createServer().listen(0, '127.0.0.1', () => send({ id, result: { dataPlanePort: plane.address().port, staticServerPort: page.address().port } }));
-      plane.on('upgrade', (req, socket) => {
-        log({ preview: 'connected', origin: req.headers.origin });
-        const accept = createHash('sha1').update(req.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
-        socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
-      });
+    // a preview as Tinymist 0.15 serves it: one port for its page and its data plane, a page of its own origin with no
+    // frame headers, whose script connects back to its own address; the data plane takes a WebSocket and says nothing
+    const page = http.createServer((req, res) => {
+      log({ preview: 'page', url: req.url, host: req.headers.host });
+      res.end('<!doctype html><title>Fake preview</title><script>new WebSocket(new URL("/", location.href).href.replace("http", "ws"))</script>');
     });
+    page.on('upgrade', (req, socket) => {
+      log({ preview: 'connected', origin: req.headers.origin });
+      const accept = createHash('sha1').update(req.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+      socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+    });
+    page.listen(0, '127.0.0.1', () => send({ id, result: { dataPlanePort: page.address().port, staticServerPort: page.address().port } }));
   } else if (method === 'workspace/executeCommand') send({ id, result: null });
   else if (method === 'shutdown') send({ id, result: null });
   else if (method === 'exit') process.exit(0);

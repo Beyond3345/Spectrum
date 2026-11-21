@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ensureDir } from './utils/fsUtils.js';
-import { DATA_DIR, FRONTEND_DIST, HOST, PORT, PROJECTS_DIR, setProjectsDir } from './config/constants.js';
+import { DATA_DIR, FRONTEND_DIST, HOST, PAGE_POLICY, PORT, PROJECTS_DIR, setProjectsDir } from './config/constants.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerKeyRoutes } from './services/keyStore.js';
 import { registerArxivRoutes } from './routes/arxiv.js';
@@ -94,25 +94,6 @@ fastify.addHook('onRequest', async (req, reply) => {
 // where the shell points a window first; never logged, since the address holds the secret
 if (SESSION_SECRET) fastify.get('/session', { logLevel: 'silent' }, (req, reply) => openSession(req, reply, SESSION_SECRET));
 
-// The app's pages run only the app's own script files (none inline, no eval), draw images only from the app itself
-// (its own files, data: and blob:) and talk only to this server, so nothing a reply, a search result or a document
-// puts on a page runs there or is fetched from elsewhere, taking the project's text with it. Styles may be inline
-// (the editor, Mermaid and React write them); a PDF is read and shown from a blob:; workers are the app's own files. ipc: is
-// how a page calls the desktop shell (http://ipc.localhost in WebView2). No other page may frame these.
-const PAGE_POLICY = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self' data:",
-  `connect-src 'self' blob: ipc:${process.platform === 'win32' ? ' http://ipc.localhost' : ''}`,
-  "worker-src 'self' blob:",
-  "object-src 'self' blob:",
-  "frame-src 'self' blob:",
-  "base-uri 'none'",
-  "form-action 'none'",
-  "frame-ancestors 'none'"
-].join('; ');
 fastify.addHook('onSend', async (req, reply) => {
   if (String(reply.getHeader('content-type')).startsWith('text/html') && !reply.hasHeader('content-security-policy')) {
     reply.header(process.env.SPECTRUM_CSP_REPORT_ONLY === '1' ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy', PAGE_POLICY);

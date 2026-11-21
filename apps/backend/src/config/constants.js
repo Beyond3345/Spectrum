@@ -33,6 +33,31 @@ export const CJK_FONTS_DIR = process.env.SPECTRUM_FONTS_DIR || path.join(REPO_RO
 export const FRONTEND_DIST = process.env.SPECTRUM_FRONTEND_DIST || path.join(REPO_ROOT, 'apps', 'frontend', 'dist');
 export const PORT = Number(process.env.PORT || 8787);
 export const HOST = process.env.SPECTRUM_HOST || '127.0.0.1';
+
+// The app's pages run only the app's own script files (none inline, no eval), draw images only from the app itself
+// (its own files, data: and blob:) and talk only to this server, so nothing a reply, a search result or a document
+// puts on a page runs there or is fetched from elsewhere, taking the project's text with it. Styles may be inline
+// (the editor, Mermaid and React write them); a PDF is read and shown from a blob:; workers are the app's own files. ipc: is
+// how a page calls the desktop shell (http://ipc.localhost in WebView2). A frame may show Tinymist's preview page, which
+// Tinymist serves on a port of its own and the Live view loads as localhost (services/tinymistService.js). No other
+// page may frame these.
+// ponytail: any localhost port may be framed, as Tinymist's is chosen after the page loads; a page of its own address
+// per preview would need Tinymist's page served through this server
+export const PAGE_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  `connect-src 'self' blob: ipc:${process.platform === 'win32' ? ' http://ipc.localhost' : ''}`,
+  "worker-src 'self' blob:",
+  "object-src 'self' blob:",
+  "frame-src 'self' blob: http://localhost:*",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'"
+].join('; ');
+
 // Default parent folder for new and imported projects; index.js moves it out of a sync app's folder at start
 export let PROJECTS_DIR = path.resolve(process.env.SPECTRUM_PROJECTS_DIR || path.join(os.homedir(), 'Documents', 'Spectrum'));
 export const setProjectsDir = (dir) => (PROJECTS_DIR = path.resolve(dir));
