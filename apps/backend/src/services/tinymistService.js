@@ -343,8 +343,10 @@ function preview(session, doc) {
   view.ready = (async () => {
     const args = ['--task-id', task, '--data-plane-host=127.0.0.1:0', '--control-plane-host=127.0.0.1:0', '--invert-colors=never', '--no-open', file];
     const { dataPlanePort, staticServerPort } = await command(session, 'tinymist.doStartPreview', [args]);
-    // its own page, which the Live view shows: the editors' text laid out as it is typed
-    view.url = `http://127.0.0.1:${staticServerPort}/`;
+    // its own page, which the Live view shows: the editors' text laid out as it is typed. As localhost, which the app's
+    // pages may frame (config/constants.js) and the desktop shell lets a frame load with this query (main.rs,
+    // live_preview); 127.0.0.1 is the app's own host there. The page connects to its own address, ignoring the query.
+    view.url = `http://localhost:${staticServerPort}/?spectrum-live`;
     const ws = new WebSocket(`ws://127.0.0.1:${dataPlanePort}/`, { headers: { Origin: `http://127.0.0.1:${staticServerPort}` } });
     ws.binaryType = 'arraybuffer';
     view.ws = ws;

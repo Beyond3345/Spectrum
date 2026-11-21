@@ -128,6 +128,7 @@ import PdfSidebar from '../editor/PdfSidebar';
 import type { PdfSidebarTab } from '../editor/PdfSidebar';
 import PdfFindBar from '../editor/PdfFindBar';
 import LiveCompile from '../editor/LiveCompile';
+import { watchLiveFrame } from '../editor/liveFrame';
 import BiberNotice from '../editor/BiberNotice';
 import PdfPresentation from '../editor/PdfPresentation';
 import TodosList, { useTodos } from '../editor/TodosList';
@@ -631,8 +632,10 @@ function Editor({ projectId }: { projectId: string }) {
   /** the project's Tinymist for .typ files, once downloaded, and whether it's answering (editor/lsp/tinymist.ts) */
   const tinymistRef = useRef<Tinymist | null>(null);
   const [tinymistOn, setTinymistOn] = useState(false);
-  // the Live view: Tinymist's preview page of a Typst document in place of its PDF, laid out as it is typed
-  const [live, setLive] = useState<{ doc: string; url: string } | null>(null);
+  // the Live view: Tinymist's preview page of a Typst document in place of its PDF, laid out as it is typed; failed says
+  // why the window couldn't show it
+  const [live, setLive] = useState<{ doc: string; url: string; failed?: string } | null>(null);
+  const liveFrameRef = useRef<HTMLIFrameElement>(null);
   /** ⇧F12's list: where what's at the cursor is used */
   const [references, setReferences] = useState<Reference[] | null>(null);
   /** the outline TexLab gives for a document: its root, the headings and floats, and the files it read */
@@ -3087,6 +3090,11 @@ function Editor({ projectId }: { projectId: string }) {
     setLive(null);
     tinymistLive(projectId, live.doc, false).catch(() => undefined);
   }, [live, liveShown]);
+  useEffect(() => {
+    const frame = liveFrameRef.current;
+    if (!liveShown || !frame || live?.failed) return;
+    return watchLiveFrame(frame, (failed) => setLive((now) => now && { ...now, failed }));
+  }, [liveShown, live?.url]);
   const toggleLive = async () => {
     if (live) {
       setLive(null);
@@ -4147,8 +4155,19 @@ function Editor({ projectId }: { projectId: string }) {
                     onHeading={(file, line) => showHeading(file, line).catch(() => undefined)}
                   />
                 )}
-                {liveShown ? (
-                  <iframe className="typst-live" title={`Live view of ${nameOf(shownDoc)}`} src={live!.url} />
+                {liveShown && live!.failed ? (
+                  <div className="empty-state">
+                    <Icon name="exclamationmark.triangle" size={40} />
+                    <div className="empty-title">The live view can’t be shown</div>
+                    <div className="empty-text">{live!.failed}</div>
+                    <div className="empty-actions">
+                      <button className="btn primary" onClick={() => void toggleLive()}>
+                        Back to the PDF
+                      </button>
+                    </div>
+                  </div>
+                ) : liveShown ? (
+                  <iframe ref={liveFrameRef} className="typst-live" title={`Live view of ${nameOf(shownDoc)}`} src={live!.url} />
                 ) : pdf ? (
                   <PdfPreview
                     ref={pdfRef}

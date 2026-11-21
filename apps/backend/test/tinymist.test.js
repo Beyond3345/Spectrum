@@ -18,6 +18,7 @@ Object.assign(process.env, {
 const { createProject } = await import('../src/services/projectService.js');
 const { stopProjectTinymist, stopTinymist } = await import('../src/services/tinymistService.js');
 const { registerTinymistRoutes } = await import('../src/routes/tinymist.js');
+const { PAGE_POLICY } = await import('../src/config/constants.js');
 const { default: Fastify } = await import('fastify');
 
 const fixture = fileURLToPath(new URL('./fixtures/fake-tinymist.mjs', import.meta.url));
@@ -137,8 +138,16 @@ test('the bridge does the handshake, relays an editor’s messages and runs no c
 
   // the Live view: the preview's own page, which Tinymist serves, and nothing for a file outside the project
   const live = await (await post(`/api/projects/${p.id}/tinymist/live`, { doc: 'main.typ', on: true })).json();
-  assert.match(live.url, /^http:\/\/127\.0\.0\.1:\d+\/$/);
+  assert.match(live.url, /^http:\/\/localhost:\d+\/\?spectrum-live$/);
   assert.match(await (await fetch(live.url)).text(), /Fake preview/);
+  // which the app's page may frame: Tinymist's page is on an address of its own, and the policy decides
+  const frameSrc = /(?:^|; )frame-src ([^;]*)/.exec(PAGE_POLICY)[1].split(' ');
+  const at = new URL(live.url);
+  const framed = frameSrc.some((source) => {
+    const [, scheme, host, port] = /^(https?):\/\/([^:/]+)(?::(\d+|\*))?$/.exec(source) ?? [];
+    return at.protocol === `${scheme}:` && at.hostname === host && (port === '*' || at.port === (port ?? ''));
+  });
+  assert.ok(framed, `the app's frame-src (${frameSrc.join(' ')}) lets the page frame ${live.url}`);
   const started = received().filter((m) => m.params?.command === 'tinymist.doStartPreview');
   assert.equal(started.length, 1);
   assert.ok(started[0].params.arguments[0].includes('--invert-colors=never'));

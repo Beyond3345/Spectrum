@@ -854,6 +854,7 @@ fn guarded<'a>(
         .on_navigation(move |url| match url.scheme() {
             _ if is_splash(url) => !(cfg!(windows) && left_splash.load(Ordering::Relaxed)),
             "about" | "blob" | "data" => true,
+            _ if live_preview(url, port) => true,
             "http" if url.host_str() == Some("127.0.0.1") && url.port() == Some(port) => {
                 left_splash.store(true, Ordering::Relaxed);
                 true
@@ -1041,6 +1042,19 @@ fn build_diagram_window(app: &AppHandle, port: u16, url: Url) -> tauri::Result<W
     }
     window.show()?;
     Ok(window)
+}
+
+/// Tinymist's preview page, which the Live view frames (tinymistService.js gives it this address).
+/// WebKit asks on_navigation about a frame's loads as well as the window's, with nothing to tell
+/// them apart, so the page is let through by its own address: localhost, never the app's
+/// 127.0.0.1 that the shell's commands answer, on another port, with the Live view's query. The
+/// window itself never goes there; were a link to take it, the page there could call nothing.
+fn live_preview(url: &Url, port: u16) -> bool {
+    url.scheme() == "http"
+        && url.host_str() == Some("localhost")
+        && url.port().is_some_and(|p| p != port)
+        && url.path() == "/"
+        && url.query() == Some("spectrum-live")
 }
 
 /// The splash's own address: tauri://localhost, or http://tauri.localhost in WebView2.
@@ -1449,6 +1463,24 @@ fn health_ok(port: u16, secret: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_live_view_s_frame_leaves_the_app_s_address() {
+        let url = |s: &str| Url::parse(s).unwrap();
+        assert!(live_preview(&url("http://localhost:50369/?spectrum-live"), 38787));
+        for other in [
+            "http://127.0.0.1:50369/?spectrum-live",
+            "http://localhost:38787/?spectrum-live",
+            "http://localhost:50369/",
+            "http://localhost:50369/x?spectrum-live",
+            "http://localhost/?spectrum-live",
+            "https://localhost:50369/?spectrum-live",
+            "http://tauri.localhost:50369/?spectrum-live",
+            "http://localhost.example.com:50369/?spectrum-live",
+        ] {
+            assert!(!live_preview(&url(other), 38787), "{other}");
+        }
+    }
 
     #[test]
     fn a_composer_window_is_known_by_its_project_and_file() {
