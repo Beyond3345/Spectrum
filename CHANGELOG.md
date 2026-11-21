@@ -75,6 +75,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Your own MCP servers for the Spectrum agent in Settings › Agents: added off, checked, run isolated, and a tool that may change something asks first
 - MCP servers take environment variables, such as an API key, kept in the keychain (encrypted for your account on Windows), shown as dots, given to that server alone and hidden wherever the server repeats them
 - On a Mac, an MCP server can reach the local ports you add for it, such as 23119 for Zotero, and never Spectrum's own
+- When an MCP server's Check stops because isolation refused a host, Settings names the hosts it asked for, with Allow for each and Allow and check again, and keeps the program's own error under Details. A server started with npx, npm, pnpm dlx, bunx, uvx or pipx offers its package registry before its first Check
 - Spectrum compiles after you apply an agent's changes, and offers Fix with AI if that compile fails (Settings › Agents › Automations)
 - Change template › With an agent moves a paper into a LaTeX or Typst template, with the new spectrum-template-transfer skill
 - Pictures go with a message to either agent: paste, drop or choose one, sent to models that read images. A model that does not read images is told a picture was left out, and says so
@@ -97,6 +98,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - `slides: true` in the front matter makes Beamer slides from Markdown
 - New Markdown report, maths notes and slides templates
 - Review: References exist looks each .bib entry up in Crossref, doi.org, arXiv or OpenAlex and lists the retracted, unknown and differing ones with the record it read
+- References exist and the agents' bibliography tools read the .bib files of the document in question, whatever their names, and say which they read or that one it loads is missing. Verify claims finds a key in any .bib file of the project
 - The Spectrum agent reads a paper's open full text page by page, or its abstract when there is none
 - Verify claims records each claim with the source's own words, checked by Spectrum and found on their page, in Research › Claims checked
 
