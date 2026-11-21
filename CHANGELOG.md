@@ -70,6 +70,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Vim or Emacs keys in the source editor, in Settings › Editor
 - Agents you run yourself, such as Claude Code, Codex or Cursor, can use a project's Spectrum tools once you turn on Use from another agent in the Local agents bar. The secret is new each time and ends when Spectrum quits
 - Your own MCP servers for the Spectrum agent in Settings › Agents: added off, checked, run isolated, and a tool that may change something asks first
+- MCP servers take environment variables, such as an API key, kept in the keychain (encrypted for your account on Windows), shown as dots, given to that server alone and hidden wherever the server repeats them
+- On a Mac, an MCP server can reach the local ports you add for it, such as 23119 for Zotero, and never Spectrum's own
 - Spectrum compiles after you apply an agent's changes, and offers Fix with AI if that compile fails (Settings › Agents › Automations)
 - Change template › With an agent moves a paper into a LaTeX or Typst template, with the new spectrum-template-transfer skill
 - Pictures go with a message to either agent: paste, drop or choose one, sent to models that read images. A model that does not read images is told a picture was left out, and says so
