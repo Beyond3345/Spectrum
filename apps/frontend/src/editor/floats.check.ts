@@ -236,7 +236,7 @@ const after = (text: string, kind: 'latex' | 'typst' | 'markdown') => {
 const TABLE = lines('\\begin{table}[t]', '  \\centering', '  «\\begin{tabular}{ll}', '  a & b \\\\', '  \\end{tabular}»', '  \\caption{Results.}', '  \\label{tab:r}', '\\end{table}', 'After.');
 eq(after(TABLE, 'latex'), lines('\\begin{table}[t]', '  \\centering', '  \\begin{tabular}{ll}', '  a & b \\\\', '  \\end{tabular}', '  \\caption{Results.}', '  \\label{tab:r}', '\\end{table}', '@After.'), 'a tabular in a table: after \\end{table}');
 for (const env of ['table*', 'sidewaystable', 'wraptable', 'figure']) {
-  const text = TABLE.replaceAll('{table}', `{${env}}`);
+  const text = TABLE.split('{table}').join(`{${env}}`);
   eq(after(text, 'latex').indexOf('@'), text.replace('«', '').replace('»', '').indexOf('After.'), `a tabular in ${env}`);
 }
 eq(
