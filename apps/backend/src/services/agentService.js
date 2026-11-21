@@ -12,7 +12,7 @@ import { readProjectSettings } from './projectSettings.js';
 import { searchWithFallback } from './searchService.js';
 import { listSkills, loadSkill, readSkillFile, SKILL_ID } from './skillService.js';
 import { fileHash } from './agentWorkspace.js';
-import { readItems } from '../routes/todos.js';
+import { readItems, todoGroups } from '../routes/todos.js';
 import { TOOLS, buildErrors, checkedInput, projectMap, suggestedTodo, toolSpec } from '../mcp/tools.js';
 import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, SKILL_RULE, skillText, untrusted } from '../utils/outsideText.js';
@@ -163,9 +163,12 @@ export async function projectContext(projectRoot, mainFile) {
 /** A project's main file as its settings name it, for a prompt that needs only the language. */
 export const namedMainFile = async (projectRoot) => (projectRoot ? (await readMeta(projectRoot).catch(() => ({}))).mainFile || '' : '');
 
-/** The project's open to-dos, as an agent reads them. */
+/** The project's open to-dos, as an agent reads them: with the name of the group each is in, when it is in one. */
 export async function openTodos(projectRoot) {
-  return (await readItems(projectRoot, 'todos')).filter((t) => !t.done).map((t) => ({ text: t.text, ...(t.link && { link: t.link }) }));
+  const groups = todoGroups(await readProjectSettings(projectRoot));
+  return (await readItems(projectRoot, 'todos'))
+    .filter((t) => !t.done)
+    .map((t) => ({ text: t.text, ...(t.link && { link: t.link }), ...(Object.hasOwn(groups, t.group ?? '') && { group: groups[t.group].name }) }));
 }
 
 // a suggested to-do's check lives with the registry, which both agents' suggest_todo goes through

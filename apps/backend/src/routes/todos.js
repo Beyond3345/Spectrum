@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { appPath, getProjectRoot, httpError, mutateProjectFiles } from '../services/projectService.js';
+import { readProjectSettings, updateProjectSettings } from '../services/projectSettings.js';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';
 
 // One file per item, .spectrum/todos/<id>.json (and notes/<id>.json, routes/notes.js), so two computers' lists join
@@ -12,6 +13,20 @@ const MAX_NOTE = 4000;
 
 export const isText = (value, max) => typeof value === 'string' && value.length <= max;
 const isCount = (value) => Number.isInteger(value) && value > 0;
+const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+
+// The user's to-do groups, since 2.6: settings.json's todoGroups, { id: { name, order } }, which a GitHub pull merges
+// group by group (mergeRules.js mergeMeta) and an older Spectrum's settings save keeps. A to-do names its group by id
+// in its own field, group; one whose group is gone (deleted here or on another computer) is in no group.
+export const MAX_GROUP_NAME = 80;
+const MAX_GROUPS = 100;
+const isGroup = (g) => isObject(g) && isText(g.name, MAX_GROUP_NAME) && !!g.name.trim() && Number.isFinite(g.order);
+
+/** The project's to-do groups as settings hold them, each one that can't be read left out. */
+export function todoGroups(settings) {
+  const groups = isObject(settings?.todoGroups) ? settings.todoGroups : {};
+  return Object.fromEntries(Object.entries(groups).filter(([id, g]) => ITEM_ID.test(id) && isGroup(g)));
+}
 
 /** The file for the item the address names, in .spectrum/<folder>. */
 export async function itemFile(req, folder, id) {
@@ -72,7 +87,32 @@ function todoLink(link) {
 }
 
 export function registerTodoRoutes(fastify) {
-  fastify.get('/api/projects/:id/todos', async (req) => ({ ok: true, todos: await readItems(await getProjectRoot(req.params.id), 'todos') }));
+  fastify.get('/api/projects/:id/todos', async (req) => {
+    const root = await getProjectRoot(req.params.id);
+    return { ok: true, todos: await readItems(root, 'todos'), groups: todoGroups(await readProjectSettings(root)) };
+  });
+
+  // groups: { id: { name, order } | null }, each one given added or changed (fields a later version adds kept), null
+  // deleting it; the others stay as they are. Its to-dos keep their group field, so they come back with an Undo.
+  fastify.patch('/api/projects/:id/todo-groups', async (req) => {
+    const { groups } = req.body || {};
+    if (!isObject(groups)) throw httpError('Give the groups to change.', 400);
+    for (const [id, g] of Object.entries(groups)) {
+      if (!ITEM_ID.test(id)) throw httpError('Invalid group id.', 400);
+      if (g !== null && !isGroup(g)) throw httpError(`A group has a name of up to ${MAX_GROUP_NAME} characters and a place in the order.`, 400);
+    }
+    const settings = await updateProjectSettings(await getProjectRoot(req.params.id), (old) => {
+      const next = { ...(isObject(old.todoGroups) ? old.todoGroups : {}) };
+      for (const [id, g] of Object.entries(groups)) {
+        if (g === null) delete next[id];
+        else next[id] = { ...(isObject(next[id]) ? next[id] : {}), ...g, name: g.name.trim() };
+      }
+      if (Object.keys(next).length > MAX_GROUPS) throw httpError(`A project has at most ${MAX_GROUPS} to-do groups.`, 400);
+      const { todoGroups: _old, ...rest } = old;
+      return { ...rest, ...(Object.keys(next).length && { todoGroups: next }) };
+    });
+    return { ok: true, groups: todoGroups(settings) };
+  });
 
   fastify.put('/api/projects/:id/todos/:tid', async (req) => {
     // the rest: fields a later version adds, which a save here keeps
@@ -80,6 +120,8 @@ export function registerTodoRoutes(fastify) {
     if (id !== req.params.tid) throw httpError('The to-do’s id doesn’t match the address.', 400);
     if (!isText(text, MAX_TEXT)) throw httpError(`A to-do’s text is at most ${MAX_TEXT} characters.`, 400);
     if (rest.note != null && !isText(rest.note, MAX_NOTE)) throw httpError(`A to-do’s note is at most ${MAX_NOTE} characters.`, 400);
+    // its group's id, since 2.6; 2.5 passes it through as a field it doesn't know
+    if (rest.group != null && (typeof rest.group !== 'string' || !ITEM_ID.test(rest.group))) throw httpError('Invalid to-do group.', 400);
     if (typeof done !== 'boolean' || !isText(createdAt, 40) || !isText(updatedAt, 40)) throw httpError('Invalid to-do.', 400);
     const todo = { ...rest, id, text, done, createdAt, updatedAt, ...(link != null && { link: todoLink(link) }) };
     // in the project files' lock, which a GitHub pull holds while it merges to-dos, with the folder looked up there

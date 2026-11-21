@@ -250,15 +250,16 @@ export async function getLog(state) {
   return { ...found, tail: log.slice(-4000) };
 }
 
-/** A suggested to-do: { text, link? }, with only the link fields a to-do keeps. */
-export function suggestedTodo({ text, link } = {}) {
+/** A suggested to-do: { text, link?, group? }, with only the link fields a to-do keeps; group is a group's name. */
+export function suggestedTodo({ text, link, group } = {}) {
   if (typeof text !== 'string' || !text.trim() || text.length > 2000) throw new Error('A to-do is text of up to 2,000 characters.');
   const kept = link && typeof link === 'object' && !Array.isArray(link)
     ? (typeof link.file === 'string' && Number.isInteger(link.line) && link.line > 0 ? { file: link.file, line: link.line }
       : typeof link.doc === 'string' && Number.isInteger(link.page) && link.page > 0 ? { doc: link.doc, page: link.page }
         : typeof link.key === 'string' && link.key ? { key: link.key } : null)
     : null;
-  return { text: text.trim(), ...(kept && { link: kept }) };
+  const named = typeof group === 'string' ? group.replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+  return { text: text.trim(), ...(kept && { link: kept }), ...(named && { group: named }) };
 }
 
 
@@ -498,15 +499,15 @@ export const TOOLS = [
   },
   {
     name: 'list_todos',
-    description: 'The project’s open to-dos, with where each points.',
+    description: 'The project’s open to-dos, with where each points and the name of the group the user put it in, if any.',
     schema: {},
     readOnly: true,
     run: async (ctx) => ({ todos: await ctx.todos() })
   },
   {
     name: 'suggest_todo',
-    description: 'Suggest a to-do. It is not added: the user sees it as a card and adds it if they want. link: { file, line } for a source line, { doc, page } for a PDF page or { key } for a reference.',
-    schema: { text: z.string(), link: todoLink.optional() },
+    description: 'Suggest a to-do. It is not added: the user sees it as a card and adds it if they want. link: { file, line } for a source line, { doc, page } for a PDF page or { key } for a reference. group: the name of the group it belongs in, one list_todos shows or a new one such as Checking, Spelling, References or Still to write.',
+    schema: { text: z.string(), link: todoLink.optional(), group: z.string().optional() },
     readOnly: false,
     run: (ctx, input) => ctx.suggestTodo(suggestedTodo(input))
   },
