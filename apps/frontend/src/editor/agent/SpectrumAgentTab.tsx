@@ -19,7 +19,7 @@ import { CHATS_CHANGED, errorText, isDeletion, patchesToChanges, relativeTime } 
 import { AgentComposer, ChangesTray, MemorySheet, PersonaPicker, PlanStrip, ReviewView, Transcript, Welcome, openTodos, readStored, taskPersona, useFollow, useSkills, writeStored } from './parts';
 import type { ContextKind, Draft, Memory, PlanActions, TaskRequest, TrayChange, TrayPart } from './parts';
 import type { AgentStatus } from './LocalAgentTab';
-import { RESUME_HINT, RUNNING, addRunEvent, askAnswer, closeChanges, metaOf, openChanges, planOf, planPrompt, resumeNote, runView, storedChanges, threadItems } from './transcript';
+import { RESUME_HINT, RUNNING, addRunEvent, askAnswer, closeChanges, metaOf, openChanges, planOf, planPrompt, resumeNote, runView, storedChanges, threadItems, turnReply } from './transcript';
 import type { Checkpoint, ThreadMeta as Meta } from './transcript';
 import { INSTRUCTIONS_FILE, starterInstructions } from './instructions';
 import AgentHeader, { useTurnChoice } from './AgentHeader';
@@ -290,6 +290,7 @@ export default function SpectrumAgentTab({
     // a run that failed part-way still hands back the steps it finished and the changes it prepared: they are kept
     // and shown, with the failure under them, and Continue goes on from there
     const changes = (await patchesToChanges(latest.current, res.patches || [], 'Spectrum agent')).filter((c) => c.deleted || c.original !== c.proposed);
+    const said = turnReply(res, changes.length > 0);
     const meta: Meta = {
       run: key,
       ...(changes.length && { changes: storedChanges(changes) }),
@@ -301,15 +302,14 @@ export default function SpectrumAgentTab({
       ...(res.ask && { ask: res.ask }),
       ...(res.plan?.length && { plan: res.plan }),
       ...(res.instructions?.length && { instructions: res.instructions }),
-      // the backend words AI failures as a reply; shown as errors, kept out of the history
-      ...(!res.ok && { error: true }),
+      // the backend words AI failures as a reply; shown as errors, kept out of the history (a stopped turn's words stay)
+      ...(said.error && { error: true }),
       ...((res.incomplete || !res.ok) && { resume: res.incomplete || 'failed' })
     };
+    // dated by the backend, so two pages that heard the turn save the same message, which the chat keeps once
+    const reply = { ...chatMessage('assistant', said.text, meta), createdAt: res.at };
     // each file's new proposal goes on from the thread's open one, from the same base, which it closes in the same
     // save as the reply: a reply too large to save leaves the open one as it was
-    const said = res.incomplete === 'stopped' ? 'Stopped before the agent finished.' : res.ok ? res.reply || (changes.length ? 'The changes are ready to review.' : 'No changes were suggested.') : `Request failed: ${res.reply || 'The AI request failed.'}`;
-    // dated by the backend, so two pages that heard the turn save the same message, which the chat keeps once
-    const reply = { ...chatMessage('assistant', said, meta), createdAt: res.at };
     update(base, (chat) => ({ ...chat, messages: [...closeChanges(chat.messages, changes.map((c) => c.filePath), 'superseded').messages, reply] }));
     if (threadRef.current?.id !== base.id) latest.current.notify(`Reply added to “${base.title}”`);
     if (changes.length && threadRef.current?.id === base.id) setTray((old) => [...old.filter((o) => !changes.some((c) => c.filePath === o.filePath)), ...changes]);
