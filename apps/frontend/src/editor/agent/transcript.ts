@@ -129,7 +129,7 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
     } else if (e.type === 'terminal') out.terminals[d.terminalId] = [d.command, ...(d.args || [])].join(' ');
     else if (e.type === 'reset' && Array.isArray(d.paths)) items.push({ type: 'notice', key: `reset-${e.id}`, text: `Rejected: the agent’s copy of ${d.paths.map((p: string) => `“${p}”`).join(', ')} is back to your version, and the agent is told with its next task.`, error: false });
     // what the Spectrum tools' suggest_todo put forward, read back when the turn ends
-    else if (e.type === 'todo' && typeof d.text === 'string') items.push({ type: 'todo', key: `todo-${e.id}`, todo: { text: d.text, ...(d.link && { link: d.link }) } });
+    else if (e.type === 'todo' && typeof d.text === 'string') items.push({ type: 'todo', key: `todo-${e.id}`, todo: { text: d.text, ...(d.link && { link: d.link }), ...(typeof d.group === 'string' && d.group && { group: d.group }) } });
     else if (e.type === 'request') {
       // answered, or left when its turn ended: only one still pending waits for an answer
       const item = { type: 'request' as const, key: `request-${d.requestId}`, request: d as AgentUserRequest, answered: !pending.some((p) => p.requestId === d.requestId) };
@@ -484,7 +484,7 @@ export function runView(events: AgentEvent[]) {
         calls.set(d.id, item);
         items.push(item);
       }
-    } else if (e.type === 'todo') items.push({ type: 'todo', key: `rd${e.id}`, todo: { text: d.text, ...(d.link && { link: d.link }) } });
+    } else if (e.type === 'todo') items.push({ type: 'todo', key: `rd${e.id}`, todo: { text: d.text, ...(d.link && { link: d.link }), ...(typeof d.group === 'string' && d.group && { group: d.group }) } });
     else if (e.type === 'notice' && d.message) items.push({ type: 'notice', key: `rn${e.id}`, text: String(d.message), error: false });
     waiting = '';
   }

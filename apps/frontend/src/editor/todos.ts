@@ -1,4 +1,5 @@
 import { matchBrace } from '../../../backend/src/latex/text.js';
+import type { TodoGroup, TodoGroups } from '../api/client';
 
 // To-dos: the marks a project's source leaves for later (\todo and its kin, TODO in comments), and finding what a
 // to-do links to once lines have moved. No DOM here, so the check runs in Node.
@@ -132,9 +133,9 @@ export function withNote<T extends Own>(todo: T, note: string): T {
   return (clean ? { ...rest, note: clean } : rest) as T;
 }
 
-/** Whether the search (lower case, trimmed) finds a to-do: in its text, its note or what its link shows. */
-export const todoMatches = (needle: string, todo: { text: string; note?: string }, linkLabel = '') =>
-  !needle || [todo.text, todo.note ?? '', linkLabel].some((t) => t.toLowerCase().includes(needle));
+/** Whether the search (lower case, trimmed) finds a to-do: in its text, its note or what else it shows (its link, its group's name). */
+export const todoMatches = (needle: string, todo: { text: string; note?: string }, ...shown: string[]) =>
+  !needle || [todo.text, todo.note ?? '', ...shown].some((t) => t.toLowerCase().includes(needle));
 
 /** The filters' counts: open is yours not ticked and every mark in the source, done yours ticked. */
 export function todoCounts(mine: { done: boolean }[], source: unknown[]) {
@@ -151,6 +152,50 @@ export function emptyText({ total, show, search }: { total: number; show: 'open'
   if (search) return `No to-dos match “${search}”.`;
   // with to-dos and no search, only Open or Done can be empty
   return show === 'done' ? 'Nothing ticked off yet.' : 'All done. Ticked ones are under Done.';
+}
+
+// ─── groups: the user's own, by name (routes/todos.js keeps them in the project's settings) ───
+
+/** Groups a writer often wants, offered until the project has its own. */
+export const STARTER_GROUPS = ['Checking', 'Spelling', 'References', 'Still to write'];
+/** A group's name is at most this long, as the backend checks. */
+export const MAX_GROUP_NAME = 80;
+
+export type GroupEntry = TodoGroup & { id: string };
+
+/** The groups in their order (by name where two share a place, as a merge of two computers' orders can leave them). */
+export const orderedGroups = (groups: TodoGroups): GroupEntry[] =>
+  Object.entries(groups)
+    .map(([id, g]) => ({ ...g, id }))
+    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+
+/** The group a to-do is in, '' for none: also when it names a group that is gone, deleted here or on another computer. */
+export const groupOf = (todo: { group?: string }, groups: TodoGroups) => (todo.group && Object.hasOwn(groups, todo.group) ? todo.group : '');
+
+/** A name as a group keeps it: one line, trimmed, capped. */
+export const groupName = (name: string) => name.replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME);
+
+/** The id of the group with this name in any letter case, '' when there is none. */
+export const groupNamed = (groups: TodoGroups, name: string) => {
+  const want = groupName(name).toLocaleLowerCase();
+  return orderedGroups(groups).find((g) => g.name.toLocaleLowerCase() === want)?.id ?? '';
+};
+
+/** A new group, after the others. */
+export const newGroup = (groups: TodoGroups, name: string): TodoGroup => ({ name: groupName(name), order: Math.max(0, ...Object.values(groups).map((g) => g.order)) + 1 });
+
+/** What moves a group one place up (-1) or down (1): the order numbered again from 1, only the groups whose place changed. */
+export function moveGroup(groups: TodoGroups, id: string, by: -1 | 1): Record<string, TodoGroup> {
+  const list = orderedGroups(groups);
+  const at = list.findIndex((g) => g.id === id);
+  const to = at + by;
+  if (at < 0 || to < 0 || to >= list.length) return {};
+  [list[at], list[to]] = [list[to], list[at]];
+  const changes: Record<string, TodoGroup> = {};
+  list.forEach(({ id: key, ...g }, i) => {
+    if (g.order !== i + 1) changes[key] = { ...g, order: i + 1 };
+  });
+  return changes;
 }
 
 /** Where a key is defined: its \label in a .tex file, else its entry in a .bib file. */
