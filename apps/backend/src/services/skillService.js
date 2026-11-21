@@ -102,7 +102,11 @@ let seeded = null;
 function seedBundled() {
   seeded ??= (async () => {
     const stamp = path.join(BUNDLED_DIR, '.version');
-    if ((await fs.readFile(stamp, 'utf8').catch(() => '')) === APP_VERSION) return;
+    // the version and the pack's own list: a build that changes its skills without a new version number (a test
+    // build, a rebuilt release) still brings them
+    const list = await fs.readFile(path.join(SKILLS_SEED_DIR, 'manifest.json')).catch(() => '');
+    const mark = `${APP_VERSION} ${crypto.createHash('sha256').update(list).digest('hex').slice(0, 16)}`;
+    if ((await fs.readFile(stamp, 'utf8').catch(() => '')) === mark) return;
     const staged = path.join(SKILLS_DIR, `.bundled-${crypto.randomUUID()}`);
     await fs.mkdir(staged, { recursive: true });
     try {
@@ -112,7 +116,7 @@ function seedBundled() {
         }
       }
       await fs.copyFile(path.join(SKILLS_SEED_DIR, 'manifest.json'), path.join(staged, 'manifest.json')).catch(() => {});
-      await fs.writeFile(path.join(staged, '.version'), APP_VERSION);
+      await fs.writeFile(path.join(staged, '.version'), mark);
       await fs.rm(BUNDLED_DIR, { recursive: true, force: true });
       // retried while a virus scanner on Windows still holds a file just copied
       await renameOver(staged, BUNDLED_DIR);

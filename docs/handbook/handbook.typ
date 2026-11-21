@@ -7,7 +7,7 @@
   title: [Spectrum],
   subtitle: [Handbook],
   author: "Longkai Li",
-  version: "2.7.0",
+  version: "2.6.0",
   date: datetime(year: 2026, month: 11, day: 17),
 )
 
