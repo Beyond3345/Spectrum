@@ -2,7 +2,7 @@ import { callOpenAICompatible } from '../services/llmService.js';
 import { checkedImages, runToolAgent, languageLine, llmErrorMessage, namedMainFile, projectContext, projectNotes, userInstructions } from '../services/agentService.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { getRun, runOfThread, runSnapshot, startTurn, steerRun, stopRun, subscribeRun } from '../services/agentRunService.js';
-import { approveInstructions, instructionsStatus } from '../services/agentInstructions.js';
+import { approveInstructions, chooseInstructionFiles, instructionFiles, instructionsStatus } from '../services/agentInstructions.js';
 import { MAX_MEMORY_CHARS, MAX_MEMORY_LINES, addMemory, deleteMemory, editMemory, memoryLines } from '../services/agentMemory.js';
 import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, untrusted } from '../utils/outsideText.js';
@@ -72,6 +72,15 @@ export function registerAgentRoutes(fastify) {
     const root = await getProjectRoot(req.params.id);
     await approveInstructions(root, String(req.body?.hash || ''));
     return { ok: true, ...(await instructionsStatus(root)) };
+  });
+
+  // Every instruction file the project holds for local agents, with whether the user allowed it into an Isolated copy;
+  // and the user's choice for some, as they were shown them: allow, or leave out without being asked again.
+  fastify.get('/api/projects/:id/agent-instruction-files', async (req) => ({ ok: true, files: await instructionFiles(await getProjectRoot(req.params.id)) }));
+  fastify.post('/api/projects/:id/agent-instruction-files', async (req) => {
+    const root = await getProjectRoot(req.params.id);
+    await chooseInstructionFiles(root, req.body?.choice, req.body?.files);
+    return { ok: true, files: await instructionFiles(root) };
   });
 
   // What the Spectrum agent remembers for the project (agentMemory.js): the lines, and the user's add, edit and delete.

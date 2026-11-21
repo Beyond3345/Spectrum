@@ -134,9 +134,10 @@ const firstLine = (text) => {
   return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 };
 /**
- * Tells the user, once each time it changes, which AGENTS.md files an Isolated copy leaves out as unapproved
- * (r.withheld) and how to approve the one at the top, or that a direct session's agent reads them in the project; an
- * Isolated session's agent hears of it too, so it doesn't write one that would never be offered.
+ * Once each time it changes, which instruction files (agentInstructions.js) the user has not allowed (r.withheld). An
+ * Isolated session's agent hears they are left out of its copy, so it doesn't write one that would never be offered;
+ * the user sees them on the Local agents tab's card. A direct session cannot leave them out: its transcript says the
+ * agent can read them in the project.
  */
 function tellWithheld(r) {
   const now = r.withheld || [];
@@ -144,21 +145,13 @@ function tellWithheld(r) {
   if (String(now) === String(was)) return;
   r.toldWithheld = now;
   const list = (rels) => rels.map((rel) => `“${rel}”`).join(', ');
-  const isTop = (rel) => rel.toLowerCase() === 'agents.md';
-  const top = now.some(isTop);
-  const others = now.filter((rel) => !isTop(rel));
   if (r.mode === 'direct') {
-    if (now.length) emit(r, 'notice', { message: `This session works in your project’s folder, so the agent can read ${list(now)}, which you haven’t approved. An Isolated session leaves ${now.length > 1 ? 'them' : 'it'} out.` });
+    if (now.length) emit(r, 'notice', { message: `This session works in your project’s folder, so the agent can read ${list(now)}, which you haven’t allowed. An Isolated session leaves ${now.length > 1 ? 'them' : 'it'} out.` });
     return;
   }
-  const released = !top && was.some(isTop);
-  emit(r, 'notice', { message: [
-    top ? 'Your project’s AGENTS.md is left out of the agent’s copy until you approve it: press the AGENTS.md chip in the Spectrum agent tab, then Use it. It reaches the agent with its next task.' : released ? 'Your project’s AGENTS.md is no longer left out of the agent’s copy.' : '',
-    others.length ? `${top ? 'Also left out' : released ? 'Still left out' : 'Left out of the agent’s copy'}, as only the AGENTS.md at the top of a project can be approved: ${list(others)}.` : ''
-  ].filter(Boolean).join(' ') });
-  const added = now.filter((rel) => !was.includes(rel));
-  if (added.length) r.notes.push(`${list(now)} ${now.length > 1 ? 'are' : 'is'} left out of your copy until the user approves ${now.length > 1 ? 'them' : 'it'}. Do not write a file by ${now.length > 1 ? 'those names' : 'that name'}: it would not be offered for review.`);
-  else if (released) r.notes.push('AGENTS.md is no longer left out of your copy.');
+  const back = was.filter((rel) => !now.includes(rel));
+  if (now.some((rel) => !was.includes(rel))) r.notes.push(`${list(now)} ${now.length > 1 ? 'are' : 'is'} left out of your copy until the user allows ${now.length > 1 ? 'them' : 'it'}. Do not write a file by ${now.length > 1 ? 'those names' : 'that name'}: it would not be offered for review.`);
+  if (back.length) r.notes.push(`${list(back)} ${back.length > 1 ? 'are' : 'is'} no longer left out of your copy.`);
 }
 const state = (r, status, error) => { r.status = status; emit(r, 'state', { status, ...(error && { error }) }); void persist(r); };
 const busyProject = (r) => [...runs.values()].some((other) => other !== r && other.projectId === r.projectId && (other.busy || other.reviewing));

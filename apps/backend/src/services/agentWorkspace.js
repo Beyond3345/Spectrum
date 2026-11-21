@@ -75,8 +75,8 @@ export async function workspaceFiles(root) {
 }
 
 /**
- * Makes a session's baseline, and an Isolated session's copy. { workspace, withheld }: withheld, the AGENTS.md files the
- * user has not approved (withheldInstructions), which an Isolated copy leaves out; a direct session's agent reads them
+ * Makes a session's baseline, and an Isolated session's copy. { workspace, withheld }: withheld, the instruction files the
+ * user has not allowed (withheldInstructions), which an Isolated copy leaves out; a direct session's agent reads them
  * in the project itself.
  */
 export async function initialiseWorkspace(root, runDir, mode) {
@@ -239,8 +239,8 @@ export async function rebaseChange(run, rel, bytes, writeDraft, baseline = bytes
 export async function refreshDraft(run, writeDraft) {
   await captureAgentProposal(run);
   const live = await workspaceFiles(run.root);
-  // AGENTS.md the user has not approved leaves the copy, whatever it holds by that name (the agent's own included), and
-  // one approved since, or no longer there, comes back as the user's file
+  // an instruction file the user has not allowed leaves the copy, whatever it holds by that name (the agent's own
+  // included), and one allowed since, or no longer there, comes back as the user's file
   const withheld = await withheldInstructions(run.root, live);
   for (const rel of new Set([...withheld, ...(run.withheld || [])])) await rebaseChange(run, rel, withheld.includes(rel) ? null : live[rel] ?? null, writeDraft(rel));
   for (const rel of withheld) delete live[rel];

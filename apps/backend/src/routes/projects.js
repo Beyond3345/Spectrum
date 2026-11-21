@@ -816,9 +816,9 @@ export function registerProjectRoutes(fastify) {
     await touchProject(root).catch(() => {});
     // the project's Zotero collection follows the .bib a little after the saves stop, entries taken out included
     if (/\.bib$/i.test(filePath)) syncSoon(root, { remove: true, delay: 5000 });
-    // AGENTS.md saved from the editor is the text the user wrote. An agent's change to it, applied in the review, is
-    // not: among the files of an Apply all it would become standing instructions unread, so it asks like a pull does
-    if (!unseen && path.relative(root, abs).toLowerCase() === 'agents.md') await savedInstructions(root, content ?? '').catch(() => {});
+    // AGENTS.md (or another agent's instruction file) saved from the editor is the text the user wrote. An agent's change
+    // to it, applied in the review, is not: among the files of an Apply all it would become standing instructions unread
+    if (!unseen) await savedInstructions(root, content ?? '', path.relative(root, abs)).catch(() => {});
     return { ok: true, hash: sha256(content ?? '') };
   }));
 

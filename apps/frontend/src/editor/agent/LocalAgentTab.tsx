@@ -37,6 +37,7 @@ import { RUNNING, addEvent, project } from './transcript';
 import AgentLogo from './AgentLogo';
 import AgentHeader from './AgentHeader';
 import OutsideTools from './OutsideTools';
+import InstructionFiles from './InstructionFiles';
 import { chosenAgent, shownAgents } from './agents';
 import { AGENT_CARD_KEY } from '../../app/AgentSettings';
 import type { Checkpoint } from './transcript';
@@ -396,7 +397,7 @@ export default function LocalAgentTab({
         ) : (
           <Select
             className="agent-mode"
-            title="Isolated: the agent works on a copy and you review its changes; an AGENTS.md you haven’t approved is left out of it. Direct: it edits your project, with a checkpoint saved before each task, and reads AGENTS.md there."
+            title="Isolated: the agent works on a copy and you review its changes; instruction files you haven’t allowed (AGENTS.md, CLAUDE.md and the like) are left out of it. Direct: it edits your project, with a checkpoint saved before each task, and reads them there."
             value={mode}
             // Windows can't keep a direct session's agent from making .git or .env in the project (the backend refuses one)
             options={IS_WINDOWS ? [['review', 'Isolated']] : [['review', 'Isolated'], ['direct', 'Direct']]}
@@ -504,6 +505,7 @@ export default function LocalAgentTab({
             {error}
           </div>
         )}
+        {!reviewing && <InstructionFiles mode={session?.mode ?? mode} agents={agents} refresh={`${active}|${running}|${api.projectFiles.length}`} />}
         {!reviewing && <ChangesTray changes={tray} direct={session?.mode === 'direct'} onOpen={openReview} />}
         {!session && mode === 'direct' && <p className="field-hint">The agent can change your project straight away. A checkpoint is saved before each task.</p>}
         {!session && IS_WINDOWS && <p className="field-hint">On Windows, local agents don’t get Spectrum’s tools or Direct editing yet. The Spectrum agent has every tool.</p>}
