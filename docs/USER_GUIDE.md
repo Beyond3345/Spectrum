@@ -326,7 +326,7 @@ With no letter, LaTeX uses `tbp`. The letters allow places rather than order the
 
 In a Typst document, Placement has four choices (In the text, Top, Bottom and Top or bottom) and Span both columns writes `scope: "parent"`. Notes go under the table in smaller text, and with line breaks on a `\\` in a cell is a line break.
 
-Table to chart, on the table card, asks the model for matplotlib code and shows it. Nothing runs until you choose Run this code; Edit lets you change it first. The code runs on its own, with only the table, no access to your files and no network, and stops after two minutes. The chart is saved in `assets/plots`. Name the file `.pdf`, `.svg` or `.jpg` for that format. In a Typst document, Image → Typst writes Typst, and Table → chart takes a selected `#table`.
+Table to chart, on the table card, asks the model for matplotlib code and shows it. Nothing runs until you choose Run this code; Edit lets you change it first. The code runs on its own, with only the table, no access to your files and no network, and stops after two minutes. The chart is saved in `assets/plots`. Name the file `.pdf`, `.svg` or `.jpg` for that format. In a Typst document, Image → Typst writes Typst, and Table → chart takes a selected `#table`. Table → chart also takes a Markdown pipe table. With Insert a figure after the table on, the chart goes in after the table's float (after `\end{table}` and its caption, a Typst `#figure` and its label, or a Markdown table's caption line), never inside it, and `graphicx` is added to a LaTeX document that does not load it.
 
 ### Diagram composer
 
