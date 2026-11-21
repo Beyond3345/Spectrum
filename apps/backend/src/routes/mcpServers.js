@@ -12,7 +12,16 @@ export function registerMcpServerRoutes(fastify) {
     await removeServer(req.params.name);
     return { ok: true };
   });
-  fastify.post('/api/mcp-servers/:name/check', async (req) => ({ tools: await checkServer(req.params.name) }));
+  // a server that failed: what it said, and the hosts it was refused, which Settings offers to allow
+  fastify.post('/api/mcp-servers/:name/check', async (req, reply) => {
+    try {
+      return { tools: await checkServer(req.params.name) };
+    } catch (err) {
+      if (err.details === undefined) throw err;
+      req.log.error(err);
+      return reply.code(502).send({ ok: false, error: err.message, refused: err.refused, details: err.details });
+    }
+  });
   // { on }, where it may connect: { hosts?, anyHost?, ports? }, or its variables: { env: { NAME: value or null } }. A
   // variable's value is never sent back.
   fastify.put('/api/mcp-servers/:name', async (req) => {

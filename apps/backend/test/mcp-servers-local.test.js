@@ -143,7 +143,7 @@ test('a variable reaches its server and no other process, is never sent back nor
     // a server that prints it as it fails: the error, and the log, hide it
     await put('other', { env: { MCP_TEST_KEY: KEY, LOUD: '1' } });
     const failed = await app.inject({ method: 'POST', url: '/api/mcp-servers/other/check' });
-    assert.equal(failed.statusCode, 500);
+    assert.equal(failed.statusCode, 502);
     assert.match(failed.body, /did not start as an MCP server: refused key \[hidden\]/);
 
     // a value to replace, one to remove
