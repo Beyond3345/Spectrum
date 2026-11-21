@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { addMcpServer, checkMcpServer, listMcpServers, removeMcpServer, setMcpServerNetwork, setMcpServerOn } from '../api/client';
+import { addMcpServer, checkMcpServer, listMcpServers, removeMcpServer, setMcpServerNetwork, setMcpServerOn, setMcpServerVariables } from '../api/client';
 import type { McpServer, McpTool } from '../api/client';
 import { errorText } from '../editor/shared';
 import { confirmDialog } from './Dialogs';
@@ -12,8 +12,11 @@ export const commandWords = (line: string) => [...line.matchAll(/"([^"]*)"|'([^'
 /** Hosts as typed in one box: spaces or commas part them. */
 export const hostWords = (line: string) => line.split(/[\s,]+/).filter(Boolean);
 
-/** The hosts something may reach, each removable, and a box that adds one: for an agent and for an MCP server. */
-export function HostList({ hosts, label, disabled, onChange }: { hosts: string[]; label: string; disabled?: boolean; onChange(hosts: string[]): void }) {
+/** Ports as typed: a number is a number, anything else is left for the backend to name in its refusal. */
+export const portWords = (line: string) => hostWords(line).map((w) => (/^\d{1,5}$/.test(w) ? Number(w) : w));
+
+/** The hosts something may reach, each removable, and a box that adds one: for an agent and for an MCP server (its ports too). */
+export function HostList({ hosts, label, disabled, onChange, placeholder = 'api.example.com', addLabel = 'Add host' }: { hosts: string[]; label: string; disabled?: boolean; onChange(hosts: string[]): void; placeholder?: string; addLabel?: string }) {
   const [host, setHost] = useState('');
   const add = () => {
     const words = hostWords(host);
@@ -38,7 +41,7 @@ export function HostList({ hosts, label, disabled, onChange }: { hosts: string[]
       <div className="row">
         <input
           className="input grow mono"
-          placeholder="api.example.com"
+          placeholder={placeholder}
           aria-label={label}
           spellCheck={false}
           autoCorrect="off"
@@ -48,10 +51,65 @@ export function HostList({ hosts, label, disabled, onChange }: { hosts: string[]
           onKeyDown={(e) => e.key === 'Enter' && add()}
         />
         <button className="btn small" disabled={disabled || !host.trim()} onClick={add}>
-          Add host
+          {addLabel}
         </button>
       </div>
     </>
+  );
+}
+
+/** A server's environment variables: names shown, values never (the backend keeps them); a name and a value add or replace one. */
+function Variables({ server, disabled, onChange }: { server: McpServer; disabled: boolean; onChange(env: Record<string, string | null>): Promise<boolean> }) {
+  const [name, setName] = useState('');
+  const [value, setValue] = useState('');
+  const add = async () => {
+    if (!name.trim() || !value) return;
+    // kept until the backend took it, so a refused name does not lose a long key
+    if (await onChange({ [name.trim()]: value })) {
+      setName('');
+      setValue('');
+    }
+  };
+  return (
+    <div className="agent-section mcp-hosts">
+      <div className="field-hint">
+        {server.env.length
+          ? `Its environment variables, ${server.envWhy ? '' : `kept ${IS_WINDOWS ? 'encrypted for your Windows account' : 'in the keychain'} and `}given to this server alone:`
+          : 'Environment variables, such as an API key it needs:'}
+      </div>
+      {server.env.length > 0 && (
+        <div className="chip-row">
+          {server.env.map((n) => (
+            <span key={n} className="chip">
+              <span className="mono">{n}</span>
+              <span aria-label="value hidden">••••••••</span>
+              <button className="chip-remove" aria-label={`Remove ${n}`} disabled={disabled} onClick={() => void onChange({ [n]: null })}>
+                <Icon name="xmark" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="row">
+        <input className="input mono" style={{ width: 180 }} placeholder="NAME" aria-label={`A variable’s name for “${server.name}”`} spellCheck={false} autoCorrect="off" autoCapitalize="off" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          className="input grow mono"
+          type="password"
+          placeholder="Value"
+          aria-label={`Its value`}
+          autoComplete="off"
+          spellCheck={false}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void add()}
+        />
+        <button className="btn small" disabled={disabled || !name.trim() || !value} onClick={() => void add()}>
+          {server.env.includes(name.trim()) ? 'Replace' : 'Add variable'}
+        </button>
+      </div>
+      {server.envWhy && <div className="field-hint error">They are in a file in Spectrum’s data folder that only your account can read, as Spectrum could not keep them with your API keys: {server.envWhy}</div>}
+      {server.env.length > 0 && <div className="field-hint">Adding, replacing or removing one switches the server off until you check it again.</div>}
+    </div>
   );
 }
 
@@ -77,8 +135,10 @@ export default function McpServers() {
     try {
       await fn();
       await refresh();
+      return true;
     } catch (err) {
       setError(errorText(err));
+      return false;
     } finally {
       setBusy('');
     }
@@ -152,8 +212,22 @@ export default function McpServers() {
                   ))}
                 </>
               )}
+              <div className="field-hint">
+                {s.ports.length
+                  ? 'On this computer (127.0.0.1) it reaches only these ports:'
+                  : 'It reaches no service on this computer. Add the port of one it needs, such as 23119 for Zotero:'}
+              </div>
+              <HostList
+                hosts={s.ports.map(String)}
+                label={`A port on this computer “${s.name}” may reach`}
+                placeholder="A port, such as 23119"
+                addLabel="Add port"
+                disabled={!!busy}
+                onChange={(list) => act(`net-${s.name}`, () => setMcpServerNetwork(s.name, { ports: portWords(list.join(' ')) }))}
+              />
             </div>
           )}
+          <Variables server={s} disabled={!!busy} onChange={(env) => act(`env-${s.name}`, () => setMcpServerVariables(s.name, env))} />
           {tools[s.name]?.length > 0 && (
             <ul className="field-hint mcp-tools">
               {tools[s.name].map((t) => (
@@ -198,8 +272,8 @@ export default function McpServers() {
         A server is added off. Check starts it and lists its tools; switch it on to give them to the agent. If its tools change later, the agent gets none until
         you check it again. It cannot read your projects or the rest of your files, and{' '}
         {IS_WINDOWS
-          ? 'reaches the internet at any public address: on Windows, isolation cannot hold a server to a list of hosts yet.'
-          : 'reaches only the hosts you list for it, over HTTPS. A server started with npx or uvx needs its package registry (registry.npmjs.org, or pypi.org and files.pythonhosted.org): Check shows what it asked for, with a button that allows it.'}
+          ? 'reaches the internet at any public address: on Windows, isolation cannot hold a server to a list of hosts yet. Nor can it reach a service on this computer, such as Zotero, as Windows isolation refuses every address of the computer itself.'
+          : 'reaches only the hosts you list for it, over HTTPS, and the ports on this computer you add. A server started with npx or uvx needs its package registry (registry.npmjs.org, or pypi.org and files.pythonhosted.org): Check shows what it asked for, with a button that allows it. A local service you allow does whatever it does for any program that asks it: Zotero’s, for one, reads your whole library.'}
       </div>
       {error && <div className="field-hint error">{error}</div>}
     </section>
