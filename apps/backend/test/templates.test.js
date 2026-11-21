@@ -123,7 +123,8 @@ test('the Typst and Markdown starters are self-contained', async () => {
     assert.match(main, /#set text\(size: 1[01]pt, lang: "en", region: "AU"\)/, `${id}: Australian English`);
     assert.match(main, /^#set document\(/m, `${id}: PDF title and author`);
     // drawings in diagrams/ are plain Typst too, so every template compiles offline
-    for (const file of [main, ...await readDiagrams(id)]) assert.doesNotMatch(file, /@preview|^\s*#import/m, `${id}: no packages`);
+    // (a project file such as alt-text.typ may be imported: it is shipped with the template)
+    for (const file of [main, ...await readDiagrams(id)]) assert.doesNotMatch(file, /@preview|^\s*#import (?!"[\w-]+\.typ")/m, `${id}: no packages`);
     // letters and CVs cite nothing; everything else ends with the APA bibliography from refs.bib, then any appendices
     if (!['typst-letter', 'typst-cv'].includes(id)) {
       assert.match(main, /^#bibliography\("refs.bib", style: "apa"\)\n(?:$|\n#counter\(heading\)\.update\(0\))/m, `${id}: bibliography`);
