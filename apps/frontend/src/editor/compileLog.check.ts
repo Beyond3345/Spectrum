@@ -1,4 +1,7 @@
 // Self-check for the log parser: `node apps/frontend/src/editor/compileLog.check.ts` (Node ≥ 23 strips the types).
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { EditorState, Text } from '@codemirror/state';
 import { parseCompileLog, projectFile } from './compileLog.ts';
 import { compileLint, compileMarks, compileMarksField, setCompileMarks } from './compileMarks.ts';
@@ -176,6 +179,66 @@ eq(brief('[spectrum note] This compile used XeLaTeX.'), [], 'log-only note');
 eq(brief('[spectrum] Compile it with Auto instead.'), [['error', '', 0, 'Compile it with Auto instead.']], 'backend note');
 eq(brief('[spectrum warning] notes.tex didn’t compile.'), [['warning', '', 0, 'notes.tex didn’t compile.']], 'backend warning');
 eq(brief('Compiled notes.tex first for its cross-references.'), [], 'linked compile note');
+
+// a recipe's two pdfLaTeX steps, as pdfTeX writes them when "Transcript written on" lands at the end of the SyncTeX
+// line: the step lines are notes, and only the last pass's warnings count (none: the reference resolved)
+eq(
+  brief(
+    [
+      '',
+      '[spectrum note] Recipe: pdflatex',
+      'This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex)',
+      '(./recipe-probe.tex',
+      'No file recipe-probe.aux.',
+      "LaTeX Warning: Reference `sec:one' on page 1 undefined on input line 5.",
+      '',
+      'LaTeX Warning: There were undefined references.',
+      'SyncTeX written on /tmp/b/recipe-probe.synctex.gz.Transcript written on /tmp/b/recipe-probe.log.',
+      '',
+      '[spectrum note] Recipe: pdflatex',
+      'This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex)',
+      '(./recipe-probe.tex (/tmp/b/recipe-probe.aux) [1] (/tmp/b/recipe-probe.aux) )',
+      'Output written on /tmp/b/recipe-probe.pdf (1 page, 21950 bytes).',
+      'SyncTeX written on /tmp/b/recipe-probe.synctex.gz.Transcript written on /tmp/b/recipe-probe.log.'
+    ].join('\n')
+  ),
+  [],
+  'recipe passes'
+);
+
+// Every "[spectrum] " line the backend writes into a compile log is listed as an error: each must be a real failure
+// named here. Information or progress (a recipe's step, a download) is written "[spectrum note] ", so a new line of
+// that kind written as an error fails this
+const FAILURES = [
+  'SVG images need rsvg-convert', // markdownService: SVG images left out of the PDF
+  'Typst downloads a package the first time', // typstService: a package download failed
+  '${executable} was stopped after', // typstService: time limit
+  '${cmd} was stopped after', // compileService: time limit
+  'biblatex with Biber needs the Biber', // compileService: no Biber for Tectonic's biblatex
+  'This document uses biblatex, and Tectonic’s bundled biblatex', // compileService: Biber version mismatch
+  'Couldn’t download Biber', // compileService
+  'Biber failed.', // compileService
+  'Biber could not run' // compileService
+];
+const backend = [fileURLToPath(new URL('../../../backend/src', import.meta.url)), resolve('apps/backend/src')].find((dir) => existsSync(join(dir, 'services')));
+if (!backend) throw new Error('run this from the repository, where apps/backend/src is');
+let audited = 0;
+for (const file of readdirSync(backend, { recursive: true }) as string[]) {
+  if (!file.endsWith('.js')) continue;
+  for (const [, text] of readFileSync(join(backend, file), 'utf8').matchAll(/['`](?:\\n)*\[spectrum\] ([^\n'`]*)/g)) {
+    audited += 1;
+    if (!FAILURES.some((failure) => text.startsWith(failure))) throw new Error(`${file}: “[spectrum] ${text}” is listed as an error. Information or progress is “[spectrum note] ”; a real failure goes in FAILURES`);
+  }
+}
+eq(audited >= FAILURES.length, true, 'the backend’s error lines were found');
+for (const line of [
+  '[spectrum note] Recipe: pdflatex',
+  '[spectrum note] This document’s bibliography uses biblatex, which the built-in Tectonic runs with Biber. Downloading Biber 2.17 (40 MB) first, once.',
+  '[spectrum note] Downloaded Biber 2.17.',
+  '[spectrum note] A file kept from the last compile couldn’t be read, so this compiled again from scratch.'
+]) eq(brief(line), [], line);
+eq(brief('[spectrum] Biber failed. Fix the bibliography errors above and compile again.').length, 1, 'a failure is an error');
+
 // Windows: an absolute path starts with its drive
 eq(brief('C:/Users/me/thesis/chapters/intro.tex:12: Undefined control sequence.', 'C:/Users/me/thesis'), [['error', 'chapters/intro.tex', 12, 'Undefined control sequence.']], 'Windows path');
 // a 79-character note isn't glued to the next line as TeX's own wrapped lines are

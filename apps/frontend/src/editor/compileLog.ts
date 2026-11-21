@@ -10,7 +10,9 @@ const TECTONIC = /^(error|warning):\s*(.*)$/;
 const TECTONIC_LOCATED = /^(?:\.\/)?((?:[A-Za-z]:)?[^\s:()][^:()\n]*):(\d+):\s*(.*)$/;
 // A TeX pass runs from its banner to "Transcript written on" (Tectonic: to its next "note:")
 const PASS_START = /^(This is (pdf|Xe|LuaHB|Lua|e-)?TeX, Version|note: (Re)?running TeX)/i;
-const PASS_END = /^(Transcript written on|note: )/;
+// pdfTeX glues "Transcript written on" to the end of its SyncTeX line when its column count happens to be 0 there
+// (the build folder's and file's names decide), so it can come mid-line
+const PASS_END = /Transcript written on|^note: /;
 const LATEX_WARNING = /^(?:LaTeX|Package (\S+)|Class (\S+))(?: \w+)? Warning: (.*)$/;
 const BOX = /^(?:Over|Under)full \\[hv]box\b.*?(?:at lines? (\d+)(?:--\d+)?)?$/;
 const INPUT_LINE = /on input line (\d+)/;
