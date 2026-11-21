@@ -16,7 +16,7 @@ import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge, imageOf } from '../floats';
+import { PLACEMENT_LETTERS, afterFloat, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, markdownTableRows, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge, imageOf } from '../floats';
 import { typstTableRows } from '../outlines';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
@@ -1971,6 +1971,8 @@ const asTabular = (rows: string[][]) =>
 
 function TableToChart() {
   const api = useEditor();
+  const apiRef = useRef(api);
+  apiRef.current = api;
   const [type, setType] = useState<'bar' | 'line' | 'heatmap'>('bar');
   const [title, setTitle] = useState('');
   const [filename, setFilename] = useState('');
@@ -1984,17 +1986,18 @@ function TableToChart() {
   const [editing, setEditing] = useState(false);
   const [failed, setFailed] = useState('');
   const [asset, setAsset] = useState<{ path: string; at: number } | null>(null);
-  // a Typst #table goes to the model and the plot as the tabular they read
-  const typst = docKind(api.activePath) === 'typst';
-  const typstRows = typst ? typstTableRows(api.selectionText) : null;
-  const table = typstRows ? asTabular(typstRows) : api.selectionText;
+  // a Typst #table or a Markdown pipe table goes to the model and the plot as the tabular they read
+  const kind = docKind(api.activePath);
+  const typst = kind === 'typst';
+  const rows = typst ? typstTableRows(api.selectionText) : kind === 'markdown' ? markdownTableRows(api.selectionText) : null;
+  const table = rows ? asTabular(rows) : api.selectionText;
   const hasTable = table.includes('\\begin{tabular') || table.includes('\\begin{table');
 
   /** Asks the model for the code, which is shown and never run until Run this code. again: with the last run's error. */
   const write = async (again = false) => {
     const tableLatex = again ? source : table;
     if (!again && !hasTable) {
-      setStatus(typst ? 'Select a Typst table (#table) in the editor first.' : 'Select a LaTeX table (tabular) in the editor first.');
+      setStatus(typst ? 'Select a Typst table (#table) in the editor first.' : kind === 'markdown' ? 'Select a Markdown table in the editor first.' : 'Select a LaTeX table (tabular) in the editor first.');
       return;
     }
     setBusy('write');
@@ -2021,6 +2024,23 @@ function TableToChart() {
     }
   };
 
+  /** The chart as a figure after the selected table, and after the float the table sits in, never inside it. */
+  const insertChart = async (path: string) => {
+    const kind = docKind(apiRef.current.activePath);
+    const label = figureLabel(path);
+    let added: { text: string; warn?: boolean } = { text: '' };
+    if (kind === 'latex') added = await ensurePackages(() => apiRef.current, ['graphicx']);
+    const figure =
+      kind === 'typst'
+        ? figureTypst({ path, width: 0.9, caption: 'Caption.', label })
+        : kind === 'markdown'
+          ? // a blank line first, so the caption line above doesn't take it into its paragraph
+            `\n${figureMarkdown({ path, width: 0.9, caption: 'Caption.', label })}`
+          : figureSnippet(path);
+    apiRef.current.insertAtCursor(figure, { block: true, at: (doc, from, to) => afterFloat(doc, from, to, kind) });
+    if (added.text) apiRef.current.notify(added.text, added.warn ? 'error' : 'success');
+  };
+
   const run = async () => {
     setBusy('run');
     setStatus('');
@@ -2034,11 +2054,7 @@ function TableToChart() {
       setAsset({ path: res.assetPath, at: Date.now() });
       setStatus(`Chart saved to ${res.assetPath}.`);
       await api.refreshTree();
-      // after the selected table, not over it
-      if (autoInsert) {
-        const figure = docKind(api.activePath) === 'typst' ? figureTypst({ path: res.assetPath, width: 0.9, caption: 'Caption.', label: figureLabel(res.assetPath) }) : figureSnippet(res.assetPath);
-        api.insertAtCursor(figure, { block: true, afterSelection: true });
-      }
+      if (autoInsert) await insertChart(res.assetPath);
     } catch (err) {
       setFailed(errorText(err));
     } finally {
@@ -2124,7 +2140,7 @@ function TableToChart() {
       {asset && (
         <div className="plot-preview">
           <img src={blobUrl(api.projectId, asset.path, asset.at)} alt={asset.path} />
-          <button className="btn small" onClick={() => api.insertAtCursor(figureSnippet(asset.path), { block: true, afterSelection: true })}>
+          <button className="btn small" onClick={() => void insertChart(asset.path)}>
             Insert figure
           </button>
         </div>

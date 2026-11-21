@@ -169,7 +169,7 @@ test('a Tectonic compile that needs Biber downloads it first, once for compiles 
     for (const result of [one, two]) {
       assert.equal(result.engine, 'tectonic');
       assert.equal(result.code, undefined, result.log);
-      assert.match(result.log, /\[spectrum\] Downloaded Biber 2\.17\./);
+      assert.match(result.log, /\[spectrum note\] Downloaded Biber 2\.17\./);
       assert.ok(result.log.includes('PATH=' + biberDir + path.delimiter), result.log);
     }
     assert.equal(tectonicBiber(), path.join(biberDir, 'biber'));

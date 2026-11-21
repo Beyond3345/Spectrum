@@ -2,6 +2,7 @@
 // The writers themselves live in the backend's latex/floats.js, which the converter uses too.
 import { fitMerges, tableNotes } from '../../../backend/src/latex/floats.js';
 import type { FigureSet, TableEnv, TableMerge, TableModel } from '../../../backend/src/latex/floats.js';
+import { closing } from './outlines';
 
 export * from '../../../backend/src/latex/floats.js';
 
@@ -142,6 +143,84 @@ export function pasteCells(cells: string[][], r: number, c: number, block: strin
   const rows = Math.max(cells.length, r + block.length);
   const cols = Math.max(cells[0]?.length ?? 0, c + Math.max(...block.map((b) => b.length)));
   return Array.from({ length: rows }, (_, i) => Array.from({ length: cols }, (_, j) => block[i - r]?.[j - c] ?? cells[i]?.[j] ?? ''));
+}
+
+/** A Markdown pipe table's cells, without its divider row; null when text holds none. */
+export function markdownTableRows(text: string): string[][] | null {
+  const lines = text.split('\n').filter((line) => line.includes('|'));
+  const divider = (line: string) => /^[\s|:-]*-[\s|:-]*$/.test(line);
+  if (!lines.some(divider)) return null;
+  const rows = lines.filter((line) => !divider(line)).map((line) => line.trim().replace(/^\||(?<!\\)\|$/g, '').split(/(?<!\\)\|/).map((cell) => cell.trim()));
+  return rows.length ? rows : null;
+}
+
+// the LaTeX floats and the table environments that carry their own caption, as figures and tables can be
+const LATEX_FLOAT = /^(?:(?:sideways|wrap|margin|SC)?(?:table|figure)|longtable|longtabu|xltabular|supertabular|mpsupertabular)\*?$/;
+
+/**
+ * Where a block that should follow the selection doc[from, to] goes: after the outermost float holding it (a LaTeX
+ * table or figure, a Typst #figure with its label, a Markdown pipe table with its caption line), at the start of the
+ * line after it, so it never lands inside; with no float around it, at `to`.
+ */
+export function afterFloat(doc: string, from: number, to: number, kind: 'latex' | 'typst' | 'markdown' | null) {
+  let end = -1;
+  if (kind === 'latex') {
+    // comments blanked, so a commented-out \end doesn't count
+    const code = doc.replace(/(^|[^\\])((?:\\\\)*)(%.*)$/gm, (_, a: string, b: string, c: string) => a + b + ' '.repeat(c.length));
+    const open: { name: string; at: number }[] = [];
+    for (const m of code.matchAll(/\\(begin|end)\s*\{([^}]+)\}/g)) {
+      const name = m[2].trim();
+      if (m[1] === 'begin') open.push({ name, at: m.index });
+      else {
+        const i = open.map((o) => o.name).lastIndexOf(name);
+        if (i === -1) continue;
+        const [start] = open.splice(i);
+        const stop = m.index + m[0].length;
+        // the outermost: a later float that holds the selection holds the one found before it
+        if (LATEX_FLOAT.test(name) && start.at <= from && to <= stop) end = Math.max(end, stop);
+      }
+    }
+  } else if (kind === 'typst') {
+    for (const m of doc.matchAll(/(?:^|[^\w.-])figure\s*\(/g)) {
+      const start = m.index + m[0].indexOf('figure');
+      let stop = closing(doc, m.index + m[0].length - 1);
+      if (stop === -1 || start > from) continue;
+      // a trailing content block, #figure(caption: [...])[#table(...)], then its label
+      while (doc[stop + 1] === '[' && closing(doc, stop + 1) !== -1) stop = closing(doc, stop + 1);
+      stop += 1 + (/^[ \t]*<[\w:.-]+>/.exec(doc.slice(stop + 1))?.[0].length ?? 0);
+      if (to <= stop) end = Math.max(end, stop);
+    }
+  } else if (kind === 'markdown') {
+    const lines = doc.split('\n');
+    const starts: number[] = [];
+    for (let i = 0, at = 0; i < lines.length; at += lines[i].length + 1, i += 1) starts.push(at);
+    const lineOf = (at: number) => {
+      let i = 0;
+      while (i + 1 < starts.length && starts[i + 1] <= at) i += 1;
+      return i;
+    };
+    const row = (i: number) => i >= 0 && i < lines.length && lines[i].includes('|');
+    let first = lineOf(from);
+    // a selection of whole lines ends at the start of the line after them
+    let last = lineOf(to > from && doc[to - 1] === '\n' ? to - 1 : to);
+    if (row(first) && row(last)) {
+      while (row(first - 1)) first -= 1;
+      while (row(last + 1)) last += 1;
+      if (markdownTableRows(lines.slice(first, last + 1).join('\n'))) {
+        // its caption, "Table: …" or ": …", may follow after a blank line and run to the next blank line
+        let next = last + 1 + (lines[last + 1]?.trim() === '' ? 1 : 0);
+        if (/^(?:Table)?:\s/.test(lines[next] ?? '')) {
+          while (lines[next + 1]?.trim()) next += 1;
+          last = next;
+        }
+        end = starts[last] + lines[last].length;
+      }
+    }
+  }
+  if (end === -1) return to;
+  // the start of the next line, or the end of the document
+  const newline = doc.indexOf('\n', end);
+  return newline === -1 ? doc.length : newline + 1;
 }
 
 /**

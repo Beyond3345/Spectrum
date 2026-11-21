@@ -91,7 +91,7 @@ test('every step runs in the compile’s confinement until the project is truste
   const confined = await runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' });
   assert.ok(confined.ok, confined.error || confined.log);
   // the steps in order, Spectrum's own passes not run, the options where they belong
-  assert.deepEqual(confined.log.match(/^\[spectrum\] Recipe: .*$/gm), ['[spectrum] Recipe: pdflatex -recorder', '[spectrum] Recipe: makeindex -q main', '[spectrum] Recipe: pdflatex']);
+  assert.deepEqual(confined.log.match(/^\[spectrum note\] Recipe: .*$/gm), ['[spectrum note] Recipe: pdflatex -recorder', '[spectrum note] Recipe: makeindex -q main', '[spectrum note] Recipe: pdflatex']);
   const runs = confined.log.match(/^(?:pdflatex|makeindex) ARGS .*$/gm);
   assert.equal(runs.length, 3);
   assert.match(runs[0], /-shell-restricted .*-8bit -recorder \.\/main\.tex$/);
@@ -115,15 +115,23 @@ test('a step an untrusted project may not run leaves the document to Spectrum’
   assert.match(result.log, /\[spectrum warning\] The “% !TEX recipe” line asks for “-shell-escape”/);
 });
 
-test('with TeX: a one-pass recipe is one pass, so a reference stays unresolved', { skip: !realPdflatex && 'needs pdflatex', timeout: 120_000 }, async () => {
+test('with TeX: a one-pass recipe is one pass, so a reference stays unresolved; two resolve it in the PDF', { skip: !realPdflatex && 'needs pdflatex', timeout: 120_000 }, async () => {
   process.env.PATH = realPath;
-  const p = await createProject({ name: 'One pass', populate: (root) => fs.writeFile(path.join(root, 'main.tex'), '% !TEX recipe = pdflatex\n\\documentclass{article}\\begin{document}\\section{A}\\label{a} See \\ref{a}.\\end{document}\n') });
+  // uncompressed, so the PDF's text can be read: an unresolved \ref prints ?? there
+  const body = '\\pdfcompresslevel=0\n\\documentclass{article}\\begin{document}\\section{A}\\label{a} See Section~\\ref{a}.\\end{document}\n';
+  const p = await createProject({ name: 'One pass', populate: (root) => fs.writeFile(path.join(root, 'main.tex'), `% !TEX recipe = pdflatex\n${body}`) });
   const once = await runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' });
   assert.ok(once.ok, once.error || once.log);
-  assert.equal(once.log.match(/\[spectrum\] Recipe:/g).length, 1);
+  assert.equal(once.log.match(/\[spectrum note\] Recipe:/g).length, 1);
   assert.match(once.log, /There were undefined references|Reference `a' on page 1 undefined/);
-  await fs.writeFile(path.join(p.path, 'main.tex'), '% !TEX recipe = pdflatex; pdflatex\n\\documentclass{article}\\begin{document}\\section{A}\\label{a} See \\ref{a}.\\end{document}\n');
+  assert.match(Buffer.from(once.pdf, 'base64').toString('latin1'), /\(\?\?\)/);
+  await fs.writeFile(path.join(p.path, 'main.tex'), `% !TEX recipe = pdflatex; pdflatex\n${body}`);
   const twice = await runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' });
-  assert.equal(twice.log.match(/\[spectrum\] Recipe:/g).length, 2);
-  assert.doesNotMatch(twice.log.split('[spectrum] Recipe:').pop(), /undefined references/);
+  assert.ok(twice.ok, twice.error || twice.log);
+  assert.equal(twice.log.match(/\[spectrum note\] Recipe:/g).length, 2);
+  assert.equal(twice.log.match(/^This is pdfTeX, Version/gm).length, 2, 'both steps ran');
+  assert.doesNotMatch(twice.log.split('[spectrum note] Recipe:').pop(), /undefined references/);
+  // the second step read the first's .aux: the reference is resolved in the PDF itself
+  assert.doesNotMatch(Buffer.from(twice.pdf, 'base64').toString('latin1'), /\?\?/);
+  assert.doesNotMatch(twice.log, /^\[spectrum\] /m, 'nothing the editor lists as an error');
 });

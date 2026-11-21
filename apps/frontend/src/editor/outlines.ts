@@ -100,7 +100,7 @@ export function includedPath(from: string, target: string): string {
 // ─── Typst's whole document: headings and figures across its includes, numbered from the last compile ───
 
 /** Where the bracket or parenthesis at `at` closes, skipping strings in code and only counting [ ] in content; -1 if never. */
-function closing(text: string, at: number) {
+export function closing(text: string, at: number) {
   const stack = [text[at]];
   for (let i = at + 1; i < text.length; i += 1) {
     const c = text[i];

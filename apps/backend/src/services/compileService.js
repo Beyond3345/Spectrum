@@ -920,7 +920,7 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
     // a kept file TeX choked on (one from an older package version, say) never locks the document out
     await clean();
     const again = await compileWith(engine, projectRoot, absMain, mainFile, { ...options, fresh: true });
-    return { ...again, log: `[spectrum] A file kept from the last compile couldn’t be read, so this compiled again from scratch.\n\n${again.log ?? ''}` };
+    return { ...again, log: `[spectrum note] A file kept from the last compile couldn’t be read, so this compiled again from scratch.\n\n${again.log ?? ''}` };
   }
   // A later TeX pass can create a PDF even when Biber failed.
   let code = pass.code !== 0 ? pass.code : bibliographyStatus;
@@ -1020,7 +1020,7 @@ async function fetchBiber(live, pushLog) {
   const { version, size } = biberDownload() ?? {};
   if (!version) return null;
   const doing = `Downloading Biber (${Math.round(size / 1e6)} MB)…`;
-  pushLog(Buffer.from(`[spectrum] This document’s bibliography uses biblatex, which the built-in Tectonic runs with Biber. Downloading Biber ${version} (${Math.round(size / 1e6)} MB) first, once.\n`));
+  pushLog(Buffer.from(`[spectrum note] This document’s bibliography uses biblatex, which the built-in Tectonic runs with Biber. Downloading Biber ${version} (${Math.round(size / 1e6)} MB) first, once.\n`));
   sendLog(live, 'status', doing);
   let shown = -1;
   const progress = (received, total) => {
@@ -1032,7 +1032,7 @@ async function fetchBiber(live, pushLog) {
   const stop = new Promise((resolve) => (poll = setInterval(() => stopped() && resolve(null), 250)));
   try {
     const biber = await Promise.race([installBiber(progress), stop]);
-    if (biber) pushLog(Buffer.from(`[spectrum] Downloaded Biber ${version}.\n`));
+    if (biber) pushLog(Buffer.from(`[spectrum note] Downloaded Biber ${version}.\n`));
     return biber;
   } catch (err) {
     pushLog(Buffer.from(`[spectrum] Couldn’t download Biber: ${err.message}\n`));
@@ -1152,7 +1152,7 @@ async function runRecipe(steps, { outDir, input, mainDir, base, options, confine
   for (const { program, args: given } of steps) {
     if (stopped() || pass.timedOut || (options.haltOnError && pass.code !== 0)) break;
     const args = given.map((arg) => arg.replaceAll('%DOC%', base).replaceAll('%OUTDIR%', slashed(outDir)).replaceAll('%DIR%', slashed(mainDir)));
-    pushLog(Buffer.from(`\n[spectrum] Recipe: ${[program, ...args].join(' ')}\n`));
+    pushLog(Buffer.from(`\n[spectrum note] Recipe: ${[program, ...args].join(' ')}\n`));
     if (MULTI_PASS_ENGINES.includes(program)) {
       const command = buildCommand(program, slashed(outDir), input, { ...options, extra: [...(options.extra ?? []), ...args] });
       pass = await confined(command.cmd, command.args, mainDir, PASS_TIMEOUT_MS[program] || DEFAULT_PASS_TIMEOUT_MS);

@@ -63,9 +63,10 @@ export interface EditorApi {
   /**
    * block: put the text on its own lines. afterSelection: insert after the selection instead of replacing it (used for \cite).
    * focus: move focus to the editor (default true). placedOnly: insert only where the user has put the cursor, inside the
-   * document body (for automatic inserts). Returns the line the text went in, or null when nothing was inserted.
+   * document body (for automatic inserts). at: where to insert instead, from the document and selection as they are
+   * then (nothing is replaced). Returns the line the text went in, or null when nothing was inserted.
    */
-  insertAtCursor(text: string, opts?: { block?: boolean; afterSelection?: boolean; focus?: boolean; placedOnly?: boolean }): number | null;
+  insertAtCursor(text: string, opts?: { block?: boolean; afterSelection?: boolean; focus?: boolean; placedOnly?: boolean; at?: (doc: string, from: number, to: number) => number }): number | null;
   /** inserts into the open file (or replaces from–to) through the editor, so it can be undone and the cursor moves along */
   editOpenFile(change: { from: number; to?: number; insert: string }): void;
   ensureFileContent(path: string): Promise<string>;
