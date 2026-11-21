@@ -124,9 +124,9 @@ Anything typed in the box before pressing an action goes with it as a note, for 
 
 === Reviewing suggested changes <sec-assistant-changes>
 
-The assistant never writes into a file by itself. An action that changes text comes back as a reply with #ui[Review 1 change] (@fig-assistant-reply), and the editor shows a banner, "Suggested changes to 1 file", with #ui[Discard] and #ui[Review].
+The assistant never writes into a file by itself. An action that changes text comes back as #ui[Review 1 change] (@fig-assistant-reply), and the editor shows a banner, "Suggested changes to 1 file", with #ui[Discard] and #ui[Review]. The change speaks for itself, so a message comes with it only when the model has something you must know, such as a part it could not do, or when your `AGENTS.md` asks for one.
 
-#shot("figures/03-assistant/assistant-reply-changes.png", [A reply to #ui[Polish] with its changes waiting to be reviewed.], width: 85%) <fig-assistant-reply>
+#shot("figures/03-assistant/assistant-reply-changes.png", [A reply to #ui[Polish] with its change waiting to be reviewed. The model had nothing more to say, so there is no message.], width: 85%) <fig-assistant-reply>
 
 #ui[Review] opens #ui[Review changes], a side-by-side comparison of each file with your text on the left and the suggestion on the right (@fig-assistant-review-changes). Changed words are marked inside each changed line, and unchanged stretches are folded away as "16 unchanged lines", while #ui[Show whole file] unfolds them.
 
@@ -311,7 +311,7 @@ The transcript also folds away the agent's thinking, shows questions and permiss
 
 === Stopping and steering
 
-#ui[Stop], in the header while the agent works, ends the request to the model and the step that is running at once, a compile included, and what the agent had done is kept. A message sent while the agent works waits above the message box as #ui[Queued], as the box itself says ("Enter queues it while the agent works"). #ui[Steer now] hands it to the agent between two steps, and otherwise it is sent as the next request when the answer has come. A message still waiting after #ui[Stop] stays there with #ui[Send] and #ui[Remove]. Closing the workspace does not stop the agent, and a page opened or reloaded while it works shows the run where it is, with the messages that were waiting.
+#ui[Stop], in the header while the agent works, ends the request to the model and the step that is running at once, a compile included, and what the agent had done is kept. So are the words it had written by then: they stay in the thread as its answer, marked "You stopped the agent here." once the thread goes on, and the agent is given them with your next message or #ui[Continue], so it knows what it had already said. A message sent while the agent works waits above the message box as #ui[Queued], as the box itself says ("Enter queues it while the agent works"). #ui[Steer now] hands it to the agent between two steps, and otherwise it is sent as the next request when the answer has come. A message still waiting after #ui[Stop] stays there with #ui[Send] and #ui[Remove]. Closing the workspace does not stop the agent, and a page opened or reloaded while it works shows the run where it is, with the messages that were waiting.
 
 === Planning first and questions <sec-assistant-plan>
 
