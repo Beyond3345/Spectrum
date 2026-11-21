@@ -1208,14 +1208,14 @@ function Editor({ projectId }: { projectId: string }) {
 
   // ─── editor actions ───
 
-  const insertAtCursor = (text: string, opts: { block?: boolean; afterSelection?: boolean; focus?: boolean; placedOnly?: boolean } = {}) => {
+  const insertAtCursor = (text: string, opts: { block?: boolean; afterSelection?: boolean; focus?: boolean; placedOnly?: boolean; at?: (doc: string, from: number, to: number) => number } = {}) => {
     const view = viewRef.current;
     if (!view || !activeRef.current) {
       notify('Open a file first.');
       return null;
     }
     const sel = view.state.selection.main;
-    const from = opts.afterSelection ? sel.to : sel.from;
+    const from = opts.at ? opts.at(view.state.doc.toString(), sel.from, sel.to) : opts.afterSelection ? sel.to : sel.from;
     if (opts.placedOnly) {
       // a fresh file's cursor sits before \documentclass; only a spot the user picked in the body will do
       const body = view.state.doc.toString().indexOf('\\begin{document}');
@@ -1228,7 +1228,7 @@ function Editor({ projectId }: { projectId: string }) {
       if (before && before !== '\n') insert = `\n${insert}`;
       if (!insert.endsWith('\n\n')) insert = insert.endsWith('\n') ? `${insert}\n` : `${insert}\n\n`;
     }
-    view.dispatch({ changes: { from, to: sel.to, insert }, selection: { anchor: from + insert.length }, scrollIntoView: true });
+    view.dispatch({ changes: { from, to: opts.at ? from : sel.to, insert }, selection: { anchor: from + insert.length }, scrollIntoView: true });
     if (opts.focus !== false) view.focus();
     return { from, insert };
   };

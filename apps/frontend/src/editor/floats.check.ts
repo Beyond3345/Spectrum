@@ -1,6 +1,6 @@
 // Self-check for the Floats panel's LaTeX and the preamble helper. Run:
 // npx esbuild apps/frontend/src/editor/floats.check.ts --bundle --platform=node --log-level=warning | node
-import { blockAt, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, imageOf, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableTitle, tableRules, tableTypst, typstMarkup, typstPlacement, uniqueName } from './floats';
+import { afterFloat, blockAt, markdownTableRows, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, graphicsOptions, panelWidth, fitMerges, headerRows, numberFormat, tableNotes, tablePackages, withMerge, diagramImageLatex, diagramLatex, escapeCell, figureKind, imageOf, figureLabel, figureLatex, figureMarkdown, figureTypst, figureTypstInclude, jpegOrientation, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLabel, tableLatex, tableMarkdown, tableTitle, tableRules, tableTypst, typstMarkup, typstPlacement, uniqueName } from './floats';
 import type { FigureSet, FigureSize, TableModel } from './floats';
 import { TYPST_SUBFIGURE, addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, loadedPackages, projectPackages } from './preamble';
 
@@ -224,6 +224,64 @@ eq(at('  |  text'), '    \\begin{x}\n        y\n    \\end{x}\n    text', 'inside
 eq(at('    Some text.|'), '    Some text.\n    \\begin{x}\n        y\n    \\end{x}', 'end of a line');
 eq(at('    one| two'), '    one\n    \\begin{x}\n        y\n    \\end{x}\n     two', 'middle of a line');
 eq(at('a |sel^ b'), 'a \n\\begin{x}\n    y\n\\end{x}\n b', 'replaces the selection');
+
+// a figure meant to follow the selection («…») goes after the float it sits in (@), never inside it
+const after = (text: string, kind: 'latex' | 'typst' | 'markdown') => {
+  const from = text.indexOf('«');
+  const to = text.indexOf('»') - 1;
+  const doc = text.replace('«', '').replace('»', '');
+  const spot = afterFloat(doc, from, to, kind);
+  return doc.slice(0, spot) + '@' + doc.slice(spot);
+};
+const TABLE = lines('\\begin{table}[t]', '  \\centering', '  «\\begin{tabular}{ll}', '  a & b \\\\', '  \\end{tabular}»', '  \\caption{Results.}', '  \\label{tab:r}', '\\end{table}', 'After.');
+eq(after(TABLE, 'latex'), lines('\\begin{table}[t]', '  \\centering', '  \\begin{tabular}{ll}', '  a & b \\\\', '  \\end{tabular}', '  \\caption{Results.}', '  \\label{tab:r}', '\\end{table}', '@After.'), 'a tabular in a table: after \\end{table}');
+for (const env of ['table*', 'sidewaystable', 'wraptable', 'figure']) {
+  const text = TABLE.replaceAll('{table}', `{${env}}`);
+  eq(after(text, 'latex').indexOf('@'), text.replace('«', '').replace('»', '').indexOf('After.'), `a tabular in ${env}`);
+}
+eq(
+  after(lines('\\begin{longtable}{ll}', '\\caption{Long.}\\\\', '«a & b» \\\\', '\\end{longtable}'), 'latex'),
+  lines('\\begin{longtable}{ll}', '\\caption{Long.}\\\\', 'a & b \\\\', '\\end{longtable}@'),
+  'a row of a longtable, at the end of the document: after it'
+);
+eq(
+  after(lines('\\begin{table}', '\\begin{subtable}{.5\\linewidth}', '«\\begin{tabular}{l}x\\end{tabular}»', '\\caption{A.}', '\\end{subtable}', '\\caption{Both.}', '\\end{table}', ''), 'latex'),
+  lines('\\begin{table}', '\\begin{subtable}{.5\\linewidth}', '\\begin{tabular}{l}x\\end{tabular}', '\\caption{A.}', '\\end{subtable}', '\\caption{Both.}', '\\end{table}', '@'),
+  'nested: after the outermost float'
+);
+eq(after('Text\n«\\begin{tabular}{l}x\\end{tabular}»\nMore', 'latex'), 'Text\n\\begin{tabular}{l}x\\end{tabular}@\nMore', 'a bare tabular: after the selection');
+eq(after(lines('\\begin{table}', '«\\begin{tabular}{l}x\\end{tabular}»', '% \\end{table}', '\\caption{C.}', '\\end{table}', 'x'), 'latex').endsWith('\\end{table}\n@x'), true, 'a commented-out \\end{table} isn’t the end');
+const TWO = lines('\\begin{table}', '«x»', '\\end{table}', 'Between.', '\\begin{table}', 'y', '\\end{table}', 'End.');
+eq(after(TWO, 'latex').includes('\\end{table}\n@Between.'), true, 'the first of two tables');
+eq(after(TWO.replace('«x»', 'x').replace('\ny\n', '\n«y»\n'), 'latex').includes('\\end{table}\n@End.'), true, 'the second of two tables');
+eq(after('«\\begin{table}\nx\n\\end{table}»\nNext', 'latex'), '\\begin{table}\nx\n\\end{table}\n@Next', 'the whole table selected');
+// Typst: a #figure holding a table, with its label; the content-block form; a table on its own
+eq(
+  after(lines('#figure(', '  «table(columns: 2, [a], [b])»,', '  caption: [Results],', ') <tab:r>', 'After.'), 'typst'),
+  lines('#figure(', '  table(columns: 2, [a], [b]),', '  caption: [Results],', ') <tab:r>', '@After.'),
+  'Typst: after the figure and its label'
+);
+eq(after(lines('#figure(caption: [T])[«#table(columns: 1, [a])»] <tab:y>', 'Next'), 'typst'), lines('#figure(caption: [T])[#table(columns: 1, [a])] <tab:y>', '@Next'), 'Typst: a trailing content block');
+eq(after(lines('«#table(columns: 1, [a])»', 'Next'), 'typst'), lines('#table(columns: 1, [a])@', 'Next'), 'Typst: a table on its own');
+// Markdown: a pipe table with its caption line after a blank line, right under it, or none
+const PIPE = lines('| A | B |', '|---|---|', '| 1 | 2 |');
+eq(after(lines('Intro.', '', '«| A | B |»', '|---|---|', '| 1 | 2 |', '', 'Table: Results. {#tbl:r}', '', 'After.'), 'markdown'), lines('Intro.', '', PIPE, '', 'Table: Results. {#tbl:r}', '@', 'After.'), 'Markdown: after the caption line');
+eq(after(lines('| A | B |', '|---|---|', '«| 1 | 2 |', '»: Results.', 'continued', '', 'After.'), 'markdown'), lines(PIPE, ': Results.', 'continued', '@', 'After.'), 'Markdown: a selection of whole lines, and a ": " caption over two lines');
+eq(after(lines('«| A | B |', '|---|---|', '| 1 | 2 |»', '', 'After.'), 'markdown'), lines(PIPE, '@', 'After.'), 'Markdown: no caption');
+eq(after('a «|» b\nc', 'markdown'), 'a |@ b\nc', 'Markdown: a pipe that is no table');
+eq(markdownTableRows(lines('| A | B |', '|:--|--:|', '| 1 | x\\|y |')), [['A', 'B'], ['1', 'x\\|y']], 'Markdown table rows');
+eq(markdownTableRows('a | b'), null, 'no divider, no table');
+// the owner's case end to end: graphicx added (as the other inserts add it), then the chart's figure after the table
+{
+  const doc = lines('\\documentclass{article}', '\\usepackage{booktabs}', '\\begin{document}', TABLE.replace('«', '').replace('»', ''), '\\end{document}');
+  const packed = addPackages(doc, ['graphicx']).source;
+  const from = packed.indexOf('\\begin{tabular}');
+  const spot = afterFloat(packed, from, packed.indexOf('\\end{tabular}') + '\\end{tabular}'.length, 'latex');
+  const done = packed.slice(0, spot) + '\\begin{figure}[t]\n\\includegraphics{plot.png}\n\\end{figure}\n' + packed.slice(spot);
+  eq(loadedPackages(done).has('graphicx'), true, 'graphicx loaded');
+  const order = ['\\end{tabular}', '\\caption{Results.}', '\\end{table}', '\\begin{figure}', '\\end{figure}', 'After.'].map((t) => done.indexOf(t));
+  eq(order.every((n, i) => n > 0 && (i === 0 || n > order[i - 1])), true, 'table, its caption and end, then the figure');
+}
 
 // ─── packages ───
 

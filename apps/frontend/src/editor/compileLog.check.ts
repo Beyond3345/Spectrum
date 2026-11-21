@@ -1,7 +1,7 @@
-// Self-check for the log parser: `node apps/frontend/src/editor/compileLog.check.ts` (Node ≥ 23 strips the types).
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// Self-check for the log parser, run from the repository root: `node apps/frontend/src/editor/compileLog.check.ts` (Node ≥ 23 strips the types).
+// the frontend has no Node types
+// @ts-expect-error
+import { readdirSync, readFileSync } from 'node:fs';
 import { EditorState, Text } from '@codemirror/state';
 import { parseCompileLog, projectFile } from './compileLog.ts';
 import { compileLint, compileMarks, compileMarksField, setCompileMarks } from './compileMarks.ts';
@@ -220,12 +220,11 @@ const FAILURES = [
   'Biber failed.', // compileService
   'Biber could not run' // compileService
 ];
-const backend = [fileURLToPath(new URL('../../../backend/src', import.meta.url)), resolve('apps/backend/src')].find((dir) => existsSync(join(dir, 'services')));
-if (!backend) throw new Error('run this from the repository, where apps/backend/src is');
+// (run from the repository root, as the other checks that read files are)
 let audited = 0;
-for (const file of readdirSync(backend, { recursive: true }) as string[]) {
+for (const file of readdirSync('apps/backend/src', { recursive: true }) as string[]) {
   if (!file.endsWith('.js')) continue;
-  for (const [, text] of readFileSync(join(backend, file), 'utf8').matchAll(/['`](?:\\n)*\[spectrum\] ([^\n'`]*)/g)) {
+  for (const [, text] of (readFileSync(`apps/backend/src/${file}`, 'utf8') as string).matchAll(/['`](?:\\n)*\[spectrum\] ([^\n'`]*)/g)) {
     audited += 1;
     if (!FAILURES.some((failure) => text.startsWith(failure))) throw new Error(`${file}: “[spectrum] ${text}” is listed as an error. Information or progress is “[spectrum note] ”; a real failure goes in FAILURES`);
   }
