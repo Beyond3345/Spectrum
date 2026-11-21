@@ -9,7 +9,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - `AGENTS.md` reaches the Spectrum agent only as you approved it on this computer. A file that came with a project, or was changed by a pull, a sync, an agent in the folder or an agent's change you applied, is not used until you have read it and chosen Use it
 - A local agent stops when Spectrum is force-quit or crashes, and leaves nothing running when it exits
 - An Isolated session of a local agent leaves out an `AGENTS.md` you have not approved, and says so with the way to approve it. Once approved, it reaches the agent with its next task, and a file changed by a pull leaves the copy again. `AGENTS.md` files in folders, `AGENTS.override.md` and `AGENTS.local.md` are always left out, and what an agent writes by those names meanwhile is never offered for review
-- A Direct session says when the agent can read an `AGENTS.md` you have not approved
+- An Isolated session also leaves out every other instruction file you have not allowed: `CLAUDE.md`, `GEMINI.md`, the files of Copilot, Cursor, Hermes, Qoder, Pi and Kimi, and the `.agents` folder, in any folder. A card on the Local agents tab lists them before the first task, each with the agents that read it: open one to read it, then Allow for this project or Leave out. Leaving them out needs no click, and a file changed by a pull is left out and asked about again
+- A Direct session says which instruction files you have not allowed the agent can read in your folder
 - The Spectrum agent compiles on a copy of the project, confined like every compile and never trusted. Nothing in the project changes until you apply a change
 - Review's PDF before and after is compiled on copies, in the agents' isolation
 - Agent Client Protocol SDK 2.8.0, Codex adapter 2.7.0 and Claude Agent adapter 0.108.1
