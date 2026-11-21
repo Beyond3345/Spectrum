@@ -1,7 +1,7 @@
 // Self-check for the local agent transcript. Run:
 // npx esbuild apps/frontend/src/editor/agent/transcript.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/transcript.cjs && node <scratch>/transcript.cjs
 import type { AgentEvent } from '../../api/client';
-import { addEvent, addRunEvent, askAnswer, askRequest, closeChanges, metaOf, openChanges, planOf, planPrompt, project, resumeNote, retryLine, runView, stepCall, storedChanges, threadItems } from './transcript';
+import { addEvent, addRunEvent, askAnswer, askRequest, closeChanges, metaOf, openChanges, planOf, planPrompt, project, resumeNote, retryLine, runView, stepCall, storedChanges, threadItems, turnReply } from './transcript';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -359,4 +359,29 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
 
 console.log('transcript: all checks passed');
   });
+}
+
+// Stop part-way through the answer: the words streamed before it stay, live and then in the thread (and so in the
+// history a later run is given), marked as stopped; the changes made before it stay open
+{
+  let k = 0;
+  const e = (type: string, data: unknown): AgentEvent => ({ id: ++k, type, data, at: at(k) });
+  const edit = { tool: 'edit_file', about: 'main.tex', ok: true, ms: 2 };
+  const result = { turn: 1, ok: false, reply: 'Here is half an answ', incomplete: 'stopped' as const, patches: [], steps: [edit] };
+  const live = runView([e('state', { status: 'running', turn: 1 }), e('step', { id: 's0-0', ...edit, status: 'done' }), e('text', { text: 'Here is ' }), e('text', { text: 'half an answ' }), e('state', { status: 'stopping', turn: 1 }), e('result', result), e('state', { status: 'stopped', turn: 1, incomplete: 'stopped' })].reduce(addRunEvent, [] as AgentEvent[]));
+  const shown = (items: ReturnType<typeof threadItems>) => items.map((i) => [i.type, 'text' in i ? i.text : i.type === 'tool' ? i.call.title : '', i.type === 'notice' ? i.error : null]);
+  eq(shown(live.items), [['tool', 'Edit “main.tex”', null], ['assistant', 'Here is half an answ', null]], 'the words stay on the page while it stops');
+  const kept = turnReply(result, true);
+  eq(kept, { text: 'Here is half an answ', error: false }, 'the reply is the words, and no failure');
+  const changes = storedChanges([{ filePath: 'main.tex', original: 'a', proposed: 'b' }]);
+  const thread = [{ role: 'user' as const, content: 'Go', createdAt: '' }, { role: 'assistant' as const, content: kept.text, createdAt: '', meta: { steps: [edit], resume: 'stopped' as const, changes } }];
+  eq(shown(threadItems(thread)), [['user', 'Go', null], ['tool', 'Edit “main.tex”', null], ['assistant', 'Here is half an answ', null]], 'kept in the thread, the line with Continue under it');
+  eq(shown(threadItems([...thread, { role: 'user', content: 'Go on', createdAt: '' }])).slice(2), [['assistant', 'Here is half an answ', null], ['notice', 'You stopped the agent here.', false], ['user', 'Go on', null]], 'marked as stopped once the thread goes on');
+  void openChanges({ id: 's', title: '', createdAt: '', updatedAt: '', mode: 'assistant', messages: thread }, async () => 'a').then((open) => eq(open.map((c) => c.filePath), ['main.tex'], 'the change made before Stop stays in the tray'));
+  // stopped before a word: a plain line, not a failure, and nothing for the history
+  const none = turnReply({ ok: false, reply: '', incomplete: 'stopped' }, false);
+  eq(none, { text: 'Stopped before the agent finished.', error: true }, 'no words');
+  eq(shown(threadItems([{ role: 'assistant', content: none.text, createdAt: '', meta: { error: true, resume: 'stopped' } }])), [['notice', 'Stopped before the agent finished.', false]], 'shown as no failure');
+  eq(turnReply({ ok: false, reply: 'Overloaded.', incomplete: 'failed' }, false), { text: 'Request failed: Overloaded.', error: true }, 'a failure is one');
+  eq(turnReply({ ok: true, reply: '' }, true).text, 'The changes are ready to review.', 'a finished turn with nothing to say');
 }

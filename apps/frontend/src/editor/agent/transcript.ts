@@ -223,6 +223,17 @@ export const RESUME_HINT: Record<Incomplete, string> = {
 };
 
 /**
+ * A turn's outcome as the thread keeps its reply: the words, and whether it is shown as a failure (and kept out of the
+ * history the model is given). A stopped turn's reply is the words it had said before Stop, kept as its answer and
+ * marked as stopped; with none, a line says it stopped.
+ */
+export function turnReply(res: Pick<AgentRunResult, 'ok' | 'reply' | 'incomplete'>, changed: boolean) {
+  if (res.incomplete === 'stopped') return res.reply?.trim() ? { text: res.reply, error: false } : { text: 'Stopped before the agent finished.', error: true };
+  if (res.ok) return { text: res.reply || (changed ? 'The changes are ready to review.' : 'No changes were suggested.'), error: false };
+  return { text: `Request failed: ${res.reply || 'The AI request failed.'}`, error: true };
+}
+
+/**
  * What the next run is told of one that ended before its answer, so it goes on from there and does not start again:
  * why it ended, the steps it had finished and that its changes are still open. '' after a finished run.
  */
@@ -400,10 +411,14 @@ export function threadItems(messages: ChatThread['messages']): Item[] {
     return [
       ...steps.flatMap((step, j): Item[] => [...said(j), ...(quiet(step) ? [] : [{ type: 'tool' as const, key: `s${i}-${j}`, call: stepCall(step, `${i}-${j}`) }])]),
       ...said(steps.length),
-      m.role === 'user' ? { type: 'user', key: `u${i}`, text: m.content, ...(meta.pictures?.length && { pictures: meta.pictures }) } : meta.error ? { type: 'notice', key: `n${i}`, text: m.content, error: true }
+      // a turn the user stopped is no failure
+      m.role === 'user' ? { type: 'user', key: `u${i}`, text: m.content, ...(meta.pictures?.length && { pictures: meta.pictures }) } : meta.error ? { type: 'notice', key: `n${i}`, text: m.content, error: meta.resume !== 'stopped' }
         : ask?.kind === 'plan' ? { type: 'plan', key: `p${i}`, steps: ask.steps }
           : ask ? { type: 'request', key: `q${i}`, request: askRequest(ask, `q${i}`), answered: false }
             : { type: 'assistant', key: `a${i}`, text: m.content },
+      // the words a stopped turn had said, marked as cut short there once the thread goes on (as its last word, the
+      // line with Continue under it says so)
+      ...(m.role === 'assistant' && meta.resume === 'stopped' && !meta.error && i < messages.length - 1 ? [{ type: 'notice' as const, key: `x${i}`, text: 'You stopped the agent here.', error: false }] : []),
       ...(meta.todos || []).map((todo, j): Item => ({ type: 'todo', key: `t${i}-${j}`, todo })),
       ...(meta.instructions || []).map((text, j): Item => ({ type: 'instruction', key: `i${i}-${j}`, text })),
       ...(meta.checkpoints || []).map((checkpoint): Item => ({ type: 'checkpoint', key: `c${i}-${checkpoint.id}`, checkpoint }))

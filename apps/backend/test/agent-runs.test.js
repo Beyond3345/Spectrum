@@ -273,6 +273,10 @@ test('Stop ends the model call at once and keeps what was done; Continue goes on
   assert.equal(result.ok, false);
   assert.equal(result.incomplete, 'stopped');
   assert.deepEqual(result.patches.map((x) => x.content), ['1\ntwo\n'], 'the change it had prepared is kept');
+  // the words it had streamed before Stop are its reply, as the page showed them
+  const streamed = of(events, 'text').map((t) => t.text).join('');
+  assert.match(result.reply, /^A /);
+  assert.equal(result.reply, streamed);
   const sent = requests.length;
   await sleep(300);
   assert.equal(requests.length, sent, 'no model call after Stop');
@@ -289,9 +293,47 @@ test('Stop ends the model call at once and keeps what was done; Continue goes on
   const messages = requests.at(-1).payload.messages;
   assert.equal(messages.filter((m) => m.role === 'tool').length, 1, 'the step it had finished is in the conversation, not retold');
   assert.equal(messages.at(-1).content, 'Continue from where you stopped.');
+  // and so are the words it had said before Stop, so it knows what it had already said
+  assert.deepEqual([messages.at(-2).role, messages.at(-2).content], ['assistant', result.reply]);
   assert.doesNotMatch(JSON.stringify(messages), /Earlier run/);
   // a run that is no longer kept says so, for the page to send the request again
   assert.equal((await post('/api/agent/runs/00000000-0000-4000-8000-000000000000/continue', {})).status, 404);
+});
+
+test('Stop part-way through an answer with no tool step keeps the words, for the thread and the next turn', async () => {
+  const p = await createProject({ name: 'Stop prose' });
+  await write(path.join(p.path, 'main.tex'), 'one\n');
+  scripts.prose = (payload) => (payload.messages.at(-1).content.includes('And now?') ? { say: 'Going on.' } : { say: 'Here is the start of a long answer, word by word, '.repeat(100), pace: 15 });
+  const { json } = await post('/api/agent/runs', turn(p, 'prose'));
+  let pieces = 0;
+  const events = await hear(json.run.id, {
+    onEvent: async (e) => {
+      if (e.type === 'text' && ++pieces === 12) await post(`/api/agent/runs/${json.run.id}/stop`);
+    }
+  });
+  const [result] = of(events, 'result');
+  assert.equal(result.incomplete, 'stopped');
+  assert.deepEqual(result.steps, []);
+  assert.match(result.reply, /^Here is the start of a long answer/);
+  assert.equal(result.reply, of(events, 'text').map((t) => t.text).join(''));
+  assert.ok(result.reply.length < 2000, 'cut short, not the whole answer');
+  // a new request (not Continue) on the same run: the stopped words are the assistant's turn before it
+  requests.length = 0;
+  const next = await post('/api/agent/runs', turn(p, 'prose', { prompt: 'And now?' }));
+  assert.equal(next.status, 200, next.json.error);
+  const more = await hear(json.run.id, { after: events.at(-1).id });
+  assert.equal(of(more, 'result')[0].reply, 'Going on.');
+  const messages = requests.at(-1).payload.messages;
+  assert.deepEqual(messages.slice(-2).map((m) => m.role), ['assistant', 'user']);
+  assert.equal(messages.at(-2).content, result.reply);
+  // stopped before a word: no empty message for the provider to refuse, and an empty reply
+  scripts.mute = [{ say: 'never heard', wait: 2000 }];
+  const quiet = await createProject({ name: 'Stop before words' });
+  const started = await post('/api/agent/runs', turn(quiet, 'mute'));
+  setTimeout(() => void post(`/api/agent/runs/${started.json.run.id}/stop`), 200);
+  const silent = of(await hear(started.json.run.id), 'result')[0];
+  assert.deepEqual([silent.incomplete, silent.reply], ['stopped', '']);
+  assert.ok(getRun(started.json.run.id).conversation.messages.every((m) => m.content !== ''));
 });
 
 test('Stop ends a compile that is running, and every call of the step still gets an answer', { skip: !(await findExecutable('pdflatex')) && 'Needs TeX.' }, async () => {
