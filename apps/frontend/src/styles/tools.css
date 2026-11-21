@@ -3114,6 +3114,84 @@ textarea.table-latex {
   margin-bottom: 10px;
 }
 
+/* a local agent's project instruction files the user hasn't allowed (InstructionFiles.tsx) */
+.agent-instr {
+  flex: none;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  font-size: 12px;
+}
+
+.agent-instr summary {
+  cursor: default;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.agent-instr .field-hint {
+  margin: 6px 0;
+}
+
+.agent-instr-list {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-instr-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+
+.agent-instr-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.agent-instr-path {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.agent-instr-path:hover {
+  text-decoration: underline;
+}
+
+.agent-instr-by {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+
+.agent-instr-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.agent-instr-all {
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
 /* the Spectrum agent's plan, waiting for approval: steps to untick, or to edit as text */
 
 .agent-plan-card > .row:first-child strong {

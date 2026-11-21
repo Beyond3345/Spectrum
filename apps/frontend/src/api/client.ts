@@ -1418,6 +1418,16 @@ export type AgentInstructions = { exists: boolean; approved: boolean; hash?: str
 export const getAgentInstructions = (projectId: string) => request<{ ok: boolean } & AgentInstructions>(`/api/projects/${projectId}/agent-instructions`);
 /** Approves the file as it was shown (its hash). 409 when it changed since. */
 export const approveAgentInstructions = (projectId: string, hash: string) => request<{ ok: boolean } & AgentInstructions>(`/api/projects/${projectId}/agent-instructions/approve`, json('POST', { hash }));
+/**
+ * A file of the project that local agents read as instructions (agentInstructions.js): the agents that read it (ids;
+ * 'spectrum' for the top AGENTS.md), and whether the user allowed it into an Isolated copy as it now is, left it out,
+ * or hasn't chosen
+ */
+export type InstructionFile = { path: string; hash: string; readBy: string[]; state: 'allowed' | 'left' | 'ask' };
+export const getInstructionFiles = (projectId: string) => request<{ ok: boolean; files: InstructionFile[] }>(`/api/projects/${projectId}/agent-instruction-files`);
+/** Allows files into a local agent's Isolated copy, or leaves them out, as they were shown (hash). 409 when one changed since. */
+export const chooseInstructionFiles = (projectId: string, choice: 'allow' | 'leave', files: InstructionFile[]) =>
+  request<{ ok: boolean; files: InstructionFile[] }>(`/api/projects/${projectId}/agent-instruction-files`, json('POST', { choice, files: files.map(({ path, hash }) => ({ path, hash })) }));
 /** What the Spectrum agent remembers for the project, kept by Spectrum on this computer; each call answers with the lines as they are now */
 export type AgentMemory = { lines: { id: string; text: string }[]; max: { lines: number; chars: number } };
 const memoryUrl = (projectId: string, line?: string) => `/api/projects/${projectId}/agent-memory${line ? `/${encodeURIComponent(line)}` : ''}`;
