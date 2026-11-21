@@ -668,6 +668,8 @@ function Editor({ projectId }: { projectId: string }) {
   }, [compileDiagnostics, compileLog, compileFailure, project?.path, items, compiledDoc]);
   const compileErrorsRef = useRef(compileErrors);
   compileErrorsRef.current = compileErrors;
+  const boxMarksRef = useRef(settings.underlineBoxWarnings);
+  boxMarksRef.current = settings.underlineBoxWarnings;
   const fileSet = useMemo(() => new Set(items.filter((i) => i.type === 'file').map((i) => i.path)), [items]);
   // the files to-dos are looked for in, never a sync app's conflict copy
   const todoSources = useMemo(
@@ -863,7 +865,7 @@ function Editor({ projectId }: { projectId: string }) {
   const markCompileErrors = () => {
     const view = viewRef.current;
     if (!view) return;
-    view.dispatch({ effects: setCompileMarks.of(compileMarks(compileErrorsRef.current, activeRef.current, view.state.doc)) });
+    view.dispatch({ effects: setCompileMarks.of(compileMarks(compileErrorsRef.current, activeRef.current, view.state.doc, boxMarksRef.current)) });
   };
 
   /** TexLab's (Tinymist's in a .typ file) squiggles, hovers and jumps for the open file, when it's answering. */
@@ -2897,7 +2899,7 @@ function Editor({ projectId }: { projectId: string }) {
   }, [projectId, tinymistInstalled]);
 
   useEffect(() => attachTexlab(), [texlabOn, tinymistOn]);
-  useEffect(() => markCompileErrors(), [compileErrors]);
+  useEffect(() => markCompileErrors(), [compileErrors, settings.underlineBoxWarnings]);
 
   // TexLab's outline of the document being edited, a moment after typing stops, a file changes, a compile ends or
   // TexLab starts. A compile's numbers reach TexLab two seconds after it ends (the backend's auxKept), so no outline
