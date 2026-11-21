@@ -23,6 +23,16 @@ export const isEditChat = (messages: ChatMessage[]) =>
   });
 
 /**
+ * What the Assistant says under an answer. A rewrite (Polish, Rewrite, Restructure, Translate) speaks only when the
+ * model has something the user must know: with no reply its changes stand alone, with no chat message ('').
+ */
+export function assistantSaid(res: { ok: boolean; reply?: string }, chat: boolean, changed: boolean) {
+  if (!res.ok) return `The request failed part-way: ${res.reply} The changes made before it are ready to review.`;
+  if (res.reply?.trim()) return res.reply;
+  return chat ? 'No reply.' : changed ? '' : 'No changes were suggested.';
+}
+
+/**
  * The open chat of the bottom card or the Spectrum agent: shown, added to and saved in order, so a reply that lands
  * after the user switched chats still goes in its own chat. fresh: a new chat's own fields (its mode, its marker).
  */

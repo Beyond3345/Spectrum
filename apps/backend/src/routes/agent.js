@@ -6,6 +6,7 @@ import { approveInstructions, chooseInstructionFiles, instructionFiles, instruct
 import { MAX_MEMORY_CHARS, MAX_MEMORY_LINES, addMemory, deleteMemory, editMemory, memoryLines } from '../services/agentMemory.js';
 import { docLanguage, hasDocument } from '../utils/docLanguage.js';
 import { DATA_RULE, untrusted } from '../utils/outsideText.js';
+import { extractJSON } from '../utils/jsonUtils.js';
 
 /** Says so when a rewrite stopped at the output limit: half a rewrite is never offered as the change. */
 const CUT_OFF = 'The answer was cut off by the model’s output limit before it finished. Try a smaller selection, or a lower effort.';
@@ -187,8 +188,10 @@ export function registerAgentRoutes(fastify) {
       : [[
           `You are a ${language.name} writing assistant for academic papers.`,
           languageLine(language),
-          'Return a concise response and a suggested rewrite for the selection or full content.',
+          'Return a suggested rewrite of the selection or full content.',
           'Output in JSON with keys: reply, suggestion. suggestion is the rewritten text alone, never its marker.',
+          // the rewrite speaks for itself: the page shows a reply as a chat message, and none at all when it is empty
+          'reply is a chat message to the user: leave it empty ("") unless there is something they must know, such as a part you could not do, or their instructions ask for one. Never use it to explain or sum up the rewrite.',
           DATA_RULE
         ].join(' '), extra, await projectNotes(root)].filter(Boolean).join('\n\n');
 
@@ -228,13 +231,12 @@ export function registerAgentRoutes(fastify) {
     if (result.truncated) return { ok: false, reply: CUT_OFF, suggestion: '', incomplete: 'cut' };
     let reply = '';
     let suggestion = '';
-    try {
-      const parsed = JSON.parse(result.content);
-      reply = parsed.reply || '';
-      suggestion = parsed.suggestion || '';
-    } catch {
-      reply = result.content;
-    }
+    // the JSON asked for, also inside a code fence or after a sentence the model put before it, which is not shown
+    const parsed = extractJSON(result.content);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && ('reply' in parsed || 'suggestion' in parsed)) {
+      reply = typeof parsed.reply === 'string' ? parsed.reply.trim() : '';
+      suggestion = typeof parsed.suggestion === 'string' ? parsed.suggestion : '';
+    } else reply = result.content;
 
     return { ok: true, reply, suggestion };
   });

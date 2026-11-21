@@ -11,7 +11,7 @@ import type { PendingChange } from './EditorContext';
 import { Markdown, VISION_HINTS, VISION_MODES, bibIncludeLine, citationText, docKind, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
 import { ZOTERO_CITE } from './zotero';
 import type { VisionMode } from './shared';
-import { chatMessage, isEditChat, useChatThread } from './chatThread';
+import { assistantSaid, chatMessage, isEditChat, useChatThread } from './chatThread';
 import { resolveInstructions } from './personas';
 import { PersonaPicker } from './agent/parts';
 import { INSTRUCTIONS_FILE } from './agent/instructions';
@@ -307,8 +307,7 @@ export default function Composer({
         changes = [{ filePath: activePath, original: editorValue, proposed, source }];
       }
       changes = changes.filter((c) => c.original !== c.proposed);
-      const fallback = chat ? 'No reply.' : changes.length ? 'Suggested changes are ready to review.' : 'No changes were suggested.';
-      const said = res.ok ? res.reply || fallback : `The request failed part-way: ${res.reply} The changes made before it are ready to review.`;
+      const said = assistantSaid(res, chat, changes.length > 0);
       const meta: MessageMeta = {
         ...(changes.length && { changes: changes.map(({ filePath, proposed }) => ({ filePath, proposed })), quick: true }),
         ...(!res.ok && { error: true }),
@@ -520,7 +519,7 @@ export default function Composer({
             const meta = metaOf(m);
             return (
               <div key={i} className={`composer-msg ${m.role} ${meta.error ? 'error' : ''}`}>
-                {m.role === 'user' ? <div className="composer-bubble">{m.content}</div> : <Markdown>{m.content}</Markdown>}
+                {m.role === 'user' ? <div className="composer-bubble">{m.content}</div> : m.content && <Markdown>{m.content}</Markdown>}
                 {meta.references && renderReferences(meta.references, i)}
                 {meta.latex && (
                   <button className="btn small" onClick={() => api.insertAtCursor(meta.latex!, { block: true })}>

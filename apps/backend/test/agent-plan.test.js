@@ -454,6 +454,37 @@ test('every Assistant request is given the approved AGENTS.md and the remembered
   assert.doesNotMatch(auto, /project-instructions|project-memory|Australian|qty/);
 });
 
+test('a rewrite says nothing in the chat unless there is something the user must know: an empty reply stays empty, and no sentence around the JSON is shown', async () => {
+  const p = await createProject({ name: 'Quiet rewrite' });
+  await write(path.join(p.path, 'main.tex'), '\\documentclass{article}\n\\begin{document}\nThe widget color is red and it work well.\n\\end{document}\n');
+  await call('PUT', `/api/projects/${p.id}/file`, { path: 'AGENTS.md', content: 'Return only the transformed passage, with no explanation.\nWord rule: widget → device.\n' });
+  const fixed = 'The device colour is red and it works well.';
+  let answer;
+  scripts.quiet = () => ({ say: answer });
+  const polish = async () => {
+    requests.length = 0;
+    const res = await post('/api/agent/run', { projectId: p.id, activePath: 'main.tex', task: 'polish', prompt: '', selection: 'The widget color is red and it work well.', content: '', mode: 'direct', interaction: 'agent', llmConfig: { endpoint: base, apiKey: 'test', model: 'quiet' }, history: [] });
+    assert.equal(res.status, 200, res.json.error);
+    return res.json;
+  };
+  // the instructions make silence the default, the user's own word on a reply kept
+  answer = JSON.stringify({ reply: '', suggestion: fixed });
+  assert.deepEqual(await polish(), { ok: true, reply: '', suggestion: fixed });
+  const system = requests[0].messages[0].content;
+  assert.match(system, /reply is a chat message to the user: leave it empty \(""\) unless there is something they must know, such as a part you could not do, or their instructions ask for one\. Never use it to explain or sum up the rewrite\./);
+  assert.doesNotMatch(system, /concise response/);
+  assert.match(system, /Return only the transformed passage, with no explanation\./);
+  // something the user must know is said
+  answer = JSON.stringify({ reply: 'The second clause was left as it is: it may be a quotation.', suggestion: fixed });
+  assert.deepEqual(await polish(), { ok: true, reply: 'The second clause was left as it is: it may be a quotation.', suggestion: fixed });
+  // a model that wraps the JSON in a fence, or talks before it: the rewrite is found, and the talk is not a reply
+  answer = `Here is the polished passage, with widget changed to device:\n\`\`\`json\n${JSON.stringify({ reply: ' ', suggestion: fixed })}\n\`\`\``;
+  assert.deepEqual(await polish(), { ok: true, reply: '', suggestion: fixed });
+  // no JSON at all: the answer is shown as it is, as before
+  answer = 'I cannot polish this.';
+  assert.deepEqual(await polish(), { ok: true, reply: 'I cannot polish this.', suggestion: '' });
+});
+
 test('the run folders a crash left in the cache are removed at the start, and nothing else of the cache is', async () => {
   const cache = path.join(tmp, 'data', 'cache', 'some-project');
   await write(path.join(cache, 'agent-run', 'old-run', 'work', 'main.tex'), 'a copy\n');
