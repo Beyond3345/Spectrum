@@ -21,7 +21,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 ### Added
 
 - The Spectrum agent shows its work as it happens: each step as a card with its time, and the answer as it is written
-- Stop stops the Spectrum agent at once, the model call and the compile included, and keeps what it had done
+- Stop stops the Spectrum agent at once, the model call and the compile included, and keeps what it had done: the changes it had prepared and the words it had written, which stay in the thread, marked as stopped, and are given to it with the next message or Continue
 - A message sent while the Spectrum agent works waits above the message box, and Steer now hands it over between two steps. Waiting messages are kept when the page reloads
 - Continue goes on in the same run, with everything the agent had read and done, for an hour after its last answer
 - The Spectrum agent can compile its changes and read the errors at their lines, in LaTeX, Typst and Markdown, and fixes what it broke, three tries at most
@@ -103,6 +103,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 ### Changed
 
 - Fix with AI compiles its fix before you review it and says “Builds.” or where it still fails
+- Polish, Rewrite, Restructure and Translate come back as the change alone, with a message only when there is something you must know. A rewrite whose answer comes wrapped in a code fence, or after a sentence, is still offered as a change
 - On Windows the agent's compile and Preview PDF run Biber, the index tools, latexmk and Tectonic as your own compile does, so a biblatex draft shows its citations
 - A later message in a Spectrum agent thread keeps what the agent read earlier, so it does not read the same files again
 - Requests to Claude and OpenAI models ask for prompt caching, and the Spectrum agent's instructions are about 2 KB shorter
