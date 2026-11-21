@@ -1,6 +1,6 @@
-# Windows test, build and release of Spectrum 2.0.0
+# Windows test, build and release of Spectrum 2.6.0
 
-Written 29 October 2026 for an AI agent working on the user's Windows computer. It is self-contained: read it to the end before running anything. The Mac version was tested by the user and released on 29 October 2026 as `v2.0.0`; nothing in this file has yet run on Windows. Windows CI was deliberately not run for the last changes, so this computer is the first to build and test them.
+Written 29 October 2026 for Spectrum 2.0.0 and revised on 21 November 2026 for Spectrum 2.6.0, for an AI agent working on the user's Windows computer. It is self-contained: read it to the end before running anything. The Mac version of 2.6.0 was tested by the user and released on 21 November 2026 as `v2.6.0`. Nothing new in 2.6.0 has run on Windows, and Windows CI was deliberately not run, so this computer is the first to build and test it. 2.6.0 is a large release: it carries the work once planned as 2.5.2, 2.6 and 2.7 (see `CHANGELOG.md`, sections 2.6.0 and 2.5.2), so allow more time than for an earlier version.
 
 ## The ground rules
 
@@ -39,12 +39,12 @@ Then:
 ```
 git clone https://github.com/Beyond3345/Spectrum.git
 cd Spectrum
-git switch --detach v2.0.0
+git switch --detach v2.6.0
 git log --oneline -1
 npm ci
 ```
 
-Tell the user which commit `git log` shows: the `v2.0.0` tag, the code the Mac release was built from.
+Tell the user which commit `git log` shows: the `v2.6.0` tag, the code the Mac release was built from.
 
 ## 2. Build the installer
 
@@ -59,7 +59,7 @@ node scripts/desktop.mjs build
   - Any other error is real.
 - **`desktop.mjs texlab`** builds TexLab 5.26.0 from its tagged source with the C runtime linked in. It takes a while and is cached in `%LOCALAPPDATA%\spectrum-build`.
 - **`desktop.mjs build`** fetches the pinned Node, Tectonic, Typst and pandoc downloads (each checked against its SHA-256 in the repository), builds the frontend, the backend bundle and the agent worker, then runs the Tauri build.
-  - The installer appears at `src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.0.0_x64-setup.exe`.
+  - The installer appears at `src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.6.0_x64-setup.exe`.
   - Record its size and its SHA-256 (`Get-FileHash -Algorithm SHA256`).
 
 If a download fails its checksum, stop and report it: never change a pinned checksum to make a build pass.
@@ -94,22 +94,24 @@ Then run each check below and record its counts (tests, passed, failed, skipped)
 
 | Check | Command |
 | --- | --- |
-| Backend suite | `npm test` (about 580 tests; allow 30 minutes) |
-| Native agent tests | `cd apps\backend; $env:SPECTRUM_NATIVE_AGENT_TESTS = '1'; node --test test/agent-windows.test.js test/agent-preview.test.js test/mcp-tools.test.js test/agent-sandbox.test.js test/agent-profiles.test.js; cd ..\..` |
+| Backend suite | `npm test` (about 960 tests, of which about 110 are skipped on a Mac and a different set on Windows; allow 45 minutes). Do NOT set `SPECTRUM_NATIVE_AGENT_TESTS` for this run, and never run `test/agent-opencode.test.js` with it set: that file starts a real OpenCode |
+| Native agent tests | `cd apps\backend; $env:SPECTRUM_NATIVE_AGENT_TESTS = '1'; node --test test/agent-windows.test.js test/agent-preview.test.js test/mcp-tools.test.js test/agent-sandbox.test.js test/agent-profiles.test.js test/agent-network.test.js test/mcp-servers.test.js test/mcp-servers-local.test.js test/keys.test.js; cd ..\..` |
 | Spelling and grammar engines | `npm run checkers:verify` |
 | Typecheck | `npm run typecheck` |
 | Frontend checks | every `apps\frontend\src\**\*.check.ts`, as in `.github\workflows\windows.yml`'s "Frontend checks" step |
+| Windows agent probes | The two tests marked `todo` in `test/agent-windows.test.js` (probe A and probe B) are expected to be reported as todo, not as failures. Copy their full output into the report: it decides whether the Node adapters and Spectrum's tools server can run inside Windows isolation (see `docs/WINDOWS_AGENT_CHECKS.md`) |
 | Native shell tests | `cd src-tauri; $env:TAURI_CONFIG = '{"bundle":{"externalBin":[],"resources":null}}'; cargo test; Remove-Item Env:TAURI_CONFIG; cd ..` |
 
 **What a failure means:**
 
 - **Compiles:** a backend test that compiles LaTeX and fails with "No PDF was produced" under MiKTeX is usually a package MiKTeX did not install in time. Install the missing package with MiKTeX's console and run that test file again on its own (`node --test test/<file>.test.js` inside `apps\backend`). Report both results.
 - **Timings:** a test that times out while the computer is busy is run again on its own before it is reported as a failure.
+- **Biber:** a test that runs Biber directly and ends with no `.bbl` and an odd exit code, on a computer where Biber worked before, can be Biber's own unpacked cache in the temp folder having lost files. Running `biber --cache`, moving that folder aside and running the test again settles it. Report it either way.
 - **Everything else** is a real failure: report it with its output and do not change the test to make it pass.
 
 ## 4. Try the installed app
 
-Install `Spectrum_2.0.0_x64-setup.exe` (it installs for the current user only).
+Install `Spectrum_2.6.0_x64-setup.exe` (it installs for the current user only).
 
 The user's real Spectrum data is on this computer. These checks are best done by the user, or by the agent only with the user watching and saying which projects are scratch ones. Make a scratch project for each check; never edit or delete the user's own projects.
 
@@ -150,7 +152,33 @@ Settings › Agents lists every supported agent. For each agent the user has ins
 
 - **Gemini CLI and GitHub Copilot CLI:** Test decides whether they work on Windows (decision 11 of the part 2 plan).
 - **Codex, Claude Agent, Pi and ZCode** are not run on Windows yet (see `docs/WINDOWS_AGENT_VALIDATION.md`); their cards should say so.
+- **OpenCode** is listed as Not supported on every system since 2.6.0, and Test is not offered for it.
+- **Badges:** each card carries Supported (Claude Agent, DeepSeek Harness), In progress (Codex), Untested or Not supported. Those words describe the Mac; on Windows the card's own text says what does not run there.
+- **The Local agents tab** should say, on Windows only, that local agents do not get Spectrum's tools or Direct editing yet and that the Spectrum agent has every tool.
 - **DeepSeek Harness:** if the user has the app installed, find where the app keeps its `dsh` command, if anywhere, by looking inside its install folder without running it. Record the path and how it starts (a `.exe`, a `.cmd`, or a script run by the app's own binary). On a Mac it is `Contents/Resources/runtime/cli/bin/dsh`, a shell script that runs the app's binary with `ELECTRON_RUN_AS_NODE=1`. Windows isolation starts only `.exe` programs, so report what you find rather than changing code.
+
+### New in 2.6.0, to try on Windows
+
+Nothing in this list has run on Windows. Use scratch projects only. Report each line as works, fails (with what was seen) or not tried.
+
+1. **API keys.** Only with the user watching, since it touches their real keys: on first start the keys typed in Settings move out of the window's storage and are encrypted for the Windows account into `keys.dpapi` in Spectrum's data folder. Settings › Models should show each key as dots, and Test connection should pass. If the move fails, the keys must still work and Settings › Models must say why. Do not open or copy `keys.dpapi`.
+2. **Test connection** beside an API key lists the provider's models and adds them to the Model menu. It sends no message, so it costs nothing.
+3. **The Spectrum agent**, with a model the user has set up and only on the user's word, since a turn costs tokens: steps appear as they happen; Stop keeps the words already written; Plan shows a plan to approve; a change is reviewed one piece at a time with J, K, A, R and E; PDF before and after shows both PDFs.
+4. **Shortcuts.** `Ctrl+Shift+P` opens the command palette and `Ctrl+P` opens Go to a file or heading. Neither may open the print dialog. `Alt+Shift+P` previews the figure at the cursor.
+5. **Editor.** Search in the sidebar finds text in the project's files. A LaTeX error is underlined in the source after a compile, and an overfull box is listed in Logs but not underlined. Typing `$` adds its closer. The maths at the cursor is drawn under it. Settings › Editor offers Vim and Emacs keys: check that the usual `Ctrl` shortcuts still work with Standard chosen.
+6. **Compile speed.** Compile a biblatex document twice: the second log says Biber was left out. Compile a notes template twice a few seconds apart with pdfLaTeX: the second log says it starts from a precompiled preamble (MiKTeX may need the `mylatexformat` package; report what it asks for). With latexmk as the engine, a compile with nothing changed takes well under a second. Only the open chapter in the Compile menu typesets one `\include`'d chapter.
+7. **Build recipes.** A `% !TEX recipe = pdflatex; pdflatex` comment runs only in a project the user has trusted, since Windows has no compile sandbox. In a project that is not trusted, Logs must say the recipe was not run and Spectrum's own passes must run instead.
+8. **Typst.** As you type in the Compile menu; the outline across `#include`s with numbers; a teaching template downloads as PDF/UA-1; Live with Tinymist installed shows Tinymist's preview in the pane (if the pane stays empty it must say why within a few seconds, with Back to the PDF).
+9. **Markdown.** The eye button shows a live preview with maths and a Mermaid block; `@fig:x` prints as "Figure 1" in the PDF; a Mermaid block is drawn in the PDF; the slides template compiles.
+10. **To-dos.** A group can be made, renamed, reordered and deleted with Undo; a to-do can carry a note.
+11. **MCP servers** in Settings › Agents: a server can be added and checked, and a variable can be added to it. The local ports control must be absent on Windows, with a line saying why.
+12. **Use from another agent** in the Local agents bar: the switch turns on, and a request to the copied address without its secret is refused.
+13. **The update notice.** Settings › System has the switch. Do not expect a notice: 2.6.0 is the newest version.
+14. **Review › References exist**, only on the user's word, since it sends the bibliography's DOIs and titles to Crossref, OpenAlex and arXiv.
+
+### The Windows agent checks
+
+`docs/WINDOWS_AGENT_CHECKS.md` holds nine ordered checks that only a Windows computer can settle (the draft compile with Biber, latexmk and Tectonic, shell escape staying off, MiKTeX's settings, the two isolation probes, DeepSeek Harness's layout and the network section). Run them after the list above and put each check's result in the report, in that file's own numbering.
 
 ### GitHub and Zotero
 
@@ -163,6 +191,7 @@ Only if the user wants them tried, and only with a scratch project and the user'
 
 Each was found on the Mac or in CI and is untested on a real Windows desktop. Report each one as confirmed, not seen or not tried:
 
+0. **Everything in "New in 2.6.0, to try on Windows" and in `docs/WINDOWS_AGENT_CHECKS.md`** counts as an open item until it has been reported.
 1. **Hunspell clean-up:** step 2's clean-up warning instead of a failure.
 2. **NUL device:** an agent's child process started with no input or output fails with `spawn EPERM`, most likely because the isolation cannot open the `NUL` device. The native agent test now starts its child with inherited input and output instead. Confirm the test passes, and whether `stdio: 'ignore'` really fails on this desktop.
 3. **Tectonic fonts:** the `fonts.conf` file is written once into the data folder's `engines` folder and lists `C:\Windows\Fonts` and the per-user fonts folder.
@@ -179,10 +208,10 @@ Each was found on the Mac or in CI and is untested on a real Windows desktop. Re
 
 ## 7. Release (only on the user's word)
 
-The Mac release is published: `main`, the `v2.0.0` tag and a GitHub release carrying `Spectrum_2.0.0_universal.dmg` and `SHA256SUMS.txt`. Check it exists:
+The Mac release is published: `main`, the `v2.6.0` tag and a GitHub release carrying `Spectrum_2.6.0_aarch64.dmg` (Apple silicon only since 2.5.0) and `SHA256SUMS.txt`. Check it exists:
 
 ```
-gh release view v2.0.0 --repo Beyond3345/Spectrum
+gh release view v2.6.0 --repo Beyond3345/Spectrum
 ```
 
 If it does not exist yet, stop and tell the user. When it exists and the user says to attach the Windows build, there are two ways.
@@ -195,16 +224,16 @@ Upload the installer and TexLab's source, which goes with every installer becaus
 $src = "texlab-5.26.0-source.tar.gz"
 Invoke-WebRequest https://github.com/latex-lsp/texlab/archive/refs/tags/v5.26.0.tar.gz -OutFile $src
 (Get-FileHash $src -Algorithm SHA256).Hash.ToLower() -eq "47af7e71247fe186ddbaa62373ce5fbebc802ab8df9924958ac62788a644f84e"
-gh release upload v2.0.0 "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.0.0_x64-setup.exe" $src --repo Beyond3345/Spectrum
+gh release upload v2.6.0 "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.6.0_x64-setup.exe" $src --repo Beyond3345/Spectrum
 ```
 
 Then add the installer's line to the release's checksums:
 
 ```
-gh release download v2.0.0 --pattern SHA256SUMS.txt --repo Beyond3345/Spectrum
-$hash = (Get-FileHash "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.0.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
-Add-Content SHA256SUMS.txt "$hash  Spectrum_2.0.0_x64-setup.exe"
-gh release upload v2.0.0 SHA256SUMS.txt --clobber --repo Beyond3345/Spectrum
+gh release download v2.6.0 --pattern SHA256SUMS.txt --repo Beyond3345/Spectrum
+$hash = (Get-FileHash "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.6.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+Add-Content SHA256SUMS.txt "$hash  Spectrum_2.6.0_x64-setup.exe"
+gh release upload v2.6.0 SHA256SUMS.txt --clobber --repo Beyond3345/Spectrum
 ```
 
 Show the user the new `SHA256SUMS.txt` before the upload.
@@ -213,11 +242,11 @@ Show the user the new `SHA256SUMS.txt` before the upload.
 
 This is the way earlier releases were done.
 
-- **Starting it:** run the Windows workflow on `main` with the release's tag: `gh workflow run windows.yml --ref main -f release_tag=v2.0.0`.
+- **Starting it:** run the Windows workflow on `main` with the release's tag: `gh workflow run windows.yml --ref main -f release_tag=v2.6.0`.
 - **What it does:** it builds and tests on a clean runner, then attaches its own installer and TexLab's source to the release. A release run fails rather than attaching an installer when the Hunspell binding does not build.
 - **Checksums:** it does not update `SHA256SUMS.txt`, so add the line as in A, using the attached installer's hash.
 
-Use A when the user wants the exact installer tested here to be the one released. Use B when they prefer a clean build from GitHub. Ask which.
+For 2.6.0 the user has chosen A: the installer built and tested on this computer is the one released. B stays here for other versions.
 
 After either way, download the attached installer again, check its SHA-256 against the checksums file and install it once more to confirm it starts.
 
@@ -225,7 +254,7 @@ After either way, download the attached installer again, check its SHA-256 again
 
 1. The commit tested, and the installer's size and SHA-256.
 2. Each check in step 3 with its counts, and every failure with its output.
-3. The results of step 4, one line each.
+3. The results of step 4, one line each, with the 2.6.0 list and the Windows agent checks in their own numbering.
 4. Each item in step 5: confirmed, not seen or not tried.
 5. Any branch you made, with its commits, and whether it was pushed.
 6. Whether the installer was attached to the release, which way, and the final `SHA256SUMS.txt`.
