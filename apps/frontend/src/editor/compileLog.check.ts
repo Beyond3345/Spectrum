@@ -225,11 +225,30 @@ eq(
       { severity: 'error', message: 'text since changed', file: 'intro.tex', line: 1, context: 'Something \\gone' }
     ],
     'intro.tex',
-    tex
+    tex,
+    true
   ).map((d) => [tex.sliceString(d.from, d.to), d.severity]),
   [['\\gainval', 'error'], ['The value x_{1} is small.', 'error'], ['\\oops', 'error'], ['Overfull here', 'warning'], ['\\section{Intro}', 'error']],
   'TeX’s marks: the command it stopped after, else the line'
 );
+
+// box warnings stay in Logs but are underlined only when Settings › Engines asks (pdfTeX's and Tectonic's alike)
+const boxLog = [
+  '(./main.tex',
+  'Overfull \\hbox (12.3pt too wide) in paragraph at lines 2--2',
+  '[]\\T1/cmr/m/n/10 A long line',
+  '',
+  'Underfull \\vbox (badness 10000) has occurred while \\output is active []',
+  '',
+  'LaTeX Warning: Reference `fig:x\' on page 1 undefined on input line 3.',
+  ')',
+  'warning: main.tex:1: Underfull \\hbox (badness 10000) in paragraph at lines 1--1'
+].join('\n');
+const boxDoc = Text.of(['\\section{A}', 'A long line', 'See \\ref{fig:x}.']);
+const boxErrors = parseCompileLog(boxLog).map((e) => ({ ...e, file: 'main.tex' }));
+eq(boxErrors.length, 4, 'every box warning is listed in Logs');
+eq(compileMarks(boxErrors, 'main.tex', boxDoc).map((d) => d.message.slice(0, 18)), ['Reference `fig:x\' '], 'box warnings are not underlined by default');
+eq(compileMarks(boxErrors, 'main.tex', boxDoc, true).length, 3, 'box warnings with a line are underlined when asked');
 
 // the marks move with the text typed before them, and the next compile's replace them
 let state = EditorState.create({ doc: 'a #foo', extensions: compileLint });

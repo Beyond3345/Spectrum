@@ -1646,6 +1646,13 @@ function EnginesPane() {
           <span className="field-hint">Tools › Logs opens in the PDF’s place. For LaTeX, Typst and Markdown alike. Auto compile leaves it closed.</span>
         </span>
       </label>
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={settings.underlineBoxWarnings} onChange={(e) => update({ underlineBoxWarnings: e.target.checked })} />
+        <span>
+          Underline overfull and underfull boxes
+          <span className="field-hint">A LaTeX compile’s Overfull and Underfull \hbox and \vbox warnings are underlined in the source as well as listed in Logs. A long document can have many.</span>
+        </span>
+      </label>
       <Tabs value={tab} onChange={setTab} items={[{ value: 'latex', label: 'LaTeX' }, { value: 'typst', label: 'Typst' }, { value: 'markdown', label: 'Markdown' }]} />
       {error && <div className="field-hint error">{error}</div>}
       {tab === 'latex' && (

@@ -2,16 +2,57 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
-## 2.7.0 (21 November 2026)
+## 2.6.0 (21 November 2026)
 
 ### Security
 
+- `AGENTS.md` reaches the Spectrum agent only as you approved it on this computer. A file that came with a project, or was changed by a pull, a sync, an agent in the folder or an agent's change you applied, is not used until you have read it and chosen Use it
+- A local agent stops when Spectrum is force-quit or crashes, and leaves nothing running when it exits
+- An Isolated session of a local agent leaves out an `AGENTS.md` you have not approved, and says so with the way to approve it. Once approved, it reaches the agent with its next task, and a file changed by a pull leaves the copy again. `AGENTS.md` files in folders, `AGENTS.override.md` and `AGENTS.local.md` are always left out, and what an agent writes by those names meanwhile is never offered for review
+- A Direct session says when the agent can read an `AGENTS.md` you have not approved
+- The Spectrum agent compiles on a copy of the project, confined like every compile and never trusted. Nothing in the project changes until you apply a change
+- Review's PDF before and after is compiled on copies, in the agents' isolation
+- Agent Client Protocol SDK 2.8.0, Codex adapter 2.7.0 and Claude Agent adapter 0.108.1
 - On a Mac, a local agent can be held to a list of hosts: its provider's, the sites Spectrum's tools need and any you add (Settings › Agents › Network). Every agent starts on Any host with its list ready. A host an agent on a list is refused shows in its session, with Allow for that agent, and such an agent cannot look names up itself
 - On a Mac, an MCP server you add reaches only the hosts you list for it, or any host if you tick that, and Check shows what it asked for
 - API keys are kept in the keychain on a Mac and encrypted for your Windows account on Windows, not in the window's storage. Keys from earlier versions move there on first start, and stay where they were, still working, if the keychain cannot be used
 
 ### Added
 
+- The Spectrum agent shows its work as it happens: each step as a card with its time, and the answer as it is written
+- Stop stops the Spectrum agent at once, the model call and the compile included, and keeps what it had done
+- A message sent while the Spectrum agent works waits above the message box, and Steer now hands it over between two steps. Waiting messages are kept when the page reloads
+- Continue goes on in the same run, with everything the agent had read and done, for an hour after its last answer
+- The Spectrum agent can compile its changes and read the errors at their lines, in LaTeX, Typst and Markdown, and fixes what it broke, three tries at most
+- The Spectrum agent can search the project's text, read the project map and the bibliography, edit by replacing exact text and propose deleting a file
+- The Spectrum agent can show a plan before it changes anything: untick or edit its steps, then Approve and run, Approve and ask before each file or Keep planning. Plan, under the message box, asks for one, and the agent plans by itself before a larger task. The approved steps stay at the top of the thread and are ticked as it works
+- The Spectrum agent asks a question when a request is unclear, with answers to choose from. A plan or a question waits in the thread, through a reload and a restart, with no request to the model open
+- `AGENTS.md` at the top of a project holds your standing instructions for the Spectrum agent
+- The assistant's chat, Polish, Rewrite, Restructure and Translate are given your approved `AGENTS.md`. An `AGENTS.md` chip shows when the file is in use
+- The Spectrum agent can suggest a line to remember for a project, which is kept only when you press Add. Memory, under the message box, lists what it remembers for the project, to edit, delete or add to
+- The remembered lines go to the Spectrum agent, Fix with AI and the assistant with every request. They are kept on this computer, apart from the project's files and from `AGENTS.md`
+- Each agent tab shows what a turn used: tokens and the share served from the cache, and for a local agent how full its context is and the cost it reports
+- The Spectrum agent shows what a thread cost: the figure OpenRouter reports, in US dollars, or an estimate from the prices you type in Settings › Models for any of the provider's models. Spectrum keeps no price list of its own
+- A price can be typed in any of 14 currencies. Each cost is shown in its own currency, with a symbol no other currency shares such as US$, A$, HK$ and CN¥, and two currencies are never added together
+- Choose the Spectrum agent's model and thinking for each thread in its tab
+- Settings › Models: Test connection beside each API key asks the provider for its model list, without sending a message, and says plainly what happened
+- The provider's models join the Model menu after a test, and suggest names for an Other server
+- Review an agent's or the assistant's changes one at a time: Apply, Reject or Edit each change, with J, K, A, R and E
+- A review saves one “Before AI changes” checkpoint, before the first change you apply, and it covers every change until you close the review. Settings › Checkpoints › Save a checkpoint before every change I apply saves one for each change instead, and a deletion you apply always has its own
+- A change that overlaps your own edit shows both versions: keep yours, use the agent's, take both or edit the result
+- Review has a PDF before and after view, for the Spectrum agent and the assistant too
+- A long review is grouped under the document's headings, with counts, and an agent's change of line endings is offered as a change of its own
+- Local agents stay running between turns of an Isolated session, so a follow-up starts at once
+- Local agents get a `search_text` tool from Spectrum
+- To-dos: a + button at the end of the add box adds what is typed, as Return does
+- To-dos: a to-do can carry a note of a few lines, shown in two lines until clicked and found by the search
+- To-dos: Clear done deletes the ticked to-dos, with Undo
+- Each local agent's card says how far it is supported: Supported (Claude Agent, DeepSeek Harness), In progress (Codex), Untested or Not supported (OpenCode)
+- The AI review reads a long document in parts, with a progress line and Stop, and ties each point to its own file and line
+- Review checks a Markdown document's citations, bibliography, images and links
+- Document insights counts the words of a Markdown document
+- Insert figure and Insert table set placement, both columns, notes and line breaks in Typst
+- Return or Space on a part in the circuit composer places it
 - Search in the sidebar finds text in the project's files too, with Match case, Whole words and Regular expression, and a click opens the line with the match selected
 - A LaTeX compile's errors are underlined in the source, at the command TeX stopped after or along the line, beside TexLab's own
 - A command palette (⇧⌘P) finds any command, menu item, Tools tab or Settings section by its name
@@ -54,6 +95,21 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Changed
 
+- Fix with AI compiles its fix before you review it and says “Builds.” or where it still fails
+- On Windows the agent's compile and Preview PDF run Biber, the index tools, latexmk and Tectonic as your own compile does, so a biblatex draft shows its citations
+- A later message in a Spectrum agent thread keeps what the agent read earlier, so it does not read the same files again
+- Requests to Claude and OpenAI models ask for prompt caching, and the Spectrum agent's instructions are about 2 KB shorter
+- A busy provider's wait is shown while the Spectrum agent waits
+- To-dos: Open, Done and All show their counts in one row, and Mine and In the source fold away under their titles. The add box and the filters stay at the top while the list scrolls
+- To-dos: Edit, Add a note and Delete sit over the end of the row, so a long to-do uses the sidebar's width. Each filter's empty list says why, and a page link reads Page 2
+- A connection that drops before the provider answers is tried again twice, and the error names the cause: name not found, refused, dropped, timed out or certificate
+- A pasted key with a character no request can carry says so instead of “Couldn’t reach”, and a line break or invisible space at either end is trimmed
+- AI autocomplete gives up its request when you type, move the cursor or press Esc, and asks again after a pause
+- A custom endpoint ending in `/messages` or `/responses` is used in that format
+- The Spectrum agent's `arxiv_search`, `arxiv_bibtex` and `get_compile_log` are gone: `literature_search`, `fetch_bibtex` and `get_log` do their work. Through Spectrum's tools server `list_todos` answers `{ todos }` and `literature_search` `{ papers }`
+- The compile tool reports the errors and undefined citations of the last pass only
+- A proposed deletion applied in part keeps the file, and the Review changes sheet marks a deletion
+- The AI review's button reads Stop while it runs, and keeps the parts already reviewed
 - Tools opens on Logs when the last compile had errors
 - The agents' text search can match whole words
 - Biber is left out of a LaTeX compile while the citations and the .bib files are unchanged, which takes 1.3 to 1.9 s off each compile of a biblatex document
@@ -74,79 +130,6 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Fixed
 
-- A table's `{#tbl:x}` label no longer prints in its caption with pandoc before 3.8.2
-- No Jyutping button in a Markdown document's toolbar
-- A task sent to the agent workspace as it opens keeps its skill
-
-## 2.6.0 (21 November 2026)
-
-### Security
-
-- `AGENTS.md` reaches the Spectrum agent only as you approved it on this computer. A file that came with a project, or was changed by a pull, a sync, an agent in the folder or an agent's change you applied, is not used until you have read it and chosen Use it
-- A local agent stops when Spectrum is force-quit or crashes, and leaves nothing running when it exits
-- An Isolated session of a local agent leaves out an `AGENTS.md` you have not approved, and says so with the way to approve it. Once approved, it reaches the agent with its next task, and a file changed by a pull leaves the copy again. `AGENTS.md` files in folders, `AGENTS.override.md` and `AGENTS.local.md` are always left out, and what an agent writes by those names meanwhile is never offered for review
-- A Direct session says when the agent can read an `AGENTS.md` you have not approved
-- The Spectrum agent compiles on a copy of the project, confined like every compile and never trusted. Nothing in the project changes until you apply a change
-- Review's PDF before and after is compiled on copies, in the agents' isolation
-- Agent Client Protocol SDK 2.8.0, Codex adapter 2.7.0 and Claude Agent adapter 0.108.1
-
-### Added
-
-- The Spectrum agent shows its work as it happens: each step as a card with its time, and the answer as it is written
-- Stop stops the Spectrum agent at once, the model call and the compile included, and keeps what it had done
-- A message sent while the Spectrum agent works waits above the message box, and Steer now hands it over between two steps. Waiting messages are kept when the page reloads
-- Continue goes on in the same run, with everything the agent had read and done, for an hour after its last answer
-- The Spectrum agent can compile its changes and read the errors at their lines, in LaTeX, Typst and Markdown, and fixes what it broke, three tries at most
-- The Spectrum agent can search the project's text, read the project map and the bibliography, edit by replacing exact text and propose deleting a file
-- The Spectrum agent can show a plan before it changes anything: untick or edit its steps, then Approve and run, Approve and ask before each file or Keep planning. Plan, under the message box, asks for one, and the agent plans by itself before a larger task. The approved steps stay at the top of the thread and are ticked as it works
-- The Spectrum agent asks a question when a request is unclear, with answers to choose from. A plan or a question waits in the thread, through a reload and a restart, with no request to the model open
-- `AGENTS.md` at the top of a project holds your standing instructions for the Spectrum agent
-- The assistant's chat, Polish, Rewrite, Restructure and Translate are given your approved `AGENTS.md`. An `AGENTS.md` chip shows when the file is in use
-- The Spectrum agent can suggest a line to remember for a project, which is kept only when you press Add. Memory, under the message box, lists what it remembers for the project, to edit, delete or add to
-- The remembered lines go to the Spectrum agent, Fix with AI and the assistant with every request. They are kept on this computer, apart from the project's files and from `AGENTS.md`
-- Each agent tab shows what a turn used: tokens and the share served from the cache, and for a local agent how full its context is and the cost it reports
-- The Spectrum agent shows what a thread cost: the figure OpenRouter reports, in US dollars, or an estimate from the prices you type in Settings › Models for any of the provider's models. Spectrum keeps no price list of its own
-- A price can be typed in any of 14 currencies. Each cost is shown in its own currency, with a symbol no other currency shares such as US$, A$, HK$ and CN¥, and two currencies are never added together
-- Choose the Spectrum agent's model and thinking for each thread in its tab
-- Settings › Models: Test connection beside each API key asks the provider for its model list, without sending a message, and says plainly what happened
-- The provider's models join the Model menu after a test, and suggest names for an Other server
-- Review an agent's or the assistant's changes one at a time: Apply, Reject or Edit each change, with J, K, A, R and E
-- A review saves one “Before AI changes” checkpoint, before the first change you apply, and it covers every change until you close the review. Settings › Checkpoints › Save a checkpoint before every change I apply saves one for each change instead, and a deletion you apply always has its own
-- A change that overlaps your own edit shows both versions: keep yours, use the agent's, take both or edit the result
-- Review has a PDF before and after view, for the Spectrum agent and the assistant too
-- A long review is grouped under the document's headings, with counts, and an agent's change of line endings is offered as a change of its own
-- Local agents stay running between turns of an Isolated session, so a follow-up starts at once
-- Local agents get a `search_text` tool from Spectrum
-- To-dos: a + button at the end of the add box adds what is typed, as Return does
-- To-dos: a to-do can carry a note of a few lines, shown in two lines until clicked and found by the search
-- To-dos: Clear done deletes the ticked to-dos, with Undo
-- Each local agent's card says how far it is supported: Supported (Claude Agent, DeepSeek Harness), In progress (Codex), Untested or Not supported (OpenCode)
-- The AI review reads a long document in parts, with a progress line and Stop, and ties each point to its own file and line
-- Review checks a Markdown document's citations, bibliography, images and links
-- Document insights counts the words of a Markdown document
-- Insert figure and Insert table set placement, both columns, notes and line breaks in Typst
-- Return or Space on a part in the circuit composer places it
-
-### Changed
-
-- Fix with AI compiles its fix before you review it and says “Builds.” or where it still fails
-- On Windows the agent's compile and Preview PDF run Biber, the index tools, latexmk and Tectonic as your own compile does, so a biblatex draft shows its citations
-- A later message in a Spectrum agent thread keeps what the agent read earlier, so it does not read the same files again
-- Requests to Claude and OpenAI models ask for prompt caching, and the Spectrum agent's instructions are about 2 KB shorter
-- A busy provider's wait is shown while the Spectrum agent waits
-- To-dos: Open, Done and All show their counts in one row, and Mine and In the source fold away under their titles. The add box and the filters stay at the top while the list scrolls
-- To-dos: Edit, Add a note and Delete sit over the end of the row, so a long to-do uses the sidebar's width. Each filter's empty list says why, and a page link reads Page 2
-- A connection that drops before the provider answers is tried again twice, and the error names the cause: name not found, refused, dropped, timed out or certificate
-- A pasted key with a character no request can carry says so instead of “Couldn’t reach”, and a line break or invisible space at either end is trimmed
-- AI autocomplete gives up its request when you type, move the cursor or press Esc, and asks again after a pause
-- A custom endpoint ending in `/messages` or `/responses` is used in that format
-- The Spectrum agent's `arxiv_search`, `arxiv_bibtex` and `get_compile_log` are gone: `literature_search`, `fetch_bibtex` and `get_log` do their work. Through Spectrum's tools server `list_todos` answers `{ todos }` and `literature_search` `{ papers }`
-- The compile tool reports the errors and undefined citations of the last pass only
-- A proposed deletion applied in part keeps the file, and the Review changes sheet marks a deletion
-- The AI review's button reads Stop while it runs, and keeps the parts already reviewed
-
-### Fixed
-
 - A very long agent output keeps its start and end, and no longer pushes earlier turns out of the session
 - A local agent's session no longer holds a connection open while its tab is out of sight and the agent idle, so a compile's live log is not held back
 - Reloading the page shows a Spectrum agent run that is still going
@@ -154,6 +137,9 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - A long unbroken line in an agent's answer wraps
 - To-dos: Esc puts an edit back instead of saving it
 - Run folders a crash left in the cache are removed at the start
+- A table's `{#tbl:x}` label no longer prints in its caption with pandoc before 3.8.2
+- No Jyutping button in a Markdown document's toolbar
+- A task sent to the agent workspace as it opens keeps its skill
 
 ## 2.5.2 (20 November 2026)
 

@@ -134,6 +134,8 @@ export type AppSettings = {
   xjyutpingFolder: string;
   /** a failed compile opens Tools › Logs */
   openLogsOnFail: boolean;
+  /** Overfull and Underfull \hbox and \vbox warnings are underlined in the source too, not only listed in Logs */
+  underlineBoxWarnings: boolean;
   /** the compile's output in the PDF's place while it runs, by engine (Markdown: a Markdown document's LaTeX step) */
   liveOutput: Record<LiveOutputEngine, boolean>;
   /** a checkpoint after each successful compile, and a notice when one can't be saved */
@@ -288,6 +290,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   texFolder: '',
   xjyutpingFolder: '',
   openLogsOnFail: false,
+  underlineBoxWarnings: false,
   // Tectonic's first compiles download for minutes; the others are quick enough without
   liveOutput: { tectonic: true, pdflatex: false, xelatex: false, lualatex: false, latexmk: false, markdown: false },
   checkpointOnCompile: true,
@@ -501,6 +504,7 @@ function parse(raw: string | null): AppSettings {
     if (typeof merged.texFolder !== 'string') merged.texFolder = '';
     if (typeof merged.xjyutpingFolder !== 'string') merged.xjyutpingFolder = '';
     merged.openLogsOnFail = merged.openLogsOnFail === true;
+    merged.underlineBoxWarnings = merged.underlineBoxWarnings === true;
     const live = (typeof merged.liveOutput === 'object' && merged.liveOutput ? merged.liveOutput : {}) as Record<string, unknown>;
     merged.liveOutput = Object.fromEntries(
       LIVE_OUTPUT_ENGINES.map(([engine]) => [engine, typeof live[engine] === 'boolean' ? live[engine] : DEFAULT_SETTINGS.liveOutput[engine]])

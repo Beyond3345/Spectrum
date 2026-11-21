@@ -24,6 +24,10 @@
   it
 }
 
+// Alt text: each equation's words for a screen reader, which PDF/UA-1 needs, are listed in alt-text.typ
+#import "alt-text.typ": alt-text
+#show: alt-text
+
 // Figures and tables
 #show figure.where(kind: table): set figure.caption(position: top) // captions above tables, below figures
 #show table: set text(number-width: "tabular")  // digits of equal width, so numbers line up in columns

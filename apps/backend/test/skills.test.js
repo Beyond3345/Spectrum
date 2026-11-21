@@ -53,7 +53,8 @@ test('bundled skills list with their author, licence, version and files, and swi
   assert.deepEqual(listed[0], { id: 'alpha', name: 'alpha', description: 'Finds papers: fast', author: 'K-Dense Inc.', licence: 'MIT license', version: '2.4', source: 'bundled', files: 2, compatibility: 'Python 3.11+', enabled: true, active: true });
   assert.equal(listed[1].description, 'Reviews manuscripts.');
   assert.equal(listed[1].licence, 'MIT', 'the shipped manifest names a licence the front matter leaves out');
-  assert.equal(await fs.readFile(path.join(SKILLS_DIR, 'bundled', '.version'), 'utf8'), (await import('../src/config/constants.js')).APP_VERSION);
+  // the version and a mark of the pack's own list, so a build that changes its skills under the same version still brings them
+  assert.match(await fs.readFile(path.join(SKILLS_DIR, 'bundled', '.version'), 'utf8'), new RegExp(`^${(await import('../src/config/constants.js')).APP_VERSION.replaceAll('.', '\\.')} [0-9a-f]{16}$`));
   await assert.rejects(fs.stat(path.join(SKILLS_DIR, 'bundled', 'README.md')));
 
   assert.equal((await api('/api/skills/alpha', 'PATCH', { enabled: false })).status, 200);

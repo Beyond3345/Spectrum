@@ -28,6 +28,10 @@
   it
 }
 
+// Alt text: each equation's words for a screen reader, which PDF/UA-1 needs, are listed in alt-text.typ
+#import "alt-text.typ": alt-text
+#show: alt-text
+
 // Figures and tables
 #show figure.where(kind: table): set figure.caption(position: top) // captions above tables, below figures
 
@@ -92,7 +96,7 @@ $ f_c = 1 / (2 pi R_f C). $ <eq:cutoff>
 #solution[
   At low frequencies $omega R_f C << 1$, so by @eq:gain the gain is $-R_f \/ R_"in" = -47 \/ 4.7 = -10$, that
   is $20 log_10 10 = 20 thin "dB"$ with the output inverted. By @eq:cutoff,
-  #math.equation(block: true, numbering: none, $
+  #math.equation(block: true, numbering: none, alt: "f c equals 1 over 2 pi times 47 times 10 to the 3 ohms times 3.3 times 10 to the minus 9 farads, which is about 1.03 kilohertz", $
     f_c = 1 / (2 pi times 47 times 10^3 thin "Ω" times 3.3 times 10^(-9) thin "F") approx 1.03 thin "kHz".
   $)
   @fig:bode plots the magnitude of @eq:gain for these values.
