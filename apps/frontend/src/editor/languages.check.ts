@@ -54,3 +54,36 @@ eq(nodes.filter((n) => /^(FrontMatter|Maths|Table|SetextHeading2):/.test(n)), ['
 eq(nodes.some((n) => n.startsWith('keyword:') || n.includes('\\ref')), true, 'a ```latex block is parsed as LaTeX');
 
 console.log('languages.check: ok');
+
+// typing '' after a word for a closing quotation gives two quotes, not three: ' and " are not paired in LaTeX and
+// Markdown, and ' is not in Typst (whose code still pairs ")
+{
+  const { EditorState: State } = await import('@codemirror/state');
+  const { closeBrackets, insertBracket } = await import('@codemirror/autocomplete');
+  const { languageFor: language } = await import('./languages');
+  const typed = (file: string, before: string, keys: string) => {
+    let state = State.create({ doc: before, selection: { anchor: before.length }, extensions: [closeBrackets(), language(file)] });
+    for (const key of keys) {
+      const paired = insertBracket(state, key);
+      state = paired ? paired.state : state.update({ changes: { from: state.selection.main.head, insert: key }, selection: { anchor: state.selection.main.head + 1 } }).state;
+    }
+    return state.doc.toString();
+  };
+  for (const file of ['a.tex', 'a.md', 'a.typ']) {
+    if (typed(file, '``quote', "''") !== "``quote''") throw new Error(`${file}: '' after a word gave ${typed(file, '``quote', "''")}`);
+    if (typed(file, 'the ', "'") !== "the '") throw new Error(`${file}: a lone ' was paired`);
+  }
+  if (typed('a.tex', 'a ', '"') !== 'a "') throw new Error('LaTeX paired "');
+  if (typed('a.tex', 'f', '(') !== 'f()') throw new Error('LaTeX stopped pairing (');
+  if (typed('a.typ', '#let a = ', '"') !== '#let a = ""') throw new Error('Typst stopped pairing " in its code');
+  // the old behaviour, for the record: CodeMirror's own default turns '' into '''
+  const plain = (keys: string) => {
+    let state = State.create({ doc: 'quote', selection: { anchor: 5 }, extensions: [closeBrackets()] });
+    for (const key of keys) {
+      const paired = insertBracket(state, key);
+      state = paired ? paired.state : state.update({ changes: { from: state.selection.main.head, insert: key }, selection: { anchor: state.selection.main.head + 1 } }).state;
+    }
+    return state.doc.toString();
+  };
+  if (plain("''") !== "quote'''") throw new Error(`the default no longer gives ''' (${plain("''")}): this check no longer shows the bug`);
+}
