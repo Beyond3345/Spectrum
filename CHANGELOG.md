@@ -2,6 +2,14 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.6.3 (22 November 2026)
+
+### Fixed
+
+- Typing `''` for a closing quotation gives two quotes, not three. LaTeX and Markdown no longer pair `'` or `"` as they are typed, and Typst no longer pairs `'`
+- The precompiled preamble works with MiKTeX, which had turned it off after its first update or package install, and a compile that has to drop it says so in the log
+- The Windows build on GitHub runs again: tests that assumed a Mac now test each system's own behaviour, the frontend checks run, and MiKTeX installs the compile tests' packages before they run
+
 ## 2.6.2 (22 November 2026)
 
 ### Added
