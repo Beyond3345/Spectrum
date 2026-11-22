@@ -2,6 +2,16 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.6.1 (22 November 2026)
+
+### Fixed
+
+- Document insights counts the words of a LaTeX document on Windows in a folder whose name the system cannot spell in its code page, such as one with 大學 in it. texcount could not open the file there and Spectrum showed no words
+- When texcount gives no count, Document insights says why: texcount was not found, or what it said when it failed. The note no longer tells Windows users to install MacTeX
+- On Windows, the Spectrum agent's compile tool names a Typst error by its file in the project
+- On Windows, a runtime folder chosen for an agent is compared with the home folder however its path is spelt, and Jyutping compile logs name the project's files whatever the case of the path
+- docs/WINDOWS_AGENT_CHECKS.md says which draft compiles run outside Windows isolation and what Biber can read there
+
 ## 2.6.0 (21 November 2026)
 
 ### Security
