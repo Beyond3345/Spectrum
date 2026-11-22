@@ -195,6 +195,10 @@ test('the Windows workflow runs typst.exe by its path, and its tests after a fai
   // GITHUB_PATH reaches only the steps after the one that writes it
   assert.match(workflow, /Add-Content \$env:GITHUB_PATH \$bin\n\s+& "\$bin\\typst\.exe" --version/);
   for (const step of ['TeX tools', 'Backend tests']) assert.match(workflow, new RegExp(`- name: ${step}\\n\\s+if: \\$\\{\\{ !cancelled\\(\\) \\}\\}`), step);
+
+  // the frontend checks are bundled as on a Mac: CommonJS refuses their top-level await
+  assert.match(workflow, /npx esbuild \$check\.FullName --bundle --platform=node --format=esm .*"--outfile=\$out"/);
+  assert.match(workflow, /\$out = "\$env:RUNNER_TEMP\\check\.mjs"/);
 });
 
 test('the Node.js the app ships is one version, each archive checked against a SHA-256 kept here', async () => {

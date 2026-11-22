@@ -173,12 +173,14 @@ jobs:
       - if: ${{ !cancelled() }}
         run: npm run typecheck
 
+      # bundled as ESM, as they are on a Mac (some use top-level await), and run from the repository root, where the
+      # checks that read files look for them
       - name: Frontend checks
         if: ${{ !cancelled() }}
         run: |
-          $out = "$env:RUNNER_TEMP\check.cjs"
+          $out = "$env:RUNNER_TEMP\check.mjs"
           foreach ($check in Get-ChildItem apps/frontend/src -Recurse -Filter *.check.ts) {
-            npx esbuild $check.FullName --bundle --platform=node --log-level=warning "--outfile=$out"
+            npx esbuild $check.FullName --bundle --platform=node --format=esm --loader:.svg=text --loader:.css=empty --log-level=warning "--outfile=$out"
             if ($LASTEXITCODE) { throw "esbuild couldn't bundle $($check.Name)" }
             node $out
             if ($LASTEXITCODE) { throw "$($check.Name) failed" }
