@@ -456,12 +456,18 @@ test('a preamble a format can’t carry is found out before the format is ever u
 test('a pass that fails with an error of pdfTeX’s own under a format runs again without it, and the format is dropped', { skip: needs('pdflatex') }, async () => {
   const p = await newProject({ 'main.tex': notes('Words.') });
   await preSettled(p);
+  // a format older than MiKTeX's last maintenance is one MiKTeX would remake by name, and fail to: each use dates it now
+  const fmt = path.join(fmtDir(p), 'main.fmt');
+  await fs.utimes(fmt, new Date('2020-01-01'), new Date('2020-01-01'));
   assert.match((await pre(p)).log, FROM_FORMAT);
+  assert.ok(Date.now() - (await fs.stat(fmt)).mtimeMs < 60_000, 'dated when it was used');
   // a format that no longer suits the engine (as after an update the key didn't see)
-  await fs.writeFile(path.join(fmtDir(p), 'main.fmt'), 'not a format');
+  await fs.writeFile(fmt, 'not a format');
   const saved = await pre(p);
   assert.equal(saved.status, 0, saved.log);
   assert.doesNotMatch(saved.log, FROM_FORMAT);
+  // said once, with why, rather than quietly
+  assert.match(saved.log, /^\[spectrum note\] The pass that started from the precompiled preamble failed \(.*Fatal format file error.*\), so this compiled again without it/);
   assert.equal(await fmtState(p), 'refused');
   // an error of the document's own is the document's: the format stays
   const q = await newProject({ 'main.tex': notes('Words.') });

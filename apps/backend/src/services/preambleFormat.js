@@ -70,11 +70,17 @@ async function about(file, projectRoot) {
   return stat ? `${stat.size}:${stat.mtimeMs}` : '';
 }
 
+// MiKTeX takes a format older than its own last maintenance (an update, a package installed on first use) to be stale
+// and remakes it by its name, which for one of these fails and stops the pass. So it is dated now before each use: the
+// checks here have just found it current (the engine, and every file it was made from)
+const current = (base) => fs.utimes(`${base}.fmt`, new Date(), new Date()).catch(() => {});
+
 /** The format to use for this key, { file (for -fmt), log (the preamble's own log) }, or null: none, or something it was made from changed. */
 export async function readyFormat({ dir, key, projectRoot }) {
   const state = await readState(dir);
   if (state?.key !== key || state.status !== 'ready') return null;
   for (const [file, was] of state.deps) if ((await about(file, projectRoot)) !== was) return null;
+  await current(path.join(dir, state.base));
   return { file: path.join(dir, state.base), log: state.log };
 }
 
@@ -134,6 +140,7 @@ async function make({ dir, key, preamble, projectRoot, mainDir, mainName, base, 
     }
 
     // the same pass twice from the document's kept files, without the format and with it
+    await current(path.join(made, base));
     for (const folder of [plain, withFormat]) {
       if (store) await fs.cp(store, folder, { recursive: true }).catch(() => {});
       await run([...first, ...passArgs(folder, folder === withFormat ? path.join(made, base) : null).args]);
