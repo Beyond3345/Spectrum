@@ -242,7 +242,8 @@ test('an agent’s network setting: saved only where it differs, a list checked,
   assert.equal((await launch()).hosts, undefined);
 });
 
-test('Claude Agent starts on any host as before; held to its list by the user, it leaves out its telemetry and update checks', async () => {
+// Claude Agent's adapter is off on Windows (it stalls inside Windows isolation), and says so rather than starting
+test('Claude Agent starts on any host as before; held to its list by the user, it leaves out its telemetry and update checks', { skip: profileFor('claude').unavailable && `Claude Agent is off here: ${profileFor('claude').unavailable}` }, async () => {
   const fixture = path.join(fixtures, 'acp-agent.mjs');
   const home = await agentHome('claude');
   const launch = () => launchOptions('claude', { workspace: path.join(home, 'tmp'), home });
