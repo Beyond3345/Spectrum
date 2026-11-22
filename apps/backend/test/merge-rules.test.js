@@ -64,6 +64,14 @@ test('project.json and settings.json merge key by key, one level into a group, a
   const todo = { id: 't', text: 'Fix', done: false };
   assert.deepEqual(rules.mergeMeta(todo, { ...todo, note: 'See p. 3' }, { ...todo, done: true }), { ...todo, note: 'See p. 3', done: true });
   assert.deepEqual(rules.mergeMeta({ ...todo, note: 'a' }, todo, { ...todo, note: 'a', text: 'Fix it' }), { ...todo, text: 'Fix it' });
+  // a to-do's range, colour and order (2.7): the range moved here and a tick there keep both, a colour or an order
+  // changed on one side is kept, and a range moved on both sides takes this computer's words and place
+  const ranged = { ...todo, order: 10, hue: 2, link: { file: 'main.tex', line: 3, col: 4, endLine: 3, endCol: 9, text: 'words' } };
+  const moved = { ...ranged.link, line: 5, snippet: 'new' };
+  assert.deepEqual(rules.mergeMeta(ranged, { ...ranged, link: moved }, { ...ranged, done: true, order: 15 }), { ...ranged, link: moved, done: true, order: 15 });
+  assert.deepEqual(rules.mergeMeta(ranged, { ...ranged, link: { ...moved, col: 0, endCol: 5 } }, { ...ranged, link: { ...ranged.link, line: 7 } }).link, { ...moved, col: 0, endCol: 5 });
+  const groups = { todoGroups: { a: { name: 'Refs', order: 1, hue: 8 } } };
+  assert.deepEqual(rules.mergeMeta(groups, { todoGroups: { a: { name: 'Refs', order: 1, hue: 3 } } }, { todoGroups: { a: { name: 'References', order: 1, hue: 8 } } }), { todoGroups: { a: { name: 'Refs', order: 1, hue: 3 } } });
 });
 
 test('a chat keeps every message from both sides, and a session every search', () => {

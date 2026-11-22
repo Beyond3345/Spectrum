@@ -523,3 +523,34 @@ test('Search in the sidebar finds a phrase in the project’s text, with its fil
   assert.match((await search({ q: '(', regex: '1' })).error, /Not a regular expression/);
   assert.match((await search({ q: '' })).error, /Give text/);
 });
+
+test('a to-do on selected words keeps its range, colour and order; an old one and a group’s colour are kept', async () => {
+  const p = await newProject('To-do ranges');
+  const url = `/api/projects/${p.id}`;
+  const todo = (extra) => ({ id: 'r', text: 'Cite this', done: false, createdAt: '2026-11-22T00:00:00.000Z', updatedAt: '2026-11-22T00:00:00.000Z', ...extra });
+  const range = { file: 'main.tex', line: 33, snippet: 'The result holds.', col: 4, endLine: 33, endCol: 10, text: 'result' };
+  const ranged = todo({ link: range, hue: 4, order: 1763769600000.5 });
+  assert.deepEqual((await api(`${url}/todos/r`, 'PUT', ranged)).json.todo, ranged);
+  assert.deepEqual(await readJson(path.join(p.path, '.spectrum', 'todos', 'r.json')), ranged);
+  assert.deepEqual((await api(`${url}/todos`)).json.todos, [ranged]);
+  // words removed while the file was open, over lines
+  const removed = todo({ link: { ...range, endLine: 35, endCol: 0, removed: true } });
+  assert.equal((await api(`${url}/todos/r`, 'PUT', removed)).status, 200);
+  // a line link as before is unchanged
+  const line = todo({ link: { file: 'main.tex', line: 3, snippet: 'x' } });
+  assert.deepEqual((await api(`${url}/todos/r`, 'PUT', line)).json.todo, line);
+
+  const bad = [
+    { ...range, text: 'x'.repeat(2001) }, { ...range, text: '' }, { ...range, text: 5 }, { ...range, col: -1 }, { ...range, col: 1.5 }, { ...range, endCol: 100001 },
+    { ...range, endLine: 32 }, { ...range, endCol: 4 }, { ...range, endLine: undefined }, { file: 'main.tex', line: 3, text: 'only words' }, { ...range, removed: 'yes' }
+  ];
+  for (const link of bad) assert.equal((await api(`${url}/todos/r`, 'PUT', todo({ link }))).status, 400, JSON.stringify(link).slice(0, 80));
+  for (const hue of [-1, 64, 1.5, 'red']) assert.equal((await api(`${url}/todos/r`, 'PUT', todo({ hue }))).status, 400, `hue ${hue}`);
+  for (const order of ['1', [1], {}]) assert.equal((await api(`${url}/todos/r`, 'PUT', todo({ order }))).status, 400, `order ${order}`);
+
+  // a group's colour is kept, through a rename that doesn't send it too
+  const change = (groups) => api(`${url}/todo-groups`, 'PATCH', { groups });
+  assert.deepEqual((await change({ refs: { name: 'References', order: 1, hue: 8 } })).json.groups, { refs: { name: 'References', order: 1, hue: 8 } });
+  assert.deepEqual((await change({ refs: { name: 'Refs', order: 1 } })).json.groups.refs, { name: 'Refs', order: 1, hue: 8 });
+  for (const hue of [-1, 64, 'blue']) assert.equal((await change({ refs: { name: 'Refs', order: 1, hue } })).status, 400, `group hue ${hue}`);
+});
