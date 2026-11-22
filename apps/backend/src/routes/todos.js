@@ -20,7 +20,11 @@ const isObject = (value) => !!value && typeof value === 'object' && !Array.isArr
 // in its own field, group; one whose group is gone (deleted here or on another computer) is in no group.
 export const MAX_GROUP_NAME = 80;
 const MAX_GROUPS = 100;
-const isGroup = (g) => isObject(g) && isText(g.name, MAX_GROUP_NAME) && !!g.name.trim() && Number.isFinite(g.order);
+// a group's or a to-do's colour, after 2.6.1: a place on the Spectrum wheel (the editor's todos.ts TODO_HUES), with
+// room for a later version's wider wheel
+const MAX_HUE = 63;
+const isHue = (h) => h == null || (Number.isInteger(h) && h >= 0 && h <= MAX_HUE);
+const isGroup = (g) => isObject(g) && isText(g.name, MAX_GROUP_NAME) && !!g.name.trim() && Number.isFinite(g.order) && isHue(g.hue);
 
 /** The project's to-do groups as settings hold them, each one that can't be read left out. */
 export function todoGroups(settings) {
@@ -69,6 +73,19 @@ export async function followRename(root, from, to) {
   return unmoved;
 }
 
+// the words a line link was added on, after 2.6.1: all of col, endLine, endCol (columns from 0) and text (the words,
+// at most MAX_TEXT, which find them again) or none; removed, set when the words were deleted. 2.6.1 keeps them as fields
+// it doesn't know
+const MAX_COLUMN = 100000;
+const isColumn = (n) => Number.isInteger(n) && n >= 0 && n <= MAX_COLUMN;
+function isRange(link) {
+  const { col, endLine, endCol, text, removed } = link;
+  if (removed != null && typeof removed !== 'boolean') return false;
+  if ([col, endLine, endCol, text].every((v) => v == null)) return true;
+  return isColumn(col) && isColumn(endCol) && isCount(endLine) && typeof text === 'string' && !!text && text.length <= MAX_TEXT &&
+    (endLine > link.line || (endLine === link.line && endCol > col));
+}
+
 // where a to-do points: a source line (found again by its text if lines move), a PDF page or a reference. Fields a
 // later version adds go through, and a kind of link it adds is kept as it is
 function todoLink(link) {
@@ -76,6 +93,7 @@ function todoLink(link) {
   if (typeof link !== 'object' || Array.isArray(link)) throw httpError('Invalid to-do link.', 400);
   if ('file' in link) {
     if (!isText(link.file, 1024) || !link.file || !isCount(link.line) || (link.snippet != null && typeof link.snippet !== 'string')) throw httpError('Invalid line link.', 400);
+    if (!isRange(link)) throw httpError('Invalid range in a line link.', 400);
     return { ...link, ...(link.snippet != null && { snippet: link.snippet.slice(0, MAX_TEXT) }) };
   }
   if ('doc' in link) {
@@ -122,6 +140,9 @@ export function registerTodoRoutes(fastify) {
     if (rest.note != null && !isText(rest.note, MAX_NOTE)) throw httpError(`A to-do’s note is at most ${MAX_NOTE} characters.`, 400);
     // its group's id, since 2.6; 2.5 passes it through as a field it doesn't know
     if (rest.group != null && (typeof rest.group !== 'string' || !ITEM_ID.test(rest.group))) throw httpError('Invalid to-do group.', 400);
+    // its colour in no group and its place in its list, after 2.6.1
+    if (!isHue(rest.hue)) throw httpError('Invalid to-do colour.', 400);
+    if (rest.order != null && !Number.isFinite(rest.order)) throw httpError('Invalid to-do order.', 400);
     if (typeof done !== 'boolean' || !isText(createdAt, 40) || !isText(updatedAt, 40)) throw httpError('Invalid to-do.', 400);
     const todo = { ...rest, id, text, done, createdAt, updatedAt, ...(link != null && { link: todoLink(link) }) };
     // in the project files' lock, which a GitHub pull holds while it merges to-dos, with the folder looked up there

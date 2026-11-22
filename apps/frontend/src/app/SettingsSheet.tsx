@@ -1335,6 +1335,21 @@ function EditorPane() {
         </span>
       </label>
 
+      <h3 className="form-section-title">To-dos</h3>
+      <div className="field">
+        <label id="settings-todoPlacement">New to-dos go</label>
+        <Select
+          labelId="settings-todoPlacement"
+          value={settings.todoPlacement}
+          options={[
+            ['added', 'In the order they are added'],
+            ['line', 'By their line in the file']
+          ]}
+          onChange={(todoPlacement) => update({ todoPlacement: todoPlacement as AppSettings['todoPlacement'] })}
+        />
+        <span className="field-hint">By their line, a to-do added on a line goes among the others from the same file, in the order of their lines. Dragging a to-do puts it where you drop it.</span>
+      </div>
+
       <h3 className="form-section-title">Jump between source and PDF</h3>
       <label className="checkbox-row">
         <input type="checkbox" role="switch" checked={settings.syncDoubleClick} onChange={(e) => update({ syncDoubleClick: e.target.checked })} />

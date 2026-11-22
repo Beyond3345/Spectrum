@@ -126,6 +126,7 @@ eq([merged.theme, merged.spellCheck, merged.editorFontSize], ['dark', false, 99]
 eq([merged.llmApiKey, merged.projectsDir, merged.glass, merged.syncSettings], ['sk-windows', theirs.projectsDir, false, false], 'this computer’s own stay');
 eq(withShared(theirs, { accent: 'neon' }).accent, 'system', 'shared values are checked like stored ones');
 eq(withShared(theirs, { syncHighlightSeconds: 60 }).syncHighlightSeconds, 10, 'and kept in range');
+eq([DEFAULT_SETTINGS.todoPlacement, withShared(theirs, { todoPlacement: 'line' }).todoPlacement, withShared(theirs, { todoPlacement: 'random' }).todoPlacement], ['added', 'line', 'added'], 'New to-dos go: in the order added at first, shared, checked');
 // the colour style: Spectrum for a new install and for one upgraded from before it, Simple kept, and it follows the user
 eq(DEFAULT_SETTINGS.colourStyle, 'spectrum', 'Spectrum is the colour style to start with');
 eq(withShared(theirs, { colourStyle: 'simple' }).colourStyle, 'simple', 'Simple comes in from the other computer');

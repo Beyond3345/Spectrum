@@ -118,6 +118,8 @@ export type AppSettings = {
   autoInsertCite: boolean;
   /** Return after a LaTeX \item or a Typst list item starts the next one (smartTyping.ts) */
   continueLists: boolean;
+  /** where a new to-do goes in its list: after the others, or among the same file's by its line (todos.ts newOrder) */
+  todoPlacement: 'added' | 'line';
   /** $, \( and \[, and \left( and the like bring their closers in LaTeX and Typst (smartTyping.ts) */
   closeMaths: boolean;
   /** the maths at the cursor rendered under it, in LaTeX and Markdown (mathPreview.ts) */
@@ -281,6 +283,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   referencesModel: 'gpt-6-luna',
   autoInsertCite: true,
   continueLists: true,
+  todoPlacement: 'added',
   closeMaths: true,
   mathPreview: true,
   snippets: DEFAULT_SNIPPETS,
@@ -517,6 +520,7 @@ function parse(raw: string | null): AppSettings {
     merged.pdfFollowsFile = merged.pdfFollowsFile !== false;
     merged.zoteroCompletion = merged.zoteroCompletion !== false;
     merged.continueLists = merged.continueLists !== false;
+    if (merged.todoPlacement !== 'line') merged.todoPlacement = 'added';
     merged.closeMaths = merged.closeMaths !== false;
     merged.mathPreview = merged.mathPreview !== false;
     merged.snippets = cleanSnippets(merged.snippets);
@@ -681,7 +685,7 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
  */
 const SHARED_KEYS = [
   'theme', 'accent', 'colourStyle', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize', 'editorKeymap',
-  'autoInsertCite', 'continueLists', 'closeMaths', 'mathPreview', 'snippets', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
+  'autoInsertCite', 'continueLists', 'todoPlacement', 'closeMaths', 'mathPreview', 'snippets', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
   'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear', 'composerVectorNotation',
   'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery', 'composerDark', 'composerMinimap'
 ] as const satisfies readonly (keyof AppSettings)[];
