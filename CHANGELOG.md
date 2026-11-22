@@ -2,6 +2,20 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.6.2 (22 November 2026)
+
+### Added
+
+- To-dos: Add to-do here on selected words ties the to-do to them, highlighted in the source in the to-do's colour until it is ticked off. The highlight follows your typing, and a row says the line and the words, or “text changed” when they went elsewhere
+- To-dos: each to-do and group has a colour from the Spectrum wheel, shown as a dot in front of it. To-dos in no group get colours that are easy to tell apart from each other and from the groups', and a group's to-dos share its colour, chosen in its … menu. Blue is not used, as it looks like the selection
+- To-dos: drag a to-do onto a group, to the top to take it out of any group, or between two others to put it there. Move up and Move down are in its row menu, and each move can be undone
+- To-dos: Settings › Editor › New to-dos go puts a new to-do at the end or among the same file's to-dos by its line
+
+### Fixed
+
+- On Windows, a biblatex document in a folder whose name the system cannot spell in its code page, such as one with 大學 in it, gets its bibliography: TeX Live's Biber could not find the .bib there and every citation stayed undefined
+- On Windows, Document insights counts a document whose file name texcount's launcher could not pass on, where it gave a silent zero, and still reports a truly empty document as zero
+
 ## 2.6.1 (22 November 2026)
 
 ### Fixed
