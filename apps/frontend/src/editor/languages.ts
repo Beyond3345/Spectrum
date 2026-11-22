@@ -1,3 +1,4 @@
+import { EditorState } from '@codemirror/state';
 import { Compartment } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
@@ -267,10 +268,23 @@ const markdownSupport = (): Extension => [
 ];
 
 /** A file's editor language: LaTeX as it was, Typst once loaded, Markdown, and plain text for anything else. */
+/**
+ * Which characters close themselves as typed, per kind of document. CodeMirror's default pairs ' and " as a program's
+ * string quotes, so typing '' for a closing quotation in LaTeX gave ''' (the second ' opened a new pair). A ' is an
+ * apostrophe or a closing quote in all three, and " is babel's shorthand or straight quotation in LaTeX and Markdown;
+ * only Typst's code uses " for strings.
+ */
+export const PAIRS: Record<'latex' | 'typst' | 'markdown', string[]> = {
+  latex: ['(', '[', '{'],
+  typst: ['(', '[', '{', '"'],
+  markdown: ['(', '[', '{']
+};
+const pairs = (kind: keyof typeof PAIRS) => EditorState.languageData.of(() => [{ closeBrackets: { brackets: PAIRS[kind] } }]);
+
 export function languageFor(path: string): Extension {
   const kind = docKind(path);
-  if (kind === 'latex') return [latexLanguage(), compileLint];
-  if (kind === 'typst') return typst ?? compileLint;
-  if (kind === 'markdown') return markdownSupport();
+  if (kind === 'latex') return [latexLanguage(), compileLint, pairs('latex')];
+  if (kind === 'typst') return [typst ?? compileLint, pairs('typst')];
+  if (kind === 'markdown') return [markdownSupport(), pairs('markdown')];
   return [];
 }
