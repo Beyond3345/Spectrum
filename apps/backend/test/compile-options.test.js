@@ -23,7 +23,11 @@ const { registerSystemRoutes } = await import('../src/routes/system.js');
 const { default: Fastify } = await import('fastify');
 const WINDOWS = process.platform === 'win32';
 
-after(() => rmSync(tmp, { recursive: true, force: true }));
+after(async () => {
+  // the Typst kept running for a project here first: Windows can't delete the folder it runs in until it has exited
+  await (await import('../src/services/typstService.js')).stopTypstWatch();
+  rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+});
 
 const tools = {};
 for (const name of ['pdflatex', 'bibtex', 'biber', 'makeindex', 'makeglossaries', 'makeglossaries-lite', 'xindy', 'latexmk', 'tectonic']) tools[name] = await findExecutable(name);
@@ -572,10 +576,8 @@ test('Tectonic carries on past an error unless told to stop, and says the compil
 const { pageColourLines } = await import('../src/services/compileService.js');
 const { synctexEdit, synctexView } = await import('../src/services/synctex.js');
 const { builtInTypst } = await import('../src/services/engineService.js');
-const { stopTypstWatch } = await import('../src/services/typstService.js');
 const { pandocPath } = await import('../src/services/engineService.js');
 const { inflateSync } = await import('node:zlib');
-after(() => stopTypstWatch());
 for (const name of ['xelatex', 'lualatex']) tools[name] = await findExecutable(name);
 const CREAM = '#f8f1e1';
 // every stream in a PDF, unpacked where it's packed
