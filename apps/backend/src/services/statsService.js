@@ -24,8 +24,9 @@ const TEXCOUNT_FIELDS = {
 
 export function parseTexcount(output) {
   const stats = { ok: true, source: 'texcount' };
+  const lines = output.split('\n');
   for (const [key, label] of Object.entries(TEXCOUNT_FIELDS)) {
-    const line = output.split('\n').find((l) => l.startsWith(`${label}:`));
+    const line = lines.findLast((l) => l.startsWith(`${label}:`));
     stats[key] = line ? Number(line.slice(label.length + 1).trim()) || 0 : 0;
   }
   stats.words = stats.wordsInText + stats.wordsInHeaders + stats.wordsOutsideText;
@@ -126,11 +127,16 @@ export async function projectStats(root, mainFile, texFolder) {
       // texcount ends with "(errors:N)" and counts nothing for a file it could not open, yet exits 0
       const unread = stdout.match(/!!! File not found or not readable: (.*?) !!!/);
       if (unread) throw Object.assign(new Error(`It could not read ${unread[1].trim()}.`), { unread: true });
+      // The Windows launcher can turn an unrepresentable filename into a glob which matches nothing.
+      // Request the per-file report so an empty match is distinct from an empty document.
+      if (process.platform === 'win32' && input === undefined && !/^File: /m.test(stdout)) {
+        throw Object.assign(new Error(`It could not read ${mainFile}.`), { unread: true });
+      }
       return parseTexcount(stdout);
     };
     try {
       // -dir: included files are relative to the main file's folder, as in the compile
-      return await run(['-inc', '-total', '-utf8', '-dir', `./${mainFile}`]);
+      return await run(['-inc', ...(process.platform === 'win32' ? [] : ['-total']), '-utf8', '-dir', `./${mainFile}`]);
     } catch (err) {
       why = texcountFailure(err);
       // Perl on Windows cannot open a file by name in a folder whose path its code page cannot spell (大學 under an

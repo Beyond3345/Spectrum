@@ -682,6 +682,30 @@ test('a texcount that cannot open a file by name is handed the document, and cou
   }
 });
 
+test('Windows texcount counts Unicode filenames and preserves a real zero', { skip: !WINDOWS }, async (t) => {
+  const { findExecutable } = await import('../src/services/compileService.js');
+  if (!(await findExecutable('texcount'))) return t.skip('needs texcount');
+  const { projectStats } = await import('../src/services/statsService.js');
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'spectrum-count-'));
+  try {
+    const body = '\\documentclass{article}\n\\begin{document}\nOne two three.\\input{chapter}\n\\end{document}\n';
+    await fs.writeFile(path.join(root, 'chapter.tex'), 'Four five six seven.\n');
+    for (const file of ['main.tex', '大學-🧪.tex']) {
+      await fs.writeFile(path.join(root, file), body);
+      const count = await projectStats(root, file);
+      assert.equal(count.source, 'texcount');
+      assert.equal(count.words, 7);
+    }
+    await fs.writeFile(path.join(root, 'empty.tex'), '\\documentclass{article}\n\\begin{document}\n\\end{document}');
+    const empty = await projectStats(root, 'empty.tex');
+    assert.equal(empty.source, 'texcount');
+    assert.equal(empty.words, 0);
+    assert.equal(empty.read, undefined);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a texcount that fails says why, in a line', async () => {
   const { texcountFailure } = await import('../src/services/statsService.js');
   assert.equal(texcountFailure({ stderr: "Can't locate Encode.pm in @INC\nBEGIN failed--compilation aborted at texcount.pl line 4.\n" }), 'BEGIN failed--compilation aborted at texcount.pl line 4.');
