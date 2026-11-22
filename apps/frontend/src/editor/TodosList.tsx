@@ -9,7 +9,7 @@ import Segmented from '../app/Segmented';
 import { toast } from '../app/Toast';
 import { PROJECT_DATA_CHANGED, errorText } from './shared';
 import { loadSettings } from '../app/settings';
-import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, TODO_HUES, dropGroup, dropIndex, emptyText, newOrder, placeAt, findLine, findRange, groupHues, groupNamed, groupOf, hueForNew, isRange, looseHues, moveGroup, newGroup, orderedGroups, placeOf, rangeLabel, scanTodos, sortTodos, todoCounts, todoHues, todoMatches, withNote } from './todos';
+import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, TODO_HUES, dropGroup, dropIndex, emptyText, newOrder, placeAt, findLine, findRange, groupHues, groupNamed, groupOf, isRange, looseHues, PICKER_HUES, moveGroup, newGroup, orderedGroups, placeOf, rangeLabel, scanTodos, sortTodos, todoCounts, todoHues, todoMatches, withNote } from './todos';
 import { liveRange } from './todoHighlights';
 import { useEditor } from './EditorContext';
 import { sendLocated } from './agent/handoff';
@@ -140,10 +140,9 @@ export function useTodos({
   /** A new to-do, optionally linked to a line, a PDF page or a reference, and in a group (its id), else in its own colour. */
   const add = (text: string, link?: TodoLink, group?: string) => {
     const now = new Date().toISOString();
-    const colour = group ? {} : { hue: hueForNew(mine || [], groups) };
     // its place: after the others in its list, or among the same file's by line (Settings › Editor › New to-dos go)
     const order = newOrder((mine || []).filter((t) => groupOf(t, groups) === groupOf({ group }, groups)), link, loadSettings().todoPlacement, Date.parse(now));
-    return save({ id: crypto.randomUUID(), text, done: false, createdAt: now, updatedAt: now, order, ...(link && { link }), ...(group && { group }), ...colour });
+    return save({ id: crypto.randomUUID(), text, done: false, createdAt: now, updatedAt: now, order, ...(link && { link }), ...(group && { group }) });
   };
 
   /** Adds, changes or deletes (null) the groups given, showing it at once; a failed change puts them back. Resolves to whether it saved. */
@@ -338,10 +337,9 @@ export default function TodosList({
     const now = new Date().toISOString();
     for (const t of list) if (orders[t.id] !== undefined) void save({ ...t, order: orders[t.id], updatedAt: now });
     const { group: _old, ...rest } = todo;
-    const colour = !group && rest.hue === undefined ? { hue: hueForNew((mine || []).filter((t) => t.id !== todo.id), groups) } : {};
     const name = group ? groups[group]?.name : 'no group';
     const said = group === groupOf(todo, groups) ? `Moved “${todo.text}” to place ${at + 1} of ${list.length + 1}${group ? ` in ${name}` : ''}` : `Moved “${todo.text}” to ${name}`;
-    save({ ...rest, ...(group && { group }), ...colour, order: orders[todo.id], updatedAt: now }).then((saved) => saved && toast(said, { action: { label: 'Undo', onClick: () => void save(todo) } }));
+    save({ ...rest, ...(group && { group }), order: orders[todo.id], updatedAt: now }).then((saved) => saved && toast(said, { action: { label: 'Undo', onClick: () => void save(todo) } }));
   };
 
   /**
@@ -612,8 +610,8 @@ export default function TodosList({
                     { label: 'Move down', icon: 'chevron.down', disabled: ordered[ordered.length - 1].id === g.id, onSelect: () => void changeGroups(moveGroup(groups, g.id, 1)) },
                     { separator: true },
                     { label: 'Colour', heading: true },
-                    ...TODO_HUES.map((c, i) => ({
-                      label: c.label,
+                    ...PICKER_HUES.map((i) => ({
+                      label: TODO_HUES[i].label,
                       icon: <span className={`todo-dot todo-hue-${i}`} />,
                       checked: byGroup[g.id] === i,
                       onSelect: () => void changeGroups({ [g.id]: { ...groups[g.id], hue: i } })

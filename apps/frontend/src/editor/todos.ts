@@ -240,12 +240,11 @@ export const groupNamed = (groups: TodoGroups, name: string) => {
   return orderedGroups(groups).find((g) => g.name.toLocaleLowerCase() === want)?.id ?? '';
 };
 
-/** A new group, after the others, in the next colour in turn after the groups' and those taken by to-dos in no group. */
-export const newGroup = (groups: TodoGroups, name: string, taken: (number | undefined)[] = []): TodoGroup => ({
-  name: groupName(name),
-  order: Math.max(0, ...Object.values(groups).map((g) => g.order)) + 1,
-  hue: nextHue([...taken, ...orderedGroups(groups).map((g) => groupHues(groups)[g.id])])
-});
+/** A new group, after the others, in a colour from the menu's clear of the other groups' and of the to-dos in no group (taken). */
+export const newGroup = (groups: TodoGroups, name: string, taken: number[] = []): TodoGroup => {
+  const others = Object.values(groupHues(groups));
+  return { name: groupName(name), order: Math.max(0, ...Object.values(groups).map((g) => g.order)) + 1, hue: pickHue(PICKER_HUES, others, taken, [...others, ...taken]) };
+};
 
 /** What moves a group one place up (-1) or down (1): the order numbered again from 1, only the groups whose place changed. */
 export function moveGroup(groups: TodoGroups, id: string, by: -1 | 1): Record<string, TodoGroup> {
@@ -365,63 +364,126 @@ export const TODO_HUES = Object.values(PALETTE)
   .filter((c) => c.hue !== null)
   .map((c, i) => ({ ...c, label: ['Red', 'Orange', 'Amber', 'Yellow', 'Green', 'Mint', 'Teal', 'Cyan', 'Blue', 'Indigo', 'Purple'][i] ?? c.name }));
 
-// the order hues are given in: four places round the wheel each time (11 hues, so every one in 11 turns), so two
-// given one after the other never sit side by side on the wheel
-const TURN = TODO_HUES.map((_, i) => (i * 4) % TODO_HUES.length);
+const BLUE = TODO_HUES.findIndex((c) => c.label === 'Blue');
+
+/**
+ * The hues a group can be given, in its menu and when it is made: every one but blue, whose highlight is the colour of
+ * the editor's selection with the default accent (CIE ΔE 0 to 3 as drawn, todos.check.ts). Cyan and Indigo stay: they
+ * sit 9 to 11 from the selection, as far as the palette's neighbours sit from each other.
+ */
+export const PICKER_HUES = TODO_HUES.map((_, i) => i).filter((i) => i !== BLUE);
+
+/** Below this CIE ΔE (CIE76, as the highlights are drawn, the closer of light and dark) two highlights read as one colour. */
+export const NEAR = 10;
+
+const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+/** CIELAB of an sRGB colour given as channels. */
+function lab([r, g, b]: number[]) {
+  const lin = (v: number) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  const [R, G, B] = [lin(r), lin(g), lin(b)];
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const [x, y, z] = [f((0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047), f(0.2126 * R + 0.7152 * G + 0.0722 * B), f((0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883)];
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+/** A highlight as drawn: the colour a share of the way over the editor's background. */
+export const washLab = (colour: string, share: number, background: string) => lab(channels(background).map((v, i) => v + (channels(colour)[i] - v) * share));
+const deltaE = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+let distances: number[][] | null = null;
+/** How far apart two hues' highlights look: CIE ΔE as drawn on Spectrum's light and dark editor, the closer of the two. */
+export function hueDistance(a: number, b: number) {
+  distances ??= TODO_HUES.map((x) =>
+    TODO_HUES.map((y) =>
+      Math.min(deltaE(washLab(x.band, WASH.light, '#ffffff'), washLab(y.band, WASH.light, '#ffffff')), deltaE(washLab(x.dark, WASH.dark, '#0f0f0f'), washLab(y.dark, WASH.dark, '#0f0f0f')))
+    )
+  );
+  return distances[a][b];
+}
+
+/**
+ * The hues a to-do in no group is given: the most hues with every two at NEAR or more apart (Red, Amber, Green, Teal
+ * and Indigo, at 13.8 or more), so red never sits beside orange; no blue. todos.check.ts checks none can be added.
+ */
+export const AUTO_HUES = ['Red', 'Amber', 'Green', 'Teal', 'Indigo'].map((name) => TODO_HUES.findIndex((c) => c.label === name));
 
 /** A stored hue as a place on the wheel, or undefined when it is none (a later version's wider wheel wraps). */
 export const hueOf = (hue: unknown) => (Number.isInteger(hue) && (hue as number) >= 0 ? (hue as number) % TODO_HUES.length : undefined);
 
-/** The next hue in turn after those used (in the order they were given): the least used, after the last one given. */
-export function nextHue(used: (number | undefined)[]) {
-  const given = used.map(hueOf).filter((h): h is number => h !== undefined);
-  const counts = TURN.map((h) => given.filter((g) => g === h).length);
-  const fewest = Math.min(...counts);
-  const last = given.length ? TURN.indexOf(given[given.length - 1]) : -1;
-  for (let i = 1; i <= TURN.length; i += 1) {
-    const at = (last + i) % TURN.length;
-    if (counts[at] === fewest) return TURN[at];
-  }
-  return TURN[0];
-}
+const nearest = (to: number[], hue: number) => (to.length ? Math.min(...to.map((h) => hueDistance(h, hue))) : Infinity);
 
-/** Each group's hue: its own, or for one from before colours, the next in turn after the groups above it. */
-export function groupHues(groups: TodoGroups) {
-  const hues: Record<string, number> = {};
-  const used: number[] = [];
-  for (const g of orderedGroups(groups)) used.push((hues[g.id] = hueOf(g.hue) ?? nextHue(used)));
-  return hues;
+/**
+ * The hue to give among candidates: one nobody uses (used), the farthest from the near ones first (a to-do's
+ * neighbours in its file) and then from the rest in use; when all are used, the least used, farthest from the near
+ * ones. Ties go to the first candidate, so the same list gives the same colours every time.
+ */
+export function pickHue(candidates: number[], near: number[], rest: number[], used: number[]) {
+  const score = (h: number) => {
+    const uses = used.filter((u) => u === h).length;
+    return uses ? [0, -uses, nearest(near, h)] : [1, nearest(near, h), nearest([...near, ...rest], h)];
+  };
+  let best = candidates[0];
+  let top = score(best);
+  for (const h of candidates.slice(1)) {
+    const s = score(h);
+    const i = s.findIndex((v, k) => v !== top[k]);
+    if (i >= 0 && s[i] > top[i]) [best, top] = [h, s];
+  }
+  return best;
 }
 
 /**
- * Each to-do's hue by its id: its group's, or in no group its own; one from before colours takes the next in turn
- * after the ones in no group before it, oldest first, so the list shows the same colours each time.
+ * Each group's hue: its own, shown as the nearest hue in the menu when it is one the menu no longer has (blue), or for
+ * one from before colours, one picked clear of the groups above it.
  */
-export function todoHues(todos: { id: string; createdAt: string; group?: string; hue?: number }[], groups: TodoGroups) {
-  const byGroup = groupHues(groups);
-  const hues = new Map<string, number>();
+export function groupHues(groups: TodoGroups) {
+  const hues: Record<string, number> = {};
   const used: number[] = [];
-  for (const t of [...todos].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
-    const group = groupOf(t, groups);
-    if (group) hues.set(t.id, byGroup[group]);
-    else {
-      const h = hueOf(t.hue) ?? nextHue(used);
-      used.push(h);
-      hues.set(t.id, h);
-    }
+  for (const g of orderedGroups(groups)) {
+    const own = hueOf(g.hue);
+    const h = own === undefined ? pickHue(PICKER_HUES, [], used, used) : PICKER_HUES.includes(own) ? own : PICKER_HUES.reduce((a, b) => (hueDistance(own, b) < hueDistance(own, a) ? b : a));
+    used.push((hues[g.id] = h));
   }
   return hues;
 }
 
-/** The hues to-dos in no group show, oldest first: what a new group's colour steers clear of. */
-export const looseHues = (todos: { id: string; createdAt: string; group?: string; hue?: number }[], groups: TodoGroups) => {
-  const hues = todoHues(todos, groups);
-  return [...todos].filter((t) => !groupOf(t, groups)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((t) => hues.get(t.id));
+type Coloured = { id: string; createdAt: string; group?: string; hue?: number; done?: boolean; link?: unknown };
+const fileOf = (t: Coloured) => {
+  const l = t.link as { file?: unknown } | undefined;
+  return typeof l?.file === 'string' ? l.file : '';
 };
 
-/** The hue a new to-do in no group takes: the next in turn after the groups' and the others in no group. */
-export const hueForNew = (todos: { id: string; createdAt: string; group?: string; hue?: number }[], groups: TodoGroups) =>
-  nextHue([...Object.values(groupHues(groups)), ...looseHues(todos, groups)]);
+/**
+ * Each to-do's hue by its id: its group's, or in no group one worked out each time and never stored (a colour stored on one is passed over, as
+ * none is picked by hand): the open ones oldest first, then the ticked ones, each picked from AUTO_HUES
+ * as far as can be from the open ones in no group in its own file, then from all of them and the groups' colours.
+ * ponytail: ticking or deleting an older one can recolour the ones after it; stored choices if that grates
+ */
+export function todoHues(todos: Coloured[], groups: TodoGroups) {
+  const byGroup = groupHues(groups);
+  const hues = new Map<string, number>();
+  const given: { hue: number; file: string; open: boolean }[] = [];
+  const loose = [...todos].filter((t) => !groupOf(t, groups)).sort((a, b) => Number(!!a.done) - Number(!!b.done) || a.createdAt.localeCompare(b.createdAt));
+  for (const t of todos) if (groupOf(t, groups)) hues.set(t.id, byGroup[groupOf(t, groups)]);
+  for (const t of loose) {
+    const file = fileOf(t);
+    const open = given.filter((g) => g.open);
+    const h = pickHue(
+      AUTO_HUES,
+      open.filter((g) => file && g.file === file).map((g) => g.hue),
+      [...open.map((g) => g.hue), ...Object.values(byGroup)],
+      [...given.map((g) => g.hue), ...Object.values(byGroup)]
+    );
+    given.push({ hue: h, file, open: !t.done });
+    hues.set(t.id, h);
+  }
+  return hues;
+}
+
+/** The hues to-dos in no group show: what a new group's colour steers clear of. */
+export const looseHues = (todos: Coloured[], groups: TodoGroups) => {
+  const hues = todoHues(todos, groups);
+  return todos.filter((t) => !groupOf(t, groups)).map((t) => hues.get(t.id)!);
+};
 
 // how strong a highlight is over the editor's own background: soft enough that every editor theme's text reads on it
 // (todos.check.ts measures it), strong enough to tell the hues apart

@@ -4,7 +4,7 @@ import type { Todo } from '../api/client';
 import { isSource } from './shared';
 import { contrast, mixHex } from '../app/appearance';
 import { EDITOR_THEMES } from './editorThemes';
-import { MAX_RANGE_TEXT, TODO_HUES, WASH, dropGroup, dropIndex, findRange, groupHues, hueCss, hueForNew, hueOf, isRange, newOrder, nextHue, orderOf, placeAt, placeOf, quoteOf, rangeLabel, rangeLink, todoHues } from './todos';
+import { AUTO_HUES, MAX_RANGE_TEXT, NEAR, PICKER_HUES, TODO_HUES, WASH, dropGroup, dropIndex, findRange, groupHues, hueCss, hueDistance, hueOf, isRange, newOrder, orderOf, washLab, placeAt, placeOf, quoteOf, rangeLabel, rangeLink, todoHues } from './todos';
 import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, emptyText, findKey, findLine, groupName, groupNamed, groupOf, moveGroup, newGroup, orderedGroups, scanTodos, snippetOf, sortTodos, todoCounts, todoMatches, withNote } from './todos';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -131,7 +131,7 @@ eq(groupOf({ ...own, group: 'toString' }, groups), '', 'not a group: what every 
 eq(groupNamed(groups, '  spelling '), 'b', 'a group found by its name in any case');
 eq(groupNamed(groups, 'Figures'), '', 'no group by that name');
 eq(groupName(`  Still\n to   write ${'x'.repeat(100)}`).length, MAX_GROUP_NAME, 'a name is one line, capped');
-eq(newGroup(groups, ' Figures '), { name: 'Figures', order: 3, hue: 1 }, 'a new group goes last, in the next colour after the three before it');
+eq([newGroup(groups, ' Figures ').name, newGroup(groups, ' Figures ').order], ['Figures', 3], 'a new group goes last');
 eq(newGroup({}, 'Checking'), { name: 'Checking', order: 1, hue: 0 }, 'the first group, in the first colour');
 eq(moveGroup(groups, 'b', -1), { c: { name: 'References', order: 3 } }, 'move up past one sharing its place: renumbered, only what changed');
 eq(orderedGroups({ ...groups, ...moveGroup(groups, 'a', 1) }).map((g) => g.id), ['c', 'a', 'b'], 'move down');
@@ -167,31 +167,61 @@ eq(rangeLabel('main.tex', words, { line: 33, endLine: 35, found: true }), 'main.
 eq(rangeLabel('main.tex', words, { line: 33, found: false }), 'main.tex, line 33: text changed', 'the words changed elsewhere');
 eq(rangeLabel('main.tex', { ...words, removed: true }, { line: 33, found: false }), 'main.tex, line 33: text removed', 'the words deleted here');
 
-// ─── colours from the wheel ───
+// ─── colours from the wheel: told apart by how they look ───
 
 eq(TODO_HUES.length, 11, 'the wheel’s eleven hues, no grey');
-eq(nextHue([]), 0, 'the first colour');
-const turn: number[] = [];
-for (let i = 0; i < 11; i += 1) turn.push(nextHue(turn));
-eq(turn, [0, 4, 8, 1, 5, 9, 2, 6, 10, 3, 7], 'in turn, four places round the wheel each time');
-eq(new Set(turn).size, 11, 'every colour once before any twice');
-eq(turn.every((h, i) => !i || Math.min(Math.abs(h - turn[i - 1]), 11 - Math.abs(h - turn[i - 1])) > 1), true, 'two in a row never sit side by side on the wheel');
-eq(nextHue([...turn, 0]), 4, 'and round again');
-eq(nextHue([0, 0, 4]), 8, 'the least used first');
+const BLUE = TODO_HUES.findIndex((c) => c.label === 'Blue');
+const label = (h: number | undefined) => TODO_HUES[h!]?.label;
+// blue's highlight is the selection's colour (the Spectrum accent's and macOS's default blue, at the selection's 22%)
+const selection = (light: string, dark: string) => (h: number) =>
+  Math.min(
+    Math.hypot(...washLab(TODO_HUES[h].band, WASH.light, '#ffffff').map((v, i) => v - washLab(light, 0.22, '#ffffff')[i])),
+    Math.hypot(...washLab(TODO_HUES[h].dark, WASH.dark, '#0f0f0f').map((v, i) => v - washLab(dark, 0.22, '#0f0f0f')[i]))
+  );
+for (const fromSelection of [selection('#0073df', '#0073df'), selection('#007aff', '#0a84ff')]) {
+  eq(fromSelection(BLUE) < 4, true, 'blue reads as the selection');
+  eq(TODO_HUES.every((_, h) => h === BLUE || fromSelection(h) >= 8.5), true, 'every other hue sits as far from it as two neighbours do');
+}
+eq(PICKER_HUES.includes(BLUE), false, 'no blue in a group’s menu');
+eq(PICKER_HUES.length, 10, 'the other ten are');
+eq(AUTO_HUES.map(label), ['Red', 'Amber', 'Green', 'Teal', 'Indigo'], 'the hues for to-dos in no group');
+eq(AUTO_HUES.every((a) => AUTO_HUES.every((b) => a === b || hueDistance(a, b) >= NEAR)), true, 'every two of them far enough apart');
+eq(PICKER_HUES.filter((h) => !AUTO_HUES.includes(h)).every((h) => AUTO_HUES.some((a) => hueDistance(a, h) < NEAR)), true, 'and no other hue but blue could join them');
+eq(hueDistance(0, 1) < NEAR, true, 'red and orange are too close');
 eq(hueOf(14), 3, 'a later version’s wider wheel wraps');
 eq(hueOf('red'), undefined, 'not a hue');
-const gs = { refs: { name: 'References', order: 2, hue: 8 }, check: { name: 'Checking', order: 1 } };
-eq(groupHues(gs), { check: 0, refs: 8 }, 'a group’s own colour, or one in turn for a group from before colours');
+// groups: their own colour; a stored blue shows as the nearest in the menu
+const gs = { refs: { name: 'References', order: 2, hue: BLUE }, check: { name: 'Checking', order: 1, hue: 4 } };
+eq(label(groupHues(gs).refs), 'Indigo', 'a group stored blue shows the nearest hue the menu has');
+eq(label(groupHues(gs).check), 'Green', 'a group’s own colour');
+eq(label(groupHues({ a: { name: 'A', order: 1 }, b: { name: 'B', order: 2 } }).b) !== label(0), true, 'a group from before colours takes one clear of the one above');
 const day = (d: number) => `2026-11-${String(d).padStart(2, '0')}T00:00:00.000Z`;
-const hued = [
-  { id: 'a', createdAt: day(1) },
-  { id: 'b', createdAt: day(2), group: 'refs' },
-  { id: 'c', createdAt: day(3), hue: 5 },
-  { id: 'd', createdAt: day(4) }
-];
-eq([...todoHues(hued, gs)], [['a', 0], ['b', 8], ['c', 5], ['d', 9]], 'a group’s to-dos in its colour; the others their own or the next in turn');
-eq(hueForNew(hued, gs), 2, 'a new one in no group: the next after the last, clear of the groups’');
-eq(newGroup({}, 'References', [0]).hue, 4, 'a new group steers clear of the to-dos in no group: not red beside a red one');
+const loose = (n: number, extra: (i: number) => object = () => ({})) =>
+  Array.from({ length: n }, (_, i) => ({ id: `t${i}`, createdAt: day(i + 1), link: { file: 'main.tex', line: i + 1 }, ...extra(i) }));
+// the owner's case: to-dos in no group in one file beside a blue group and a green one
+const owner = todoHues([...loose(3, (i) => ({ hue: i })), { id: 'r', createdAt: day(9), group: 'refs' }, { id: 'c', createdAt: day(9), group: 'check' }], gs);
+const three = ['t0', 't1', 't2'].map((id) => owner.get(id)!);
+eq(three.map(label), ['Red', 'Teal', 'Amber'], 'three in no group: stored colours passed over, none beside the groups’ indigo and green');
+eq(three.every((a, i) => three.every((b, j) => i === j || hueDistance(a, b) >= NEAR) && [owner.get('r')!, owner.get('c')!].every((g) => hueDistance(a, g) >= NEAR)), true, 'all far enough from each other and the groups');
+// while colours are free, no two to-dos in no group are near; then the least used comes back
+for (let n = 1; n <= AUTO_HUES.length; n += 1) {
+  const h = [...todoHues(loose(n), {}).values()];
+  eq(h.every((a, i) => h.every((b, j) => i === j || hueDistance(a, b) >= NEAR)), true, `${n} in no group: none near another`);
+}
+const six = [...todoHues(loose(7), {}).values()];
+eq(new Set(six).size, 5, 'more than five: colours come round again');
+eq(AUTO_HUES.every((h) => six.filter((x) => x === h).length <= 2), true, 'the least used first');
+// the same file's neighbours count first: a to-do in another file may share a colour before one in its own does
+const byFile = todoHues([...loose(4), { id: 'o', createdAt: day(20), link: { file: 'other.tex', line: 1 } }, { id: 'm', createdAt: day(21), link: { file: 'main.tex', line: 9 } }], {});
+eq(byFile.get('m'), byFile.get('o'), 'all five used: the sixth shares a colour with one in another file, not with a neighbour in its own');
+// ticked ones come after the open ones
+const ticked = todoHues([{ id: 'd', createdAt: day(1), done: true }, { id: 'o', createdAt: day(2) }], {});
+eq(label(ticked.get('o')), 'Red', 'an open one is coloured before an older ticked one');
+// the same list gives the same colours
+eq([...todoHues(loose(4), gs)], [...todoHues(loose(4), gs)], 'the same each time');
+eq(newGroup({}, 'References', [0]).hue !== 0 && hueDistance(newGroup({}, 'References', [0]).hue!, 0) >= NEAR, true, 'a new group steers clear of the to-dos in no group');
+eq(newGroup({}, 'References', []).hue !== BLUE, true, 'and is never blue');
+eq(PICKER_HUES.every((h) => newGroup({ x: { name: 'X', order: 1, hue: h } }, 'Y').hue !== BLUE), true, 'never blue whatever the others');
 
 // readable: every editor theme's text on each highlight keeps 60% of its contrast or more, 4.5:1 where it had 7:1, and
 // Spectrum's own themes 7:1; and each highlight shows on the background
