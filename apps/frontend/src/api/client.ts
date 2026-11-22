@@ -246,6 +246,8 @@ export function saveMermaid(id: string, wanted: string[], images: Record<string,
 export interface ProjectStats {
   ok: boolean;
   source: 'texcount' | 'estimate';
+  /** with an estimate: whether texcount was found, and its error when it failed */
+  texcount?: { found: boolean; error?: string };
   words: number;
   wordsInText: number;
   wordsInHeaders: number;

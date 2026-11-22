@@ -1,3 +1,4 @@
+import { IS_WINDOWS } from '../app/platform';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { getFile, getProjectStats } from '../api/client';
@@ -45,6 +46,12 @@ const num = (n: number | null | undefined) => (typeof n === 'number' ? n.toLocal
  * Document insights, in the PDF's place: what the document and the files it pulls in hold, with the numbers and
  * pages its last compile gave each label. The source is read again a moment after each edit while the panel shows.
  */
+/** Why a count is an estimate: texcount is missing, or what it said when it failed. */
+export function estimateNote(texcount?: { found: boolean; error?: string }) {
+  if (texcount?.found) return `Estimated: texcount failed (${texcount.error || 'no reason given'}).${IS_WINDOWS ? ' texcount needs Perl: TeX Live brings its own, and MiKTeX needs Strawberry Perl and the texcount package.' : ''}`;
+  return `Estimated: install ${IS_WINDOWS ? 'TeX Live or MiKTeX' : 'MacTeX'} for exact counts with texcount.`;
+}
+
 export default function InsightsPanel({ doc, active, trailing }: { doc: string; active: boolean; trailing?: ReactNode }) {
   const api = useEditor();
   const [tab, setTab] = useState<Tab>('overview');
@@ -238,7 +245,7 @@ export default function InsightsPanel({ doc, active, trailing }: { doc: string; 
               </div>
               {stats && (
                 <div className="tool-footnote">
-                  {stats.source === 'texcount' ? `Counted with texcount from ${doc}.` : 'Estimated — install MacTeX for exact counts with texcount.'}
+                  {stats.source === 'texcount' ? `Counted with texcount from ${doc}.` : estimateNote(stats.texcount)}
                 </div>
               )}
             </>

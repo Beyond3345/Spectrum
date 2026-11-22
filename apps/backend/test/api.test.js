@@ -647,6 +647,14 @@ test('counts words', async () => {
   assert.equal((await api(`/api/projects/${p.id}/stats?mainFile=nope.tex`)).status, 404);
 });
 
+test('a texcount that fails says why, in a line', async () => {
+  const { texcountFailure } = await import('../src/services/statsService.js');
+  assert.equal(texcountFailure({ stderr: "Can't locate Encode.pm in @INC\nBEGIN failed--compilation aborted at texcount.pl line 4.\n" }), 'BEGIN failed--compilation aborted at texcount.pl line 4.');
+  assert.equal(texcountFailure({ killed: true, signal: 'SIGTERM' }), 'It took longer than 20 seconds and was stopped.');
+  assert.equal(texcountFailure({ message: 'spawn EINVAL' }), 'spawn EINVAL');
+  assert.equal(texcountFailure({}), 'It failed.');
+});
+
 test('parses texcount output and estimates without it', async () => {
   const { parseTexcount, estimateStats } = await import('../src/services/statsService.js');
   const texcount = parseTexcount([

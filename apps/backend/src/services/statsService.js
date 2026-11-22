@@ -32,6 +32,13 @@ export function parseTexcount(output) {
   return stats;
 }
 
+/** texcount's failure in a line: its own last words, or what stopped it. */
+export function texcountFailure(err) {
+  if (err?.killed || err?.signal) return 'It took longer than 20 seconds and was stopped.';
+  const said = `${err?.stderr || ''}\n${err?.stdout || ''}`.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return (said.at(-1) || err?.message || 'It failed.').slice(0, 300);
+}
+
 // ─── Estimate for machines without texcount ───
 
 const ARG = String.raw`\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}`; // a brace group, two levels of nesting
@@ -107,16 +114,18 @@ export async function projectStats(root, mainFile, texFolder) {
     throw Object.assign(new Error(`The main file “${mainFile}” doesn’t exist.`), { statusCode: 404 });
   }
   const texcount = await findExecutable('texcount', await texPath(texFolder));
+  // why there is no exact count, for the panel: texcount not found, or its own words when it failed
+  let why = 'missing';
   if (texcount) {
     try {
       // -dir: included files are relative to the main file's folder, as in the compile
       const { stdout } = await execFileAsync(texcount, ['-inc', '-total', '-utf8', '-dir', `./${mainFile}`], { cwd: root, timeout: 20_000, maxBuffer: 10 * 1024 * 1024, windowsHide: true });
       return parseTexcount(stdout);
-    } catch {
-      // fall back to the estimate
+    } catch (err) {
+      why = texcountFailure(err);
     }
   }
-  return estimateStats(await inlineInputs(root, mainFile, { stripComments: true }));
+  return { ...estimateStats(await inlineInputs(root, mainFile, { stripComments: true })), texcount: why === 'missing' ? { found: false } : { found: true, error: why } };
 }
 
 // ─── Numbers and pages from the last compile ───
