@@ -267,7 +267,12 @@ export async function compile(root, state, { main, engine } = {}, options = {}) 
   }
   // a Markdown document's log names lines of the file pandoc generated, which the agent never wrote: the compile's own
   // diagnostics, traced to the .md as the Logs tab shows them, stand in for the log's
-  const found = kindOf(file) === 'markdown' && Array.isArray(result.errors) ? markdownErrors(result.errors, logErrors(log)) : logErrors(log);
+  const fromLog = logErrors(log);
+  const found = kindOf(file) === 'markdown' && Array.isArray(result.errors) ? markdownErrors(result.errors, fromLog) : fromLog;
+  if (result.engine === 'typst' && kindOf(file) !== 'markdown' && result.errors?.some((entry) => entry.severity === 'error')) {
+    found.errors = result.errors.filter((entry) => entry.severity === 'error').slice(0, 50)
+      .map(({ file, line, column, message }) => `${file}:${line}:${column}: error: ${message}`);
+  }
   await fs.writeFile(path.join(state, 'last.json'), JSON.stringify(found));
   const generated = kindOf(file) === 'markdown' && (await fs.stat(path.join(state, 'build', 'generated')).catch(() => null))?.isDirectory() ? path.join(state, 'build', 'generated') : null;
   return { ok: result.ok && result.status === 0, mainFile: file, engine: result.engine, ...(result.error && { error: result.error }), ...(pdf && { pdf }), ...(generated && { generated }), ...found };

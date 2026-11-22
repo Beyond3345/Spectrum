@@ -2,6 +2,12 @@
 
 Written 20 November 2026 for Spectrum 2.6.0. These are the agent checks that only a Windows computer can settle. Run them in order on scratch data, and send back what each one asks for. Steps 1 to 3 need a source checkout of the release branch, set up as [Building Spectrum on Windows](BUILDING_ON_WINDOWS.md) says, with the isolation worker built (`node scripts/build-agent-sandbox.mjs`). Steps 4 to 8 need the app built from that branch and a model set up in Settings, as the Spectrum agent makes the changes they review. Never point a step at your own projects or at `%APPDATA%\com.beyond3345.spectrum`.
 
+## Windows draft compilation
+
+Windows isolates local agents. Draft compilation for Preview PDF, PDF before and after and the Spectrum agent’s compile tool runs outside that isolation. Draft compilation disables shell escape. The PDF review compiles a copy that excludes links. Where the TeX engine supports file access limits, Spectrum asks it to restrict reads and writes to the draft and its build folder.
+
+Bibliography, index and glossary helpers follow their own file access rules. The TeX limits do not apply to them. For example, Biber can read a bibliography outside the draft, and its log can expose information about what it read. Run the checks below using scratch data.
+
 ## 1. The native agent tests
 
 In PowerShell, from the checkout,
