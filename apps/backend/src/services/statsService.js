@@ -35,6 +35,7 @@ export function parseTexcount(output) {
 /** texcount's failure in a line: its own last words, or what stopped it. */
 export function texcountFailure(err) {
   if (err?.killed || err?.signal) return 'It took longer than 20 seconds and was stopped.';
+  if (err?.unread) return err.message;
   const said = `${err?.stderr || ''}\n${err?.stdout || ''}`.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   return (said.at(-1) || err?.message || 'It failed.').slice(0, 300);
 }
@@ -117,12 +118,31 @@ export async function projectStats(root, mainFile, texFolder) {
   // why there is no exact count, for the panel: texcount not found, or its own words when it failed
   let why = 'missing';
   if (texcount) {
+    const run = async (args, input) => {
+      const pending = execFileAsync(texcount, args, { cwd: root, timeout: 20_000, maxBuffer: 10 * 1024 * 1024, windowsHide: true });
+      pending.child.stdin?.on('error', () => {});
+      pending.child.stdin?.end(input ?? '');
+      const { stdout } = await pending;
+      // texcount ends with "(errors:N)" and counts nothing for a file it could not open, yet exits 0
+      const unread = stdout.match(/!!! File not found or not readable: (.*?) !!!/);
+      if (unread) throw Object.assign(new Error(`It could not read ${unread[1].trim()}.`), { unread: true });
+      return parseTexcount(stdout);
+    };
     try {
       // -dir: included files are relative to the main file's folder, as in the compile
-      const { stdout } = await execFileAsync(texcount, ['-inc', '-total', '-utf8', '-dir', `./${mainFile}`], { cwd: root, timeout: 20_000, maxBuffer: 10 * 1024 * 1024, windowsHide: true });
-      return parseTexcount(stdout);
+      return await run(['-inc', '-total', '-utf8', '-dir', `./${mainFile}`]);
     } catch (err) {
       why = texcountFailure(err);
+      // Perl on Windows cannot open a file by name in a folder whose path its code page cannot spell (大學 under an
+      // English system locale): Spectrum reads the document and its \input and \include files and hands them over.
+      // ponytail: comments are left out of what is handed over, so %TC: directives are not honoured on this path
+      if (err.unread) {
+        try {
+          return { ...(await run(['-total', '-utf8', '-'], await inlineInputs(root, mainFile, { stripComments: true }))), read: 'spectrum' };
+        } catch (again) {
+          why = texcountFailure(again);
+        }
+      }
     }
   }
   return { ...estimateStats(await inlineInputs(root, mainFile, { stripComments: true })), texcount: why === 'missing' ? { found: false } : { found: true, error: why } };

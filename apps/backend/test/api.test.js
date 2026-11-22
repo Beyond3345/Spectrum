@@ -647,6 +647,41 @@ test('counts words', async () => {
   assert.equal((await api(`/api/projects/${p.id}/stats?mainFile=nope.tex`)).status, 404);
 });
 
+test('a texcount that cannot open a file by name is handed the document, and counts as it would by file', async (t) => {
+  if (process.platform === 'win32') return t.skip('the stand-in is a shell script');
+  let real;
+  try { real = execFileSync('/bin/sh', ['-c', 'command -v texcount'], { encoding: 'utf8', env: { PATH: `/Library/TeX/texbin:/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}` } }).trim(); } catch { return t.skip('needs texcount'); }
+  const { projectStats } = await import('../src/services/statsService.js');
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'spectrum-texcount-')));
+  const saved = process.env.PATH;
+  try {
+    // a folder named as the owner's, under which Perl on Windows cannot open a file by name
+    const project = path.join(dir, '大學', 'essay');
+    mkdirSync(path.join(project, 'chapters'), { recursive: true });
+    writeFileSync(path.join(project, 'main.tex'), '\\documentclass{article}\n\\begin{document}\n\\section{Intro}\nAlpha beta gamma delta.\n% \\input{chapters/skip}\n\\input{chapters/one}\n\\include{chapters/two}\n\\end{document}\n');
+    writeFileSync(path.join(project, 'chapters', 'one.tex'), 'One two three four five.\n');
+    writeFileSync(path.join(project, 'chapters', 'two.tex'), 'Six seven eight.\n');
+    writeFileSync(path.join(project, 'chapters', 'skip.tex'), 'Never counted at all.\n');
+    process.env.PATH = `${path.dirname(real)}:/usr/bin:/bin`;
+    const byFile = await projectStats(project, 'main.tex');
+    assert.equal(byFile.source, 'texcount');
+    assert.equal(byFile.wordsInText, 12);
+    // texcount as it is there: "!!! File not found or not readable" for the file, with exit code 0
+    const bin = path.join(dir, 'bin');
+    mkdirSync(bin);
+    writeFileSync(path.join(bin, 'texcount'), `#!/bin/sh\nfor a in "$@"; do case "$a" in ./*) printf '!!! File not found or not readable: %s !!!\\nTotal\\nWords in text: 0\\n(errors:1)\\n' "$a"; exit 0;; esac; done\nexec "${real}" "$@"\n`, { mode: 0o755 });
+    process.env.PATH = `${bin}:/usr/bin:/bin`;
+    const handed = await projectStats(project, 'main.tex');
+    assert.equal(handed.source, 'texcount');
+    assert.equal(handed.read, 'spectrum');
+    const { read, ...counts } = handed;
+    assert.deepEqual(counts, byFile, 'the same count as by file, the commented-out \\input left out');
+  } finally {
+    process.env.PATH = saved;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a texcount that fails says why, in a line', async () => {
   const { texcountFailure } = await import('../src/services/statsService.js');
   assert.equal(texcountFailure({ stderr: "Can't locate Encode.pm in @INC\nBEGIN failed--compilation aborted at texcount.pl line 4.\n" }), 'BEGIN failed--compilation aborted at texcount.pl line 4.');
