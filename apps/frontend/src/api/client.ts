@@ -1232,7 +1232,7 @@ export function deleteChat(projectId: string, chatId: string) {
 /**
  * Where a to-do points: a source line (found again by its text if lines move), a page of a document's PDF, or a reference.
  * A line link can also hold the words it was added on (text) and where they run, line to endLine, columns counted from 0
- * in UTF-16 units as CodeMirror counts them (since 2.7; older versions keep them through their saves); removed: the words
+ * in UTF-16 units as CodeMirror counts them (after 2.6.1; older versions keep them through their saves); removed: the words
  * were deleted while the file was open.
  */
 export type LineLink = { file: string; line: number; snippet?: string; col?: number; endLine?: number; endCol?: number; text?: string; removed?: boolean };
@@ -1249,13 +1249,13 @@ export interface Todo {
   note?: string;
   /** the id of the group it is in, since 2.6; one that isn't in the project's groups (deleted) is no group */
   group?: string;
-  /** its colour while in no group, a place on the Spectrum wheel (todos.ts TODO_HUES), since 2.7 */
+  /** its colour while in no group, a place on the Spectrum wheel (todos.ts TODO_HUES), after 2.6.1 */
   hue?: number;
-  /** its place in its list, since 2.7 (todos.ts orderOf); one without goes by when it was made */
+  /** its place in its list, after 2.6.1 (todos.ts orderOf); one without goes by when it was made */
   order?: number;
 }
 
-/** One of the user's to-do groups, kept in the project's settings by its id; hue: its to-dos' colour, since 2.7 */
+/** One of the user's to-do groups, kept in the project's settings by its id; hue: its to-dos' colour, after 2.6.1 */
 export type TodoGroup = { name: string; order: number; hue?: number };
 export type TodoGroups = Record<string, TodoGroup>;
 

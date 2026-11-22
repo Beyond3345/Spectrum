@@ -145,7 +145,7 @@ export function todoCounts(mine: { done: boolean }[], source: unknown[]) {
 }
 
 /**
- * A to-do's place in its list: its order (since 2.7, set when it is added or dragged), or for one from before orders the
+ * A to-do's place in its list: its order (after 2.6.1, set when it is added or dragged), or for one from before orders the
  * time it was made, so an old list keeps the order it had, oldest first, and a new one goes after it.
  */
 export const orderOf = (t: { order?: number; createdAt: string }) => (Number.isFinite(t.order) ? t.order! : Date.parse(t.createdAt) || 0);

@@ -20,7 +20,7 @@ const isObject = (value) => !!value && typeof value === 'object' && !Array.isArr
 // in its own field, group; one whose group is gone (deleted here or on another computer) is in no group.
 export const MAX_GROUP_NAME = 80;
 const MAX_GROUPS = 100;
-// a group's or a to-do's colour, since 2.7: a place on the Spectrum wheel (the editor's todos.ts TODO_HUES), with
+// a group's or a to-do's colour, after 2.6.1: a place on the Spectrum wheel (the editor's todos.ts TODO_HUES), with
 // room for a later version's wider wheel
 const MAX_HUE = 63;
 const isHue = (h) => h == null || (Number.isInteger(h) && h >= 0 && h <= MAX_HUE);
@@ -73,8 +73,8 @@ export async function followRename(root, from, to) {
   return unmoved;
 }
 
-// the words a line link was added on, since 2.7: all of col, endLine, endCol (columns from 0) and text (the words,
-// at most MAX_TEXT, which find them again) or none; removed, set when the words were deleted. 2.6 keeps them as fields
+// the words a line link was added on, after 2.6.1: all of col, endLine, endCol (columns from 0) and text (the words,
+// at most MAX_TEXT, which find them again) or none; removed, set when the words were deleted. 2.6.1 keeps them as fields
 // it doesn't know
 const MAX_COLUMN = 100000;
 const isColumn = (n) => Number.isInteger(n) && n >= 0 && n <= MAX_COLUMN;
@@ -140,7 +140,7 @@ export function registerTodoRoutes(fastify) {
     if (rest.note != null && !isText(rest.note, MAX_NOTE)) throw httpError(`A to-do’s note is at most ${MAX_NOTE} characters.`, 400);
     // its group's id, since 2.6; 2.5 passes it through as a field it doesn't know
     if (rest.group != null && (typeof rest.group !== 'string' || !ITEM_ID.test(rest.group))) throw httpError('Invalid to-do group.', 400);
-    // its colour in no group and its place in its list, since 2.7
+    // its colour in no group and its place in its list, after 2.6.1
     if (!isHue(rest.hue)) throw httpError('Invalid to-do colour.', 400);
     if (rest.order != null && !Number.isFinite(rest.order)) throw httpError('Invalid to-do order.', 400);
     if (typeof done !== 'boolean' || !isText(createdAt, 40) || !isText(updatedAt, 40)) throw httpError('Invalid to-do.', 400);

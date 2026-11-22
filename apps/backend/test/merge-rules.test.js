@@ -64,7 +64,7 @@ test('project.json and settings.json merge key by key, one level into a group, a
   const todo = { id: 't', text: 'Fix', done: false };
   assert.deepEqual(rules.mergeMeta(todo, { ...todo, note: 'See p. 3' }, { ...todo, done: true }), { ...todo, note: 'See p. 3', done: true });
   assert.deepEqual(rules.mergeMeta({ ...todo, note: 'a' }, todo, { ...todo, note: 'a', text: 'Fix it' }), { ...todo, text: 'Fix it' });
-  // a to-do's range, colour and order (2.7): the range moved here and a tick there keep both, a colour or an order
+  // a to-do's range, colour and order (after 2.6.1): the range moved here and a tick there keep both, a colour or an order
   // changed on one side is kept, and a range moved on both sides takes this computer's words and place
   const ranged = { ...todo, order: 10, hue: 2, link: { file: 'main.tex', line: 3, col: 4, endLine: 3, endCol: 9, text: 'words' } };
   const moved = { ...ranged.link, line: 5, snippet: 'new' };
