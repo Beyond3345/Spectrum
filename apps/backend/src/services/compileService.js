@@ -71,7 +71,8 @@ const needsBiber = (tex) => BIBLATEX.test(withoutComments(tex)) && !BIBTEX_BACKE
 // Tectonic's bundle or a package couldn't be fetched (the bundle's own panic says it isn't cached)
 const TECTONIC_DOWNLOAD = /failed to download|failure downloading|couldn't get it from the internet/i;
 // what a format that doesn't suit the pass ends in: pdfTeX's own errors, never a document's
-const FORMAT_FAULT = /pdfTeX error|\(pdf backend\)|Fatal format file error/i;
+// (MiKTeX's own words for a format it can't load: "The memory dump file could not be found.")
+const FORMAT_FAULT = /pdfTeX error|\(pdf backend\)|Fatal format file error|memory dump file/i;
 const ENGINE_NAMES = { pdflatex: 'pdfLaTeX', xelatex: 'XeLaTeX', lualatex: 'LuaLaTeX', tectonic: 'Tectonic', latexmk: 'Latexmk' };
 // the built-in Tectonic's LaTeX (2021-11-15) can't load xjyutping 2, which needs 2023-11-01
 const XJYUTPING_ENGINE_ERROR = 'Jyutping (xjyutping) needs XeLaTeX or LuaLaTeX from a TeX installation, and the built-in Tectonic’s LaTeX is too old for it. Install MacTeX, TeX Live or MiKTeX, or choose its folder in Settings › Engines › LaTeX.';
@@ -911,10 +912,13 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // a pass that started from the format and ended in an error of pdfTeX's own, or made no PDF: once more without it,
   // and where that compiles, the format is never used again
   if (format && !retry && pass.code !== 0 && !pass.timedOut && !stopped() && (FORMAT_FAULT.test(logChunks.join('')) || !(await exists(path.join(outDir, `${base}.pdf`))))) {
+    // said in its log, with what went wrong, as the precompiled preamble is off for this preamble from now on
+    const why = logChunks.join('').split(/\r?\n/).filter((line) => FORMAT_FAULT.test(line)).slice(0, 3).join(' ');
     await clean();
     const again = await compileWith(engine, projectRoot, absMain, mainFile, { ...options, noFormat: true });
-    if (again.status === 0) await refuseFormat(formatOf);
-    return again;
+    if (again.status !== 0) return again;
+    await refuseFormat(formatOf);
+    return { ...again, log: `[spectrum note] The pass that started from the precompiled preamble failed${why ? ` (${why.trim()})` : ''}, so this compiled again without it, and that preamble won’t be precompiled again.\n${again.log ?? ''}` };
   }
   if (retry) {
     // a kept file TeX choked on (one from an older package version, say) never locks the document out

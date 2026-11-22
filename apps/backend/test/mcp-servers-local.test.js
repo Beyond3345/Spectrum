@@ -199,6 +199,13 @@ test('a local port is a number the user gives, never one of Spectrum’s own', a
   assert.ok(servers.portRefused(gate.port), `the gate’s port ${gate.port}`);
   gate.close();
   await servers.addServer({ name: 'ports', command: process.execPath, args: [file] });
+  if (process.platform === 'win32') {
+    // Windows isolation refuses every address of this computer, so no port is taken, good or bad, and none saved
+    for (const ports of [[own.port], [23119]]) await assert.rejects(servers.setServerNetwork('ports', { ports }), /On Windows, isolation refuses every address of this computer/);
+    assert.equal((await of('ports')).ports, undefined);
+    await servers.removeServer('ports');
+    return;
+  }
   await assert.rejects(servers.setServerNetwork('ports', { ports: [own.port] }), /Spectrum’s own/);
   await assert.rejects(servers.setServerNetwork('ports', { ports: [50000] }), /handed out by the system/);
   await assert.rejects(servers.setServerNetwork('ports', { ports: 23119 }), /list of up to 20/);

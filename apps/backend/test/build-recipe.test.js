@@ -120,6 +120,8 @@ test('with TeX: a one-pass recipe is one pass, so a reference stays unresolved; 
   // uncompressed, so the PDF's text can be read: an unresolved \ref prints ?? there
   const body = '\\pdfcompresslevel=0\n\\documentclass{article}\\begin{document}\\section{A}\\label{a} See Section~\\ref{a}.\\end{document}\n';
   const p = await createProject({ name: 'One pass', populate: (root) => fs.writeFile(path.join(root, 'main.tex'), `% !TEX recipe = pdflatex\n${body}`) });
+  // where compiles aren't confined (Windows) a recipe runs only in a trusted project
+  if (!MAC) await setTrusted(p.id, p.path, true);
   const once = await runCompile({ projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' });
   assert.ok(once.ok, once.error || once.log);
   assert.equal(once.log.match(/\[spectrum note\] Recipe:/g).length, 1);

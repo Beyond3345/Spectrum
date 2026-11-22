@@ -570,7 +570,8 @@ test('compiles a main file in a subfolder with biblatex, local and root-relative
   await writeFile(p.id, 'paper/refs.bib', '@book{Knuth1984, author = {Knuth, Donald}, title = {The TeXbook}, publisher = {Addison-Wesley}, year = {1984}}\n');
   await writeFile(p.id, 'shared/macros.tex', '\\newcommand{\\project}{Spectrum}\n');
   const res = (await api('/api/compile', { method: 'POST', body: { projectId: p.id, mainFile: 'paper/main.tex', engine: 'pdflatex' } })).json;
-  assert.ok(res.ok, res.error || res.log);
+  // the compile's own log with its error, so a failure says why
+  assert.ok(res.ok, `${res.error}\n${res.log}`);
   assert.equal(res.pdfPath, 'paper/main.pdf');
   // the citation is resolved by the final pass, so biber found the .bcf and the .bib
   const lastPass = res.log.slice(res.log.lastIndexOf('This is pdfTeX'));
@@ -1556,7 +1557,7 @@ test('quick APA template switching reconnects a custom bibliography and compiles
   const { tools } = (await api('/api/system/check')).json;
   if (!tools.pdflatex || !tools.biber) return t.skip('compile needs pdflatex and biber');
   const compiled = (await api('/api/compile', { method: 'POST', body: { projectId: p.id, mainFile: 'main.tex', engine: 'pdflatex' } })).json;
-  assert.ok(compiled.ok, compiled.error || compiled.log);
+  assert.ok(compiled.ok, `${compiled.error}\n${compiled.log}`);
   assert.equal(compiled.status, 0, compiled.log);
   const last = compiled.log.slice(compiled.log.lastIndexOf('This is pdfTeX'));
   assert.doesNotMatch(last, /Citation .*undefined|australian-apa\.lbx|Can be used only in preamble|Please \(re\)run Biber/);

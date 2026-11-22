@@ -82,7 +82,9 @@ test('an outside agent reaches one project’s tools only while its switch is on
   assert.doesNotMatch(map, /CANARY/);
   assert.match((await client.callTool({ name: 'search_text', arguments: { query: 'CANARY' } })).content[0].text, /"matches":\[\]/);
   assert.match((await client.callTool({ name: 'compile', arguments: { main: '.env' } })).content[0].text, /not available to the agent/);
-  assert.match((await client.callTool({ name: 'compile', arguments: { main: '../../outside.tex' } })).content[0].text, /Invalid path/);
+  // outside the project: refused. On Windows, which drops a name's trailing dots, the hidden-name rule refuses ".."
+  // before the path is resolved
+  assert.match((await client.callTool({ name: 'compile', arguments: { main: '../../outside.tex' } })).content[0].text, process.platform === 'win32' ? /not available to the agent/ : /Invalid path/);
   // a compile builds where a confined compile may read its own .aux back (the project's cache), and says where the PDF is
   if (hasTeX) assert.match((await client.callTool({ name: 'compile', arguments: {} })).content[0].text, /"ok":true.*"pdf":"[^"]*cache[^"]*main\.pdf"/);
   await client.close();
