@@ -125,6 +125,10 @@ before(async () => {
   writeFileSync(path.join(legacyRoot, 'main.tex'), 'legacy');
 
   await fs.cp(shippedDir, templateDir, { recursive: true });
+  if (WINDOWS) {
+    await fs.mkdir(path.join(tmp, 'home', 'AppData', 'Local'), { recursive: true });
+    await fs.mkdir(path.join(tmp, 'home', 'AppData', 'Roaming'), { recursive: true });
+  }
   await startMockLLM();
   await startServer();
 });

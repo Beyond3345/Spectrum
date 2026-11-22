@@ -63,7 +63,7 @@ test('the request says nothing about the user, the computer or a project', async
   // only what any fetch sends; no cookie, no version, no name
   const allowed = new Set(['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'user-agent', 'accept-encoding']);
   assert.deepEqual(Object.keys(headers).filter((name) => !allowed.has(name)), []);
-  const said = JSON.stringify(headers);
+  const said = Object.values(headers).join('\n');
   for (const private_ of [APP_VERSION, os.userInfo().username, os.hostname(), os.homedir()]) assert.ok(!said.includes(private_), `sent ${private_}`);
 });
 

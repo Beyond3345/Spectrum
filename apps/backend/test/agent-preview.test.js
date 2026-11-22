@@ -40,6 +40,15 @@ test('the draft’s preview PDF is compiled where TeX reads only the draft, into
     assert.deepEqual(before2, before);
 
     const preview = await previewDraft(run);
+    if (process.platform === 'win32') {
+      const version = execFileSync('pdflatex', ['--version'], { encoding: 'utf8' });
+      const { confinableTeX } = await import('../src/services/agentSessionService.js');
+      if (!confinableTeX(version)) {
+        assert.equal(preview.pdf, null);
+        assert.match(preview.log, /TeX Live 2025 or earlier/);
+        return;
+      }
+    }
     assert.ok(preview.pdf, preview.log);
     assert.equal(Buffer.from(preview.pdf, 'base64').subarray(0, 5).toString(), '%PDF-');
     assert.equal(preview.ok, true, preview.log);

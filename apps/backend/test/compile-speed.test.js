@@ -425,9 +425,12 @@ test('a format is not used once anything it was made from has changed, and anoth
   await write(p, 'main.tex', '% !TEX options = -8bit\n' + source);
   assert.doesNotMatch((await preSettled(p)).log, FROM_FORMAT);
   assert.doesNotMatch((await pre(p)).log, FROM_FORMAT, 'with engine options of its own');
+  // Windows runs a recipe only in a trusted project.
+  if (process.platform === 'win32') await setTrusted(p.id, p.path, true);
   await write(p, 'main.tex', '% !TEX recipe = pdflatex; pdflatex\n' + source);
   assert.doesNotMatch((await preSettled(p)).log, FROM_FORMAT);
   assert.doesNotMatch((await pre(p)).log, FROM_FORMAT, 'with a recipe of its own');
+  if (process.platform === 'win32') await setTrusted(p.id, p.path, false);
   // Recompile from scratch clears it with the other kept files
   await write(p, 'main.tex', source);
   await preSettled(p);

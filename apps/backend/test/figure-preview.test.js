@@ -69,7 +69,7 @@ test('a figure compiles alone from a copy, finds the project’s files and leave
   assert.equal(await fs.stat(written).catch(() => null), null, write.log);
 
   const bad = await previewFigure({ projectId: project.id, file: 'main.tex', engine: 'pdflatex', piece: '\\undefinedthing' });
-  assert.match(bad.log, /Undefined control sequence/);
+  assert.match(bad.log, /Undefined\s+control\s+sequence/);
   const none = await previewFigure({ projectId: project.id, file: 'parts/shape.tex', piece: 'x' });
   assert.equal(none.ok, false);
 });

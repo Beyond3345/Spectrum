@@ -396,5 +396,5 @@ test('every Typst template exports as PDF/UA-1, with alt text on each equation',
 test.after(async () => {
   // a kept-running Typst still watching a project here: Windows can't delete the folder until it has exited
   await stopTypstWatch();
-  rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  await fs.rm(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
