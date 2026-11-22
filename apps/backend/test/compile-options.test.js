@@ -615,7 +615,7 @@ for (const engine of ['pdflatex', 'xelatex', 'lualatex', 'tectonic', 'latexmk'])
     const res = await compile(p, { engine, pageColour: CREAM });
     // without its packages and no connection, Tectonic can't compile anything
     if (engine === 'tectonic' && !res.ok && /couldn’t reach|download/i.test(res.error || '')) return;
-    assert.equal(res.status, 0, res.error || res.log);
+    assert.equal(res.status, 0, `${res.error}\n${res.log}`);
     assert.ok(fills(res.pdf, CREAM), 'the page is cream');
     assert.equal(await fs.readFile(path.join(p.path, 'main.tex'), 'utf8'), COLOURED);
     assert.equal(await leftovers(p), 0);
