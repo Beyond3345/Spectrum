@@ -28,7 +28,7 @@ import { PATH_KEY, cleanBuild, findExecutable, inBackground, keptFiles, runSpawn
 // LuaTeX and XeTeX can't dump the fonts fontspec loads, so their formats fail for nearly every document
 export const FORMAT_ENGINES = ['pdflatex'];
 // part of every key: raised when the rules here change, so formats made under older rules are made again
-const RULES = 1;
+const RULES = 2;
 const TRIES = 2;
 const sha = (data) => crypto.createHash('sha256').update(data).digest('hex');
 const stateFile = (dir) => path.join(dir, 'state.json');
@@ -63,9 +63,15 @@ export async function formatKey({ preamble, mainName, shell, env, files }) {
   return sha(JSON.stringify([RULES, preamble, mainName, shell, engine, stat?.size, stat?.mtimeMs, env.TEXINPUTS, local]));
 }
 
+// TeX Live on Windows can print paths with a different drive-letter case from Node's.
+function relativeWithin(root, file) {
+  const relative = path.relative(root, file);
+  return relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) ? null : relative;
+}
+
 /** A file TeX read, as it is now: its bytes' hash inside the project, its size and time elsewhere (TeX's own tree). */
 async function about(file, projectRoot) {
-  if (file.startsWith(projectRoot + path.sep)) return fs.readFile(file).then(sha, () => '');
+  if (relativeWithin(projectRoot, file) !== null) return fs.readFile(file).then(sha, () => '');
   const stat = await fs.stat(file).catch(() => null);
   return stat ? `${stat.size}:${stat.mtimeMs}` : '';
 }
@@ -134,9 +140,11 @@ async function make({ dir, key, preamble, projectRoot, mainDir, mainName, base, 
     // every file TeX read for it, each as it was then: the project's by where it is in the project
     const deps = [];
     for (const read of new Set([...fls.matchAll(/^INPUT (.*)$/gm)].map(([, file]) => path.resolve(from, file.trim())))) {
-      if (read === path.join(from, mainName) || read.startsWith(made + path.sep)) continue;
-      const inCopy = read.startsWith(copy + path.sep);
-      deps.push([inCopy ? path.join(projectRoot, path.relative(copy, read)) : read, await about(read, inCopy ? copy : projectRoot)]);
+      if (!path.relative(path.join(from, mainName), read) || relativeWithin(made, read) !== null) continue;
+      const relative = relativeWithin(copy, read);
+      deps.push(relative === null
+        ? [read, await about(read, projectRoot)]
+        : [path.join(projectRoot, relative), await about(read, copy)]);
     }
 
     // the same pass twice from the document's kept files, without the format and with it
