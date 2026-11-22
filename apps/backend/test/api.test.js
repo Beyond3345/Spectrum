@@ -706,6 +706,39 @@ test('Windows texcount counts Unicode filenames and preserves a real zero', { sk
   }
 });
 
+test('the .bib files are copied beside Biber when the project path is not ASCII, and the copies are taken away again', async () => {
+  const { bibCopies } = await import('../src/services/compileService.js');
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'spectrum-bibcopies-')));
+  try {
+    const project = path.join(dir, '大學', 'essay');
+    const out = path.join(dir, 'build');
+    mkdirSync(path.join(project, 'refs'), { recursive: true });
+    mkdirSync(out);
+    writeFileSync(path.join(project, 'references.bib'), '@book{a, title = {A}}\n');
+    writeFileSync(path.join(project, 'refs', 'more.bib'), '@book{b, title = {B}}\n');
+    const source = (name, extra = '') => `<bcf:datasource type="file" datatype="bibtex"${extra}>${name}</bcf:datasource>`;
+    writeFileSync(path.join(out, 'main.bcf'), [source('references.bib'), source('refs/more.bib'), source('*.bib', ' glob="true"'), source('../outside.bib'), source('/abs/x.bib')].join('\n'));
+    await bibCopies(out, 'main', [project]);
+    assert.equal(await fs.readFile(path.join(out, 'references.bib'), 'utf8'), '@book{a, title = {A}}\n');
+    assert.equal(await fs.readFile(path.join(out, 'refs', 'more.bib'), 'utf8'), '@book{b, title = {B}}\n');
+    assert.ok(!existsSync(path.join(dir, 'outside.bib')));
+    // a .bib taken out of the project is not read from the old copy
+    await fs.rm(path.join(project, 'refs', 'more.bib'));
+    await bibCopies(out, 'main', [project]);
+    assert.ok(!existsSync(path.join(out, 'refs', 'more.bib')));
+    assert.ok(existsSync(path.join(out, 'references.bib')));
+    // a plain ASCII project gets no copies, and the last ones go
+    await bibCopies(out, 'main', [path.join(dir, 'plain')]);
+    assert.ok(!existsSync(path.join(out, 'references.bib')));
+    // a .bib the build folder holds of its own is left alone
+    writeFileSync(path.join(out, 'references.bib'), 'own');
+    await bibCopies(out, 'main', [project]);
+    assert.equal(await fs.readFile(path.join(out, 'references.bib'), 'utf8'), 'own');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a texcount that fails says why, in a line', async () => {
   const { texcountFailure } = await import('../src/services/statsService.js');
   assert.equal(texcountFailure({ stderr: "Can't locate Encode.pm in @INC\nBEGIN failed--compilation aborted at texcount.pl line 4.\n" }), 'BEGIN failed--compilation aborted at texcount.pl line 4.');

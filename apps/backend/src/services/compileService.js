@@ -1064,6 +1064,7 @@ async function runBibliography(outDir, base, tex, { bibTool } = {}, run, pushLog
   // .bib files and Biber: with all three as they were for the kept .bbl, it isn't run. ponytail: BibTeX always
   // runs (a twentieth of a second)
   const recordFile = path.join(outDir, base + BIB_RECORD);
+  if (useBiber && WINDOWS) await bibCopies(outDir, base, dirs);
   const reads = useBiber ? await biberReads(outDir, base, dirs, searchPath) : null;
   const made = reads && (await fs.readFile(recordFile, 'utf8').catch(() => ''));
   if (reads && made === `${reads}\n${await fileHash(path.join(outDir, `${base}.bbl`))}`) {
@@ -1111,6 +1112,38 @@ const fileHash = async (file) => {
 };
 // each file Biber is told to read: <bcf:datasource type="file" datatype="bibtex" glob="false">refs.bib</bcf:datasource>
 const BCF_SOURCE = /<bcf:datasource\b([^>]*)>([^<]*)<\/bcf:datasource>/g;
+
+/**
+ * Perl on Windows reads a folder named in BIBINPUTS through the system's code page, so Biber cannot find a .bib in a
+ * project whose path that code page cannot spell (大學 under an English locale) and reports "Cannot find 'x.bib'!".
+ * Biber looks in its working folder, the build folder, first: each .bib the control file names by a plain relative name
+ * is copied there before it runs, and the copies of the last run are taken away first, so a .bib removed from the
+ * project is not read from an old copy. Only when a source folder's path is not ASCII.
+ */
+export async function bibCopies(outDir, base, dirs) {
+  const list = path.join(outDir, `${base}.bibcopies`);
+  for (const rel of (await fs.readFile(list, 'utf8').catch(() => '')).split('\n').filter(Boolean)) await fs.rm(path.join(outDir, rel), { force: true });
+  await fs.rm(list, { force: true });
+  if (!dirs.some((dir) => /[^\x20-\x7e]/.test(dir))) return;
+  const bcf = await fs.readFile(path.join(outDir, `${base}.bcf`), 'utf8').catch(() => null);
+  if (!bcf) return;
+  const copied = [];
+  for (const [, attributes, raw] of bcf.matchAll(BCF_SOURCE)) {
+    const name = raw.trim();
+    if (!/type="file"/.test(attributes) || /glob="true"/.test(attributes) || /[&*?[\]{}]|^\w+:\/\//.test(name) || path.isAbsolute(name) || name.split(/[\\/]/).includes('..')) continue;
+    // already in the build folder as the document's own (not a copy of ours): left alone
+    if (await fs.stat(path.join(outDir, name)).catch(() => null)) continue;
+    for (const dir of dirs) {
+      const from = path.resolve(dir, name);
+      if (!(await fs.stat(from).catch(() => null))?.isFile()) continue;
+      await fs.mkdir(path.dirname(path.join(outDir, name)), { recursive: true });
+      await fs.copyFile(from, path.join(outDir, name));
+      copied.push(name);
+      break;
+    }
+  }
+  if (copied.length) await fs.writeFile(list, copied.join('\n'));
+}
 
 /**
  * Everything Biber reads for <base>.bcf, as one hash: the control file (the citations, the style's sorting and data
