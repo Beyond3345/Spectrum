@@ -240,11 +240,11 @@ export const groupNamed = (groups: TodoGroups, name: string) => {
   return orderedGroups(groups).find((g) => g.name.toLocaleLowerCase() === want)?.id ?? '';
 };
 
-/** A new group, after the others, in the next colour in turn. */
-export const newGroup = (groups: TodoGroups, name: string): TodoGroup => ({
+/** A new group, after the others, in the next colour in turn after the groups' and those taken by to-dos in no group. */
+export const newGroup = (groups: TodoGroups, name: string, taken: (number | undefined)[] = []): TodoGroup => ({
   name: groupName(name),
   order: Math.max(0, ...Object.values(groups).map((g) => g.order)) + 1,
-  hue: nextHue(orderedGroups(groups).map((g) => groupHues(groups)[g.id]))
+  hue: nextHue([...taken, ...orderedGroups(groups).map((g) => groupHues(groups)[g.id])])
 });
 
 /** What moves a group one place up (-1) or down (1): the order numbered again from 1, only the groups whose place changed. */
@@ -413,11 +413,15 @@ export function todoHues(todos: { id: string; createdAt: string; group?: string;
   return hues;
 }
 
-/** The hue a new to-do in no group takes: the next in turn after the others in no group. */
-export const hueForNew = (todos: { id: string; createdAt: string; group?: string; hue?: number }[], groups: TodoGroups) => {
+/** The hues to-dos in no group show, oldest first: what a new group's colour steers clear of. */
+export const looseHues = (todos: { id: string; createdAt: string; group?: string; hue?: number }[], groups: TodoGroups) => {
   const hues = todoHues(todos, groups);
-  return nextHue([...todos].filter((t) => !groupOf(t, groups)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((t) => hues.get(t.id)));
+  return [...todos].filter((t) => !groupOf(t, groups)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((t) => hues.get(t.id));
 };
+
+/** The hue a new to-do in no group takes: the next in turn after the groups' and the others in no group. */
+export const hueForNew = (todos: { id: string; createdAt: string; group?: string; hue?: number }[], groups: TodoGroups) =>
+  nextHue([...Object.values(groupHues(groups)), ...looseHues(todos, groups)]);
 
 // how strong a highlight is over the editor's own background: soft enough that every editor theme's text reads on it
 // (todos.check.ts measures it), strong enough to tell the hues apart

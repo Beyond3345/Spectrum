@@ -9,7 +9,7 @@ import Segmented from '../app/Segmented';
 import { toast } from '../app/Toast';
 import { PROJECT_DATA_CHANGED, errorText } from './shared';
 import { loadSettings } from '../app/settings';
-import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, TODO_HUES, dropGroup, dropIndex, emptyText, newOrder, placeAt, findLine, findRange, groupHues, groupNamed, groupOf, hueForNew, isRange, moveGroup, newGroup, orderedGroups, placeOf, rangeLabel, scanTodos, sortTodos, todoCounts, todoHues, todoMatches, withNote } from './todos';
+import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, TODO_HUES, dropGroup, dropIndex, emptyText, newOrder, placeAt, findLine, findRange, groupHues, groupNamed, groupOf, hueForNew, isRange, looseHues, moveGroup, newGroup, orderedGroups, placeOf, rangeLabel, scanTodos, sortTodos, todoCounts, todoHues, todoMatches, withNote } from './todos';
 import { liveRange } from './todoHighlights';
 import { useEditor } from './EditorContext';
 import { sendLocated } from './agent/handoff';
@@ -172,7 +172,7 @@ export function useTodos({
     const found = groupNamed(groups, name);
     if (found || !name.trim()) return found;
     const id = crypto.randomUUID();
-    return (await changeGroups({ [id]: newGroup(groups, name) })) ? id : '';
+    return (await changeGroups({ [id]: newGroup(groups, name, looseHues(mine || [], groups)) })) ? id : '';
   };
 
   /** The line a line link is on now, found again by its text as the link itself is when opened. */
@@ -414,7 +414,7 @@ export default function TodosList({
       return false;
     }
     if (id) return changeGroups({ [id]: { ...groups[id], name: clean } });
-    return changeGroups({ [crypto.randomUUID()]: newGroup(groups, clean) });
+    return changeGroups({ [crypto.randomUUID()]: newGroup(groups, clean, looseHues(mine || [], groups)) });
   };
 
   /** Deletes a group, with Undo; its to-dos keep its id, so they show in no group until it comes back. */

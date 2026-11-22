@@ -190,7 +190,8 @@ const hued = [
   { id: 'd', createdAt: day(4) }
 ];
 eq([...todoHues(hued, gs)], [['a', 0], ['b', 8], ['c', 5], ['d', 9]], 'a group’s to-dos in its colour; the others their own or the next in turn');
-eq(hueForNew(hued, gs), 2, 'a new one in no group: the next after the last');
+eq(hueForNew(hued, gs), 2, 'a new one in no group: the next after the last, clear of the groups’');
+eq(newGroup({}, 'References', [0]).hue, 4, 'a new group steers clear of the to-dos in no group: not red beside a red one');
 
 // readable: every editor theme's text on each highlight keeps 60% of its contrast or more, 4.5:1 where it had 7:1, and
 // Spectrum's own themes 7:1; and each highlight shows on the background
