@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { changeTodoGroups, deleteTodo, getFile, listTodos, saveTodo } from '../api/client';
-import type { Todo, TodoGroup, TodoGroups, TodoLink } from '../api/client';
+import type { LineLink, Todo, TodoGroup, TodoGroups, TodoLink } from '../api/client';
 import Icon from '../app/Icon';
 import { MenuButton } from '../app/Menu';
 import type { MenuItems } from '../app/Menu';
 import Segmented from '../app/Segmented';
 import { toast } from '../app/Toast';
 import { PROJECT_DATA_CHANGED, errorText } from './shared';
-import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, emptyText, findLine, groupNamed, groupOf, moveGroup, newGroup, orderedGroups, scanTodos, sortTodos, todoCounts, todoMatches, withNote } from './todos';
+import { loadSettings } from '../app/settings';
+import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, TODO_HUES, dropGroup, dropIndex, emptyText, newOrder, placeAt, findLine, findRange, groupHues, groupNamed, groupOf, hueForNew, isRange, moveGroup, newGroup, orderedGroups, placeOf, rangeLabel, scanTodos, sortTodos, todoCounts, todoHues, todoMatches, withNote } from './todos';
+import { liveRange } from './todoHighlights';
 import { useEditor } from './EditorContext';
 import { sendLocated } from './agent/handoff';
 import type { Located } from './agent/handoff';
@@ -134,10 +137,13 @@ export function useTodos({
     }
   };
 
-  /** A new to-do, optionally linked to a line, a PDF page or a reference, and in a group (its id). */
+  /** A new to-do, optionally linked to a line, a PDF page or a reference, and in a group (its id), else in its own colour. */
   const add = (text: string, link?: TodoLink, group?: string) => {
     const now = new Date().toISOString();
-    return save({ id: crypto.randomUUID(), text, done: false, createdAt: now, updatedAt: now, ...(link && { link }), ...(group && { group }) });
+    const colour = group ? {} : { hue: hueForNew(mine || [], groups) };
+    // its place: after the others in its list, or among the same file's by line (Settings › Editor › New to-dos go)
+    const order = newOrder((mine || []).filter((t) => groupOf(t, groups) === groupOf({ group }, groups)), link, loadSettings().todoPlacement, Date.parse(now));
+    return save({ id: crypto.randomUUID(), text, done: false, createdAt: now, updatedAt: now, order, ...(link && { link }), ...(group && { group }), ...colour });
   };
 
   /** Adds, changes or deletes (null) the groups given, showing it at once; a failed change puts them back. Resolves to whether it saved. */
@@ -175,9 +181,25 @@ export function useTodos({
     return text === undefined ? link.line : findLine(text, link.line, link.snippet);
   };
 
+  /**
+   * Where a to-do's line link points now: its line, and for a range its last line too and whether its words are still
+   * there (in the open editor as edits moved them, else in the file's text as last read).
+   */
+  const whereIs = (link: LineLink, id: string): { line: number; endLine?: number; found: boolean } => {
+    if (!isRange(link)) return { line: lineOf(link), found: true };
+    const live = liveRange(id, link.file);
+    if (live) return { line: live.line, endLine: live.endLine, found: live.found };
+    const text = latest.current.loaded(link.file) ?? readRef.current.get(link.file);
+    if (text === undefined) return { line: link.line, endLine: link.endLine, found: true };
+    const at = findRange(text, link);
+    if (!at) return { line: findLine(text, link.line, link.snippet), found: false };
+    const place = placeOf(text, at.from, at.to);
+    return { line: place.line, endLine: place.endLine, found: true };
+  };
+
   // the open ones: yours not ticked, and every mark still in the source
   const { open } = todoCounts(mine || [], source);
-  return { mine, source, groups, open, reload, save, remove, add, lineOf, changeGroups, groupFor };
+  return { mine, source, groups, open, reload, save, remove, add, lineOf, whereIs, changeGroups, groupFor };
 }
 
 /** A link of a kind this version knows; a later version's other kinds are kept but not shown. */
@@ -185,6 +207,8 @@ const knownLink = (link?: TodoLink): link is TodoLink => !!link && ('file' in li
 
 
 type Show = 'open' | 'done' | 'all';
+// how far the pointer moves before a row drags, so a click or a shaky double click never moves a to-do
+const DRAG_THRESHOLD = 5;
 // what folds: a group by its id, and the marks found in the files (an id never has a colon)
 const SOURCE = ':source';
 
@@ -219,39 +243,51 @@ export default function TodosList({
   const [naming, setNaming] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const { mine, source, groups, reload, save, remove, add, lineOf, changeGroups } = todos;
+  const { mine, source, groups, reload, save, remove, add, whereIs, changeGroups } = todos;
+  // dragging a to-do onto a group: which one, where the pointer is, and the zone under it ('' the top, a group's id)
+  const [drag, setDrag] = useState<{ id: string; text: string; x: number; y: number; zone: string | null; over: string | null; after: boolean } | null>(null);
   const api = useEditor();
   /** A to-do for the agent, at the line or the page it links to. */
   const located = (todo: Todo): Located => {
     const link = knownLink(todo.link) ? todo.link : null;
     // its note, which says more of what is to be done
     const text = `${todo.text}${link && 'key' in link ? ` (the reference ${link.key})` : ''}${todo.note ? `\nNote: ${todo.note}` : ''}`;
-    if (link && 'file' in link) return { kind: 'To-do', text, file: link.file, line: lineOf(link) };
+    if (link && 'file' in link) return { kind: 'To-do', text, file: link.file, line: whereIs(link, todo.id).line };
     if (link && 'doc' in link) return { kind: 'To-do', text, doc: link.doc, page: link.page };
     return { kind: 'To-do', text };
+  };
+
+  /** Opens what a to-do links to; words in the open editor as edits have moved them, before they are written back. */
+  const openLink = (id: string, link: TodoLink) => {
+    const live = 'file' in link ? liveRange(id, link.file) : null;
+    if (!live?.found) return onOpen(link);
+    const { found: _found, ...moved } = live;
+    onOpen(moved);
   };
 
   // opening the tab reads them again
   useEffect(reload, []);
 
-  const linkLabel = (link: TodoLink) =>
+  const linkLabel = (link: TodoLink, id: string) =>
     'file' in link
-      ? `${nameOf(link.file)}:${lineOf(link)}`
+      ? rangeLabel(nameOf(link.file), link, whereIs(link, id))
       : 'doc' in link
         ? link.doc === mainFile
           ? `Page ${link.page}`
           : `${nameOf(link.doc).replace(/\.tex$/i, '')}, page ${link.page}`
         : link.key;
-  const linkTitle = (link: TodoLink) =>
-    'file' in link ? `${link.file}, line ${lineOf(link)}` : 'doc' in link ? `${link.doc.replace(/\.tex$/i, '.pdf')}, page ${link.page}` : `Go to ${link.key}`;
+  const linkTitle = (link: TodoLink, id: string) =>
+    'file' in link ? `${link.file}, line ${whereIs(link, id).line}${isRange(link) ? `: ${link.text.slice(0, 200)}` : ''}` : 'doc' in link ? `${link.doc.replace(/\.tex$/i, '.pdf')}, page ${link.page}` : `Go to ${link.key}`;
 
   const ordered = orderedGroups(groups);
+  const hues = todoHues(mine || [], groups);
+  const byGroup = groupHues(groups);
   const target = groupOf({ group: addTo }, groups);
   const needle = filter.trim().toLowerCase();
   const counts = todoCounts(mine || [], source);
   const shownMine = sortTodos(
     (mine || []).filter(
-      (t) => (show === 'all' || t.done === (show === 'done')) && todoMatches(needle, t, knownLink(t.link) ? linkLabel(t.link) : '', groups[groupOf(t, groups)]?.name ?? '')
+      (t) => (show === 'all' || t.done === (show === 'done')) && todoMatches(needle, t, knownLink(t.link) ? linkLabel(t.link, t.id) : '', groups[groupOf(t, groups)]?.name ?? '')
     )
   );
   const shownSource = show === 'done' ? [] : source.filter((t) => todoMatches(needle, t, t.file));
@@ -287,12 +323,87 @@ export default function TodosList({
     if (keyboard) requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(`[data-todo="${todo.id}"] input[type='checkbox']`)?.focus());
   };
 
-  /** Puts a to-do in a group, or in none (''). */
-  const moveTo = (todo: Todo, group: string) => {
+  /** A list's to-dos of one kind (open or done) in their order, without the one given. */
+  const listOf = (group: string, done: boolean, except = '') => sortTodos((mine || []).filter((t) => groupOf(t, groups) === group && t.done === done && t.id !== except));
+
+  /**
+   * Puts a to-do in a group, or in none (''), at a place among its kind (open or done) there, by default the end. In
+   * no group it takes back its own colour (or the next in turn). Only its own order changes, unless its neighbours are
+   * too close to split. The toast says where it went, which a screen reader reads out, with Undo.
+   */
+  const moveTo = (todo: Todo, group: string, index?: number) => {
+    const list = listOf(group, todo.done, todo.id);
+    const at = index ?? list.length;
+    const orders = placeAt(list, at, todo.id);
+    const now = new Date().toISOString();
+    for (const t of list) if (orders[t.id] !== undefined) void save({ ...t, order: orders[t.id], updatedAt: now });
     const { group: _old, ...rest } = todo;
-    save({ ...rest, ...(group && { group }), updatedAt: new Date().toISOString() });
+    const colour = !group && rest.hue === undefined ? { hue: hueForNew((mine || []).filter((t) => t.id !== todo.id), groups) } : {};
+    const name = group ? groups[group]?.name : 'no group';
+    const said = group === groupOf(todo, groups) ? `Moved “${todo.text}” to place ${at + 1} of ${list.length + 1}${group ? ` in ${name}` : ''}` : `Moved “${todo.text}” to ${name}`;
+    save({ ...rest, ...(group && { group }), ...colour, order: orders[todo.id], updatedAt: now }).then((saved) => saved && toast(said, { action: { label: 'Undo', onClick: () => void save(todo) } }));
   };
 
+  /**
+   * A row drags by its body (not its tick box, buttons or fields) once the pointer has moved a few pixels, so a click
+   * ticks and a double click edits as before. Over a row it lands before or after it (a line shows where), over a
+   * group's title at the end of that group, over the top in no group.
+   */
+  const startDrag = (todo: Todo, e: ReactPointerEvent) => {
+    if (e.button !== 0 || editing?.id === todo.id || (e.target as Element).closest('input, button, textarea, select, a')) return;
+    const start = { x: e.clientX, y: e.clientY };
+    const spot = (x: number, y: number) => {
+      const el = document.elementFromPoint(x, y);
+      const zone = el?.closest('[data-drop]')?.getAttribute('data-drop') ?? null;
+      const row = el?.closest<HTMLElement>('[data-todo]');
+      const box = row?.getBoundingClientRect();
+      return { zone, over: row && zone !== null ? row.dataset.todo! : null, after: !!box && y > box.top + box.height / 2 };
+    };
+    let moving = false;
+    const end = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', end);
+      window.removeEventListener('keydown', key, true);
+      setDrag(null);
+    };
+    const move = (ev: PointerEvent) => {
+      if (!moving && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < DRAG_THRESHOLD) return;
+      if (!moving) window.getSelection()?.removeAllRanges();
+      moving = true;
+      ev.preventDefault();
+      setDrag({ id: todo.id, text: todo.text, x: ev.clientX, y: ev.clientY, ...spot(ev.clientX, ev.clientY) });
+    };
+    const up = (ev: PointerEvent) => {
+      end();
+      if (!moving) return;
+      // the click that ends a drag ticks nothing
+      const swallow = (c: MouseEvent) => (c.stopPropagation(), c.preventDefault());
+      window.addEventListener('click', swallow, { capture: true, once: true });
+      window.setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+      const { zone, over, after } = spot(ev.clientX, ev.clientY);
+      const current = groupOf(todo, groups);
+      const to = zone === current ? current : dropGroup(zone, current, groups);
+      if (to === null) return;
+      const ids = listOf(to, todo.done, todo.id).map((t) => t.id);
+      // over a row of the other kind (a done one, for an open one) is the end of its own kind, or the start
+      const overKind = mine?.find((t) => t.id === over);
+      const index = overKind && overKind.done !== todo.done ? (todo.done ? 0 : ids.length) : dropIndex(ids, over, after);
+      if (to === current && over === todo.id) return;
+      const was = listOf(current, todo.done).findIndex((t) => t.id === todo.id);
+      if (to === current && index === was) return;
+      moveTo(todo, to, index);
+    };
+    // Esc puts it back
+    const key = (ev: KeyboardEvent) => ev.key === 'Escape' && moving && (ev.stopPropagation(), end());
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', end);
+    window.addEventListener('keydown', key, true);
+  };
+  /** The zone the pointer is over while dragging, lit; a row there shows a line where the to-do would go. */
+  const dropClass = (zone: string) => (drag && drag.zone === zone ? 'drop-target' : '');
+  const lineAt = (id: string) => (drag && drag.over === id && drag.id !== id ? (drag.after ? 'drop-after' : 'drop-before') : '');
   /** A group made from a name, or the one being renamed renamed; a name another group has is refused. Resolves to whether it was. */
   const nameGroup = async (name: string, id = '') => {
     const clean = name.replace(/\s+/g, ' ').trim();
@@ -317,19 +428,37 @@ export default function TodosList({
     const edit = editing?.id === todo.id;
     const full = opened.has(todo.id);
     const current = groupOf(todo, groups);
+    const kind = listOf(current, todo.done);
+    const place = kind.findIndex((t) => t.id === todo.id);
     const moves: MenuItems = [
-      { label: 'Move to', heading: true },
-      { label: 'No group', checked: !current, onSelect: () => current && moveTo(todo, '') },
+      { label: 'Move up', icon: 'chevron.up', disabled: place <= 0, onSelect: () => moveTo(todo, current, place - 1) },
+      { label: 'Move down', icon: 'chevron.down', disabled: place >= kind.length - 1, onSelect: () => moveTo(todo, current, place + 1) },
+      ordered.length > 0 && { separator: true },
+      ordered.length > 0 && { label: 'Move to', heading: true },
+      ordered.length > 0 && { label: 'No group', checked: !current, onSelect: () => current && moveTo(todo, '') },
       ...ordered.map((g) => ({ label: g.name, checked: current === g.id, onSelect: () => current !== g.id && moveTo(todo, g.id) }))
     ];
+    const link = knownLink(todo.link) ? todo.link : null;
+    const dot = `todo-dot todo-hue-${hues.get(todo.id) ?? 0}`;
     return (
-      <div key={todo.id} role="listitem" data-todo={todo.id} className={`todo-row ${todo.done ? 'done' : ''}`}>
+      <div
+        key={todo.id}
+        role="listitem"
+        data-todo={todo.id}
+        className={`todo-row ${todo.done ? 'done' : ''} ${drag?.id === todo.id ? 'dragging' : ''} ${lineAt(todo.id)}`}
+        onPointerDown={(e) => startDrag(todo, e)}
+      >
         <input
           type="checkbox"
           checked={todo.done}
           aria-label={todo.done ? `Mark “${todo.text}” as not done` : `Mark “${todo.text}” as done`}
           onChange={() => save({ ...todo, done: !todo.done, updatedAt: new Date().toISOString() })}
         />
+        {link && 'file' in link ? (
+          <button className={dot} title={isRange(link) ? 'Select the highlighted words' : 'Go to the line'} aria-label={`Go to “${todo.text}” in ${nameOf(link.file)}`} onClick={() => openLink(todo.id, link)} />
+        ) : (
+          <span className={dot} aria-hidden="true" />
+        )}
         <div className="todo-body">
           {edit ? (
             <TodoEditor todo={todo} note={editing.note} onClose={(next, keyboard) => finish(todo, next, keyboard)} />
@@ -352,9 +481,9 @@ export default function TodosList({
             </>
           )}
           {knownLink(todo.link) && (
-            <button className="todo-link" title={linkTitle(todo.link)} onClick={() => onOpen(todo.link!)}>
+            <button className="todo-link" title={linkTitle(todo.link, todo.id)} onClick={() => openLink(todo.id, todo.link!)}>
               <Icon name={'file' in todo.link ? 'doc.text' : 'doc' in todo.link ? 'doc.richtext' : 'tag'} />
-              <span>{linkLabel(todo.link)}</span>
+              <span>{linkLabel(todo.link, todo.id)}</span>
             </button>
           )}
         </div>
@@ -365,7 +494,7 @@ export default function TodosList({
                 <Icon name="note.text.badge.plus" />
               </button>
             )}
-            {ordered.length > 0 && <MenuButton icon="folder" className="icon-btn small" title={`Move “${todo.text}” to a group`} items={moves} align="end" />}
+            <MenuButton icon="chevron.up.chevron.down" className="icon-btn small" title={ordered.length ? `Move “${todo.text}” up, down or to a group` : `Move “${todo.text}” up or down`} items={moves} align="end" />
             <button className="icon-btn small" title="Send to agent" aria-label={`Send “${todo.text}” to the agent`} onClick={() => void sendLocated([located(todo)], api.ensureFileContent)}>
               <Icon name="paperplane" />
             </button>
@@ -382,9 +511,10 @@ export default function TodosList({
   };
 
   /** A title that folds what is under it away, with its count. */
-  const foldTitle = (key: string, label: string, count: number) => (
+  const foldTitle = (key: string, label: string, count: number, hue?: number) => (
     <button className="sidebar-section-title todo-group-head" aria-expanded={!folded[key]} onClick={() => setFolded((f) => ({ ...f, [key]: !f[key] }))}>
       <span>
+        {hue !== undefined && <span className={`todo-dot todo-hue-${hue}`} aria-hidden="true" />}
         {label} <span className="todo-count">{count}</span>
       </span>
       <Icon name="chevron.right" className={`disclosure ${folded[key] ? '' : 'open'}`} />
@@ -457,19 +587,20 @@ export default function TodosList({
           <div className="sidebar-hint todo-empty">{emptyText({ total: counts.all, show, search: filter.trim() })}</div>
         )}
 
-        {ungrouped.length > 0 && (
-          <div role="list" aria-label={ordered.length ? 'To-dos in no group' : 'Your to-dos'} className="todo-list">
+        {(ungrouped.length > 0 || (drag && groupOf(mine?.find((t) => t.id === drag.id) ?? {}, groups))) && (
+          <div role="list" aria-label={ordered.length ? 'To-dos in no group' : 'Your to-dos'} className={`todo-list ${dropClass('')}`} data-drop="">
             {ungrouped.map(row)}
+            {!ungrouped.length && <div className="sidebar-hint todo-drop-hint">Drop here for no group</div>}
           </div>
         )}
 
         {shownGroups.map((g) => (
-          <div key={g.id} className="todo-group">
+          <div key={g.id} className={`todo-group ${dropClass(g.id)}`} data-drop={g.id}>
             {naming === g.id ? (
               <GroupNameField name={g.name} label={`Rename the group “${g.name}”`} onDone={(name) => (name === null ? (setNaming(null), true) : nameGroup(name, g.id).then((ok) => (ok && setNaming(null), ok)))} />
             ) : (
               <div className="todo-group-bar">
-                {foldTitle(g.id, g.name, g.todos.length)}
+                {foldTitle(g.id, g.name, g.todos.length, byGroup[g.id])}
                 <MenuButton
                   icon="ellipsis"
                   className="icon-btn small"
@@ -479,6 +610,14 @@ export default function TodosList({
                     { label: 'Rename…', icon: 'pencil', onSelect: () => setNaming(g.id) },
                     { label: 'Move up', icon: 'chevron.up', disabled: ordered[0].id === g.id, onSelect: () => void changeGroups(moveGroup(groups, g.id, -1)) },
                     { label: 'Move down', icon: 'chevron.down', disabled: ordered[ordered.length - 1].id === g.id, onSelect: () => void changeGroups(moveGroup(groups, g.id, 1)) },
+                    { separator: true },
+                    { label: 'Colour', heading: true },
+                    ...TODO_HUES.map((c, i) => ({
+                      label: c.label,
+                      icon: <span className={`todo-dot todo-hue-${i}`} />,
+                      checked: byGroup[g.id] === i,
+                      onSelect: () => void changeGroups({ [g.id]: { ...groups[g.id], hue: i } })
+                    })),
                     { separator: true },
                     { label: 'Delete group', icon: 'trash', destructive: true, onSelect: () => void deleteGroup(g.id) }
                   ]}
@@ -492,7 +631,7 @@ export default function TodosList({
                 </div>
               ) : (
                 <div className="sidebar-hint todo-group-empty">
-                  {(mine || []).some((t) => groupOf(t, groups) === g.id) ? 'Nothing open here.' : 'Nothing here yet. A to-do’s folder button moves it here.'}
+                  {(mine || []).some((t) => groupOf(t, groups) === g.id) ? 'Nothing open here.' : 'Nothing here yet. Drag a to-do here to move it.'}
                 </div>
               ))}
           </div>
@@ -557,6 +696,11 @@ export default function TodosList({
           </div>
         )}
       </div>
+      {drag && (
+        <div className="todo-drag-ghost" style={{ left: drag.x + 12, top: drag.y + 8 }} aria-hidden="true">
+          {drag.text}
+        </div>
+      )}
     </div>
   );
 }

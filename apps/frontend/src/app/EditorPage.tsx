@@ -132,7 +132,8 @@ import { watchLiveFrame } from '../editor/liveFrame';
 import BiberNotice from '../editor/BiberNotice';
 import PdfPresentation from '../editor/PdfPresentation';
 import TodosList, { useTodos } from '../editor/TodosList';
-import { findKey, findLine, snippetOf } from '../editor/todos';
+import { findKey, findLine, findRange, isRange } from '../editor/todos';
+import { todoHighlights, todoLinkAt, useTodoHighlights } from '../editor/todoHighlights';
 import { parseCompileLog, projectFile } from '../editor/compileLog';
 import { compileMarks, setCompileMarks } from '../editor/compileMarks';
 import { highlightColour, linger } from '../editor/synctex';
@@ -680,6 +681,7 @@ function Editor({ projectId }: { projectId: string }) {
     [items, conflicts]
   );
   const todos = useTodos({ projectId, sources: todoSources, loaded: (path) => filesRef.current.get(path), revision: `${filesVersion} ${dirty}`, notify });
+  useTodoHighlights(viewRef, activePath, todos);
 
   useEffect(() => {
     try {
@@ -2299,7 +2301,12 @@ function Editor({ projectId }: { projectId: string }) {
     else if ('file' in link) {
       const text = await readText(link.file).catch(() => null);
       if (text === null) notify(`${link.file} isn’t one of this project’s files.`);
-      else await jumpTo(link.file, findLine(text, link.line, link.snippet));
+      else {
+        // a to-do on words selects them where they are now; gone, its line
+        const at = isRange(link) ? findRange(text, link) : null;
+        if (at) await select(link.file, at.from, at.to);
+        else await jumpTo(link.file, findLine(text, link.line, link.snippet));
+      }
     } else {
       const files = await Promise.all([...texFiles, ...bibFiles].map(async (path) => ({ path, text: await readText(path).catch(() => '') })));
       const found = findKey(files, link.key);
@@ -2314,13 +2321,13 @@ function Editor({ projectId }: { projectId: string }) {
     if (text && (await todos.add(text.slice(0, 2000), link))) notify(`Added “${text}” to your to-dos`, 'success');
   };
 
-  /** The line at `pos` in the open file, linked with its text so it's found again once lines move. */
+  /** The selected words in the open file, else the line at `pos`, linked with their text so they're found again once lines move. */
   const addTodoAtLine = (pos: number) => {
     const view = viewRef.current;
     const path = activeRef.current;
     if (!view || !path) return;
-    const line = view.state.doc.lineAt(Math.min(pos, view.state.doc.length));
-    addTodo({ file: path, line: line.number, snippet: snippetOf(line.text) }, `${nameOf(path)}, line ${line.number}`).catch(() => undefined);
+    const { link, where } = todoLinkAt(view.state, path, pos);
+    addTodo(link, where).catch(() => undefined);
   };
 
   /** A heading the PDF's contents took from the source: where SyncTeX puts it. */
@@ -2608,6 +2615,7 @@ function Editor({ projectId }: { projectId: string }) {
       editorTheme,
       ghostField,
       jumpHighlight,
+      todoHighlights,
       search({ top: true }),
       // picking \ref{}, \cite{} or \input{} opens the list of what goes in the braces
       autocompletion({
