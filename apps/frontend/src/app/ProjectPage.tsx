@@ -253,10 +253,11 @@ export default function ProjectPage() {
     setCategories(res.categories || []);
   }, []);
 
-  // a first start's page stays when the list has no projects; with some, it's someone updating, who never sees it
+  // a first start's page stays when the list has no projects, until skipped or finished; with some, it's someone
+  // updating, who never sees it
   useEffect(() => {
-    if (!loaded || loadError || !startedFresh()) return;
-    if (projects.length) setFresh(false);
+    if (!loaded || loadError || !startedFresh() || !projects.length) return;
+    setFresh(false);
     setupDone();
   }, [loaded, loadError]);
 
@@ -597,6 +598,8 @@ export default function ProjectPage() {
     try {
       const project = await openFolder(path);
       if (view === 'home') moveToFolder(project.id, here);
+      // a first project from the setup page finishes it
+      if (setup) setupDone();
       navigate(`/editor/${project.id}`);
     } catch (err) {
       toast(`Couldn’t open the folder: ${errorText(err)}`, { tone: 'error' });
@@ -1212,6 +1215,7 @@ export default function ProjectPage() {
           onUniverse={(name) => setSheet({ kind: 'universe', folder: sheet.folder, name })}
           onCreated={(id) => {
             if (sheet.folder) moveToFolder(id, sheet.folder);
+            if (setup) setupDone();
             navigate(`/editor/${id}`);
           }}
         />

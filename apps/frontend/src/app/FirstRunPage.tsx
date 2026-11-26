@@ -9,7 +9,7 @@ import { hasModel, texName } from './firstRun';
 /**
  * The setup page, filling the window the first time Spectrum starts on a computer (and from Settings › System): the TeX
  * the compiles use, a model for the AI features (optional) and a first project. Each row ticks itself from what the app
- * knows; any way out of the page leaves it for good (firstRun.ts).
+ * knows. Skip, Continue or a first project made or opened from it leave it for good; quitting leaves it due (firstRun.ts).
  */
 export default function FirstRunPage({ settings, projects, onSettings, onTemplates, onOpenFolder, onLeave }: {
   settings: AppSettings;
@@ -32,8 +32,8 @@ export default function FirstRunPage({ settings, projects, onSettings, onTemplat
 
   const model = hasModel(settings);
   return (
-    // Esc leaves, as Skip does (a sheet open over the page keeps its own Esc: its keys don't come through here)
-    <main className="main-panel first-run" aria-labelledby="first-run-title" onKeyDown={(e) => e.key === 'Escape' && onLeave()}>
+    // no Esc here: Esc isn't Skip, and the page stays until skipped or finished (a sheet over it keeps its own Esc)
+    <main className="main-panel first-run" aria-labelledby="first-run-title">
       <header className="panel-header" data-tauri-drag-region>
         <span className="spacer" data-tauri-drag-region />
         <button className="btn ghost" onClick={onLeave}>Skip</button>
