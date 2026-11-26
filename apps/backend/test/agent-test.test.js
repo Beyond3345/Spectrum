@@ -74,6 +74,16 @@ test('Test stores each outcome; sessions store theirs; Tests, turns and installs
     await saveAgentConfig('antigravity', { args: [fixture, '--auth=gemini-api-key', '--exit'] });
     agent = await testAgent('antigravity');
     assert.match(agent.test.detail, /GEMINI_API_KEY=\[hidden\]/, 'the key reaches it in GEMINI_API_KEY');
+    if (process.platform === 'darwin') {
+      // its language server, on a port the system picks: refused, as the owner found, until the card's switch is on
+      await saveAgentConfig('antigravity', { args: [fixture, '--auth=gemini-api-key', '--serve-self'] });
+      agent = await testAgent('antigravity');
+      assert.deepEqual([agent.test.code, agent.test.detail.trim()], ['exited', 'language server: listen 127.0.0.1:0: EPERM']);
+      await saveAgentConfig('antigravity', { network: { loopback: true } });
+      agent = await testAgent('antigravity');
+      assert.deepEqual([agent.state, agent.test.code], ['ready', 'ready']);
+      await saveAgentConfig('antigravity', { network: { loopback: false } });
+    }
 
     // sessions store what they found
     const project = await createProject({ name: 'Test fixture' });
