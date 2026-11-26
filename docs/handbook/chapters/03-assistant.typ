@@ -515,6 +515,12 @@ A list narrows where an agent can send what it reads, but it does not close ever
 - a program that ignores the proxy settings is not let out another way, it simply fails to connect, so an agent built that way does not work on a list and
 - on Windows the isolation opens every public address to an agent or none, so no list is enforced there yet.
 
+=== Behind a proxy <sec-assistant-proxy>
+
+Some networks reach the internet only through a proxy, such as a company's or one that a VPN or proxy app runs on this computer. On a Mac, Spectrum finds the proxy in this order: the one typed under #ui[Network] in #menu[Settings][System], then the proxy that this Mac's network settings name for HTTPS or SOCKS, then the proxy variables of your login shell, such as `HTTPS_PROXY`, which an app started from the Finder does not otherwise have. The same part says which proxy is in use and where it came from, and each agent's card repeats it under #ui[Network]. A name and password in a proxy's address are never shown, and a proxy found from an automatic configuration file is not used, so type such a proxy in yourself.
+
+With a proxy, everything Spectrum reaches on the internet goes through it: the models of the Assistant and the Spectrum agent, Research and reference look-ups, PDF downloads, engine and adapter downloads, a compile's packages and the local agents and MCP servers. Connections to this computer, such as to Ollama, TexLab or Zotero, never do. An agent or a confined compile cannot reach the proxy itself, since isolation never opens this computer to them, so they go to Spectrum's own gate, which passes their connections on through the proxy. An agent on #ui[Listed hosts only] keeps its list, and an agent on #ui[Any host] still reaches only HTTPS on port 443. With no proxy found, Spectrum connects as before. On Windows, Spectrum does not use a proxy of its own yet.
+
 === Spectrum's tools in another agent <sec-assistant-outside>
 
 An agent that you start yourself, such as Claude Code or Codex in a terminal or the agent in Cursor, can use the same tools on a project, except `suggest_todo` and `load_skill`. The button with the server icon at the right of the #ui[Local agents] bar opens #ui[Use from another agent] (@fig-assistant-outside-tools). Turning on #ui[Offer this project's tools] shows a command for Claude Code and an entry for the MCP configuration file of Cursor and other agents, each with a copy button. The button stays highlighted while the tools are offered.

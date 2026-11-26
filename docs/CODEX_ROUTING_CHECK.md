@@ -8,6 +8,12 @@ Written 26 November 2026 for Spectrum 2.6.4 with the Codex adapter 2.7.0, which 
 
 Each run sends one short prompt that asks only for a reply. Run them in this order, in Terminal, and send back the files that step 5 lists. Nothing here prints a key or a token, and nothing changes Spectrum's settings or your Codex settings.
 
+## What the comparison found
+
+The owner ran the comparison on 26 November 2026. Codex 0.166.0 with a clean environment failed the workspace lookup, and the same program with the shell's proxy variables answered normally, as did Codex 0.172.0. Spectrum's adapter behaved the same way: with a clean environment it opened a session and then failed the turn, and with the shell's proxy variables it answered. A signed-in request to the lookup's address through the proxy gave HTTP 200, and a name lookup without the proxy failed in that shell. On that network chatgpt.com is reached only through a proxy that the shell names in its environment, and Spectrum, started from the Finder, had neither those variables nor a proxy in the Mac's network settings.
+
+Spectrum now finds such a proxy itself and goes through it: see Settings › System › Network, which says which proxy is in use and where it came from. An isolated agent such as Codex reaches it through Spectrum's own gate, and its session's first line, "Network check for Codex", names the proxy. If Codex still fails, run the steps below again with that proxy in use.
+
 ## What the failing step is
 
 Read from Codex 0.166.0's source (`openai/codex`, tag `rust-v0.166.0`, `codex-rs/`):
