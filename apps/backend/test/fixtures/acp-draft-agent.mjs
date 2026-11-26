@@ -4,7 +4,10 @@
 // please-hang never answers, please-link leaves a link in the workspace, please-agents writes an AGENTS.md of its own, and please-flood and please-huge stream a
 // long message (30,000 short pieces, or 40 of 64 KB), and please-plan sends a plan_update and asks an elicitation/create
 // question without waiting (both only in ACP's unstable schema), and please-usage reports the context's use and the
-// turn's tokens. Every request it gets goes to $HOME/acp-log.jsonl.
+// turn's tokens. please-codex-error ends a turn as codex-acp 2.7.0 does after a fatal error, to a client without
+// JetBrains' extension: its retries flagged in session_info_update _meta.codex.error, the error itself only as words,
+// then end_turn; please-codex-retry is flagged once and then works (a tool call; with "draft", an edit). The shapes are
+// 2.7.0's, the texts made up. Every request it gets goes to $HOME/acp-log.jsonl.
 import readline from 'node:readline';
 import { appendFileSync, promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -41,6 +44,17 @@ lines.on('line', async (line) => {
     if (asked.endsWith('please-plan')) {
       update({ sessionUpdate: 'plan_update', plan: { type: 'items', planId: 'plan-1', entries: [{ content: 'Outline the section', priority: 'medium', status: 'pending' }] } });
       send({ id: 800, method: 'elicitation/create', params: { sessionId, mode: 'form', message: 'Which section?', requestedSchema: { type: 'object', properties: { section: { type: 'string' } } } } });
+    }
+    const retry = (n) => update({ sessionUpdate: 'session_info_update', _meta: { codex: { error: { message: `Reconnecting... ${n}/5`, codexErrorInfo: null, additionalDetails: 'workspace routing discovery failed', turnId: 'turn-1', willRetry: true } } } });
+    if (asked.endsWith('please-codex-error')) {
+      retry(1); retry(2);
+      update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Codex can’t reach chatgpt.com to look up your ChatGPT workspace. (workspace routing discovery failed)\n\n' } });
+      return send({ id: m.id, result: { stopReason: 'end_turn', usage: null, _meta: { quota: { token_count: null, model_usage: [] } } } });
+    }
+    if (asked.endsWith('please-codex-retry')) {
+      retry(1);
+      update({ sessionUpdate: 'tool_call', toolCallId: 'call-1', title: 'Read main.tex', kind: 'read', status: 'in_progress' });
+      update({ sessionUpdate: 'tool_call_update', toolCallId: 'call-1', status: 'completed' });
     }
     if (asked.endsWith('please-link')) await fs.symlink('main.tex', path.join(workspace, 'alias.tex'));
     if (asked.endsWith('please-agents')) await fs.writeFile(path.join(workspace, 'AGENTS.md'), 'Agent’s rules.\n');
