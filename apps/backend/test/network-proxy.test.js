@@ -130,6 +130,8 @@ test('the login shell’s proxy variables: HTTPS_PROXY, else ALL_PROXY, else HTT
   assert.deepEqual(np.shellProxy({ http_proxy: 'http://127.0.0.1:1', ALL_PROXY: 'socks5://127.0.0.1:2', no_proxy: 'localhost,.lan' }), { scheme: 'socks5', host: '127.0.0.1', port: 2, noProxy: ['localhost', '.lan'] });
   assert.deepEqual(np.shellProxy({ https_proxy: '127.0.0.1:7890' }), { scheme: 'http', host: '127.0.0.1', port: 7890, noProxy: [] });
   assert.equal(np.shellProxy({ PATH: '/usr/bin' }), null);
+  // a login shell is a Mac's (the proxy is used on a Mac only), and the stand-in below a POSIX script
+  if (process.platform === 'win32') return;
   // a stand-in login shell: rc files that print noise, the variables, and a job that keeps its output open
   const shell = path.join(tmp, 'login-shell');
   await fs.writeFile(shell, `#!/bin/sh\necho "welcome from the rc files"\nexport HTTPS_PROXY=http://127.0.0.1:7890 no_proxy=localhost SECRET_TOKEN=do-not-keep\nsleep 30 &\neval "$2"\n`, { mode: 0o755 });

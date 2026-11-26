@@ -237,7 +237,8 @@ test('Windows: agy.exe in the folder Antigravity’s installer uses, off the PAT
     const file = path.join(base, 'agy', 'bin', 'agy.exe');
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, 'MZ', { mode: 0o755 });
-    return file;
+    // as Spectrum finds it: Windows may name the temporary folder by its short name (RUNNER~1)
+    return fs.realpath(file);
   };
   const local = await exe(path.join(dir, 'LocalAppData'));
   const fromHome = await exe(path.join(home, 'AppData', 'Local'));
