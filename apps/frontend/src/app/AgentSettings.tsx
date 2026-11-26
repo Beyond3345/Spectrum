@@ -501,6 +501,7 @@ function AgentCard({
                     Passed to {a.name} as {keyEnv} and kept in Spectrum’s private data on this computer.
                     {a.hasKey && keyEnv !== a.keyEnv && ' Saving another provider removes the saved key.'}
                     {a.id === 'kimi' && ' Kimi Code reads it only when its own configuration names it (api_key_env).'}
+                    {a.id === 'antigravity' && ` Antigravity keeps a Google sign-in in ${IS_WINDOWS ? 'Windows Credential Manager' : 'the keychain'}, which an isolated agent cannot reach, so use a Gemini API key from Google AI Studio.`}
                   </div>
                   <div className="row">
                     <button

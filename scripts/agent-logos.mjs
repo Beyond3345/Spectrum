@@ -23,6 +23,7 @@ const LOGOS = {
   codex: 'codex-color',
   claude: 'claude-color',
   gemini: 'geminicli-color',
+  antigravity: 'antigravity-color',
   copilot: 'githubcopilot',
   cursor: 'cursor',
   kimi: 'kimi-color',
