@@ -20,6 +20,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Fixed
 
+- Codex works in isolation on a Mac. Isolation hid the system's list of trusted certificates from it, so every connection failed with “workspace routing discovery failed”
 - A Codex task that fails ends as Failed with Codex's own words, rather than looking done
 
 ## 2.6.4 (26 November 2026)
