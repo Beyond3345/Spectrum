@@ -1,10 +1,12 @@
-import { useRef } from 'react';
-import type { AgentEvent, AgentUsage, ChatThread } from '../../api/client';
-import { MenuButton } from '../../app/Menu';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import AgentTuning from './AgentTuning';
+import type { ConfigOption } from './AgentTuning';
 import { presetOf, useLivePreset, useProviders } from '../../app/settings';
 import { useEditor } from '../EditorContext';
-import { localMeter, spectrumMeter, turnChoice } from './usage';
-import type { Meter, TurnChoice } from './usage';
+import { turnChoice } from './usage';
+import type { StatChip, TurnChoice } from './usage';
+import Icon from '../../app/Icon';
 
 type Choice = ReturnType<typeof turnChoice>;
 
@@ -22,65 +24,90 @@ export function useTurnChoice(choice: TurnChoice) {
   return ref;
 }
 
-function MeterView({ meter }: { meter: Meter }) {
-  const full = meter.full;
+const ICONS: Record<StatChip['key'], string> = { session: 'gauge.with.dots.needle.50percent', tokens: 'chart.bar', context: '' };
+
+function Ring({ full }: { full: number }) {
+  return <span className={`stat-ring${full >= 0.8 ? ' full' : ''}`} aria-hidden style={{ ['--f' as string]: full }} />;
+}
+
+/** One chip of the stats row, and its popover above it */
+function Stat({ chip }: { chip: StatChip }) {
+  const [open, setOpen] = useState(false);
+  const [at, setAt] = useState<{ bottom: number; left: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !button.current) return;
+    const r = button.current.getBoundingClientRect();
+    setAt({ bottom: window.innerHeight - r.top + 6, left: Math.max(8, Math.min(r.left + r.width / 2 - 160, window.innerWidth - 328)) });
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (!pop.current?.contains(e.target as Node) && !button.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); button.current?.focus(); }
+    };
+    document.addEventListener('mousedown', close, true);
+    document.addEventListener('keydown', key, true);
+    return () => { document.removeEventListener('mousedown', close, true); document.removeEventListener('keydown', key, true); };
+  }, [open]);
   return (
-    <span className={`agent-meter${full !== undefined && full >= 0.8 ? ' full' : ''}`} title={meter.title}>
-      {full !== undefined && (
-        <span className="agent-meter-bar" aria-hidden>
-          <span style={{ width: `${Math.round(full * 100)}%` }} />
-        </span>
+    <>
+      <button ref={button} type="button" className={`stat-chip${open ? ' open' : ''}${chip.ring !== undefined && chip.ring >= 0.8 ? ' full' : ''}`} aria-expanded={open} aria-label={chip.title} onClick={() => setOpen((v) => !v)}>
+        {chip.ring !== undefined ? <Ring full={chip.ring} /> : <Icon name={ICONS[chip.key]} />}
+        <span>{chip.text.join(' · ')}</span>
+      </button>
+      {open && at && createPortal(
+        <div ref={pop} className="stat-pop" role="dialog" aria-label={chip.title} style={{ bottom: at.bottom, left: at.left }}>
+          <div className="stat-pop-head">
+            {chip.ring === undefined && <Icon name={ICONS[chip.key]} />}
+            <span className="stat-pop-title">{chip.title}</span>
+            {chip.total && <span className="stat-pop-total">{chip.total}</span>}
+          </div>
+          {chip.bar !== undefined ? (
+            <div className="stat-pop-bar" aria-hidden><span style={{ width: `${Math.max(1, chip.bar * 100)}%`, ['--whole' as string]: `${100 / Math.max(0.01, chip.bar)}%` }} /></div>
+          ) : (
+            <hr />
+          )}
+          {chip.rows.map(([label, value]) => (
+            <div key={label} className="stat-pop-row"><span>{label}</span><span>{value}</span></div>
+          ))}
+          {chip.note && <p className="stat-pop-note">{chip.note}</p>}
+        </div>,
+        document.body
       )}
-      {meter.parts.map((part, i) => (
-        <span key={i} aria-hidden>
-          {part}
-        </span>
-      ))}
-      <span className="sr-only">{meter.title}</span>
-    </span>
+    </>
+  );
+}
+
+/** The row under an agent's message box, as DeepSeek Harness has it: the session, its tokens and its context, each opening its figures */
+export function StatsRow({ chips }: { chips: StatChip[] }) {
+  if (!chips.length) return null;
+  return (
+    <div className="stats-row">
+      {chips.map((c) => <Stat key={c.key} chip={c} />)}
+    </div>
   );
 }
 
 /**
- * The right of an agent tab's header row: for the Spectrum agent the thread's model and effort and its meter (the
- * turn's and the thread's tokens, the cache's share, an estimate of the cost at the user's prices); for a local agent
- * the meter alone, from what the agent reports (its context, its cost, the last task's tokens). A local agent's own
- * model and modes are its configuration options, shown beside it.
+ * The Spectrum agent's model and effort for the thread, at the right of its header row. Both tabs' figures
+ * are in the StatsRow under the message box; a local agent's model is in AgentTuning, in the box.
  */
-export default function AgentHeader(
-  props:
-    | { events: AgentEvent[] }
-    | { messages: ChatThread['messages']; live: AgentUsage | null; choice: Choice; onChoose(choice: TurnChoice): void; onManage(): void }
-) {
-  const { settings } = useEditor();
-  if ('events' in props) {
-    const meter = localMeter(props.events);
-    return meter && <MeterView meter={meter} />;
-  }
-  const { choice, onChoose, onManage } = props;
-  const meter = spectrumMeter(props.messages, props.live, choice.model, settings.modelPrices);
-  const modelName = choice.models.find(([id]) => id === choice.model)?.[1] || choice.model || 'No model';
-  // the recommended level by its name: “Recommended (Medium)” is “Medium” on the button
-  const effortName = choice.efforts.find(([v]) => v === choice.effort)?.[1]?.replace(/^Recommended \((.+)\)$/, '$1');
+export default function AgentHeader({ choice, onChoose, onManage }: { choice: Choice; onChoose(choice: TurnChoice): void; onManage(): void }) {
+  // the recommended level by its name: “Recommended (Medium)” is “Medium”
+  const options: ConfigOption[] = [
+    { id: 'model', name: 'Model', category: 'model', currentValue: choice.model, options: choice.models.map(([value, name]) => ({ value, name })) },
+    ...(choice.efforts.length > 1 ? [{ id: 'effort', name: 'Thinking', category: 'thought_level', currentValue: choice.effort, options: choice.efforts.map(([value, name]) => ({ value, name: name.replace(/^Recommended \((.+)\)$/, '$1') })) }] : [])
+  ];
   return (
-    <>
-      <MenuButton
-        className="btn small ghost agent-model-pick"
-        title="The model and how long it may think, for this thread’s turns"
-        disabled={!choice.models.length}
-        label={<span className="truncate">{effortName && choice.efforts.length > 1 ? `${modelName} · ${effortName}` : modelName}</span>}
-        align="end"
-        items={[
-          { label: 'Model', heading: true },
-          ...choice.models.map(([id, label]) => ({ label, checked: id === choice.model, onSelect: () => onChoose({ model: id }) })),
-          { separator: true },
-          { label: 'Thinking', heading: true },
-          ...choice.efforts.map(([value, label]) => ({ label, checked: value === choice.effort, onSelect: () => onChoose({ effort: value }) })),
-          { separator: true },
-          { label: 'Models and prices…', onSelect: onManage }
-        ]}
-      />
-      {meter && <MeterView meter={meter} />}
-    </>
+    <AgentTuning
+      options={choice.models.length ? options : []}
+      modes={null}
+      onChange={(id, value) => onChoose(id === 'model' ? { model: value } : { effort: value as TurnChoice['effort'] })}
+      more={{ label: 'Models and prices…', onSelect: onManage }}
+    />
   );
 }

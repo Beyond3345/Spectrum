@@ -173,6 +173,8 @@ export function project(events: AgentEvent[], { pending = [], checkpoints = [] }
   placeCheckpoints('\uffff');
   // a request whose event has been dropped from a long session's start
   for (const request of pending) if (!requests.has(request.requestId)) items.push({ type: 'request', key: `request-${request.requestId}`, request, answered: false });
+  // agy acp sends a refused request's whole error as its reply (Google's, at length); the failed line under it says why
+  for (const item of items) if (item.type === 'assistant' && /^\s*⚠\s*agent executor error:/.test(item.text)) item.text = `⚠ ${item.text.match(/Error (\d+), Message: (.+?\.)(?:\s|$)/)?.slice(1).join(': ') || 'The agent’s model refused the request.'}`;
   return out;
 }
 

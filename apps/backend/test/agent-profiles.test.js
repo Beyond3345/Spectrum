@@ -160,7 +160,7 @@ test('Claude Agent always starts with the claude.ai sign-in hidden', { skip: nod
 
 test('Antigravity: its CLI’s ACP server, found where its installer puts it, a key through ACP’s Gemini API key method', { skip: knownFolders }, async () => {
   const p = profileFor('antigravity');
-  assert.deepEqual([p.command, p.args, p.keys, p.login, p.support, p.unavailable, p.experimental], ['agy', ['acp'], ['GEMINI_API_KEY'], [], 'untested', undefined, undefined]);
+  assert.deepEqual([p.command, p.args, p.keys, p.login, p.support, p.unavailable, p.experimental], ['agy', ['acp'], ['GEMINI_API_KEY'], [], 'supported', undefined, undefined]);
   // the desktop app has no agent mode Spectrum can start: installed, still missing, with the CLI's install line
   await fs.mkdir(path.join(root, 'Applications/Antigravity.app/Contents'), { recursive: true });
   let agent = await listed('antigravity');

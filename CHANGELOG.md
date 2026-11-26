@@ -17,7 +17,12 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Changed
 
-- Codex and OpenCode 2 are shown as supported, beside DeepSeek Harness. Claude Agent is shown as untested until it passes the acceptance test
+- A local agent's model and effort sit in the message box beside Send, in one popover with the effort as a slider through the logo's colours and the agent's other settings as segments. They show as soon as the agent is picked, from its last Test or session, and a choice made before the session starts is set as it opens and kept for the next
+- Under the message box, as in DeepSeek Harness, a row of the session's tasks and steps, its tokens with the cache's share and cost, and how full the context is, each opening its figures. The Spectrum agent's model and its figures moved the same way
+- Antigravity's error reply is cut to its status and first sentence
+- Both agent tabs estimate the cost from models.dev's public prices, taken every six hours through the proxy as CC Switch does, for any model you have not priced yourself. Settings › Models shows models.dev's price in each empty field, prices any model by its name, such as a local agent's, and can turn the list off or update it now
+- The Spectrum agent's model and thinking, and its figures, take the same place and look as a local agent's
+- Codex, OpenCode 2 and Antigravity are shown as supported, beside DeepSeek Harness. Claude Agent is shown as untested until it passes the acceptance test
 - Antigravity's card says first that it needs a Gemini API key, since its Google sign-in and plan stay in the keychain, and that a free key has no quota for the Pro models
 - Spectrum starts Antigravity with its telemetry off, which went to a host off its list
 - An agent's permission card shows the full command and the files a change touches before you choose

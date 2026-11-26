@@ -22,7 +22,9 @@ import type { AgentStatus } from './LocalAgentTab';
 import { RESUME_HINT, RUNNING, addRunEvent, askAnswer, closeChanges, metaOf, openChanges, planOf, planPrompt, resumeNote, runView, storedChanges, threadItems, turnReply } from './transcript';
 import type { Checkpoint, ThreadMeta as Meta } from './transcript';
 import { INSTRUCTIONS_FILE, starterInstructions } from './instructions';
-import AgentHeader, { useTurnChoice } from './AgentHeader';
+import AgentHeader, { StatsRow, useTurnChoice } from './AgentHeader';
+import { spectrumStats } from './usage';
+import { useAutoPrices, withAutoPrices } from '../../app/autoPrices';
 import type { TurnChoice } from './usage';
 import type { Picture } from './pictures';
 
@@ -82,6 +84,7 @@ export default function SpectrumAgentTab({
   onOpenSettings(section: Section): void;
 }) {
   const api = useEditor();
+  const auto = useAutoPrices(api.settings.autoPrices);
   const latest = useRef(api);
   latest.current = api;
   const [newPersona, setNewPersona] = useState<string | undefined>();
@@ -638,13 +641,6 @@ export default function SpectrumAgentTab({
           onManage={() => onOpenSettings('personas')}
         />
         <span className="grow" />
-        <AgentHeader
-          messages={thread?.messages || []}
-          live={here ? live.usage : null}
-          choice={turn.current}
-          onChoose={(c) => (thread ? update(thread, (chat) => ({ ...chat, ...c })) : setNewChoice((old) => ({ ...old, ...c })))}
-          onManage={() => onOpenSettings('models')}
-        />
         {running && (
           <button className="btn small" disabled={stopping || !attached} onClick={stop}>
             <Icon name="stop.fill" /> Stop
@@ -727,6 +723,14 @@ export default function SpectrumAgentTab({
           </div>
         )}
         <AgentComposer
+          trailing={
+            <AgentHeader
+              choice={turn.current}
+              onChoose={(c) => (thread ? update(thread, (chat) => ({ ...chat, ...c })) : setNewChoice((old) => ({ ...old, ...c })))}
+              onManage={() => onOpenSettings('models')}
+            />
+          }
+          below={<StatsRow chips={spectrumStats(thread?.messages || [], here ? live.usage : null, turn.current.model, withAutoPrices(api.settings.modelPrices, auto.prices))} />}
           busy={!!running}
           queues={here}
           firstTurn={!items.length}

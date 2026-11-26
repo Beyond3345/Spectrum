@@ -1,6 +1,6 @@
 import type { AgentEvent, AgentUsage, ChatThread, ProviderPreset, ReasoningEffort } from '../../api/client';
 import { CURRENCIES, effortOptions, modelOf } from '../../app/settings';
-import type { Prices } from '../../app/settings';
+import type { Price, Prices } from '../../app/settings';
 
 // What the agent tabs' header says about tokens, cost and context, worked out from what the agents report. Money is
 // shown only where the agent or the provider (OpenRouter) reports a cost, or as an estimate from prices the user typed
@@ -164,4 +164,134 @@ export function turnChoice(preset: ProviderPreset | null, settings: { llmModel: 
   const fits = (e?: ReasoningEffort): e is ReasoningEffort => !!e && efforts.some(([v]) => v === e);
   const effort: ReasoningEffort = fits(choice.effort) ? choice.effort : fits(settings.reasoningEffort) ? settings.reasoningEffort : 'default';
   return { model, effort, models, efforts };
+}
+
+/** A chip of the stats row under an agent's message box, as DeepSeek Harness shows it, and the popover it opens */
+export type StatChip = {
+  key: 'session' | 'tokens' | 'context';
+  /** the short text, its parts joined with a dot */
+  text: string[];
+  /** how full the context is (0 to 1), drawn as a ring, for the context chip */
+  ring?: number;
+  title: string;
+  /** the popover's headline, its right side, and a bar of the context for the context chip */
+  total?: string;
+  bar?: number;
+  rows: [label: string, value: string][];
+  note?: string;
+};
+
+const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+const duration = (ms: number) => {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s` : `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+};
+// ponytail: agents count cached input differently (Codex inside its input, Claude beside it); a share over 100% means beside
+const cacheHit = (input: number, cached: number) => (cached > input ? cached / (input + cached) : input ? cached / input : 0);
+
+/**
+ * A local agent's stats row: its tasks and steps with the time they took, the session's tokens with the cache's share
+ * and the cost the agent reports, and how full its context is. Only what the agent reported; nothing before a task.
+ */
+export function localStats(events: AgentEvent[], price?: Price): StatChip[] {
+  let tasks = 0, steps = 0, busy = 0, started: number | null = null;
+  const sum = { input: 0, output: 0, thought: 0, cachedRead: 0, cachedWrite: 0, total: 0 };
+  let context: { used: number; size: number } | null = null;
+  let cost: { amount: number; currency: string } | null = null;
+  const calls = new Set<string>();
+  let estimate: { amount: number; currency: string } | null = null;
+  for (const e of events) {
+    const at = Date.parse(e.at);
+    if (e.type === 'user') { tasks++; started = at; }
+    if ((e.type === 'complete' || (e.type === 'state' && !RUNNING_STATES.includes(e.data?.status))) && started !== null && Number.isFinite(at)) { busy += Math.max(0, at - started); started = null; }
+    if (e.type === 'update' && e.data?.sessionUpdate === 'tool_call' && e.data.toolCallId && !calls.has(e.data.toolCallId)) { calls.add(e.data.toolCallId); steps++; }
+    if (e.type !== 'usage' || !e.data) continue;
+    const { context: c, turn: t } = e.data as { context?: { used: number; size: number; cost?: { amount: number; currency: string } }; turn?: Record<string, number> };
+    if (c && Number.isFinite(c.used) && c.size > 0) context = c;
+    if (c?.cost && Number.isFinite(c.cost.amount) && typeof c.cost.currency === 'string') cost = c.cost;
+    if (t) {
+      const add = { input: n(t.inputTokens), output: n(t.outputTokens), thought: n(t.thoughtTokens), cachedRead: n(t.cachedReadTokens), cachedWrite: n(t.cachedWriteTokens) };
+      for (const k of Object.keys(add) as (keyof typeof add)[]) sum[k] += add[k];
+      sum.total += n(t.totalTokens) || add.input + add.output + add.thought + add.cachedRead + add.cachedWrite;
+    }
+  }
+  const chips: StatChip[] = [];
+  if (tasks) {
+    chips.push({
+      key: 'session',
+      text: [`${tasks} ${tasks === 1 ? 'task' : 'tasks'} ${steps} ${steps === 1 ? 'step' : 'steps'}`, ...(busy ? [duration(busy)] : [])],
+      title: 'Session statistics',
+      rows: [['Tasks', String(tasks)], ['Steps (tool calls)', String(steps)], ...(busy ? [['Time working', duration(busy)], ['Average per task', duration(busy / tasks)]] as [string, string][] : [])]
+    });
+  }
+  // where the agent reports no cost, an estimate at the chosen model's price (the user's, else models.dev's)
+  if (!cost && sum.total && price?.input !== undefined && price.output !== undefined) {
+    const uncached = sum.cachedRead > sum.input ? sum.input : sum.input - sum.cachedRead;
+    // ponytail: cache writes priced as input; Anthropic charges a quarter more, so this is a little low there
+    const amount = (uncached * price.input + sum.cachedRead * (price.cached ?? price.input) + sum.cachedWrite * price.input + (sum.output + sum.thought) * price.output) / 1e6;
+    estimate = { amount, currency: price.currency || 'USD' };
+  }
+  if (sum.total) {
+    const hit = cacheHit(sum.input, sum.cachedRead);
+    chips.push({
+      key: 'tokens',
+      text: [`${tokens(sum.total)} tok`, ...(sum.cachedRead ? [`Cache hit ${Math.round(hit * 100)}%`] : []), ...(cost ? [money(cost.amount, cost.currency)] : estimate ? [`est. ${money(estimate.amount, estimate.currency)}`] : [])],
+      title: 'Token usage',
+      total: `${whole(sum.total)} tok`,
+      rows: [
+        ...(sum.cachedRead ? [['Cache hit', `${Math.round(hit * 100)}%`]] as [string, string][] : []),
+        ['Input', `${whole(sum.input)} tok`],
+        ...(sum.cachedRead ? [['Cached input', `${whole(sum.cachedRead)} tok`]] as [string, string][] : []),
+        ...(sum.cachedWrite ? [['Written to the cache', `${whole(sum.cachedWrite)} tok`]] as [string, string][] : []),
+        ['Output', `${whole(sum.output)} tok`],
+        ...(sum.thought ? [['Reasoning', `${whole(sum.thought)} tok`]] as [string, string][] : []),
+        ...(cost ? [['Cost so far', money(cost.amount, cost.currency)]] as [string, string][] : estimate ? [['Estimated cost', money(estimate.amount, estimate.currency)]] as [string, string][] : [])
+      ],
+      note: cost ? 'As the agent counts them and reports its cost, for this session.' : estimate ? 'As the agent counts them, for this session. The cost is estimated at the chosen model’s price (yours in Settings › Models, else models.dev’s); the provider’s bill may differ.' : 'As the agent counts them, for this session. Price the model in Settings › Models to see an estimate of the cost.'
+    });
+  }
+  if (context) {
+    const full = Math.min(1, context.used / context.size);
+    chips.push({
+      key: 'context',
+      text: [`${Math.round(full * 100)}%`],
+      ring: full,
+      title: `${Math.round(full * 100)}% of context used`,
+      total: `${tokens(context.used)} / ${tokens(context.size)}`,
+      bar: full,
+      rows: [['In the context', `${whole(context.used)} tok`], ['Free space', `${whole(context.size - context.used)} tok`]],
+      note: full >= 0.8 ? 'Nearly full: the agent may summarise or drop the start of the session.' : 'As the agent reports it.'
+    });
+  }
+  return chips;
+}
+const RUNNING_STATES = ['starting', 'running', 'stopping'];
+
+/** The Spectrum agent's stats row: the thread's turns and its tokens, with the cache's share and the cost */
+export function spectrumStats(messages: ChatThread['messages'], live: AgentUsage | null, model: string, prices: Prices): StatChip[] {
+  const turns: Counted[] = messages.flatMap((m) => (m.role === 'assistant' && (m.meta as { usage?: Counted } | undefined)?.usage ? [(m.meta as { usage: Counted }).usage] : []));
+  if (live) turns.push({ ...live, model });
+  if (!turns.length) return [];
+  const thread = turns.reduce(add, { input: 0, output: 0 });
+  const costs = turns.map((u) => costOf(u, prices));
+  const sums = costs.every(Boolean) ? costSums(costs as Cost[]) : null;
+  const hit = thread.input ? (thread.cacheRead || 0) / thread.input : 0;
+  const total = thread.input + thread.output;
+  return [
+    { key: 'session', text: [`${turns.length} ${turns.length === 1 ? 'turn' : 'turns'}`], title: 'Thread statistics', rows: [['Turns', String(turns.length)], ['Last turn', `${whole(turns[turns.length - 1].input + turns[turns.length - 1].output)} tok`]] },
+    {
+      key: 'tokens',
+      text: [`${tokens(total)} tok`, ...(hit >= 0.005 ? [`Cache hit ${Math.round(hit * 100)}%`] : []), ...(sums || []).map((c) => `${c.reported ? '' : 'est. '}${money(c.cost, c.currency)}`)],
+      title: 'Token usage',
+      total: `${whole(total)} tok`,
+      rows: [
+        ...(hit >= 0.005 ? [['Cache hit', `${Math.round(hit * 100)}%`]] as [string, string][] : []),
+        ['Uncached input', `${whole(thread.input - (thread.cacheRead || 0))} tok`],
+        ...(thread.cacheRead ? [['Cached input', `${whole(thread.cacheRead)} tok`]] as [string, string][] : []),
+        ['Output', `${whole(thread.output)} tok`],
+        ...(sums || []).map((c): [string, string] => [c.reported ? 'Cost, as OpenRouter reports it' : `Estimated cost (${c.currency})`, money(c.cost, c.currency)])
+      ],
+      note: sums ? (sums.some((c) => !c.reported) ? 'Estimates use your prices in Settings › Models; the provider’s bill may differ.' : undefined) : `Set a price for ${model || 'this model'} in Settings › Models to see an estimate of the cost.`
+    }
+  ];
 }

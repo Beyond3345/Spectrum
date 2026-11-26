@@ -10,6 +10,7 @@ import { getProjectRoot } from '../services/projectService.js';
 import { cloudRootOf, readMirror } from '../services/mirrorService.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { updateNotice } from '../services/updateService.js';
+import { modelsDevPrices } from '../services/modelsDev.js';
 
 const TOOLS = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic', 'bibtex', 'biber', 'texcount'];
 
@@ -43,6 +44,8 @@ export function registerSystemRoutes(fastify) {
     const typed = parseProxy(await typedProxy());
     return { ok: true, supported: process.platform === 'darwin', proxy: found && { text: found.text, from: found.from, source: found.source }, typed: typed ? proxyText(typed) : '' };
   };
+  // models.dev's prices, for the agents' cost estimates; refresh=1 asks again now (Settings › Models › Update now)
+  fastify.get('/api/models-dev/prices', async (req) => ({ ok: true, ...(await modelsDevPrices({ refresh: req.query?.refresh === '1' })) }));
   fastify.get('/api/system/proxy', async () => proxyView(await applyProxy()));
   fastify.put('/api/system/proxy', async (req) => {
     await saveTypedProxy(req.body?.proxy);

@@ -2150,6 +2150,8 @@ export interface LocalAgent {
   installed: boolean; supported: boolean; hasKey: boolean; canImport: boolean;
   keyEnv: string; keyEnvs: string[];
   url: string; unavailable?: string; experimental?: string; planned?: string; support?: 'supported' | 'progress' | 'untested' | 'unsupported';
+  /** its menus as its last session or Test reported them, which the session bar shows before a session starts */
+  options?: { configOptions: any[]; modes?: { currentModeId: string; availableModes: { id: string; name: string; description?: string }[] } };
   /** where: the app or folder the program was found in; app: the agent's desktop app, when it is installed */
   program?: string; source?: 'chosen' | 'spectrum' | 'app' | 'found'; where?: string; reads?: string[];
   app?: { name: string; path: string };
@@ -2178,6 +2180,9 @@ export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools
  */
 export interface ProxyState { supported: boolean; proxy: { text: string; from: string; source: 'typed' | 'system' | 'shell' } | null; typed: string }
 export const getProxy = () => request<ProxyState>('/api/system/proxy');
+/** models.dev's prices in US dollars per million tokens, by model name without vendor or variant (normalizeModelId) */
+export type AutoPrice = { input: number; output: number; cacheRead?: number; cacheWrite?: number };
+export const getModelsDevPrices = (refresh = false) => request<{ ok: boolean; syncedAt: number | null; prices: Record<string, AutoPrice>; error?: string }>(`/api/models-dev/prices${refresh ? '?refresh=1' : ''}`);
 /** Saves the proxy typed in Settings ('' for none); the backend checks it and says which one is in use now. */
 export const saveProxy = (proxy: string) => request<ProxyState>('/api/system/proxy', json('PUT', { proxy }));
 /**
@@ -2219,7 +2224,8 @@ export const removeLocalAgentAdapter = (id: string) => request<{ ok: boolean; ag
 export const listLocalAgentSessions = (projectId: string) => request<{ ok: boolean; sessions: LocalAgentSession[] }>(`/api/agent-sessions?projectId=${encodeURIComponent(projectId)}`);
 export const getLocalAgentSession = (id: string) => request<{ ok: boolean; session: LocalAgentSession }>(`/api/agent-sessions/${id}`);
 /** compile: the app's default Typst version and Markdown PDF engine, for the agent's compiles of a project that chooses neither */
-export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct', persona?: AgentPersona | null, compile?: { typstVersion: string; markdownEngine: string }) => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode, persona, compile }));
+/** options: the choices made in the session bar before it started ({ configId or '__mode': value }), set as it opens. */
+export const createLocalAgentSession = (projectId: string, agentId: string, mode: 'review' | 'direct', persona?: AgentPersona | null, compile?: { typstVersion: string; markdownEngine: string }, options?: Record<string, string>) => request<{ ok: boolean; session: LocalAgentSession }>('/api/agent-sessions', json('POST', { projectId, agentId, mode, persona, compile, options }));
 /** persona: left out keeps the session's; another one starts a new agent session that hears the conversation so far */
 export const sendLocalAgentPrompt = (id: string, prompt: string, options: { context?: AgentPromptContext; persona?: AgentPersona | null } = {}) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/prompt`, json('POST', { prompt, ...options }));
 export const stopLocalAgentSession = (id: string) => request<{ ok: boolean }>(`/api/agent-sessions/${id}/stop`, json('POST', {}));

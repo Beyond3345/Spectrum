@@ -357,6 +357,9 @@ eq(project([ev('terminal', { terminalId: 'x', command: 'latexmk', args: ['-pdf',
   eq(shape([user('x'), reply('Noted.', { instructions: ['Use \\qty for units.'] })]).slice(1), [['assistant', 'Noted.'], ['instruction', 'Use \\qty for units.']], 'kept with the reply');
 }
 
+// agy's whole error as its reply folds to its status and first sentence
+eq(project([ev('user', { text: 'hi' }), ev('update', { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '\n⚠ agent executor error: generating and executing: Error 429, Message: You exceeded your current quota, please check your plan and billing details. For more information, head to: x.' } })]).items.slice(-1)[0], { type: 'assistant', key: `agent_message_chunk-${id}`, text: '⚠ 429: You exceeded your current quota, please check your plan and billing details.' }, 'Antigravity’s error, folded');
+
 console.log('transcript: all checks passed');
   });
 }

@@ -892,6 +892,8 @@ export function AgentComposer({
   placeholder,
   queues = false,
   extras,
+  trailing,
+  below,
   onSend
 }: {
   /** while busy, a message is still taken (the tab queues it for the agent) and the send button stays on */
@@ -910,6 +912,10 @@ export function AgentComposer({
   placeholder: string;
   /** more chips for the bar, after those for what goes with the message */
   extras?: ReactNode;
+  /** the model and its effort, at the right of the box beside Send */
+  trailing?: ReactNode;
+  /** the stats row, under the box */
+  below?: ReactNode;
   onSend(text: string, opts: { skill?: string; research?: string; context: Record<ContextKind, boolean>; images?: Picture[] }): void;
 }) {
   const api = useEditor();
@@ -998,7 +1004,8 @@ export function AgentComposer({
 
   const skillName = skill && (skills.find((s) => s.id === skill)?.name || skill);
   return (
-    <div
+    <>
+      <div
       className="agent-composer"
       onDragOver={(e) => {
         if (hasImage(e.dataTransfer.items)) e.preventDefault();
@@ -1109,10 +1116,13 @@ export function AgentComposer({
           }}
         />
         <span className="grow" />
+        {trailing}
         <button className="composer-send" title={busy && queues ? 'Queue for the agent (↵)' : 'Send (↵)'} aria-label={busy && queues ? 'Queue' : 'Send'} disabled={(busy && !queues) || disabled || (!text.trim() && !skill)} onClick={send}>
           {busy && !queues ? <span className="spinner" /> : <Icon name="arrow.up" />}
         </button>
       </div>
-    </div>
+      </div>
+      {below}
+    </>
   );
 }

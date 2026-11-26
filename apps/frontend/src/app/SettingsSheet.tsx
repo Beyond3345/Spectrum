@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { autoPrice, useAutoPrices } from './autoPrices';
 import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -234,7 +235,12 @@ function ModelPrices({ settings, update, preset }: { settings: AppSettings; upda
   for (const id of Object.keys(settings.modelPrices)) if (!models.has(id)) models.set(id, id);
   // the model chosen here, until the main model changes
   const [picked, setPicked] = useState({ main: settings.llmModel, id: settings.llmModel });
+  // a model named here, such as a local agent's, listed until a price is typed for it
+  const [named, setNamed] = useState('');
+  if (picked.id && !models.has(picked.id) && picked.id === named) models.set(named, named);
   const model = picked.main === settings.llmModel && models.has(picked.id) ? picked.id : settings.llmModel;
+  const auto = useAutoPrices(settings.autoPrices);
+  const fromAuto = autoPrice(auto.prices, model);
   const price = settings.modelPrices[model] || {};
   const [, symbol] = CURRENCIES.find(([code]) => code === (price.currency || 'USD'))!;
   const set = (patch: Partial<Price>) => update({ modelPrices: cleanPrices({ ...settings.modelPrices, [model]: { ...price, ...patch } }) });
@@ -266,15 +272,42 @@ function ModelPrices({ settings, update, preset }: { settings: AppSettings; upda
             min={0}
             step="any"
             aria-label={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}, ${symbol.trim()} per million tokens`}
-            placeholder={{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}
+            placeholder={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}${fromAuto?.[k] !== undefined && !price.currency ? ` (${fromAuto[k]})` : ''}`}
             value={price[k] ?? ''}
             onChange={(e) => set({ [k]: e.target.value.trim() === '' ? undefined : Number(e.target.value) })}
           />
         ))}
       </div>
-      <div className="field-hint">
-        Optional: input, cached input and output, per million tokens, from your provider’s price list, in its currency. The Spectrum agent’s tab then shows an estimate of what a thread cost, in that currency; Spectrum converts no currencies. With OpenRouter it shows OpenRouter’s own figure in US dollars instead. Without either it shows tokens alone.
+      <div className="row">
+        <input
+          className="input grow"
+          aria-label="Another model to price, by its name"
+          placeholder="Another model, such as a local agent’s: its name"
+          value={named}
+          onChange={(e) => setNamed(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && named.trim()) { setNamed(named.trim()); setPicked({ main: settings.llmModel, id: named.trim() }); }
+          }}
+        />
+        <button className="btn small" disabled={!named.trim()} onClick={() => { setNamed(named.trim()); setPicked({ main: settings.llmModel, id: named.trim() }); }}>
+          Price it
+        </button>
       </div>
+      <div className="field-hint">
+        Input, cached input and output, per million tokens, in your provider’s currency. Both agent tabs show an estimate of the cost from them, in that currency; Spectrum converts no currencies. A price you leave empty comes from models.dev, in US dollars, shown in the empty field. With OpenRouter, or an agent that reports its own cost, that figure is shown instead.
+      </div>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.autoPrices} onChange={(e) => update({ autoPrices: e.target.checked })} />
+        Fill in prices from models.dev
+      </label>
+      {settings.autoPrices && (
+        <div className="field-hint">
+          Spectrum takes models.dev’s public price list every six hours, through your proxy, and sends it nothing.{' '}
+          {auto.syncedAt ? `Last taken ${new Date(auto.syncedAt).toLocaleString('en-AU')}.` : 'Not taken yet.'}
+          {auto.error && ` The last try failed: ${auto.error}.`}{' '}
+          <button className="btn small ghost" onClick={() => void auto.refresh()}>Update now</button>
+        </div>
+      )}
     </div>
   );
 }

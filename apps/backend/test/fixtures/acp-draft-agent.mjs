@@ -27,6 +27,8 @@ const update = (u) => send({ method: 'session/update', params: { sessionId, upda
 const log = (entry) => appendFileSync(path.join(process.env.HOME, 'acp-log.jsonl'), `${JSON.stringify(entry)}\n`);
 let workspace;
 const methods = process.argv.includes('--auth-methods');
+let model = 'openai/gpt';
+const modelMenu = () => [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: model, options: [{ value: 'openai/gpt', name: 'GPT' }, { value: 'deepseek/chat', name: 'DeepSeek' }] }];
 let air = false;
 const readable = (file) => { try { readFileSync(file); return true; } catch { return false; } };
 const airMeta = (failure) => ({ jetbrains: { air: { version: 1, sessionFailure: { id: 'turn-1:error', revision: 1, actions: [], ...failure } } } });
@@ -54,8 +56,12 @@ lines.on('line', async (line) => {
     if (m.method === 'session/load') update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'replayed' } });
     // sent before the answer that names the session
     update({ sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'review', description: 'Review the draft' }] });
-    // --models offers a model menu, as OpenCode does
-    send({ id: m.id, result: { sessionId, ...(process.argv.includes('--models') && { configOptions: [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'openai/gpt', options: [{ value: 'openai/gpt', name: 'GPT' }, { value: 'deepseek/chat', name: 'DeepSeek' }] }] }) } });
+    // --models offers a model menu, as OpenCode does, which session/set_config_option sets
+    send({ id: m.id, result: { sessionId, ...(process.argv.includes('--models') && { configOptions: modelMenu() }) } });
+  } else if (m.method === 'session/set_config_option' && process.argv.includes('--models')) {
+    log({ set: [m.params.configId, m.params.value] });
+    model = m.params.value;
+    send({ id: m.id, result: { configOptions: modelMenu() } });
   } else if (m.method === 'session/prompt' && process.argv.includes('--auth-on-prompt')) {
     send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
   } else if (m.method === 'session/prompt') {

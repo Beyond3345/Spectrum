@@ -15,7 +15,7 @@ import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileServi
 import { builtInTectonic, builtInTypst } from './engineService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { checkedImages, openTodos, suggestedTodo } from './agentService.js';
-import { AGENT_DIR, agentConfigs, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter, allowAgentHost } from './agentProfiles.js';
+import { AGENT_DIR, agentConfigs, rememberOptions, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter, allowAgentHost } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, isolationAvailable } from './agentSandbox.js';
 import { proxyNote } from './agentNetwork.js';
 import { initialiseWorkspace, workspaceChanges, workspaceFiles, applyWorkspaceChanges, captureAgentProposal, fileHash, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
@@ -265,7 +265,7 @@ export async function compileChoices(r) {
   return { engine: own.engine || 'auto', typstVersion: own.typstVersion || r.compile?.typstVersion, markdownEngine: own.markdownEngine || r.compile?.markdownEngine };
 }
 
-export async function newAgentRun({ projectId, agentId, mode = 'review', persona, compile }) {
+export async function newAgentRun({ projectId, agentId, mode = 'review', persona, compile, options }) {
   persona = readPersona(persona);
   if (mode === 'direct' && process.platform === 'win32') throw Object.assign(new Error(NO_DIRECT), { statusCode: 400 });
   const profile = profileFor(agentId);
@@ -275,7 +275,9 @@ export async function newAgentRun({ projectId, agentId, mode = 'review', persona
   const root = await getProjectRoot(projectId);
   const id = crypto.randomUUID();
   const dir = path.join(AGENT_DIR, 'runs', id);
-  const r = { id, dir, root, projectId, agentId, mode, persona, compile: appCompile(compile), createdAt: new Date().toISOString(), events: [], eventBytes: 0, sequence: 0, resolved: new Set(), notes: [], listeners: new Set(), pending: new Map(), terminals: new Map(), busy: true, turnCount: 0 };
+  // the choices made in the session bar before it started ({ configId or '__mode': value }), set as it opens
+  const preset = options && typeof options === 'object' && !Array.isArray(options) ? Object.fromEntries(Object.entries(options).filter(([k, v]) => typeof k === 'string' && typeof v === 'string' && k.length < 200 && v.length < 500).slice(0, 12)) : {};
+  const r = { id, dir, root, projectId, agentId, mode, persona, compile: appCompile(compile), preset, createdAt: new Date().toISOString(), events: [], eventBytes: 0, sequence: 0, resolved: new Set(), notes: [], listeners: new Set(), pending: new Map(), terminals: new Map(), busy: true, turnCount: 0 };
   if (busyProject(r)) throw new Error('Another agent is working on this project. Stop it before starting another.');
   runs.set(id, r);
   try {
@@ -482,6 +484,20 @@ async function connect(r) {
   if (session.sessionId) r.remoteId = session.sessionId;
   if (!r.remoteId) throw new Error('The agent did not return a session id.');
   await recordTest(r.agentId, { ok: true, code: 'ready', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
+  // what was chosen before the session started, each choice the agent still offers; one it won't take is left as it is
+  if (!loaded && r.preset) {
+    for (const [configId, value] of Object.entries(r.preset)) {
+      const option = configId === '__mode' ? null : session.configOptions?.find((o) => o.id === configId);
+      const offered = configId === '__mode' ? session.modes?.availableModes?.some((m) => m.id === value) && session.modes.currentModeId !== value
+        : option && option.currentValue !== value && (option.options || []).flatMap((v) => v.options || [v]).some((v) => v.value === value);
+      if (!offered) continue;
+      const result = await timeout(configId === '__mode' ? r.peer.request('session/set_mode', { sessionId: r.remoteId, modeId: value }) : r.peer.request('session/set_config_option', { sessionId: r.remoteId, configId, value }), 30000, 'timeout', r.connectionAbort.signal).catch(() => null);
+      if (configId === '__mode' && result) session = { ...session, modes: { ...session.modes, currentModeId: value } };
+      else if (Array.isArray(result?.configOptions)) session = { ...session, configOptions: result.configOptions };
+    }
+    r.preset = null;
+  }
+  void rememberOptions(r.agentId, session).catch(() => {});
   emit(r, 'session', { modes: session.modes, configOptions: session.configOptions });
 }
 
@@ -591,6 +607,7 @@ async function runTest(profile, limit) {
         if (options.authMethod) await ask('authenticate', { methodId: options.authMethod });
         const session = await ask('session/new', { cwd: workspace, mcpServers: [] });
         result = session?.sessionId ? { ok: true, code: 'ready' } : { code: 'not-acp' };
+        if (session?.sessionId) await rememberOptions(profile.id, session).catch(() => {});
       }
     } catch (err) {
       // a connection that broke as the agent stopped is its stopping

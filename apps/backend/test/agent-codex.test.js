@@ -202,6 +202,20 @@ test('an agent with a model menu refused for want of a sign-in says the model’
   sessions.closeAgentRun(run);
 });
 
+test('an agent’s menus are remembered from its Test and sessions, and a choice made before a session starts is set as it opens', { skip, timeout: 120000 }, async () => {
+  const { log } = await native$();
+  const { createProject } = await import('../src/services/projectService.js');
+  await saveAgentConfig('qoder', { command: process.execPath, args: [fixture, '--models'], runtimePaths: [path.dirname(fixture)], apiKey: '' });
+  await sessions.testAgent('qoder');
+  assert.deepEqual((await agentEntry('qoder')).options.configOptions.map((o) => [o.id, o.currentValue]), [['model', 'openai/gpt']]);
+  const project = await createProject({ name: 'Menus' });
+  const run = await sessions.getAgentRun((await sessions.newAgentRun({ projectId: project.id, agentId: 'qoder', mode: 'review', options: { model: 'deepseek/chat', missing: 'x' } })).id);
+  await run.ready;
+  assert.deepEqual(run.events.findLast((e) => e.type === 'session').data.configOptions[0].currentValue, 'deepseek/chat');
+  assert.deepEqual((await log(run)).filter((e) => e.set).map((e) => e.set), [['model', 'deepseek/chat']], 'one the agent does not offer is left out');
+  sessions.closeAgentRun(run);
+});
+
 test('Antigravity’s refused turn, which agy ends as end_turn, is Failed: a refused key names the key, another error is told', { skip, timeout: 120000 }, async () => {
   const { open, turn } = await native$();
   await saveAgentConfig('antigravity', { command: process.execPath, args: [fixture, '--auth-methods'], runtimePaths: [path.dirname(fixture)], apiKey: 'AIza-fixture-0123456789' });

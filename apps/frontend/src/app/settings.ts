@@ -102,6 +102,8 @@ export type AppSettings = {
   reasoningEffort: ReasoningEffort;
   /** Settings › Models: what the user pays for a model, by its id, for the agent meter's estimate (this computer's, as the models are) */
   modelPrices: Prices;
+  /** Settings › Models: fill in the prices not typed from models.dev's public list, taken again every six hours */
+  autoPrices: boolean;
   searchEndpoint: string;
   searchApiKey: string;
   searchModel: string;
@@ -269,6 +271,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   llmModel: 'gpt-6-sol',
   reasoningEffort: 'default',
   modelPrices: {},
+  autoPrices: true,
   searchEndpoint: '',
   searchApiKey: '',
   searchModel: '',
@@ -527,6 +530,7 @@ function parse(raw: string | null): AppSettings {
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system';
     if (!REASONING_EFFORTS.some(([value]) => value === merged.reasoningEffort)) merged.reasoningEffort = 'default';
     merged.modelPrices = cleanPrices(merged.modelPrices);
+    merged.autoPrices = merged.autoPrices !== false;
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
     merged.editorKeymap = editorKeymap(merged.editorKeymap);
     merged.updateCheck = merged.updateCheck !== false;

@@ -37,7 +37,11 @@ import type { ContextKind, Draft, TaskRequest, TrayChange, TrayPart } from './pa
 import type { Picture } from './pictures';
 import { RUNNING, addEvent, project } from './transcript';
 import AgentLogo from './AgentLogo';
-import AgentHeader from './AgentHeader';
+import { StatsRow } from './AgentHeader';
+import { localStats } from './usage';
+import { autoPrice, useAutoPrices } from '../../app/autoPrices';
+import AgentTuning from './AgentTuning';
+import type { ConfigOption } from './AgentTuning';
 import OutsideTools from './OutsideTools';
 import InstructionFiles from './InstructionFiles';
 import { chosenAgent, shownAgents } from './agents';
@@ -56,6 +60,11 @@ const openCard = (id: string) => {
 };
 
 /** The 1.10 ACP agents (OpenCode, Codex, Claude and the others), each run isolated by agentSessionService.js. */
+/** The choices made in an agent's session bar ({ configId or '__mode': value }), which a new session of it starts with. */
+const chosenOptions = (agentId: string): Record<string, string> => {
+  try { return JSON.parse(read(`spectrum-agent-options:${agentId}`) || '{}') || {}; } catch { return {}; }
+};
+
 export default function LocalAgentTab({
   hidden,
   active,
@@ -259,7 +268,7 @@ export default function LocalAgentTab({
       if (session && session.agentId === currentId) await sendLocalAgentPrompt(session.id, message.text, { persona: message.persona, context: message.context });
       else {
         const { typstVersion, markdownEngine } = loadSettings().compileDefaults;
-        const r = await createLocalAgentSession(latest.current.projectId, currentId, mode, message.persona, { typstVersion, markdownEngine });
+        const r = await createLocalAgentSession(latest.current.projectId, currentId, mode, message.persona, { typstVersion, markdownEngine }, chosenOptions(currentId));
         queued.current = message;
         write(`spectrum-agent-persona:${r.session.id}`, persona);
         write(`spectrum-agent:${latest.current.projectId}`, r.session.id);
@@ -388,7 +397,20 @@ export default function LocalAgentTab({
   const empty = !session || !view.items.length;
   const usable = shownAgents(agents, session?.agentId);
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name || id;
-  const modes = view.modes && !view.configOptions.some((o) => o.category === 'mode') ? view.modes : null;
+  // before a session starts, the agent's menus as it last reported them, with the choices made since; a session's own
+  const remembered = !session ? agents.find((a) => a.id === currentId)?.options : undefined;
+  const chosen = chosenOptions(currentId);
+  const shownOptions: ConfigOption[] = session ? view.configOptions : (remembered?.configOptions || []).map((o: ConfigOption) => (chosen[o.id] ? { ...o, currentValue: chosen[o.id] } : o));
+  const shownModes = session ? view.modes : remembered?.modes ? { ...remembered.modes, currentModeId: chosen.__mode || remembered.modes.currentModeId } : null;
+  const modes = shownModes && !shownOptions.some((o) => o.category === 'mode') ? shownModes : null;
+  const [, rerender] = useState(0);
+  const auto = useAutoPrices(api.settings.autoPrices);
+  const priceOf = (model?: string) => (model ? api.settings.modelPrices[model] ?? autoPrice(auto.prices, model) : undefined);
+  const tune = (id: string, value: string) => {
+    write(`spectrum-agent-options:${currentId}`, JSON.stringify({ ...chosenOptions(currentId), [id]: value }));
+    if (session) setLocalAgentOption(session.id, id, value).catch(fail);
+    else rerender((n) => n + 1);
+  };
 
   return (
     <div className="agent-tab" hidden={hidden}>
@@ -425,28 +447,6 @@ export default function LocalAgentTab({
             onChange={(v) => setMode(v as typeof mode)}
           />
         )}
-        {session &&
-          view.configOptions.map((o) => (
-            <Select
-              key={o.id}
-              className="agent-option"
-              title={o.description || o.name}
-              value={o.currentValue}
-              disabled={running}
-              options={(o.options || []).flatMap((v: any) => v.options || [v]).map((v: any) => [v.value, v.name])}
-              onChange={(value) => setLocalAgentOption(session.id, o.id, value).catch(fail)}
-            />
-          ))}
-        {session && modes && (
-          <Select
-            className="agent-option"
-            title="Mode"
-            value={modes.currentModeId}
-            disabled={running}
-            options={modes.availableModes.map((m) => [m.id, m.name])}
-            onChange={(value) => setLocalAgentOption(session.id, '__mode', value).catch(fail)}
-          />
-        )}
         <PersonaPicker
           value={persona}
           onChange={(id) => {
@@ -456,7 +456,6 @@ export default function LocalAgentTab({
           onManage={() => onOpenSettings('personas')}
         />
         <span className="grow" />
-        <AgentHeader events={events} />
         <OutsideTools />
         {session && RUNNING.includes(session.status) && (
           <button className="btn small" onClick={() => stopLocalAgentSession(session.id).catch(fail)}>
@@ -542,6 +541,8 @@ export default function LocalAgentTab({
         {!session && mode === 'direct' && <p className="field-hint">The agent can change your project straight away. A checkpoint is saved before each task.</p>}
         {!session && IS_WINDOWS && <p className="field-hint">On Windows, local agents don’t get Spectrum’s tools or Direct editing yet. The Spectrum agent has every tool.</p>}
         <AgentComposer
+          trailing={<AgentTuning options={shownOptions} modes={modes} disabled={running} onChange={tune} />}
+          below={<StatsRow chips={localStats(events, priceOf(shownOptions.find((o) => o.category === 'model')?.currentValue))} />}
           busy={running}
           disabled={!session && !ready}
           firstTurn={empty}

@@ -16,7 +16,7 @@ import claudeLock from '../data/adapters/claude/package-lock.json' with { type: 
 import piLock from '../data/adapters/pi/package-lock.json' with { type: 'json' };
 import zcodeLock from '../data/adapters/zcode/package-lock.json' with { type: 'json' };
 
-const SUPPORT = { deepseek: 'supported', codex: 'supported', opencode: 'supported' };
+const SUPPORT = { deepseek: 'supported', codex: 'supported', opencode: 'supported', antigravity: 'supported' };
 export const ADAPTER_LOCKS = { codex: codexLock, claude: claudeLock, pi: piLock, zcode: zcodeLock };
 
 export const AGENT_DIR = path.join(DATA_DIR, 'agents');
@@ -408,8 +408,18 @@ export async function agentEntry(id, config, isolated, proxy) {
     // with a key and a copied login, the one it signs in with, which the user chooses
     ...(p.keyAuth && saved.apiKey && loginCopied && { signInWith: saved.signInWith === 'login' ? 'login' : 'key' }),
     ...(p.adapter && { adapter: { package: p.adapter.package, version: p.adapter.version, official: p.adapter.official, publisher: p.adapter.publisher, size: p.adapter.size[process.arch] || p.adapter.size.arm64, folder: path.join(AGENT_DIR, 'adapters', id, p.adapter.version), platform: `macOS, ${process.arch === 'arm64' ? 'Apple silicon' : 'Intel'}`, ...(managed && { installed: managed.version }) } }),
-    ...(test && { test }), state, setUp
+    ...(test && { test }), ...(saved.options && { options: saved.options }), state, setUp
   };
+}
+
+/**
+ * The agent's menus as its last session or Test reported them (ACP configOptions and modes), so the session bar shows
+ * them, and takes a choice, as soon as the agent is picked, before a session starts it.
+ */
+export function rememberOptions(id, { configOptions, modes } = {}) {
+  if (!Array.isArray(configOptions) && !modes) return Promise.resolve();
+  const options = { configOptions: (configOptions || []).filter((o) => o?.type === 'select').slice(0, 12), ...(modes?.availableModes && { modes }) };
+  return updateConfig(id, (entry) => ({ ...entry, options }));
 }
 
 export async function listAgents() {

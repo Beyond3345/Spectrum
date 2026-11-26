@@ -1,7 +1,8 @@
 // Self-check for the agent tabs' meter and their model and effort choice. Run:
 // npx esbuild apps/frontend/src/editor/agent/usage.check.ts --bundle --platform=node --format=esm --loader:.svg=text --loader:.css=empty --outfile=/tmp/usage.mjs && node /tmp/usage.mjs
-import { costOf, localMeter, money, spectrumMeter, tokens, turnChoice } from './usage';
+import { costOf, localMeter, localStats, money, spectrumMeter, tokens, turnChoice } from './usage';
 import { CURRENCIES, cleanPrices } from '../../app/settings';
+import { withAutoPrices } from '../../app/autoPrices';
 import type { AgentEvent, ChatMessage, ProviderPreset } from '../../api/client';
 
 // Intl puts a no-break space between a currency and its amount
@@ -107,5 +108,25 @@ c = turnChoice(null, { llmModel: 'my-model', reasoningEffort: 'xhigh' }, { model
 eq([c.model, c.effort, c.models], ['my-model', 'xhigh', [['my-model', 'my-model']]], 'another server: its model, every effort');
 c = turnChoice(preset, { llmModel: 'typed', reasoningEffort: 'default' }, {});
 eq(c.models[0], ['typed', 'typed'], 'a typed model listed first');
+
+// the stats row under a local agent's box: its tasks and steps, its tokens with the cache's share, its context
+{
+  const e = (id: number, type: string, data: object, at: string): AgentEvent => ({ id, type, data, at }) as AgentEvent;
+  const chips = localStats([
+    e(1, 'user', { text: 'hi' }, '2026-11-27T00:00:00Z'),
+    e(2, 'update', { sessionUpdate: 'tool_call', toolCallId: 'a' }, '2026-11-27T00:00:01Z'),
+    e(3, 'update', { sessionUpdate: 'tool_call_update', toolCallId: 'a' }, '2026-11-27T00:00:02Z'),
+    e(4, 'usage', { turn: { inputTokens: 1000, cachedReadTokens: 800, outputTokens: 200 }, context: { used: 70000, size: 1000000 } }, '2026-11-27T00:00:03Z'),
+    e(5, 'complete', {}, '2026-11-27T00:01:05Z')
+  ]);
+  eq(chips.map((c) => [c.key, c.text]), [['session', ['1 task 1 step', '1m05s']], ['tokens', ['2k tok', 'Cache hit 80%']], ['context', ['7%']]], 'the stats row');
+  eq(chips[2].total, '70k / 1M', 'the context popover’s headline');
+  eq(localStats([]), [], 'nothing before a task');
+  // no reported cost: an estimate at the model's price, the user's before models.dev's
+  const priced = localStats([e(1, 'user', {}, ''), e(2, 'usage', { turn: { inputTokens: 1_000_000, cachedReadTokens: 500_000, outputTokens: 100_000 } }, '')], { input: 3, cached: 0.3, output: 15 });
+  eq(priced[1].text, ['1.6M tok', 'Cache hit 50%', 'est. US$3.15'], 'estimated at the model’s price');
+  const prices = withAutoPrices({ mine: { input: 1, output: 2 } }, { 'claude-sonnet-4-5': { input: 3, output: 15, cacheRead: 0.3 } });
+  eq([prices.mine, prices['anthropic/claude-sonnet-4-5'], prices.unknown], [{ input: 1, output: 2 }, { input: 3, output: 15, cached: 0.3 }, undefined], 'the user’s price, else models.dev’s by its plain name');
+}
 
 console.log('usage.check: ok');
