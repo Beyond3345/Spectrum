@@ -33,7 +33,7 @@ const listed = async (id) => (await listAgents()).find((a) => a.id === id);
 
 test('the agent list: names, reasons, adapters and Windows', async () => {
   assert.equal(new Set(PROFILES.map((p) => p.id)).size, PROFILES.length);
-  assert.deepEqual(PROFILES.map((p) => p.id), ['opencode', 'codex', 'claude', 'gemini', 'copilot', 'cursor', 'kimi', 'hermes', 'qoder', 'pi', 'deepseek', 'zcode', 'workbuddy']);
+  assert.deepEqual(PROFILES.map((p) => p.id), ['opencode', 'codex', 'claude', 'gemini', 'antigravity', 'copilot', 'cursor', 'kimi', 'hermes', 'qoder', 'pi', 'deepseek', 'zcode', 'workbuddy']);
   assert.ok(profileFor('workbuddy').planned && profileFor('workbuddy').unavailable, 'WorkBuddy is planned and never startable');
   assert.equal(profileFor('claude').name, 'Claude Agent');
   assert.ok(profileFor('claude').args.includes('--hide-claude-auth'));
@@ -154,6 +154,64 @@ test('Claude Agent always starts with the claude.ai sign-in hidden', { skip: nod
   assert.ok(options.args.includes('--hide-claude-auth'));
   // Claude Code's own temporary files go in its private home, since isolation does not open /tmp/claude-<uid>
   assert.equal(options.env.CLAUDE_CODE_TMPDIR, path.join(dir, 'tmp'));
+});
+
+test('Antigravity: its CLI’s ACP server, found where its installer puts it, a key through ACP’s Gemini API key method', { skip: knownFolders }, async () => {
+  const p = profileFor('antigravity');
+  assert.deepEqual([p.command, p.args, p.keys, p.login, p.support, p.unavailable, p.experimental], ['agy', ['acp'], ['GEMINI_API_KEY'], [], 'untested', undefined, undefined]);
+  // the desktop app has no agent mode Spectrum can start: installed, still missing, with the CLI's install line
+  await fs.mkdir(path.join(root, 'Applications/Antigravity.app/Contents'), { recursive: true });
+  let agent = await listed('antigravity');
+  assert.deepEqual([agent.state, agent.app.name, agent.install], ['missing', 'Antigravity', 'curl -fsSL https://antigravity.google/cli/install.sh | bash']);
+  await assert.rejects(launchOptions('antigravity', { workspace: dir, home: dir }), /Antigravity is installed, but its agent mode needs the Antigravity CLI/);
+  // where its install script puts agy
+  const agy = await program('.local/bin/agy');
+  agent = await listed('antigravity');
+  assert.deepEqual([agent.source, agent.program, agent.state, agent.canImport], ['found', agy, 'sign-in', false]);
+  let options = await launchOptions('antigravity', { workspace: dir, home: dir });
+  assert.deepEqual([options.command, options.args, options.env, options.authMethod], [agy, ['acp'], { AGY_CLI_DISABLE_AUTO_UPDATE: 'true' }, undefined], 'no sign-in method asked for without a key');
+  await saveAgentConfig('antigravity', { apiKey: 'gemini-private' });
+  options = await launchOptions('antigravity', { workspace: dir, home: dir });
+  assert.deepEqual([options.env.GEMINI_API_KEY, options.authMethod, options.secrets], ['gemini-private', 'gemini-api-key', ['gemini-private']]);
+  assert.equal((await listed('antigravity')).state, 'untested');
+  await saveAgentConfig('antigravity', { apiKey: '' });
+  // Cursor asks for its own sign-in always, with or without a key
+  await program('.local/bin/cursor-agent');
+  assert.equal((await launchOptions('cursor', { workspace: dir, home: dir })).authMethod, 'cursor_login');
+  // a native program on Windows, left to the Test there
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  try { assert.equal(profileFor('antigravity').unavailable, undefined); } finally { Object.defineProperty(process, 'platform', platform); }
+  await fs.rm(path.join(root, 'Applications/Antigravity.app'), { recursive: true });
+});
+
+test('Windows: agy.exe in the folder Antigravity’s installer uses, off the PATH, from LOCALAPPDATA or the home folder', async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const localAppData = process.env.LOCALAPPDATA;
+  const exe = async (base) => {
+    const file = path.join(base, 'agy', 'bin', 'agy.exe');
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, 'MZ', { mode: 0o755 });
+    return file;
+  };
+  const local = await exe(path.join(dir, 'LocalAppData'));
+  const fromHome = await exe(path.join(home, 'AppData', 'Local'));
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  try {
+    process.env.LOCALAPPDATA = path.join(dir, 'LocalAppData');
+    let agent = await agentEntry('antigravity', {}, true);
+    assert.deepEqual([agent.source, agent.program], ['found', local]);
+    delete process.env.LOCALAPPDATA;
+    agent = await agentEntry('antigravity', {}, true);
+    assert.equal(agent.program, fromHome);
+    // the other agents' search is unchanged: none is found there
+    assert.equal((await agentEntry('gemini', {}, true)).installed, false);
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+    if (localAppData === undefined) delete process.env.LOCALAPPDATA; else process.env.LOCALAPPDATA = localAppData;
+    await fs.rm(path.join(dir, 'LocalAppData'), { recursive: true });
+    await fs.rm(path.join(home, 'AppData'), { recursive: true });
+  }
 });
 
 test('OpenCode is listed as unsupported and never started', async () => {

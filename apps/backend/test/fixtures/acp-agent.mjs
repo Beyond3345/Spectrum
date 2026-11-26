@@ -16,6 +16,10 @@ async function finish() {
 // --exit prints its keys to stderr and stops; --silent never answers; --auth-required and --error refuse session/new,
 // as an agent wanting a sign-in or with an invalid key does
 const flag = (name) => process.argv.includes(name);
+// --auth=<method>: refuses session/new until the client authenticates with that method, as Antigravity's agy acp does
+// without its keychain sign-in
+const authMethod = process.argv.find((a) => a.startsWith('--auth='))?.slice(7);
+let authenticated = false;
 if (flag('--exit')) {
   process.stderr.write(`starting with ${Object.entries(process.env).filter(([k]) => /_(KEY|TOKEN)$/.test(k)).map(([k, v]) => `${k}=${v}`).join(' ')}\n`);
   process.exit(3);
@@ -23,9 +27,13 @@ if (flag('--exit')) {
 lines.on('line', async (line) => {
   const m = JSON.parse(line);
   if (flag('--silent')) return;
-  if (m.method === 'session/new' && flag('--auth-required')) send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
+  if (m.method === 'authenticate' && authMethod) {
+    authenticated = m.params.methodId === authMethod;
+    send(authenticated ? { id: m.id, result: {} } : { id: m.id, error: { code: -32000, message: 'Authentication required' } });
+  } else if ((m.method === 'session/new' || m.method === 'session/load') && authMethod && !authenticated) send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
+  else if (m.method === 'session/new' && flag('--auth-required')) send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
   else if (m.method === 'session/new' && flag('--error')) send({ id: m.id, error: { code: -32603, message: 'Invalid API key' } });
-  else if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, agentInfo: { name: 'Spectrum fixture', version: '1' }, authMethods: [] } });
+  else if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, agentInfo: { name: 'Spectrum fixture', version: '1' }, authMethods: authMethod ? [{ id: authMethod, name: 'Gemini API key' }] : [] } });
   else if (m.method === 'session/new' || m.method === 'session/load') { workspace = m.params.cwd; send({ id: m.id, result: { sessionId: 'test-session' } }); }
   else if (m.method === 'session/prompt') {
     promptId = m.id;

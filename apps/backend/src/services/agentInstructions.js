@@ -97,16 +97,18 @@ export async function instructionsBlock(root) {
 // (an agent's own settings can add another tool's names: Codex's fallback names, Gemini's and Qoder's context.fileName)
 // until the user allows it. Names are matched in any folder, and as a file system that ignores case takes them.
 export const INSTRUCTION_FILES = [
-  { match: /(^|\/)agents\.md$/i, agents: ['codex', 'claude', 'copilot', 'cursor', 'kimi', 'hermes', 'qoder', 'pi', 'deepseek', 'zcode', 'opencode'] },
+  { match: /(^|\/)agents\.md$/i, agents: ['codex', 'claude', 'antigravity', 'copilot', 'cursor', 'kimi', 'hermes', 'qoder', 'pi', 'deepseek', 'zcode', 'opencode'] },
   { match: /(^|\/)agents\.override\.md$/i, agents: ['codex', 'hermes', 'pi'] },
   { match: /(^|\/)agents\.local\.md$/i, agents: ['qoder', 'deepseek'] },
   { match: /(^|\/)claude\.md$/i, agents: ['claude', 'copilot', 'cursor', 'hermes', 'pi', 'deepseek', 'opencode'] },
   { match: /(^|\/)claude\.local\.md$/i, agents: ['claude', 'deepseek'] },
-  { match: /(^|\/)gemini\.md$/i, agents: ['gemini', 'copilot'] },
+  { match: /(^|\/)gemini\.md$/i, agents: ['gemini', 'antigravity', 'copilot'] },
   { match: /(^|\/)\.github\/(copilot-instructions\.md$|(instructions|agents|skills)\/)/i, agents: ['copilot'] },
   { match: /(^|\/)(\.cursorrules$|\.cursor\/rules\/)/i, agents: ['cursor', 'hermes'] },
   { match: /(^|\/)\.?hermes\.md$/i, agents: ['hermes'] },
-  { match: /(^|\/)\.agents\//i, agents: ['codex', 'gemini', 'copilot', 'kimi', 'pi', 'deepseek', 'opencode'] },
+  { match: /(^|\/)\.agents\//i, agents: ['codex', 'gemini', 'antigravity', 'copilot', 'kimi', 'pi', 'deepseek', 'opencode'] },
+  // Antigravity's older folder, .agent without the s
+  { match: /(^|\/)\.agent\/(rules|skills)\//i, agents: ['antigravity'] },
   { match: /(^|\/)\.codex\//i, agents: ['codex'] },
   { match: /(^|\/)\.gemini\//i, agents: ['gemini'] },
   { match: /(^|\/)\.kimi(-code)?\//i, agents: ['kimi'] },

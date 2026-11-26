@@ -443,7 +443,7 @@ async function connect(r) {
   r.opening = true;
   let loaded = false;
   try {
-    if (r.agentId === 'cursor') await timeout(r.peer.request('authenticate', { methodId: 'cursor_login' }), 30000, 'Cursor authentication did not finish. Configure its API key in Setup.', r.connectionAbort.signal);
+    if (r.processOptions.authMethod) await timeout(r.peer.request('authenticate', { methodId: r.processOptions.authMethod }), 30000, `${profileFor(r.agentId).name} authentication did not finish. Configure its API key in Setup.`, r.connectionAbort.signal);
     if (r.remoteId && !r.forceNew && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
       const method = r.capabilities.loadSession ? 'session/load' : 'session/resume';
       r.replaying = method === 'session/load';
@@ -535,7 +535,7 @@ async function runTest(profile, limit) {
       initial = await ask('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } });
       if (initial?.protocolVersion !== 1) result = { code: 'not-acp' };
       else {
-        if (profile.id === 'cursor') await ask('authenticate', { methodId: 'cursor_login' });
+        if (options.authMethod) await ask('authenticate', { methodId: options.authMethod });
         const session = await ask('session/new', { cwd: workspace, mcpServers: [] });
         result = session?.sessionId ? { ok: true, code: 'ready' } : { code: 'not-acp' };
       }
@@ -598,8 +598,9 @@ async function agentFile(r, operation, file, content = '') {
 // left a link anywhere in its home. While another project's session of the same agent runs, its skills stay: only
 // missing ones are added. Names isolation keeps from agents (.git, .env files, keys) stay behind, as it wouldn't let
 // them be written or read; a folder still held by a virus scanner on Windows is renamed again shortly. Windows has no
-// Claude, so only .agents/skills there.
+// Claude, so only .agents/skills there. Antigravity looks in its own global folder, not ~/.agents.
 const SKILL_FOLDERS = process.platform === 'win32' ? ['.agents/skills'] : ['.agents/skills', '.claude/skills'];
+const skillFolders = (agentId) => [...SKILL_FOLDERS, ...(agentId === 'antigravity' ? ['.gemini/config/skills'] : [])];
 const SKILL_MARK = '.spectrum-managed';
 const copySkills = `const fs=require('node:fs'), path=require('node:path');
   const { skills, folders, mark, onlyAdd } = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -641,7 +642,7 @@ async function syncAgentSkills(r) {
   child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
   child.stdout.resume();
   const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(error.trim().split('\n').at(-1) || 'Spectrum couldn’t copy the skills.'))); });
-  child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify({ skills, folders: SKILL_FOLDERS, mark: SKILL_MARK, onlyAdd }));
+  child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify({ skills, folders: skillFolders(r.agentId), mark: SKILL_MARK, onlyAdd }));
   try { await timeout(done, 30000, 'Copying the skills took too long.'); r.skillsAdded = onlyAdd; }
   finally { killAgentProcess(child); }
 }

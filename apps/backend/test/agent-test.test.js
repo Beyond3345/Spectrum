@@ -58,6 +58,18 @@ test('Test stores each outcome; sessions store theirs; Tests, turns and installs
     await Promise.all([testAgent('hermes', { limit: 1000 }), testAgent('kimi', { limit: 1000 })]);
     assert.ok(Date.now() - started >= 2000, 'one at a time');
 
+    // Antigravity under its profile: its keychain sign-in is out of reach, so a saved key goes through ACP's Gemini API
+    // key method, asked for by a Test and a session alike, and never without a key
+    await setUp('antigravity', '--auth=gemini-api-key');
+    agent = await testAgent('antigravity');
+    assert.deepEqual([agent.state, agent.test.code, agent.test.methods], ['sign-in', 'sign-in', ['Gemini API key']]);
+    await saveAgentConfig('antigravity', { apiKey: 'gemini-secret-123' });
+    agent = await testAgent('antigravity');
+    assert.deepEqual([agent.state, agent.test.code], ['ready', 'ready']);
+    await saveAgentConfig('antigravity', { args: [fixture, '--auth=gemini-api-key', '--exit'] });
+    agent = await testAgent('antigravity');
+    assert.match(agent.test.detail, /GEMINI_API_KEY=\[hidden\]/, 'the key reaches it in GEMINI_API_KEY');
+
     // sessions store what they found
     const project = await createProject({ name: 'Test fixture' });
     await fs.writeFile(path.join(project.path, 'main.tex'), 'original\n');
@@ -65,6 +77,11 @@ test('Test stores each outcome; sessions store theirs; Tests, turns and installs
     const refused = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'gemini' })).id);
     await assert.rejects(refused.ready, /Agent setup failed/);
     assert.equal((await agentConfigs()).gemini.test.code, 'sign-in');
+    await setUp('antigravity', '--auth=gemini-api-key');
+    const google = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'antigravity' })).id);
+    await google.ready;
+    assert.equal((await agentConfigs()).antigravity.test.code, 'ready', 'the session authenticated with the key');
+    await stopAgentRun(google);
     await setUp('qoder');
     const run = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'qoder' })).id);
     await run.ready;

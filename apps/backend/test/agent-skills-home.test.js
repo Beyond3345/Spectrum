@@ -74,5 +74,12 @@ test('the project’s skills are copied into the agent’s home, marked, and onl
     await turn(run);
     await assert.rejects(fs.stat(path.join(agents, 'alpha')), 'removed once nothing else uses the home');
     await assert.rejects(fs.stat(path.join(claude, 'alpha')));
+
+    // Antigravity looks in its own global folder as well, and only Antigravity's home gets it
+    await saveAgentConfig('antigravity', { command: process.execPath, args: [fixture], runtimePaths: [path.dirname(fixture)] });
+    const google = await getAgentRun((await newAgentRun({ projectId: other.id, agentId: 'antigravity' })).id);
+    await google.ready;
+    assert.equal(await fs.readFile(path.join(await agentHome('antigravity'), '.gemini', 'config', 'skills', 'gamma', 'SKILL.md'), 'utf8'), skill('gamma'));
+    await assert.rejects(fs.stat(path.join(home, '.gemini')), 'not in another agent’s home');
   } finally { await shutdownAgents(); await fs.rm(dir, { recursive: true, force: true }); }
 });
