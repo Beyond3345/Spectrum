@@ -75,14 +75,15 @@ test('Test stores each outcome; sessions store theirs; Tests, turns and installs
     agent = await testAgent('antigravity');
     assert.match(agent.test.detail, /GEMINI_API_KEY=\[hidden\]/, 'the key reaches it in GEMINI_API_KEY');
     if (process.platform === 'darwin') {
-      // its language server, on a port the system picks: refused, as the owner found, until the card's switch is on
+      // its language server, on a port the system picks: open unless the switch is turned off, which brings back what
+      // the owner found
       await saveAgentConfig('antigravity', { args: [fixture, '--auth=gemini-api-key', '--serve-self'] });
-      agent = await testAgent('antigravity');
-      assert.deepEqual([agent.test.code, agent.test.detail.trim()], ['exited', 'language server: listen 127.0.0.1:0: EPERM']);
-      await saveAgentConfig('antigravity', { network: { loopback: true } });
       agent = await testAgent('antigravity');
       assert.deepEqual([agent.state, agent.test.code], ['ready', 'ready']);
       await saveAgentConfig('antigravity', { network: { loopback: false } });
+      agent = await testAgent('antigravity');
+      assert.deepEqual([agent.test.code, agent.test.detail.trim()], ['exited', 'language server: listen 127.0.0.1:0: EPERM']);
+      await saveAgentConfig('antigravity', { network: { loopback: true } });
     }
 
     // sessions store what they found
@@ -96,6 +97,9 @@ test('Test stores each outcome; sessions store theirs; Tests, turns and installs
     const google = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'antigravity' })).id);
     await google.ready;
     assert.equal((await agentConfigs()).antigravity.test.code, 'ready', 'the session authenticated with the key');
+    // the port its language server may use is told in the session, once
+    const told = google.events.filter((e) => e.type === 'notice' && /port on this computer/.test(e.data?.message));
+    assert.deepEqual(told.map((e) => e.data.message), process.platform === 'darwin' ? ['Antigravity’s own language server may use a port on this computer (Settings › Agents › Network).'] : []);
     await stopAgentRun(google);
     await setUp('qoder');
     const run = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'qoder' })).id);

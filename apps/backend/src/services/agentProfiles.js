@@ -33,8 +33,8 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  * Spectrum's tools and the ones the user adds; documented: its own documentation names those hosts and says it honours
  * the proxy variables a list relies on. Every agent starts on any host with its list ready, until it has been run on
  * its list for real; network: 'hosts' would start one held to its list (none yet). loopback: what its ACP mode starts on
- * a port of this computer that it picks itself and cannot be told, which isolation opens only with the user's switch
- * (networkOf's loopback; agentSandbox's loopback).
+ * a port of this computer that it picks itself and cannot be told, which isolation opens with a switch that is on
+ * unless the user turns it off (networkOf's loopback; agentSandbox's loopback).
  */
 export const PROFILES = [
   { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', hosts: ['api.openai.com', 'api.anthropic.com', 'openrouter.ai', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'opencode.ai', 'models.dev'], keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', unsupported: 'OpenCode 2 does not run inside Spectrum’s isolation: its agent mode starts a private server on a port it chooses itself, which isolation does not open. Spectrum never runs an agent outside isolation.' },
@@ -78,7 +78,7 @@ export function updateConfig(id, change) {
 }
 const withoutTest = ({ test, ...entry }) => entry;
 // a host added to the list changes nothing a Test found; a list taken up or given up does
-const forTest = ({ test, network, ...entry }) => ({ ...entry, ...(network?.mode && { networkMode: network.mode }), ...(network?.loopback && { loopback: true }) });
+const forTest = ({ test, network, ...entry }) => ({ ...entry, ...(network?.mode && { networkMode: network.mode }), ...(network?.loopback !== undefined && { loopback: network.loopback }) });
 const withoutProgram = ({ program, ...test }) => test;
 /** An entry's setup, which launchOptions() hands on so a result is recorded only against the setup it started with. */
 const setupOf = (entry) => { const setup = forTest(entry); return JSON.stringify(setup, Object.keys(setup).sort()); };
@@ -111,11 +111,11 @@ const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
  * against and download a compile's packages from, and the ones the user added) or 'any' (every public HTTPS host), the user's choice or else the profile's; enforced: whether this
  * platform can hold an agent to a list (macOS; the Windows worker opens every public address or none); sure: whether
  * the agent's documentation says enough to expect it to work held to its list (profile.documented); loopback, for an agent
- * with its own server (profile.loopback): { server: what it is, on: the user's switch, off until turned on }.
+ * with its own server (profile.loopback): { server: what it is, on: the user's switch, on unless turned off }.
  */
 export function networkOf(profile, saved = {}) {
   const mode = ['hosts', 'any'].includes(saved.network?.mode) ? saved.network.mode : profile.network || 'any';
-  return { mode, provider: profile.hosts || [], tools: TOOL_HOSTS, hosts: cleanHosts(saved.network?.hosts), enforced: process.platform === 'darwin', sure: !!profile.documented, ...(profile.loopback && { loopback: { server: profile.loopback, on: saved.network?.loopback === true } }) };
+  return { mode, provider: profile.hosts || [], tools: TOOL_HOSTS, hosts: cleanHosts(saved.network?.hosts), enforced: process.platform === 'darwin', sure: !!profile.documented, ...(profile.loopback && { loopback: { server: profile.loopback, on: saved.network?.loopback !== false } }) };
 }
 /** Adds host to the ones the user allows the agent, and gives the host as saved. */
 export async function allowAgentHost(id, value) {
@@ -384,11 +384,11 @@ export async function saveAgentConfig(id, value) {
     const mode = value.network?.mode ?? was.mode;
     const hosts = value.network?.hosts ?? was.hosts;
     const loopback = value.network?.loopback ?? !!was.loopback?.on;
-    if (!['hosts', 'any'].includes(mode) || !Array.isArray(hosts) || hosts.length > 100 || typeof loopback !== 'boolean' || (loopback && !profile.loopback)) throw new Error('Invalid network settings.');
+    if (!['hosts', 'any'].includes(mode) || !Array.isArray(hosts) || hosts.length > 100 || typeof loopback !== 'boolean' || (value.network?.loopback !== undefined && !profile.loopback)) throw new Error('Invalid network settings.');
     const notHost = hosts.find((h) => !cleanHost(h));
     if (notHost !== undefined) throw new Error(`“${String(notHost).slice(0, 80)}” is not a host name. Give a name such as api.example.com, or *.example.com for every host below one.`);
     // the profile's own choice isn't saved, so a later Spectrum's takes its place
-    const network = { ...(mode !== (profile.network || 'any') && { mode }), ...(hosts.length && { hosts: cleanHosts(hosts) }), ...(loopback && { loopback }) };
+    const network = { ...(mode !== (profile.network || 'any') && { mode }), ...(hosts.length && { hosts: cleanHosts(hosts) }), ...(profile.loopback && !loopback && { loopback }) };
     // the profile's own arguments aren't saved, so a later Spectrum's take their place
     const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv, ...(old.loginCopied && { loginCopied: old.loginCopied }), ...(Object.keys(network).length && { network }) };
     // a Test's result no longer holds once any of these changes

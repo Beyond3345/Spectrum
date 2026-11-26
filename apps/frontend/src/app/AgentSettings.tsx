@@ -595,7 +595,7 @@ function AgentCard({
                         <span>
                           Let {a.name}’s own {a.network.loopback.server} use a port on this computer: it can then also reach other programs listening here
                           <span className="field-hint">
-                            {a.name} needs it to start in isolation. Spectrum’s own server stays closed to it, but a local proxy or database is open to it, even on Listed hosts only.
+                            On unless you turn it off, as {a.name} needs it to start in isolation. Spectrum’s own server stays closed to it, but a local proxy or database is open to it, even on Listed hosts only.
                           </span>
                         </span>
                       </label>
