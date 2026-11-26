@@ -360,7 +360,8 @@ test('a format of the preamble is made behind the first compile and used from th
   assert.equal(second.status, 0, second.log);
   assert.match(second.log, FROM_FORMAT);
   assert.equal(passes(second.log), 1);
-  assert.match(second.log, /\(preloaded format=[^)]*pdflatex\.format\/main\)/);
+  // on Windows a format whose path has a space goes from the run's temp folder (MiKTeX can't take such a -fmt)
+  assert.match(second.log, /\(preloaded format=[^)]*(pdflatex\.format|preamble)\/main\)/);
   // nothing Spectrum says of its shortcuts is a line the editor lists as an error
   assert.doesNotMatch(second.log, /^\[spectrum\] /m);
   // the preamble's own log comes with it, so its warnings are still listed
@@ -470,7 +471,8 @@ test('a pass that fails with an error of pdfTeX’s own under a format runs agai
   assert.equal(saved.status, 0, saved.log);
   assert.doesNotMatch(saved.log, FROM_FORMAT);
   // said once, with why, rather than quietly
-  assert.match(saved.log, /^\[spectrum note\] The pass that started from the precompiled preamble failed \(.*Fatal format file error.*\), so this compiled again without it/);
+  // pdfTeX's own words for a spoilt format, or MiKTeX's, which stops before pdfTeX can say them
+  assert.match(saved.log, /^\[spectrum note\] The pass that started from the precompiled preamble failed \(.*(Fatal format file error|get MiKTeX going again).*\), so this compiled again without it/);
   assert.equal(await fmtState(p), 'refused');
   // an error of the document's own is the document's: the format stays
   const q = await newProject({ 'main.tex': notes('Words.') });
