@@ -67,6 +67,7 @@ function statusLine(a: LocalAgent) {
   if (!a.supported) return 'Agent isolation is not available on this computer.';
   if (a.command && !a.program) return 'The program you chose was not found.';
   if (a.state === 'missing') return a.needs && !a.needs.found ? `Needs ${a.needs.name}, which was not found.` : a.app && !a.program ? appWithoutAgent(a) : 'Not found on this computer.';
+  if (a.state === 'update') return `Installed ${a.adapter!.installed}, needs ${a.adapter!.version}.`;
   if (a.state === 'adapter') return `Install the ACP adapter to use ${a.name} here.`;
   const tested = `tested ${relativeTime(a.test?.at || '').toLowerCase()}`;
   if (a.state === 'ready') return a.test?.version ? `Version ${a.test.version}, ${tested}` : capital(tested);
@@ -75,7 +76,7 @@ function statusLine(a: LocalAgent) {
   return a.test ? 'It asked for a sign-in.' : 'Found. Sign in, copy the login or add a key.';
 }
 
-type Step = { text: string; code?: string; action?: 'test' | 'install' | 'copy' | 'choose' };
+type Step = { text: string; code?: string; action?: 'test' | 'install' | 'update' | 'copy' | 'choose' };
 /** The one next step a card suggests, with at most one button. */
 function nextStep(a: LocalAgent): Step | null {
   if (a.planned) return { text: `${a.name} will connect through its official platform in a later release.` };
@@ -90,6 +91,8 @@ function nextStep(a: LocalAgent): Step | null {
       if (a.needs && !a.needs.found) return { text: `Install ${a.needs.name} first${a.adapter ? ', then install the adapter' : ''}.${command(a.needs.install) ? '' : ` ${a.needs.install}`}`, code: command(a.needs.install) };
       if (a.app && !a.program) return { text: `${appWithoutAgent(a)} Install it, then press Check again.`, code: a.install };
       return { text: `Install ${a.name}, then press Check again.`, code: a.install };
+    case 'update':
+      return { text: `This version of Spectrum uses ${a.name}’s adapter ${a.adapter!.version}, and ${a.adapter!.installed} is installed. Update it to use ${a.name} here. Spectrum tests it again afterwards.`, action: 'update' };
     case 'adapter':
       return { text: `Install the ACP adapter to use ${a.name} here.`, action: 'install' };
     case 'sign-in':
@@ -111,6 +114,17 @@ function nextStep(a: LocalAgent): Step | null {
     default:
       return null;
   }
+}
+
+/** Asks before Spectrum downloads a's pinned adapter: an install, or an update of another version installed. */
+export function confirmAdapter(a: LocalAgent) {
+  const ad = a.adapter!;
+  const update = !!ad.installed && ad.installed !== ad.version;
+  return confirmDialog({
+    title: `${update ? 'Update' : 'Install'} the ${a.name} adapter?`,
+    message: `Spectrum downloads ${ad.package} ${ad.version}, ${ad.official ? 'the official adapter from' : 'a community adapter published by'} ${ad.publisher}, from the npm registry into ${tildify(ad.folder)}. It needs about ${ad.size}. Install scripts do not run, and nothing outside that folder changes.${update ? ` Version ${ad.installed} is removed once the new one is in place.` : ''}`,
+    confirmLabel: update ? 'Update' : 'Install'
+  });
 }
 
 export function CodeBox({ code, label = 'Copy command' }: { code: string; label?: string }) {
@@ -299,13 +313,7 @@ function AgentCard({
     if (file) await act('Saving…', () => configureLocalAgent(a.id, { command: file }));
   };
   const install = async () => {
-    const ad = a.adapter!;
-    const ok = await confirmDialog({
-      title: `Install the ${a.name} adapter?`,
-      message: `Spectrum downloads ${ad.package} ${ad.version}, ${ad.official ? 'the official adapter from' : 'a community adapter published by'} ${ad.publisher}, from the npm registry into ${tildify(ad.folder)}. It needs about ${ad.size}. Install scripts do not run, and nothing outside that folder changes.`,
-      confirmLabel: 'Install'
-    });
-    if (ok) await act('Installing…', () => installLocalAgentAdapter(a.id));
+    if (await confirmAdapter(a)) await act(a.adapter!.installed ? 'Updating…' : 'Installing…', () => installLocalAgentAdapter(a.id));
   };
   const remove = async () => {
     const ok = await confirmDialog({
@@ -337,9 +345,9 @@ function AgentCard({
       <button className="btn small" disabled={!!busy} onClick={() => act('', test, false)}>
         Test
       </button>
-    ) : action === 'install' ? (
+    ) : action === 'install' || action === 'update' ? (
       <button className="btn small primary" disabled={!!busy} onClick={install}>
-        Install adapter
+        {action === 'update' ? 'Update adapter' : 'Install adapter'}
       </button>
     ) : action === 'copy' ? (
       <button className="btn small primary" disabled={!!busy} onClick={copyLogin}>

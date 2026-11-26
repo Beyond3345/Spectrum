@@ -8,6 +8,7 @@ import {
   getLocalAgentChanges,
   settleLocalAgentChange,
   getLocalAgentSession,
+  installLocalAgentAdapter,
   listLocalAgentSessions,
   listLocalAgents,
   listVersions,
@@ -16,7 +17,8 @@ import {
   reviewLocalAgentChanges,
   sendLocalAgentPrompt,
   setLocalAgentOption,
-  stopLocalAgentSession
+  stopLocalAgentSession,
+  testLocalAgent
 } from '../../api/client';
 import { StreamSource } from '../../api/stream';
 import type { AgentChange, AgentEvent, AgentPersona, AgentPromptContext, AgentUserRequest, LocalAgent, LocalAgentSession } from '../../api/client';
@@ -39,7 +41,7 @@ import AgentHeader from './AgentHeader';
 import OutsideTools from './OutsideTools';
 import InstructionFiles from './InstructionFiles';
 import { chosenAgent, shownAgents } from './agents';
-import { AGENT_CARD_KEY } from '../../app/AgentSettings';
+import { AGENT_CARD_KEY, confirmAdapter } from '../../app/AgentSettings';
 import type { Checkpoint } from './transcript';
 
 export type AgentStatus = 'running' | 'waiting' | 'changes' | null;
@@ -364,6 +366,25 @@ export default function LocalAgentTab({
 
   const tray = useMemo(() => changes.map((c): TrayChange => ({ path: c.path, kind: c.kind, binary: c.binary, original: c.original ?? '', proposed: c.proposed ?? '', size: c.size, afterHash: c.afterHash, currentHash: c.currentHash, ...('current' in c && { current: c.current ?? '' }) })), [changes]);
   const ready = !!current?.setUp && current.supported;
+  // an adapter an older Spectrum installed: offered here, and downloaded only when the user agrees
+  const outdated = agents.filter((a) => a.state === 'update');
+  const [updating, setUpdating] = useState('');
+  const updateAdapter = async (a: LocalAgent) => {
+    if (!(await confirmAdapter(a))) return;
+    setUpdating(a.id);
+    setError('');
+    try {
+      await installLocalAgentAdapter(a.id);
+      window.dispatchEvent(new Event(AGENTS_CHANGED));
+      // as its card does after an install
+      await testLocalAgent(a.id);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setUpdating('');
+      window.dispatchEvent(new Event(AGENTS_CHANGED));
+    }
+  };
   const empty = !session || !view.items.length;
   const usable = shownAgents(agents, session?.agentId);
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name || id;
@@ -506,6 +527,17 @@ export default function LocalAgentTab({
           </div>
         )}
         {!reviewing && <InstructionFiles mode={session?.mode ?? mode} agents={agents} refresh={`${active}|${running}|${api.projectFiles.length}`} />}
+        {!reviewing &&
+          outdated.map((a) => (
+            <div key={a.id} className="agent-request" role="status">
+              <p>
+                {a.name}’s adapter is out of date: installed {a.adapter?.installed}, needs {a.adapter?.version}.
+              </p>
+              <button className="btn small primary" disabled={!!updating || running} onClick={() => void updateAdapter(a)}>
+                {updating === a.id ? 'Updating…' : 'Update adapter'}
+              </button>
+            </div>
+          ))}
         {!reviewing && <ChangesTray changes={tray} direct={session?.mode === 'direct'} onOpen={openReview} />}
         {!session && mode === 'direct' && <p className="field-hint">The agent can change your project straight away. A checkpoint is saved before each task.</p>}
         {!session && IS_WINDOWS && <p className="field-hint">On Windows, local agents don’t get Spectrum’s tools or Direct editing yet. The Spectrum agent has every tool.</p>}
@@ -582,7 +614,7 @@ export default function LocalAgentTab({
                     {current?.name}
                     {current?.support === 'progress' ? ' · In progress' : current?.support === 'untested' ? ' · Untested' : ''}
                   </span>
-                  {current && !ready && (
+                  {current && !ready && current.state !== 'update' && (
                     <button
                       className="btn small ghost"
                       onClick={() => {

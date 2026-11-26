@@ -30,6 +30,7 @@ const agent = (id: string, state: AgentState, extra: Partial<LocalAgent> = {}): 
 const agents = [
   agent('opencode', 'ready'),
   agent('codex', 'adapter'),
+  agent('zcode', 'update'),
   agent('claude', 'untested'),
   agent('gemini', 'missing'),
   agent('cursor', 'sign-in'),
@@ -54,7 +55,7 @@ eq(
   agentGroups(agents).map(([group, list]) => [group, list.map((a) => a.id)]),
   [
     ['set-up', ['opencode', 'claude', 'hermes']],
-    ['finish', ['codex', 'cursor', 'qoder']],
+    ['finish', ['codex', 'zcode', 'cursor', 'qoder']],
     ['missing', ['gemini']],
     ['unavailable', ['pi']],
     ['planned', ['workbuddy']]
