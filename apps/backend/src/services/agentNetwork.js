@@ -152,3 +152,39 @@ export function proxyEnv(port) {
   const direct = 'localhost,127.0.0.1,::1';
   return { HTTPS_PROXY: url, https_proxy: url, HTTP_PROXY: url, http_proxy: url, NO_PROXY: direct, no_proxy: direct, NODE_USE_ENV_PROXY: '1' };
 }
+
+const PROXY_VARS = ['HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy', 'HTTP_PROXY', 'http_proxy'];
+const LOOPBACK = /^(localhost|127\.\d+\.\d+\.\d+|\[?::1\]?)$/i;
+/** A proxy as the line shows it: host and port only, never a name, password or path. */
+function proxyAt(value) {
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `http://${value}`);
+    return `${url.host}${LOOPBACK.test(url.hostname) ? ' (this computer)' : ''}`;
+  } catch { return 'an address Spectrum could not read'; }
+}
+/** The proxies `scutil --proxy` says this Mac's network settings name: [kind, where]. */
+export function systemProxies(text = '') {
+  const top = Object.fromEntries([...String(text).matchAll(/^ {2}(\w+) : (.*)$/gm)].map(([, k, v]) => [k, v.trim()]));
+  const on = (k) => top[`${k}Enable`] === '1';
+  return [
+    ...[['HTTPS', 'HTTPS'], ['HTTP', 'HTTP'], ['SOCKS', 'SOCKS']].filter(([k]) => on(k) && top[`${k}Proxy`]).map(([k, name]) => [`${name} proxy`, proxyAt(`${top[`${k}Proxy`]}:${top[`${k}Port`] || ''}`.replace(/:$/, ''))]),
+    ...(on('ProxyAutoConfig') && top.ProxyAutoConfigURLString ? [['automatic proxy configuration', proxyAt(top.ProxyAutoConfigURLString)]] : []),
+    ...(on('ProxyAutoDiscovery') ? [['automatic proxy discovery', '']] : [])
+  ];
+}
+/**
+ * One line on how an agent may find a proxy: the proxy variables Spectrum gave it (passed), the proxies this Mac's
+ * network settings name (scutil: `scutil --proxy`'s output, read outside isolation; undefined: not read), and the proxy
+ * variables Spectrum's own environment has, which it does not pass on. Hosts and ports only.
+ */
+export function proxyNote(name, passed = {}, scutil, own = process.env) {
+  const given = PROXY_VARS.filter((k) => passed[k]);
+  const gate = given.length && given.every((k) => /^http:\/\/127\.0\.0\.1:\d+$/.test(passed[k]));
+  const parts = [given.length ? `Spectrum passed ${given.join(', ')} (${gate ? 'its own gate for the list of hosts' : proxyAt(passed[given[0]])})` : 'Spectrum passed no proxy variables'];
+  const found = scutil === undefined ? null : systemProxies(scutil);
+  parts.push(found === null ? 'this computer’s proxy settings were not read' : found.length ? `this Mac’s network settings name ${found.map(([kind, at]) => at ? `${kind} ${at}` : kind).join(', ')}` : 'this Mac’s network settings name no proxy');
+  const kept = PROXY_VARS.filter((k) => own[k] && !passed[k]);
+  if (kept.length) parts.push(`Spectrum’s own environment has ${kept.join(', ')} (${proxyAt(own[kept[0]])}), not passed on`);
+  const local = found?.some(([, at]) => at.endsWith('(this computer)'));
+  return `Network check for ${name}: ${parts.join('; ')}.${local ? ` Isolation does not let ${name} reach a proxy on this computer.` : ''}`;
+}

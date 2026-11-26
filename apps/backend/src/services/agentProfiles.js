@@ -28,7 +28,9 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  * install: the command that installs it, which Spectrum only shows; adapter: the ACP adapter Spectrum can install,
  * pinned to its version and npm checksum, with its size for each Mac; needs: a program the adapter starts, passed to it
  * in env, or the app it drives; app: the agent's desktop app, by name, and bin: the agent program inside the Mac app,
- * when it carries one; auth: the ACP authentication method always asked for, keyAuth: the one that takes a saved key; experimental, windows and planned: why the agent is experimental, off on Windows or not yet
+ * when it carries one; auth: the ACP authentication method always asked for, keyAuth: the one that takes a saved key
+ * (with a copied login too, the user chooses which one signs in); air: the capabilities of JetBrains' AIR extension
+ * Spectrum declares to it (sessionFailure: a failed turn says so); experimental, windows and planned: why the agent is experimental, off on Windows or not yet
  * startable. hosts: the hosts its provider needs, which an agent held to a list reaches besides the scholarly sites of
  * Spectrum's tools and the ones the user adds; documented: its own documentation names those hosts and says it honours
  * the proxy variables a list relies on. Every agent starts on any host with its list ready, until it has been run on
@@ -36,7 +38,7 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  */
 export const PROFILES = [
   { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', hosts: ['api.openai.com', 'api.anthropic.com', 'openrouter.ai', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'opencode.ai', 'models.dev'], keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', unsupported: 'OpenCode 2 does not run inside Spectrum’s isolation: its agent mode starts a private server on a port it chooses itself, which isolation does not open. Spectrum never runs an agent outside isolation.' },
-  { id: 'codex', name: 'Codex', command: 'codex-acp', args: [], url: 'https://github.com/agentclientprotocol/codex-acp', hosts: ['api.openai.com', 'chatgpt.com', 'auth.openai.com'], keys: ['OPENAI_API_KEY'], login: ['.codex/auth.json'], signIn: 'codex login', adapter: { package: '@agentclientprotocol/codex-acp', version: '2.7.0', bin: 'dist/index.js', integrity: 'sha512-fFFU/tV5DltBzN4cZIh5tJEWGTZFXbwHU7I5RxPkmrGraw3jhAIuvTeudYwK3wAbV311WgIi7qONl2I8uRV2jw==', official: true, publisher: ACP_PROJECT, size: { arm64: '370 MB', x64: '395 MB' } }, windows: NODE_ON_WINDOWS },
+  { id: 'codex', name: 'Codex', command: 'codex-acp', args: [], url: 'https://github.com/agentclientprotocol/codex-acp', hosts: ['api.openai.com', 'chatgpt.com', 'auth.openai.com'], keys: ['OPENAI_API_KEY'], login: ['.codex/auth.json'], signIn: 'codex login', keyAuth: 'api-key', air: ['sessionFailure'], adapter: { package: '@agentclientprotocol/codex-acp', version: '2.7.0', bin: 'dist/index.js', integrity: 'sha512-fFFU/tV5DltBzN4cZIh5tJEWGTZFXbwHU7I5RxPkmrGraw3jhAIuvTeudYwK3wAbV311WgIi7qONl2I8uRV2jw==', official: true, publisher: ACP_PROJECT, size: { arm64: '370 MB', x64: '395 MB' } }, windows: NODE_ON_WINDOWS },
   // never “Claude Code”: an API key only, with the claude.ai sign-in hidden (Anthropic's Agent SDK terms)
   { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', hosts: ['api.anthropic.com'], documented: true, keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
   { id: 'gemini', name: 'Gemini CLI', command: 'gemini', args: ['--acp'], url: 'https://github.com/google-gemini/gemini-cli', hosts: ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'oauth2.googleapis.com', 'www.googleapis.com'], keys: ['GEMINI_API_KEY'], login: ['.gemini/settings.json', '.gemini/oauth_creds.json', '.gemini/google_accounts.json'], signIn: 'gemini', then: 'Choose Sign in with Google.', install: 'npm install -g @google/gemini-cli' },
@@ -87,7 +89,7 @@ export function recordTest(id, result, { setup, fromSession } = {}) {
   return updateConfig(id, (entry) => {
     if (setup !== undefined && setupOf(entry) !== setup) return entry;
     const old = entry.test;
-    if (fromSession && old && old.code === result.code && old.program === result.program && old.version === result.version && !result.detail) return entry;
+    if (fromSession && old && old.code === result.code && old.program === result.program && old.version === result.version && old.refused === result.refused && !result.detail) return entry;
     return { ...entry, test: { ...result, at: new Date().toISOString() } };
   });
 }
@@ -255,6 +257,19 @@ export async function findProgram(profile, saved = {}) {
   return found && result(found.real, 'found', found.dir);
 }
 
+// Codex's connections, its sign-in and the workspace lookup a ChatGPT login makes, for SPECTRUM_CODEX_LOG=1
+const CODEX_LOG_FILTER = 'codex_app_server=debug,codex_login=debug,codex_model_provider=debug,codex_backend_client=debug,codex_http_client=trace,codex_api=debug,codex_core=info,reqwest=debug,hyper_util=debug';
+
+/**
+ * What an agent with a key sign-in method (keyAuth) signs in with: 'key', 'login' (a copied login, which the agent
+ * finds itself) or neither. With both, the user's choice (signInWith), else the key. Other agents get what they have.
+ */
+async function signInOf(profile, saved, home) {
+  if (!profile.keyAuth) return undefined;
+  const login = !!saved.loginCopied && await anyFile(home, profile.login);
+  return saved.apiKey && !(login && saved.signInWith === 'login') ? 'key' : login ? 'login' : undefined;
+}
+
 /** Everything a session or a Test starts the agent with, through spawnAgentProcess(): its program, arguments, key and folders. */
 export async function launchOptions(id, { workspace, home: agentHomeDir, forbiddenRoots = [] }) {
   const profile = profileFor(id);
@@ -274,8 +289,26 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const args = [...found.args, ...(saved.args || profile.args)];
   // Advanced can't take it away
   if (id === 'claude' && !args.includes('--hide-claude-auth')) args.push('--hide-claude-auth');
+  const signIn = await signInOf(profile, saved, agentHomeDir);
+  const forbidden = [...forbiddenRoots];
+  // Codex keeps a login in CODEX_HOME/auth.json, which its API-key sign-in would overwrite: a key session has a Codex
+  // home of its own that keeps the key in memory only, and isolation keeps the copied login out of its reach
+  if (id === 'codex' && signIn === 'key') {
+    const codexHome = path.join(agentHomeDir, '.codex-key');
+    await fs.mkdir(codexHome, { recursive: true, mode: 0o700 });
+    await fs.writeFile(path.join(codexHome, 'config.toml'), 'cli_auth_credentials_store = "ephemeral"\n');
+    forbidden.push(path.join(agentHomeDir, '.codex'));
+  }
+  // SPECTRUM_CODEX_LOG in Spectrum's own environment (a RUST_LOG filter, or 1): Codex logs its traffic and errors to
+  // logs/app-server.log in its private home, for a run the user is looking into
+  const codexLog = id === 'codex' && process.env.SPECTRUM_CODEX_LOG;
+  if (codexLog) await fs.mkdir(path.join(agentHomeDir, 'logs'), { recursive: true, mode: 0o700 });
   const env = {
-    ...(saved.apiKey && keyEnv && { [keyEnv]: saved.apiKey }),
+    ...(saved.apiKey && keyEnv && signIn !== 'login' && { [keyEnv]: saved.apiKey }),
+    ...(id === 'codex' && signIn === 'key' && { CODEX_HOME: path.join(agentHomeDir, '.codex-key') }),
+    // declared AIR, codex-acp would ask the model for a suggested next message after every turn, which Spectrum never shows
+    ...(id === 'codex' && { CODEX_ACP_PROMPT_SUGGESTIONS: 'false' }),
+    ...(codexLog && { APP_SERVER_LOGS: path.join(agentHomeDir, 'logs'), RUST_LOG: codexLog === '1' ? CODEX_LOG_FILTER : codexLog }),
     ...(id === 'zcode' && { ZCODE_ACP_MODE: 'build' }),
     // its self-updater would write beside a program isolation keeps read-only, and fetch from hosts off its list
     ...(id === 'antigravity' && { AGY_CLI_DISABLE_AUTO_UPDATE: 'true' }),
@@ -287,10 +320,14 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   };
   const options = {
     command: found.command, args, workspace, home: agentHomeDir, runtimeExecutable: found.command,
-    runtimePaths: [...new Set([...(saved.runtimePaths || []), ...found.reads, ...found.needs?.reads || []])], forbiddenRoots, env,
+    runtimePaths: [...new Set([...(saved.runtimePaths || []), ...found.reads, ...found.needs?.reads || []])], forbiddenRoots: forbidden, env,
     program: found.program, secrets: [saved.apiKey].filter(Boolean), setup: setupOf(saved),
-    // the ACP authentication a session or Test asks for before its first: the profile's always, else the key's when one is saved
-    ...((profile.auth || (saved.apiKey && profile.keyAuth)) && { authMethod: profile.auth || profile.keyAuth }),
+    // the ACP authentication a session or Test asks for before its first: the profile's always, else the key's when the
+    // key signs in; a copied login the agent finds itself
+    ...((profile.auth || (signIn === 'key' && profile.keyAuth)) && { authMethod: profile.auth || profile.keyAuth }),
+    // the credential it signs in with, which a refusal names
+    ...(signIn && { signIn }),
+    ...(profile.air && { air: profile.air }),
     // the list as it is at each connection, so a host the user allows works without a restart
     network: listed ? 'hosts' : 'any',
     ...(listed && { hosts: async () => { const now = networkOf(profile, (await agentConfigs())[id]); return [...now.provider, ...now.tools, ...now.hosts]; } })
@@ -348,6 +385,8 @@ export async function agentEntry(id, config, isolated) {
     ...(needs && { needs: { name: needs.name, found: needs.found, install: needs.install, ...(needs.path && { path: needs.path }) } }),
     signIn: p.signIn, then: p.then, appSignIn: p.appSignIn, install: p.install,
     loginFound: await anyFile(home(), p.login), loginCopied, configured,
+    // with a key and a copied login, the one it signs in with, which the user chooses
+    ...(p.keyAuth && saved.apiKey && loginCopied && { signInWith: saved.signInWith === 'login' ? 'login' : 'key' }),
     ...(p.adapter && { adapter: { package: p.adapter.package, version: p.adapter.version, official: p.adapter.official, publisher: p.adapter.publisher, size: p.adapter.size[process.arch] || p.adapter.size.arm64, folder: path.join(AGENT_DIR, 'adapters', id, p.adapter.version), platform: `macOS, ${process.arch === 'arm64' ? 'Apple silicon' : 'Intel'}`, ...(managed && { installed: managed.version }) } }),
     ...(test && { test }), state, setUp
   };
@@ -383,9 +422,11 @@ export async function saveAgentConfig(id, value) {
     // the profile's own choice isn't saved, so a later Spectrum's takes its place
     const network = { ...(mode !== (profile.network || 'any') && { mode }), ...(hosts.length && { hosts: cleanHosts(hosts) }) };
     // the profile's own arguments aren't saved, so a later Spectrum's take their place
-    const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv, ...(old.loginCopied && { loginCopied: old.loginCopied }), ...(Object.keys(network).length && { network }) };
+    const signInWith = value.signInWith ?? old.signInWith;
+    if (signInWith !== undefined && !['key', 'login'].includes(signInWith)) throw new Error('Choose the API key or the copied login.');
+    const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv, ...(old.loginCopied && { loginCopied: old.loginCopied }), ...(Object.keys(network).length && { network }), ...(signInWith && { signInWith }) };
     // a Test's result no longer holds once any of these changes
-    const unchanged = command === chosenCommand(profile, old) && same(args ?? profile.args, old.args ?? profile.args) && same(runtimePaths, old.runtimePaths ?? []) && apiKey === (old.apiKey || '') && keyEnv === (old.keyEnv || profile.key) && mode === was.mode;
+    const unchanged = command === chosenCommand(profile, old) && same(args ?? profile.args, old.args ?? profile.args) && same(runtimePaths, old.runtimePaths ?? []) && apiKey === (old.apiKey || '') && keyEnv === (old.keyEnv || profile.key) && mode === was.mode && signInWith === old.signInWith;
     return unchanged && old.test ? { ...next, test: old.test } : next;
   });
 }
