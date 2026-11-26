@@ -1065,67 +1065,119 @@ button.badge {
   color: var(--text-secondary);
 }
 
-/* Get started (GetStarted.tsx): the first-run checklist above the projects */
-.get-started {
+/* The setup page (FirstRunPage.tsx): the whole window on the first start, a column of steps */
+.main-panel[hidden] {
+  display: none;
+}
+
+.first-run-column {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-width: 720px;
-  margin: 12px 20px 8px;
-  padding: 10px 12px 12px;
+  gap: 12px;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 8px 24px 40px;
+}
+
+.first-run-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 4px;
+}
+
+.first-run-title {
+  font: 700 26px/1.2 var(--font-display);
+}
+
+.first-run-lead {
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.first-run-step {
+  display: flex;
+  gap: 14px;
+  padding: 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-elevated);
 }
 
-.panel-body:has(.get-started) .empty-state {
-  min-height: 0;
-}
-
-.get-started-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 0 4px 4px;
-}
-
-.get-started-title {
-  font-weight: 600;
-}
-
-.get-started-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 4px;
-}
-
-.get-started-tick {
+.first-run-step-icon {
   flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--fill);
+  color: var(--text-secondary);
+}
+
+.first-run-step-icon .sf {
   width: 18px;
   height: 18px;
-  color: var(--text-tertiary);
 }
 
-.get-started-row.done .get-started-tick {
-  color: var(--green);
+:root[data-colour-style='spectrum'] .first-run-step-icon {
+  background: color-mix(in srgb, var(--area-band) 16%, transparent);
+  color: var(--area);
 }
 
-.get-started-body {
+.first-run-step-body {
   flex: 1;
   min-width: 0;
+}
+
+.first-run-step-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+.first-run-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.4;
 }
 
-.get-started-name {
-  font-weight: 500;
-}
-
-.get-started-row.done .get-started-name {
+.first-run-badge.done {
   color: var(--text-secondary);
 }
 
-.get-started-text {
+.first-run-badge.done .sf {
+  color: var(--green);
+}
+
+.first-run-badge .sf {
+  width: 13px;
+  height: 13px;
+}
+
+.first-run-step-text {
+  margin-bottom: 10px;
   color: var(--text-secondary);
-  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.first-run-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.first-run-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }

@@ -8,6 +8,7 @@ import { IS_WINDOWS } from './app/platform';
 import { applyTheme, followSharedSettings, loadSettings, updateSettings } from './app/settings';
 import { followEditorTheme } from './editor/editorThemes';
 import { followKeys } from './app/keys';
+import { noteStart } from './app/firstRun';
 // the bundled editor fonts, latin only (the plain 400.css would bundle every script)
 import '@fontsource/jetbrains-mono/latin-400.css';
 import '@fontsource/jetbrains-mono/latin-400-italic.css';
@@ -25,6 +26,9 @@ import './styles/tools.css';
 import './styles/spectrum.css';
 // after every sheet that sets the surfaces (tokens.css, editor-theme.css)
 import './styles/glass.css';
+
+// whether this is the first start on this computer, read before anything below can write the window's storage
+noteStart();
 
 // 1.1 kept "Dark pages in dark mode" in the editor layout. Off, it becomes White pages in dark mode, unless
 // the page colour has been changed since. Done once, before Settings or a PDF can show the old value
