@@ -257,6 +257,8 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const found = await findProgram(profile, saved);
   if (!found) {
     const app = await agentApp(profile);
+    const old = !chosenCommand(profile, saved) && await adapterFound(profile);
+    if (old && !old.current) throw new Error(`${profile.name}’s adapter is out of date: installed ${old.version}, needs ${profile.adapter.version}. Update it in Settings › Agents.`);
     throw new Error(app ? `${profile.app.name} is installed, but its agent mode needs the ${profile.name} CLI. Install it, then try again.` : `${profile.name} was not found. Install it, or choose its program in Settings › Agents.`);
   }
   if (found.needs && !found.needs.found) throw new Error(`${profile.name} needs ${found.needs.name}, which was not found. Install it, then try again.`);
@@ -287,16 +289,16 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
 }
 
 /**
- * Where an agent stands, in this order: planned, unavailable, missing (its program, or one it needs), adapter (an
- * adapter is needed), the stored result for the program found now (ready, sign-in or failed), untested when
- * configured in Spectrum, else sign-in. Set up: ready, untested, or failed while configured, so a Test that timed out
+ * Where an agent stands, in this order: planned, unavailable, missing (its program, or one it needs), update (only an
+ * adapter of another version is installed), adapter (an adapter is needed), the stored result for the program found
+ * now (ready, sign-in or failed), untested when configured in Spectrum, else sign-in. Set up: ready, untested, or failed while configured, so a Test that timed out
  * never hides an agent the user set up; a program that isn't an ACP agent never is.
  */
-export function agentState({ planned, unavailable, found, needsMissing, adapter, test, configured }) {
+export function agentState({ planned, unavailable, found, needsMissing, adapter, outdated, test, configured }) {
   const state = planned ? 'planned'
     : unavailable ? 'unavailable'
       : needsMissing || (!found && !adapter) ? 'missing'
-        : !found ? 'adapter'
+        : !found ? (outdated ? 'update' : 'adapter')
           : test ? (test.ok ? 'ready' : test.code === 'sign-in' ? 'sign-in' : 'failed')
             : configured ? 'untested' : 'sign-in';
   return { state, setUp: state === 'ready' || state === 'untested' || (state === 'failed' && !!configured && test.code !== 'not-acp') };
@@ -320,7 +322,7 @@ export async function agentEntry(id, config, isolated) {
   const keyEnv = saved.keyEnv || p.key;
   const needs = p.needs && (found?.needs || await findNeeded(p.needs));
   const app = await agentApp(p);
-  const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, test, configured });
+  const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, outdated: !!managed && !managed.current, test, configured });
   return {
     id, name: p.name, url: p.url, experimental: p.experimental, support: p.support, planned: p.planned, unavailable: p.unavailable,
     command: chosen, args: saved.args || p.args, runtimePaths: saved.runtimePaths || [], keyEnv, network: networkOf(p, saved),

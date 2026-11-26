@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { promises as fs, mkdtempSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'spectrum-agent-profiles-')));
 const home = path.join(dir, 'home');
@@ -18,6 +19,7 @@ process.env.SPECTRUM_SYSTEM_ROOT = root;
 for (const name of ['npm_config_prefix', 'NPM_CONFIG_PREFIX', 'PNPM_HOME']) delete process.env[name];
 const { PROFILES, profileFor, saveAgentConfig, agentConfigs, listAgents, agentEntry, agentState, launchOptions, installAdapter, removeAdapter, recordTest, importAgentLogin, programReads, appFound, AGENT_DIR, ADAPTER_LOCKS } = await import('../src/services/agentProfiles.js');
 after(() => fs.rm(dir, { recursive: true, force: true }));
+const native = ['darwin', 'win32'].includes(process.platform) && process.env.SPECTRUM_NATIVE_AGENT_TESTS === '1';
 const knownFolders = process.platform !== 'darwin' && 'only a Mac looks in the vendors’ folders, such as ~/.local/bin';
 const nodeAdapters = process.platform === 'win32' && 'Node adapters are unavailable on Windows, where they stall inside isolation';
 
@@ -185,6 +187,8 @@ test('each state a card shows, and which are set up', () => {
     [{ found: false }, 'missing', false],
     [{ found: true, needsMissing: true, adapter: true }, 'missing', false],
     [{ found: false, adapter: true }, 'adapter', false],
+    [{ found: false, adapter: true, outdated: true }, 'update', false],
+    [{ found: false, adapter: true, outdated: true, needsMissing: true }, 'missing', false],
     [{ found: true, test: { ok: true, code: 'ready' } }, 'ready', true],
     [{ found: true, test: { ok: false, code: 'sign-in' }, configured: true }, 'sign-in', false],
     [{ found: true, test: { ok: false, code: 'timeout' }, configured: true }, 'failed', true],
@@ -259,7 +263,7 @@ test('adapter installs: pinned, checked, in their own folder and with none of th
   // mode.json says: a package's checksum (tamper), or a package the lock doesn't have (extra)
   await fs.writeFile(fake, `import fs from 'node:fs'; import path from 'node:path';
 const here = path.dirname(new URL(import.meta.url).pathname);
-const { tamper, extra, fail } = JSON.parse(fs.readFileSync(path.join(here, 'mode.json'), 'utf8'));
+const { tamper, extra, fail, agent } = JSON.parse(fs.readFileSync(path.join(here, 'mode.json'), 'utf8'));
 fs.appendFileSync(path.join(here, 'calls.jsonl'), JSON.stringify({ args: process.argv.slice(2), env: process.env }) + '\\n');
 if (fail) { console.error('network down'); process.exit(1); }
 const prefix = process.argv[process.argv.indexOf('--prefix') + 1];
@@ -272,6 +276,12 @@ for (const [rel, { version }] of Object.entries(packages)) {
   fs.writeFileSync(path.join(prefix, rel, 'package.json'), JSON.stringify({ version }));
   fs.writeFileSync(path.join(prefix, rel, 'dist', 'index.js'), '');
 }
+// the adapter, as a fixture ACP agent
+if (agent) {
+  const top = path.join(prefix, 'node_modules', '@agentclientprotocol', 'codex-acp');
+  fs.copyFileSync(agent, path.join(top, 'dist', 'index.js'));
+  fs.writeFileSync(path.join(top, 'package.json'), JSON.stringify({ version: packages['node_modules/@agentclientprotocol/codex-acp'].version, type: 'module' }));
+}
 fs.writeFileSync(path.join(prefix, 'node_modules', '.package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages }));
 `);
   const mode = (m) => fs.writeFile(path.join(npmDir, 'mode.json'), JSON.stringify(m));
@@ -281,6 +291,21 @@ fs.writeFileSync(path.join(prefix, 'node_modules', '.package-lock.json'), JSON.s
   process.env.NPM_CONFIG_REGISTRY = 'http://127.0.0.1:9/';
   const transitive = Object.keys(ADAPTER_LOCKS.codex.packages).find((rel) => rel && rel !== `node_modules/${adapter.package}`);
   try {
+    // an adapter an older Spectrum installed, and no codex-acp of the user's: the card offers to update it, and a
+    // session says so
+    const standalone = path.join(home, '.local/bin/codex-acp');
+    await fs.rename(standalone, `${standalone}.away`);
+    const older = path.join(base, '2.3.0', 'node_modules', adapter.package);
+    await fs.mkdir(path.join(older, 'dist'), { recursive: true });
+    await fs.writeFile(path.join(older, 'package.json'), JSON.stringify({ version: '2.3.0' }));
+    await fs.writeFile(path.join(older, adapter.bin), '');
+    const outdated = async () => {
+      const codex = await agentEntry('codex');
+      assert.deepEqual([codex.state, codex.setUp, codex.installed, codex.adapter.installed, codex.adapter.version], ['update', false, false, '2.3.0', adapter.version]);
+      await assert.rejects(launchOptions('codex', { workspace: dir, home: dir }), { message: `Codex’s adapter is out of date: installed 2.3.0, needs ${adapter.version}. Update it in Settings › Agents.` });
+    };
+    await outdated();
+
     await mode({ tamper: `node_modules/${adapter.package}` });
     await assert.rejects(installAdapter('codex', { npm: fake }), /checksum/);
     await mode({ tamper: transitive });
@@ -289,12 +314,13 @@ fs.writeFileSync(path.join(prefix, 'node_modules', '.package-lock.json'), JSON.s
     await assert.rejects(installAdapter('codex', { npm: fake }), /checksum/, 'and nothing the lock doesn’t have');
     await mode({ fail: true });
     await assert.rejects(installAdapter('codex', { npm: fake }), /network down/);
-    assert.deepEqual(await fs.readdir(base), [], 'a failed install leaves nothing behind');
+    assert.deepEqual(await fs.readdir(base), ['2.3.0'], 'a failed update leaves nothing behind, and the old version as it was');
+    await outdated();
 
     // a leftover target folder is replaced
     await fs.mkdir(path.join(base, adapter.version, 'junk'), { recursive: true });
     await fs.mkdir(path.join(base, '2.2.0'));
-    await mode({});
+    await mode({ agent: fileURLToPath(new URL('./fixtures/acp-agent.mjs', import.meta.url)) });
     await installAdapter('codex', { npm: fake });
     assert.deepEqual(await fs.readdir(base), [adapter.version], 'older versions go');
     assert.deepEqual((await fs.readdir(path.join(base, adapter.version))).sort(), ['node_modules', 'package-lock.json', 'package.json']);
@@ -303,6 +329,15 @@ fs.writeFileSync(path.join(prefix, 'node_modules', '.package-lock.json'), JSON.s
     const options = await launchOptions('codex', { workspace: dir, home: dir });
     assert.deepEqual([options.command, options.args[0]], [process.execPath, path.join(base, adapter.version, 'node_modules', adapter.package, adapter.bin)]);
     assert.ok(options.runtimePaths.includes(path.join(base, adapter.version)));
+    // the Test the card runs after an update starts the new version
+    if (native) {
+      const { testAgent } = await import('../src/services/agentSessionService.js');
+      // an earlier test's folder, which isn't there
+      await saveAgentConfig('codex', { runtimePaths: [] });
+      const tested = await testAgent('codex');
+      assert.deepEqual([tested.state, tested.test.code, tested.test.version], ['ready', 'ready', '1']);
+    }
+    await fs.rename(`${standalone}.away`, standalone);
 
     const calls = (await fs.readFile(path.join(npmDir, 'calls.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
     for (const { args, env } of calls) {
