@@ -42,13 +42,18 @@ const SUPPORT = {
   unsupported: ['Not supported', 'It cannot run inside Spectrum’s isolation.']
 } as const;
 
+/** The credential a session had refused, as the card names it. */
+const refusedWords = (a: LocalAgent) => (a.test?.refused === 'key' ? `the saved ${tokenWord(a)}` : 'the copied login');
+// the login an agent that signs in with either a key or a login copies (Codex's is ChatGPT's)
+const loginWord = (a: LocalAgent) => (a.id === 'codex' ? 'ChatGPT login' : 'Copied login');
+
 function testSentence(a: LocalAgent) {
   const t = a.test;
   if (!t) return '';
   const when = `Last Test, ${relativeTime(t.at).toLowerCase()}: `;
   const found: Record<string, string> = {
     ready: 'it started in isolation and opened a session.',
-    'sign-in': `it started and asked for a sign-in${t.methods?.length ? ` (${t.methods.join(', ')})` : ''}.`,
+    'sign-in': t.refused ? `it refused ${refusedWords(a)}.` : `it started and asked for a sign-in${t.methods?.length ? ` (${t.methods.join(', ')})` : ''}.`,
     error: 'it answered with an error.',
     timeout: 'it did not answer within 30 seconds.',
     exited: 'it stopped before it answered.',
@@ -74,12 +79,12 @@ function statusLine(a: LocalAgent) {
   if (a.state === 'opened') return `A session opened, ${tested}. No key or login yet.`;
   if (a.state === 'failed') return capital(testSentence(a).replace(/^Last Test, [^:]*: /, ''));
   if (a.state === 'untested') return 'Set up, not tested yet.';
-  return a.test ? 'It asked for a sign-in.' : a.canImport ? 'Found. Sign in, copy the login or add a key.' : `Found. Add its ${tokenWord(a)}.`;
+  return a.test?.refused ? `It refused ${refusedWords(a)}.` : a.test ? 'It asked for a sign-in.' : a.canImport ? 'Found. Sign in, copy the login or add a key.' : `Found. Add its ${tokenWord(a)}.`;
 }
 
 type Step = { text: string; code?: string; action?: 'test' | 'install' | 'update' | 'copy' | 'choose' | 'key' };
 /** The one next step a card suggests, with at most one button. */
-function nextStep(a: LocalAgent): Step | null {
+export function nextStep(a: LocalAgent): Step | null {
   if (a.planned) return { text: `${a.name} will connect through its official platform in a later release.` };
   if (a.unavailable || !a.supported) return null;
   // Windows isolation starts native programs only
@@ -97,6 +102,8 @@ function nextStep(a: LocalAgent): Step | null {
     case 'adapter':
       return { text: `Install the ACP adapter to use ${a.name} here.`, action: 'install' };
     case 'sign-in':
+      if (a.test?.refused === 'key') return { text: `${a.name} refused the saved ${tokenWord(a)}. Paste a new one, then press Save key.`, action: 'key' };
+      if (a.test?.refused === 'login') return { text: `${a.name} refused the copied login: it may have expired or been signed out. ${a.signIn ? `Run the sign-in command in ${TERMINAL} again` : 'Sign in again'}, then press Copy existing login.`, action: 'copy' };
       if (a.loginFound && a.canImport && !a.loginCopied) return { text: `A ${a.name} login was found on this computer. Copy it into Spectrum.`, action: 'copy' };
       // an agent with a key only (Claude Agent) is asked for it before a task fails without one
       if (!a.test && a.canImport) return { text: 'Sign in, copy the login or add a key, then press Test. Some agents work without one.', action: 'test' };
@@ -491,6 +498,22 @@ function AgentCard({
                       {a.loginCopied ? 'A copied login is in Spectrum.' : a.loginFound ? 'A login was found on this computer.' : 'No login was found on this computer.'}
                     </span>
                   </div>
+                  {a.signInWith && (
+                    <div className="field">
+                      <label id={`${id}-sign-in-with`}>Sign in with</label>
+                      <Select
+                        labelId={`${id}-sign-in-with`}
+                        value={a.signInWith}
+                        options={[['login', loginWord(a)], ['key', tokenWord(a) === 'API key' ? 'API key' : 'Access token']]}
+                        onChange={(value) => act('Saving…', () => configureLocalAgent(a.id, { signInWith: value as 'key' | 'login' }))}
+                      />
+                      <div className="field-hint">
+                        {a.signInWith === 'key'
+                          ? `${a.name} signs in with the saved ${tokenWord(a)}${a.id === 'codex' ? ' and cannot read the copied login' : ''}.`
+                          : `${a.name} signs in with the copied login and is not given the saved ${tokenWord(a)}.`}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {(a.keyEnvs.length > 0 || a.hasKey) && !a.planned && (
