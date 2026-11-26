@@ -30,6 +30,10 @@ const agent = (id: string, state: AgentState, extra: Partial<LocalAgent> = {}): 
 const agents = [
   agent('opencode', 'ready'),
   agent('codex', 'adapter'),
+  agent('zcode', 'update'),
+  // a session opened, with no key or login: set up only for a program the user chose
+  agent('copilot', 'opened', { setUp: false }),
+  agent('deepseek', 'opened', { configured: true, setUp: true }),
   agent('claude', 'untested'),
   agent('gemini', 'missing'),
   agent('cursor', 'sign-in'),
@@ -40,10 +44,10 @@ const agents = [
   agent('workbuddy', 'planned', { planned: 'Planned.' })
 ];
 
-eq(shownAgents(agents).map((a) => a.id), ['opencode', 'claude', 'hermes'], 'set-up agents in the list’s order');
-eq(shownAgents(agents, 'cursor').map((a) => a.id), ['opencode', 'claude', 'cursor', 'hermes'], 'the open session’s agent, once');
-eq(shownAgents(agents, 'opencode').map((a) => a.id), ['opencode', 'claude', 'hermes'], 'not twice');
-eq(shownAgents(agents, 'workbuddy').map((a) => a.id), ['opencode', 'claude', 'hermes'], 'never WorkBuddy');
+eq(shownAgents(agents).map((a) => a.id), ['opencode', 'deepseek', 'claude', 'hermes'], 'set-up agents in the list’s order');
+eq(shownAgents(agents, 'cursor').map((a) => a.id), ['opencode', 'deepseek', 'claude', 'cursor', 'hermes'], 'the open session’s agent, once');
+eq(shownAgents(agents, 'opencode').map((a) => a.id), ['opencode', 'deepseek', 'claude', 'hermes'], 'not twice');
+eq(shownAgents(agents, 'workbuddy').map((a) => a.id), ['opencode', 'deepseek', 'claude', 'hermes'], 'never WorkBuddy');
 
 eq(chosenAgent(agents, 'cursor', 'claude')?.id, 'cursor', 'the session’s agent first');
 eq(chosenAgent(agents, undefined, 'claude')?.id, 'claude', 'then the remembered pick');
@@ -53,8 +57,8 @@ eq(chosenAgent([agent('gemini', 'missing')], undefined, null), undefined, 'none 
 eq(
   agentGroups(agents).map(([group, list]) => [group, list.map((a) => a.id)]),
   [
-    ['set-up', ['opencode', 'claude', 'hermes']],
-    ['finish', ['codex', 'cursor', 'qoder']],
+    ['set-up', ['opencode', 'deepseek', 'claude', 'hermes']],
+    ['finish', ['codex', 'zcode', 'copilot', 'cursor', 'qoder']],
     ['missing', ['gemini']],
     ['unavailable', ['pi']],
     ['planned', ['workbuddy']]

@@ -67,15 +67,17 @@ function statusLine(a: LocalAgent) {
   if (!a.supported) return 'Agent isolation is not available on this computer.';
   if (a.command && !a.program) return 'The program you chose was not found.';
   if (a.state === 'missing') return a.needs && !a.needs.found ? `Needs ${a.needs.name}, which was not found.` : a.app && !a.program ? appWithoutAgent(a) : 'Not found on this computer.';
+  if (a.state === 'update') return `Installed ${a.adapter!.installed}, needs ${a.adapter!.version}.`;
   if (a.state === 'adapter') return `Install the ACP adapter to use ${a.name} here.`;
   const tested = `tested ${relativeTime(a.test?.at || '').toLowerCase()}`;
   if (a.state === 'ready') return a.test?.version ? `Version ${a.test.version}, ${tested}` : capital(tested);
+  if (a.state === 'opened') return `A session opened, ${tested}. No key or login yet.`;
   if (a.state === 'failed') return capital(testSentence(a).replace(/^Last Test, [^:]*: /, ''));
   if (a.state === 'untested') return 'Set up, not tested yet.';
-  return a.test ? 'It asked for a sign-in.' : 'Found. Sign in, copy the login or add a key.';
+  return a.test ? 'It asked for a sign-in.' : a.canImport ? 'Found. Sign in, copy the login or add a key.' : `Found. Add its ${tokenWord(a)}.`;
 }
 
-type Step = { text: string; code?: string; action?: 'test' | 'install' | 'copy' | 'choose' };
+type Step = { text: string; code?: string; action?: 'test' | 'install' | 'update' | 'copy' | 'choose' | 'key' };
 /** The one next step a card suggests, with at most one button. */
 function nextStep(a: LocalAgent): Step | null {
   if (a.planned) return { text: `${a.name} will connect through its official platform in a later release.` };
@@ -90,14 +92,22 @@ function nextStep(a: LocalAgent): Step | null {
       if (a.needs && !a.needs.found) return { text: `Install ${a.needs.name} first${a.adapter ? ', then install the adapter' : ''}.${command(a.needs.install) ? '' : ` ${a.needs.install}`}`, code: command(a.needs.install) };
       if (a.app && !a.program) return { text: `${appWithoutAgent(a)} Install it, then press Check again.`, code: a.install };
       return { text: `Install ${a.name}, then press Check again.`, code: a.install };
+    case 'update':
+      return { text: `This version of Spectrum uses ${a.name}’s adapter ${a.adapter!.version}, and ${a.adapter!.installed} is installed. Update it to use ${a.name} here. Spectrum tests it again afterwards.`, action: 'update' };
     case 'adapter':
       return { text: `Install the ACP adapter to use ${a.name} here.`, action: 'install' };
     case 'sign-in':
       if (a.loginFound && a.canImport && !a.loginCopied) return { text: `A ${a.name} login was found on this computer. Copy it into Spectrum.`, action: 'copy' };
-      if (!a.test) return { text: 'Sign in, copy the login or add a key, then press Test. Some agents work without one.', action: 'test' };
+      // an agent with a key only (Claude Agent) is asked for it before a task fails without one
+      if (!a.test && a.canImport) return { text: 'Sign in, copy the login or add a key, then press Test. Some agents work without one.', action: 'test' };
       if (a.appSignIn) return { text: `Sign in inside the ${a.name} app, then press Copy existing login.` };
-      if (a.signIn && a.canImport) return { text: `Run the sign-in command in ${TERMINAL}, then press Copy existing login.` };
-      return { text: `Add your ${a.name} ${tokenWord(a)}, then press Save key.` };
+      if (a.signIn && a.canImport) return { text: `Run the sign-in command in ${TERMINAL}, then press Copy existing login${a.keyEnvs.length ? `, or add your ${tokenWord(a)}` : ''}.`, action: a.keyEnvs.length ? 'key' : undefined };
+      return { text: `Add your ${a.name} ${tokenWord(a)}, then press Save key.`, action: a.keyEnvs.length ? 'key' : undefined };
+    case 'opened':
+      return {
+        text: `${a.name} started and opened a session, but Spectrum has no key or login for it, so a task may ask for a sign-in. Add your ${tokenWord(a)}${a.canImport ? ' or copy its login' : ''}.`,
+        action: a.keyEnvs.length ? 'key' : a.canImport ? 'copy' : undefined
+      };
     case 'untested':
       return { text: `Press Test to check that ${a.name} starts in isolation.`, action: 'test' };
     case 'failed':
@@ -111,6 +121,17 @@ function nextStep(a: LocalAgent): Step | null {
     default:
       return null;
   }
+}
+
+/** Asks before Spectrum downloads a's pinned adapter: an install, or an update of another version installed. */
+export function confirmAdapter(a: LocalAgent) {
+  const ad = a.adapter!;
+  const update = !!ad.installed && ad.installed !== ad.version;
+  return confirmDialog({
+    title: `${update ? 'Update' : 'Install'} the ${a.name} adapter?`,
+    message: `Spectrum downloads ${ad.package} ${ad.version}, ${ad.official ? 'the official adapter from' : 'a community adapter published by'} ${ad.publisher}, from the npm registry into ${tildify(ad.folder)}. It needs about ${ad.size}. Install scripts do not run, and nothing outside that folder changes.${update ? ` Version ${ad.installed} is removed once the new one is in place.` : ''}`,
+    confirmLabel: update ? 'Update' : 'Install'
+  });
 }
 
 export function CodeBox({ code, label = 'Copy command' }: { code: string; label?: string }) {
@@ -299,13 +320,7 @@ function AgentCard({
     if (file) await act('Saving…', () => configureLocalAgent(a.id, { command: file }));
   };
   const install = async () => {
-    const ad = a.adapter!;
-    const ok = await confirmDialog({
-      title: `Install the ${a.name} adapter?`,
-      message: `Spectrum downloads ${ad.package} ${ad.version}, ${ad.official ? 'the official adapter from' : 'a community adapter published by'} ${ad.publisher}, from the npm registry into ${tildify(ad.folder)}. It needs about ${ad.size}. Install scripts do not run, and nothing outside that folder changes.`,
-      confirmLabel: 'Install'
-    });
-    if (ok) await act('Installing…', () => installLocalAgentAdapter(a.id));
+    if (await confirmAdapter(a)) await act(a.adapter!.installed ? 'Updating…' : 'Installing…', () => installLocalAgentAdapter(a.id));
   };
   const remove = async () => {
     const ok = await confirmDialog({
@@ -337,9 +352,13 @@ function AgentCard({
       <button className="btn small" disabled={!!busy} onClick={() => act('', test, false)}>
         Test
       </button>
-    ) : action === 'install' ? (
+    ) : action === 'install' || action === 'update' ? (
       <button className="btn small primary" disabled={!!busy} onClick={install}>
-        Install adapter
+        {action === 'update' ? 'Update adapter' : 'Install adapter'}
+      </button>
+    ) : action === 'key' ? (
+      <button className="btn small primary" disabled={!!busy} onClick={() => document.getElementById(`${id}-key-input`)?.focus()}>
+        Add {tokenWord(a)}
       </button>
     ) : action === 'copy' ? (
       <button className="btn small primary" disabled={!!busy} onClick={copyLogin}>
@@ -492,6 +511,7 @@ function AgentCard({
                     className="input"
                     type="password"
                     autoComplete="off"
+                    id={`${id}-key-input`}
                     aria-labelledby={`${id}-key`}
                     value={key}
                     placeholder={a.hasKey && keyEnv === a.keyEnv ? 'Saved on this computer' : `Paste your ${tokenWord(a)}`}

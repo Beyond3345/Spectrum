@@ -122,12 +122,15 @@ test('the agent’s usage reaches the session’s events, which the transcript d
   assert.ok(!run.events.some((e) => e.data?.sessionUpdate === 'usage_update'), 'once, as usage');
 });
 
-test('a task refused for want of a sign-in says where to add the key', { skip, timeout: 120000 }, async () => {
+test('a task refused for want of a sign-in fails with where to add the key, and its card says Sign-in needed', { skip, timeout: 120000 }, async () => {
   const { open, turn } = await setup();
+  const { agentEntry } = await import('../src/services/agentProfiles.js');
   const { run } = await open({ 'main.tex': 'original\n' }, { args: ['--auth-on-prompt'] });
+  assert.equal((await agentEntry('qoder')).state, 'opened', 'the session opened: no more than that is known');
   await turn(run, 'anything', 'failed');
-  const last = run.events.filter((e) => e.type === 'state').at(-1);
-  assert.match(JSON.stringify(last), /Authentication required Add its API key, or copy its login, in Settings › Agents\./);
+  assert.deepEqual(run.events.filter((e) => e.type === 'state').at(-1).data, { status: 'failed', error: 'Qoder needs a sign-in. Add its personal access token in Settings › Agents.' });
+  const card = await agentEntry('qoder');
+  assert.deepEqual([card.state, card.test.code], ['sign-in', 'sign-in']);
 });
 
 // r-agentic-08, A-15: a review session's agent waits between turns instead of starting again for each
@@ -454,4 +457,24 @@ test('after Locate…, a direct session refuses its next turn', { skip, timeout:
   assert.equal((await relocate(run.projectId, `${root} moved`)).status, 200);
   await assert.rejects(promptAgent(run, 'again'), { message: 'This project moved to another folder. Start a new session to go on.' });
   assert.equal(run.status, 'completed');
+});
+
+test('a turn ended as codex-acp 2.7.0 ends one after a fatal error says it ended without changes; a retry that recovers, or work, stays completed', { skip, timeout: 120000 }, async () => {
+  const { open, turn } = await setup();
+  const { run } = await open({ 'main.tex': 'original\n' });
+  const ended = () => run.events.findLast((e) => e.type === 'state').data;
+  const empty = { status: 'completed', error: 'Ended without changes. Qoder reported a problem during this task: Reconnecting... 2/5 (workspace routing discovery failed)' };
+  await turn(run, 'please-codex-error');
+  assert.deepEqual(ended(), empty, 'not a failure: only the agent’s words say it failed');
+  assert.match(run.events.findLast((e) => e.data?.sessionUpdate === 'agent_message_chunk').data.content.text, /can’t reach chatgpt\.com/, 'its words stay its reply');
+  await turn(run, 'please-codex-retry');
+  assert.deepEqual(ended(), { status: 'completed' }, 'flagged, then a tool call: it recovered');
+  await turn(run, 'draft please-codex-retry');
+  assert.deepEqual(ended(), { status: 'completed' }, 'and with an edit');
+  await turn(run, 'draft one');
+  assert.deepEqual(ended(), { status: 'completed' }, 'an ordinary turn with changes');
+  await turn(run, 'hello');
+  assert.deepEqual(ended(), { status: 'completed' }, 'an answer with nothing flagged is an answer');
+  await turn(run, 'please-codex-error');
+  assert.deepEqual(ended(), empty, 'the changes of earlier turns, still to review, are not this turn’s');
 });

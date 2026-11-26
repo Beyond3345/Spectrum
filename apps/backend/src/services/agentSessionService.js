@@ -37,6 +37,11 @@ const persist = (r) => {
 };
 // a direct-mode change the user has seen, until the agent changes that file again
 const changeKey = (c) => `${c.path}\0${c.afterHash}`;
+/** The error an adapter flagged in a session/update, as a line, or '': codex-acp's _meta.codex.error. */
+const adapterError = (u) => {
+  const error = u?.sessionUpdate === 'session_info_update' && u._meta?.codex?.error;
+  return typeof error?.message === 'string' ? `${error.message}${error.additionalDetails ? ` (${error.additionalDetails})` : ''}`.slice(0, 600) : '';
+};
 /**
  * The changes still to review. In a review session each text change comes with the hash of the project's file as it is
  * now (currentHash) and, where the user has changed that file since the agent started from it, its text (current, null:
@@ -435,6 +440,7 @@ async function connect(r) {
   const initial = await timeout(r.peer.request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } }), 30000, 'The agent did not initialize.', r.connectionAbort.signal);
   if (initial.protocolVersion !== 1) throw new Error('This agent does not support ACP v1.');
   r.capabilities = initial.agentCapabilities || {};
+  r.agentVersion = initial.agentInfo?.version ? String(initial.agentInfo.version) : undefined;
   emit(r, 'initialized', { agentInfo: initial.agentInfo, capabilities: r.capabilities, authMethods: initial.authMethods });
   let session;
   // a persona goes in the agent's own system prompt where it takes one, on every new, loaded or resumed session
@@ -461,7 +467,7 @@ async function connect(r) {
     }
   } catch (err) {
     // the agent asked for authentication: its card says Sign-in needed
-    if (err.code === -32000) await recordTest(r.agentId, { ok: false, code: 'sign-in', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
+    if (err.code === -32000) throw new Error(await signInNeeded(r));
     throw new Error(`Agent setup failed: ${err.message}. Configure its API key or import a supported login in Agents.`);
   }
   finally { r.opening = false; }
@@ -469,6 +475,18 @@ async function connect(r) {
   if (!r.remoteId) throw new Error('The agent did not return a session id.');
   await recordTest(r.agentId, { ok: true, code: 'ready', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
   emit(r, 'session', { modes: session.modes, configOptions: session.configOptions });
+}
+
+/**
+ * ACP's "authentication required" (-32000), as a session opens or a task starts: the agent has no key or login inside
+ * isolation, which its own words don't say how to give. Its card says Sign-in needed; the line says where to give one.
+ */
+async function signInNeeded(r) {
+  await recordTest(r.agentId, { ok: false, code: 'sign-in', program: r.processOptions.program, ...(r.agentVersion && { version: r.agentVersion }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
+  const p = profileFor(r.agentId);
+  const key = p.keys.some((k) => /TOKEN/.test(k)) && !p.keys.some((k) => /API_KEY/.test(k)) ? 'personal access token' : 'API key';
+  const how = p.keys.length && p.login.length ? `Add its ${key}, or copy its login,` : p.keys.length ? `Add its ${key}` : 'Copy its login';
+  return `${p.name} needs a sign-in. ${how} in Settings › Agents.`;
 }
 
 async function timeout(promise, ms, message, signal) {
@@ -1004,9 +1022,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       unreached = sent && err.code !== -32000 && child?.gateAsked?.() === 0;
       if (!r.cancelled && child?.pid && child.exitCode === null && child.signalCode === null) await timeout(new Promise((resolve) => child.once('exit', resolve)), 500, 'still running').catch(() => {});
       const told = r.status === 'failed' && child && (child.exitCode !== null || child.signalCode !== null);
-      // ACP's "authentication required": the agent has no key or login inside isolation, which its own words don't say how to give
-      const signIn = err.code === -32000 ? ' Add its API key, or copy its login, in Settings › Agents.' : '';
-      outcome = r.cancelled ? ['interrupted', 'Stopped.'] : ['failed', told ? undefined : `${err.message}${signIn}`];
+      const signIn = err.code === -32000 && !r.cancelled ? await signInNeeded(r) : '';
+      outcome = r.cancelled ? ['interrupted', 'Stopped.'] : ['failed', signIn || (told ? undefined : err.message)];
       disconnect(r);
     }
     finally {
@@ -1018,15 +1035,29 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       // stops, as before: what it left running would write in the project itself, outside any turn's checkpoint.
       const keep = r.mode === 'review' && outcome?.[0] === 'completed' && r.child?.exitCode === null && r.child.signalCode === null;
       disconnect(r, keep);
+      const before = new Set(r.events.findLast((e) => e.type === 'changes' && e.id < asked.id)?.data.changes.map(changeKey));
+      let changed = true;
       // the event names the changes, whose texts the client asks for, so the stored events keep the transcript under
       // their cap however large the files
-      try { await r.stopChain; await captureAgentProposal(r); emit(r, 'changes', { changes: (await pendingChanges(r)).map(({ original, proposed, ...c }) => c) }); }
-      catch (err) {
+      try {
+        await r.stopChain; await captureAgentProposal(r);
+        const changes = (await pendingChanges(r)).map(({ original, proposed, ...c }) => c);
+        changed = changes.some((c) => !before.has(changeKey(c)));
+        emit(r, 'changes', { changes });
+      } catch (err) {
         emit(r, 'notice', { error: err.message });
         // the user can't reach the draft to put it right, so the agent hears of it
         if (r.mode === 'review') r.notes.push(`Spectrum couldn’t take your changes for review: ${err.message} Put that right so the user can review your work.`);
       }
       for (const todo of await takeSuggestions(r).catch(() => [])) emit(r, 'todo', todo);
+      // codex-acp 2.7.0 tells a client without JetBrains' extension of a turn's fatal error only in its reply, and ends
+      // the turn as end_turn; what it flags is a retry, or another turn's error. A turn that then did nothing says so,
+      // rather than looking done; its words alone never make a turn fail.
+      if (outcome?.[0] === 'completed' && !outcome[1] && !changed) {
+        const updates = r.events.filter((e) => e.id > asked.id && e.type === 'update');
+        const flagged = updates.map((e) => adapterError(e.data)).filter(Boolean).at(-1);
+        if (flagged && !updates.some((e) => e.data?.sessionUpdate === 'tool_call')) outcome[1] = `Ended without changes. ${profileFor(r.agentId).name} reported a problem during this task: ${flagged}`;
+      }
       // held to its list, an agent that works asks the gate for its model at least: one that asked for nothing either
       // ignores the proxy variables or never got that far, and the user is told once where the choice is
       if (unreached && !r.cancelled && !r.toldUnreached) {

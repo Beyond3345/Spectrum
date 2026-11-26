@@ -23,8 +23,10 @@ export const STATE_CHIPS: Record<AgentState, [string, string]> = {
   planned: ['Planned', ''],
   unavailable: ['Unavailable', ''],
   missing: ['Not installed', ''],
+  update: ['Update needed', 'warning'],
   adapter: ['Adapter needed', 'warning'],
   ready: ['Ready', 'success'],
+  opened: ['Session opened', 'warning'],
   'sign-in': ['Sign-in needed', 'warning'],
   failed: ['Test failed', 'danger'],
   untested: ['Not tested', 'warning']

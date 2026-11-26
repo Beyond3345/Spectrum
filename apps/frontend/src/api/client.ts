@@ -2131,8 +2131,11 @@ export function revealCloudCopy(projectId: string, filePath?: string) {
 }
 
 // ─── Local ACP agents ───
-/** Where an agent stands (agentState() in the backend). Set up, which the workspace lists: ready, untested, or failed while configured. */
-export type AgentState = 'planned' | 'unavailable' | 'missing' | 'adapter' | 'ready' | 'sign-in' | 'failed' | 'untested';
+/**
+ * Where an agent stands (agentState() in the backend). opened: its Test opened a session, with no key or login in
+ * Spectrum. Set up, which the workspace lists: ready, untested, or failed or opened while configured.
+ */
+export type AgentState = 'planned' | 'unavailable' | 'missing' | 'update' | 'adapter' | 'ready' | 'opened' | 'sign-in' | 'failed' | 'untested';
 /** What a Test (or a session) found: ready, sign-in, error, timeout, exited or not-acp. */
 export interface AgentTest { ok: boolean; code: string; version?: string; detail?: string; methods?: string[]; at: string }
 /**
@@ -2152,7 +2155,7 @@ export interface LocalAgent {
   needs?: { name: string; found: boolean; install: string; path?: string };
   signIn?: string; then?: string; appSignIn?: boolean; install?: string;
   loginFound: boolean; loginCopied: boolean; configured: boolean;
-  /** official: from the ACP project; installed: the version Spectrum installed, when one is there */
+  /** official: from the ACP project; installed: the version Spectrum installed, when one is there (another than version: state update) */
   adapter?: { package: string; version: string; official: boolean; publisher: string; size: string; folder: string; platform: string; installed?: string };
   test?: AgentTest;
   state: AgentState; setUp: boolean;
