@@ -827,7 +827,17 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // ([spectrum note]: a line for the log alone; the editor lists a plain [spectrum] line as an error)
   if (format) pushLog(Buffer.from(`[spectrum note] This compile starts from a format of the preamble, made when the preamble last changed. The preamble’s own log, from then:\n${format.log}\n`));
   const commandFor = (dir, fmt) => buildCommand(engine, slashed(dir), input, { ...options, only, extra: recipe.options, format: fmt && slashed(fmt) });
-  const { cmd, args } = commandFor(outDir, format?.file);
+  // MiKTeX stops with an internal error (Debug.cpp:79) given a -fmt path with a space in it, as a Windows user folder
+  // such as C:\Users\John Smith has: there the format goes from the run's own temp folder, removed with it
+  const formatFile = format && WINDOWS && /\s/.test(format.file)
+    ? await (async () => {
+      const copy = path.join(tmpDir, 'preamble', path.basename(format.file));
+      await fs.mkdir(path.dirname(copy), { recursive: true });
+      await fs.copyFile(`${format.file}.fmt`, `${copy}.fmt`);
+      return copy;
+    })().catch(() => format.file)
+    : format?.file;
+  const { cmd, args } = commandFor(outDir, formatFile);
   // by the engine, as cmd is the built-in Tectonic's path when Spectrum carries one
   const limit = PASS_TIMEOUT_MS[engine] || DEFAULT_PASS_TIMEOUT_MS;
   if (engine === 'tectonic') {
