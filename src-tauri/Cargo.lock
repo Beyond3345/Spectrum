@@ -3214,7 +3214,7 @@ dependencies = [
 
 [[package]]
 name = "spectrum"
-version = "2.6.3"
+version = "2.6.4"
 dependencies = [
  "block2",
  "getrandom 0.3.4",

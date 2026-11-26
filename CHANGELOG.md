@@ -2,6 +2,24 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.6.4 (26 November 2026)
+
+### Added
+
+- Spectrum opens on a setup page that fills the window the first time it starts on a computer: the TeX it compiles with, a model for the AI features (optional) and a first project. It stays until skipped or finished, once per computer, and never shows to someone updating; Settings › System › Show the setup page again brings it back
+- Antigravity, Google's agent, as a local agent through its CLI's ACP server (`agy acp`), with a Gemini API key. An Isolated copy leaves out its instruction files, including its older `.agent` folder, it gets the project's skills in its own skills folder, and on Windows it is found in its install folder before a new PATH reaches Spectrum
+- Settings › Agents offers Update adapter, with both versions, when an adapter installed by an earlier Spectrum is out of date, and tests it again afterwards. The Local agents tab offers the same, and a session started meanwhile says the adapter is out of date
+
+### Changed
+
+- Get started is no longer shown above the projects
+- An agent's card says Session opened, not Ready, until Spectrum has a key or login for it, and Claude Agent's card asks for its API key as soon as its adapter is installed
+
+### Fixed
+
+- A task an agent refuses for want of a sign-in fails with a line saying where to add the key, and its card shows Sign-in needed with Add API key
+- A local agent's task that flagged an error and changed nothing ends with “Ended without changes” and the error, rather than looking done
+
 ## 2.6.3 (22 November 2026)
 
 ### Fixed
