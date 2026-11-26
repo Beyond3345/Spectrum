@@ -162,6 +162,16 @@ jobs:
           SPECTRUM_NATIVE_DIR: ${{ github.workspace }}\src-tauri\resources\native
         run: npm test
 
+      # MiKTeX names why it stopped only in its own logs, which a failed compile test points to
+      - name: MiKTeX's logs
+        if: ${{ failure() }}
+        run: |
+          foreach ($dir in "$env:LOCALAPPDATA\MiKTeX\miktex\log", "$env:ProgramData\MiKTeX\miktex\log") {
+            Get-ChildItem $dir -Filter 'pdflatex*.log' -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "== $($_.FullName)"; Get-Content $_.FullName -Tail 40
+            }
+          }
+
       # the steps below run after a failed one too, so one run reports everything (the attach job still needs them all)
       # the LPAC tests, which the suite skips without this; they have only been run by hand, so they may fail
       - name: Native agent tests
