@@ -1,7 +1,7 @@
 import { escapeTexText } from '../../../backend/src/latex/text.js';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   archiveProject,
   binProject,
@@ -46,7 +46,8 @@ import type { MenuItems } from './Menu';
 import Select from './Select';
 import Sheet from './Sheet';
 import SettingsSheet from './SettingsSheet';
-import GetStarted from './GetStarted';
+import FirstRunPage from './FirstRunPage';
+import { setupDone, startedFresh } from './firstRun';
 import type { Section as SettingsSection } from './SettingsSheet';
 import GitHubView from './GitHubView';
 import { linkInstead, linkWithPreview, offerMove, pullSummary, withDeletionCheck } from './github';
@@ -138,14 +139,15 @@ type Prefs = {
   home: Record<string, Partial<HomeView>>;
   /** how large icons are, 1 being Goodnotes' size */
   iconSize: number;
-  /** Get started was hidden */
-  getStartedHidden: boolean;
 };
-const DEFAULT_PREFS: Prefs = { layout: 'list', sortKey: 'date', dateField: 'updatedAt', sortDir: 'desc', sidebarCollapsed: false, tagsOpen: true, closedFolders: [], home: {}, iconSize: 1, getStartedHidden: false };
+const DEFAULT_PREFS: Prefs = { layout: 'list', sortKey: 'date', dateField: 'updatedAt', sortDir: 'desc', sidebarCollapsed: false, tagsOpen: true, closedFolders: [], home: {}, iconSize: 1 };
 
 function loadPrefs(): Prefs {
   try {
-    return { ...DEFAULT_PREFS, ...JSON.parse(window.localStorage.getItem(PREFS_KEY) || '{}') };
+    const stored = JSON.parse(window.localStorage.getItem(PREFS_KEY) || '{}');
+    // 2.6's Get started card, which the setup page replaced, hidden: dropped at the next save
+    delete stored.getStartedHidden;
+    return { ...DEFAULT_PREFS, ...stored };
   } catch {
     return DEFAULT_PREFS;
   }
@@ -204,6 +206,10 @@ export default function ProjectPage() {
   const [settingsClosed, setSettingsClosed] = useState(0);
   const [query, setQuery] = useState('');
   const [prefs, setPrefs] = useState(loadPrefs);
+  // the setup page: on the first start on this computer, and from Settings › System (/projects?setup)
+  const [params, setParams] = useSearchParams();
+  const [fresh, setFresh] = useState(startedFresh);
+  const setup = fresh || params.has('setup');
   const [sheet, setSheet] = useState<SheetState>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; items: MenuItems } | null>(null);
   /** where a dragged project would drop: a sidebar folder's id, '' for All projects, 'home', or Home's 'tile:<id>' and 'path:<id>' */
@@ -246,6 +252,20 @@ export default function ProjectPage() {
     setTemplates(res.templates || []);
     setCategories(res.categories || []);
   }, []);
+
+  // a first start's page stays when the list has no projects, until skipped or finished; with some, it's someone
+  // updating, who never sees it
+  useEffect(() => {
+    if (!loaded || loadError || !startedFresh() || !projects.length) return;
+    setFresh(false);
+    setupDone();
+  }, [loaded, loadError]);
+
+  const leaveSetup = () => {
+    setupDone();
+    setFresh(false);
+    if (params.has('setup')) setParams({}, { replace: true });
+  };
 
   useEffect(() => {
     reload();
@@ -578,6 +598,8 @@ export default function ProjectPage() {
     try {
       const project = await openFolder(path);
       if (view === 'home') moveToFolder(project.id, here);
+      // a first project from the setup page finishes it
+      if (setup) setupDone();
       navigate(`/editor/${project.id}`);
     } catch (err) {
       toast(`Couldn’t open the folder: ${errorText(err)}`, { tone: 'error' });
@@ -904,8 +926,18 @@ export default function ProjectPage() {
   };
 
   return (
-    <div className={`app-shell projects-page ${prefs.sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      {!prefs.sidebarCollapsed && (
+    <div className={`app-shell projects-page ${prefs.sidebarCollapsed || setup ? 'sidebar-collapsed' : ''}`}>
+      {setup && (
+        <FirstRunPage
+          settings={settings}
+          projects={projects.length}
+          onSettings={(section) => setSheet({ kind: 'settings', section })}
+          onTemplates={() => setSheet({ kind: 'gallery', folder: null })}
+          onOpenFolder={openExisting}
+          onLeave={leaveSetup}
+        />
+      )}
+      {!prefs.sidebarCollapsed && !setup && (
         <aside className="app-sidebar">
           <div className="sidebar-top" data-tauri-drag-region>
             <img className="app-icon" src="/app-icon.png" alt="Spectrum" draggable={false} data-tauri-drag-region />
@@ -973,7 +1005,7 @@ export default function ProjectPage() {
         </aside>
       )}
 
-      <main className="main-panel">
+      <main className="main-panel" hidden={setup}>
         <header className="panel-header" data-tauri-drag-region>
           {prefs.sidebarCollapsed && (
             <button className="icon-btn" title={withShortcut(settings.shortcuts, 'Show sidebar', 'sidebar')} aria-label="Show sidebar" onClick={() => updatePrefs({ sidebarCollapsed: false })}>
@@ -1098,15 +1130,6 @@ export default function ProjectPage() {
         <div className="panel-body" style={{ '--tile': `${Math.round(116 * prefs.iconSize)}px` } as CSSProperties}>
           <UpdateNotice />
           {view === 'all' && notice && <MoveNotice notice={notice} onMove={moveHere} onDismiss={dismissNotice} />}
-          {(view === 'all' || (view === 'home' && !homeAt)) && loaded && !query.trim() && prefs.getStartedHidden !== true && (
-            <GetStarted
-              settings={settings}
-              projects={projects.length}
-              onSettings={(section) => setSheet({ kind: 'settings', section })}
-              onTemplates={() => setSheet({ kind: 'gallery', folder: here })}
-              onHide={() => updatePrefs({ getStartedHidden: true })}
-            />
-          )}
           {view === 'github' ? (
             <GitHubView
               key={settingsClosed}
@@ -1192,6 +1215,7 @@ export default function ProjectPage() {
           onUniverse={(name) => setSheet({ kind: 'universe', folder: sheet.folder, name })}
           onCreated={(id) => {
             if (sheet.folder) moveToFolder(id, sheet.folder);
+            if (setup) setupDone();
             navigate(`/editor/${id}`);
           }}
         />

@@ -1,7 +1,60 @@
+import { SETTINGS_KEY } from './settings';
 import type { AppSettings } from './settings';
 
-// The first-run checklist on Home and All projects (GetStarted.tsx): each row ticks itself from what the app already
-// knows. Pure, for its check.
+// The setup page Spectrum opens on the first time it starts on a computer (FirstRunPage.tsx), and its rows, each ticked
+// from what the app already knows. Pure but for noteStart, setupShown and setupDone, for its check.
+
+/**
+ * In the window's storage, so never synced: SHOWN while the page has shown but not been finished or skipped, which
+ * keeps it due (whatever Settings › Models or sync saved meanwhile); a date once it has been.
+ */
+export const DONE_KEY = 'spectrum-first-run';
+export const SHOWN = 'shown';
+
+/**
+ * What only use leaves in the window's storage: settings, the projects page's view (with 2.6's Get started hidden),
+ * settings sync, the editor's layout. Nothing writes these on a first start (the accent, which appearance.ts writes on
+ * every start, is left out).
+ */
+const USED_KEYS = [SETTINGS_KEY, 'spectrum-projects-view', 'spectrum-settings-sync', 'spectrum-editor-layout'];
+
+/**
+ * Whether the setup page is due: no project listed, and either shown here without being finished or skipped, or
+ * nothing in the window's storage from use.
+ */
+export const setupDue = (stored: (key: string) => string | null, projects: number) =>
+  projects === 0 && (stored(DONE_KEY) === SHOWN || ![DONE_KEY, ...USED_KEYS].some((key) => stored(key) !== null));
+
+// the storage as it was at start (main.tsx), before settings sync can write any: a second computer's first start
+// shows the page even once its settings have arrived
+let fresh = false;
+export function noteStart() {
+  try {
+    fresh = setupDue((key) => window.localStorage.getItem(key), 0);
+  } catch {
+    // no storage: nothing can mark the page done, so it never shows
+  }
+  // marked now, before sync or Settings can save anything: quitting, a reload or Esc isn't seeing the page, so it
+  // opens again next start (and settles, with the projects listed, in ProjectPage)
+  if (fresh) mark(SHOWN);
+}
+
+/** Whether this start may open on the setup page, until the projects are listed (setupDue with their number). */
+export const startedFresh = () => fresh;
+
+function mark(value: string) {
+  try {
+    window.localStorage.setItem(DONE_KEY, value);
+  } catch {
+    // no storage: noteStart found none either
+  }
+}
+
+/** Skipped or finished (Continue, or a first project from the page), or not wanted: it doesn't open by itself again. */
+export function setupDone() {
+  fresh = false;
+  mark(new Date().toISOString());
+}
 
 /**
  * The TeX the compiles use, by the folder its pdflatex (or latexmk, or xelatex) is in, links followed (real): "TeX Live

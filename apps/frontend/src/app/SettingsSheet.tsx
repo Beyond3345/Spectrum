@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   changeSpellWord,
   createSkill,
@@ -290,6 +291,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
   const [check, setCheck] = useState<SystemCheck | null>(null);
   const [checkError, setCheckError] = useState('');
   const [licences, setLicences] = useState(false);
+  const navigate = useNavigate();
   const providers = useProviders();
   // Ollama's models come from Ollama itself
   const live = {
@@ -1014,6 +1016,11 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
               <div>
                 <button className="btn small" onClick={() => setLicences(true)}>
                   <Icon name="doc.text" /> Licences
+                </button>
+              </div>
+              <div>
+                <button className="btn small" onClick={() => (onClose(), navigate('/projects?setup'))}>
+                  Show the setup page again
                 </button>
               </div>
               <label className="checkbox-row">
