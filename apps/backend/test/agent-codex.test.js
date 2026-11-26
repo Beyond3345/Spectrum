@@ -191,12 +191,24 @@ test('an agent without a key sign-in method names the saved key it was given, so
   assert.equal(options.signIn, undefined, 'nothing saved');
 });
 
+test('an agent with a model menu refused for want of a sign-in says the model’s provider needs one, and its card stays set up', { skip, timeout: 120000 }, async () => {
+  const { open, turn } = await native$();
+  await saveAgentConfig('qoder', { command: process.execPath, args: [fixture, '--models', '--auth-on-prompt'], runtimePaths: [path.dirname(fixture)], apiKey: KEY });
+  const before = (await agentEntry('qoder')).test;
+  const run = await open('qoder');
+  assert.deepEqual(await turn(run, 'hello'), { status: 'failed', error: 'Qoder needs a sign-in for this model’s provider. Add its API key in Settings › Agents, or choose a model whose provider has one.' });
+  assert.notEqual((await agentEntry('qoder')).test?.code, 'sign-in', 'the card is not sent back to setting up');
+  assert.ok(before === undefined || before.code !== 'sign-in');
+  sessions.closeAgentRun(run);
+});
+
 test('Antigravity’s refused turn, which agy ends as end_turn, is Failed: a refused key names the key, another error is told', { skip, timeout: 120000 }, async () => {
   const { open, turn } = await native$();
   await saveAgentConfig('antigravity', { command: process.execPath, args: [fixture, '--auth-methods'], runtimePaths: [path.dirname(fixture)], apiKey: 'AIza-fixture-0123456789' });
   const run = await open('antigravity');
   assert.deepEqual(await turn(run, 'please-agy-key'), { status: 'failed', error: 'Antigravity refused the saved API key. Replace it in Settings › Agents.' });
   assert.equal((await agentEntry('antigravity')).test.refused, 'key');
+  assert.deepEqual(await turn(run, 'please-agy-quota'), { status: 'failed', error: 'Antigravity’s model refused the task (429): You exceeded your current quota, please check your plan and billing details. A free Gemini API key has no quota for the Pro models: choose a Flash model, or turn on billing for the key’s project.' });
   assert.deepEqual(await turn(run, 'please-agy-error'), { status: 'failed', error: 'generating and executing: doRequest: error sending request: Post "https://generativelanguage.googleapis.com/v1beta/models"' });
   assert.deepEqual(await turn(run, 'hello'), { status: 'completed' });
   sessions.closeAgentRun(run);

@@ -2230,6 +2230,15 @@ textarea.skill-file-text {
   color: var(--text-secondary);
 }
 
+/* a card's notice that changes how the agent is set up: Antigravity's key */
+.agent-callout {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  line-height: 1.45;
+}
+
 /* Settings › GitHub: the device sign-in's code, read off the screen into GitHub's page */
 .device-code {
   margin: 8px 0;

@@ -54,7 +54,8 @@ lines.on('line', async (line) => {
     if (m.method === 'session/load') update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'replayed' } });
     // sent before the answer that names the session
     update({ sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'review', description: 'Review the draft' }] });
-    send({ id: m.id, result: { sessionId } });
+    // --models offers a model menu, as OpenCode does
+    send({ id: m.id, result: { sessionId, ...(process.argv.includes('--models') && { configOptions: [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'openai/gpt', options: [{ value: 'openai/gpt', name: 'GPT' }, { value: 'deepseek/chat', name: 'DeepSeek' }] }] }) } });
   } else if (m.method === 'session/prompt' && process.argv.includes('--auth-on-prompt')) {
     send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
   } else if (m.method === 'session/prompt') {
@@ -79,7 +80,7 @@ lines.on('line', async (line) => {
     }
     if (asked.endsWith('please-auth')) return send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
     // agy acp 1.5.18 after its model refused the request: the error as its only reply, and end_turn
-    const agy = { 'please-agy-key': 'generating and executing: Error 400, Message: API key not valid. Please pass a valid API key., Status: INVALID_ARGUMENT, Details: [map[@type:type.googleapis.com/google.rpc.ErrorInfo domain:googleapis.com metadata:map[service:generativelanguage.googleapis.com] reason:API_KEY_INVALID]]', 'please-agy-error': 'generating and executing: doRequest: error sending request: Post "https://generativelanguage.googleapis.com/v1beta/models"' };
+    const agy = { 'please-agy-quota': 'generating and executing: Error 429, Message: You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits.\n* Quota exceeded for metric: generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro', 'please-agy-key': 'generating and executing: Error 400, Message: API key not valid. Please pass a valid API key., Status: INVALID_ARGUMENT, Details: [map[@type:type.googleapis.com/google.rpc.ErrorInfo domain:googleapis.com metadata:map[service:generativelanguage.googleapis.com] reason:API_KEY_INVALID]]', 'please-agy-error': 'generating and executing: doRequest: error sending request: Post "https://generativelanguage.googleapis.com/v1beta/models"' };
     const said = Object.keys(agy).find((k) => asked.endsWith(k));
     if (said) {
       update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `\n⚠ agent executor error: ${agy[said]}\n` } });

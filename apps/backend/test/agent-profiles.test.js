@@ -259,11 +259,11 @@ test('Windows: agy.exe in the folder Antigravity’s installer uses, off the PAT
   }
 });
 
-test('OpenCode 2 starts on a Mac with the switch for its own local server, and reaches its model list; Claude Agent is untested until it passes', () => {
+test('OpenCode 2 starts on a Mac with the switch for its own local server, and reaches its model list; OpenCode and Codex are supported, Claude Agent untested', () => {
   assert.equal(profileFor('opencode').unavailable, process.platform === 'win32' ? 'OpenCode 2 starts a local server on a port it chooses itself, which Windows isolation does not open. It works on a Mac.' : undefined);
   assert.equal(profileFor('opencode').loopback, 'local server');
   assert.ok(profileFor('opencode').hosts.includes('models.opencode.ai'));
-  assert.deepEqual(['deepseek', 'claude', 'codex', 'opencode', 'kimi'].map((id) => profileFor(id).support), ['supported', 'untested', 'progress', 'untested', 'untested']);
+  assert.deepEqual(['deepseek', 'claude', 'codex', 'opencode', 'kimi'].map((id) => profileFor(id).support), ['supported', 'untested', 'supported', 'supported', 'untested']);
 });
 
 test('Pi: the adapter is told where Pi is, with its package readable and never the home folder', { skip: nodeAdapters || knownFolders }, async () => {

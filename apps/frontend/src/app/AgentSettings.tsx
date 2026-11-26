@@ -427,6 +427,11 @@ function AgentCard({
             </>
           ) : (
             <>
+              {a.id === 'antigravity' && (
+                <p className="agent-callout">
+                  <strong>Antigravity needs a Gemini API key.</strong> Your Google sign-in to Antigravity, and the plan that comes with it, stay in {IS_WINDOWS ? 'Windows Credential Manager' : 'the keychain'}, which an isolated agent cannot reach. Create a key in Google AI Studio and save it below. A key is billed by its own Google project: on the free tier the Pro models have no quota, so choose a Flash model in the session or turn on billing for the key’s project.
+                </p>
+              )}
               {!a.planned && (
                 <div className="agent-section">
                   <h4>Program</h4>
@@ -544,7 +549,6 @@ function AgentCard({
                     Passed to {a.name} as {keyEnv} and kept in Spectrum’s private data on this computer.
                     {a.hasKey && keyEnv !== a.keyEnv && ' Saving another provider removes the saved key.'}
                     {a.id === 'kimi' && ' Kimi Code reads it only when its own configuration names it (api_key_env).'}
-                    {a.id === 'antigravity' && ` Antigravity keeps a Google sign-in in ${IS_WINDOWS ? 'Windows Credential Manager' : 'the keychain'}, which an isolated agent cannot reach, so use a Gemini API key from Google AI Studio.`}
                   </div>
                   <div className="row">
                     <button

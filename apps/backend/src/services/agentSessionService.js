@@ -15,7 +15,7 @@ import { compileFolder, findExecutable, SUPPORTED_ENGINES } from './compileServi
 import { builtInTectonic, builtInTypst } from './engineService.js';
 import { readProjectSettings } from './projectSettings.js';
 import { checkedImages, openTodos, suggestedTodo } from './agentService.js';
-import { AGENT_DIR, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter, allowAgentHost } from './agentProfiles.js';
+import { AGENT_DIR, agentConfigs, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter, allowAgentHost } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, isolationAvailable } from './agentSandbox.js';
 import { proxyNote } from './agentNetwork.js';
 import { initialiseWorkspace, workspaceChanges, workspaceFiles, applyWorkspaceChanges, captureAgentProposal, fileHash, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
@@ -504,8 +504,15 @@ const LOGIN_REFUSED = ['workspace routing discovery unauthorized (401)', 'select
  */
 async function signInNeeded(r) {
   const refused = r.processOptions.signIn;
-  await recordTest(r.agentId, { ok: false, code: 'sign-in', ...(refused && { refused }), program: r.processOptions.program, ...(r.agentVersion && { version: r.agentVersion }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
+  // an agent with a model menu (OpenCode) refuses a model whose provider has no key, though it has a key or login for
+  // another: the model or its provider's key is what to change, and its card stays set up
+  const models = r.events.findLast((e) => e.type === 'session')?.data.configOptions?.some((o) => o.category === 'model');
   const p = profileFor(r.agentId);
+  if (models) {
+    const saved = (await agentConfigs())[r.agentId] || {};
+    if (saved.apiKey || saved.loginCopied) return `${p.name} needs a sign-in for this model’s provider. Add its API key in Settings › Agents, or choose a model whose provider has one.`;
+  }
+  await recordTest(r.agentId, { ok: false, code: 'sign-in', ...(refused && { refused }), program: r.processOptions.program, ...(r.agentVersion && { version: r.agentVersion }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
   const key = p.keys.some((k) => /TOKEN/.test(k)) && !p.keys.some((k) => /API_KEY/.test(k)) ? 'personal access token' : 'API key';
   if (refused === 'key') return `${p.name} refused the saved ${key}. Replace it in Settings › Agents.`;
   if (refused === 'login') return `${p.name} refused the copied login: it may have expired or been signed out. Sign in again${p.signIn ? ` with ${p.signIn}` : ''}, then copy the login again in Settings › Agents.`;
@@ -1097,7 +1104,9 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
         const updates = r.events.filter((e) => e.id > asked.id && e.type === 'update');
         const said = updates.filter((e) => e.data?.sessionUpdate === 'agent_message_chunk').map((e) => e.data.content?.text || '').join('');
         const error = !updates.some((e) => e.data?.sessionUpdate === 'tool_call') && said.match(AGY_ERROR)?.[1].trim();
-        if (error) outcome = ['failed', r.processOptions.signIn === 'key' && /API_KEY_INVALID|API key not valid/.test(error) ? await signInNeeded(r) : error.slice(0, 2000)];
+        // Google's error repeats itself at length: its status and first sentence say it
+        const short = error && error.match(/Error (\d+), Message: (.+?\.)(?:\s|$)/);
+        if (error) outcome = ['failed', r.processOptions.signIn === 'key' && /API_KEY_INVALID|API key not valid/.test(error) ? await signInNeeded(r) : short ? `Antigravity’s model refused the task (${short[1]}): ${short[2]}${short[1] === '429' ? ' A free Gemini API key has no quota for the Pro models: choose a Flash model, or turn on billing for the key’s project.' : ''}` : error.slice(0, 2000)];
       }
       // held to its list, an agent that works asks the gate for its model at least: one that asked for nothing either
       // ignores the proxy variables or never got that far, and the user is told once where the choice is

@@ -17,7 +17,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 ### Changed
 
-- Claude Agent is shown as untested until it passes the acceptance test
+- Codex and OpenCode 2 are shown as supported, beside DeepSeek Harness. Claude Agent is shown as untested until it passes the acceptance test
+- Antigravity's card says first that it needs a Gemini API key, since its Google sign-in and plan stay in the keychain, and that a free key has no quota for the Pro models
 - Spectrum starts Antigravity with its telemetry off, which went to a host off its list
 - An agent's permission card shows the full command and the files a change touches before you choose
 - An agent's question with choices also takes your own words
@@ -27,7 +28,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Codex works in isolation on a Mac. Isolation hid the system's list of trusted certificates from it, so every connection failed with “workspace routing discovery failed”
 - A Codex task that fails ends as Failed with Codex's own words, rather than looking done
 - A wrong API key or login is named as refused, with the way to replace it, for every agent and in Test, not only for Codex
-- An Antigravity task its model refused, such as for a wrong key, ends as Failed with the error, rather than looking done
+- An Antigravity task its model refused, such as for a wrong key or a used-up quota, ends as Failed with a short line saying why, rather than looking done
+- An agent with a model menu, such as OpenCode, refused for want of a sign-in says the chosen model's provider needs a key, and its card stays set up
 
 ## 2.6.4 (26 November 2026)
 

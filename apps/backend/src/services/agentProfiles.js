@@ -16,7 +16,7 @@ import claudeLock from '../data/adapters/claude/package-lock.json' with { type: 
 import piLock from '../data/adapters/pi/package-lock.json' with { type: 'json' };
 import zcodeLock from '../data/adapters/zcode/package-lock.json' with { type: 'json' };
 
-const SUPPORT = { deepseek: 'supported', codex: 'progress' };
+const SUPPORT = { deepseek: 'supported', codex: 'supported', opencode: 'supported' };
 export const ADAPTER_LOCKS = { codex: codexLock, claude: claudeLock, pi: piLock, zcode: zcodeLock };
 
 export const AGENT_DIR = path.join(DATA_DIR, 'agents');
