@@ -61,6 +61,9 @@ ${forbiddenRoots.map((p) => `(deny file-read* file-write* (subpath ${q(p)}))`).j
   (global-name "com.apple.system.logger")
 ${offline ? '' : `  (global-name "com.apple.networkd")
   (global-name "com.apple.trustd.agent")
+  ; the system's list of trusted roots, which a program that checks certificates itself reads (Rust's rustls-native-certs,
+  ; Codex's): without it the list is empty and every HTTPS connection fails. Apple's own app sandbox allows it to every app
+  (global-name "com.apple.SecurityServer")
   (global-name "com.apple.TrustEvaluationAgent")
   (global-name "com.apple.SystemConfiguration.DNSConfiguration")
   (global-name "com.apple.SystemConfiguration.configd")`})
