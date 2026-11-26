@@ -913,7 +913,9 @@ async function buildWith(engine, projectRoot, absMain, mainFile, options = {}) {
   // and where that compiles, the format is never used again
   if (format && !retry && pass.code !== 0 && !pass.timedOut && !stopped() && (FORMAT_FAULT.test(logChunks.join('')) || !(await exists(path.join(outDir, `${base}.pdf`))))) {
     // said in its log, with what went wrong, as the precompiled preamble is off for this preamble from now on
-    const why = logChunks.join('').split(/\r?\n/).filter((line) => FORMAT_FAULT.test(line)).slice(0, 3).join(' ');
+    const lines = logChunks.join('').split(/\r?\n/);
+    // pdfTeX's own fault, else the failed pass's last words (a TeX distribution's, which name none)
+    const why = (lines.filter((line) => FORMAT_FAULT.test(line)).slice(0, 3).join(' ') || lines.map((line) => line.trim()).filter(Boolean).slice(-3).join(' ')).slice(0, 500);
     await clean();
     const again = await compileWith(engine, projectRoot, absMain, mainFile, { ...options, noFormat: true });
     if (again.status !== 0) return again;
