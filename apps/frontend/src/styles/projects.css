@@ -1070,13 +1070,20 @@ button.badge {
   display: none;
 }
 
+/* centred when it fits; auto margins, unlike centring, leave the top in reach when it scrolls */
+.first-run .panel-body {
+  display: flex;
+  flex-direction: column;
+}
+
 .first-run-column {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: 100%;
   max-width: 600px;
-  margin: 0 auto;
-  padding: 8px 24px 40px;
+  margin: auto;
+  padding: 0 24px 64px;
 }
 
 .first-run-icon {
