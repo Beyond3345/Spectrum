@@ -86,6 +86,23 @@ test('with only a copied login, or the login chosen over a saved key, Codex find
   assert.deepEqual([options.authMethod, options.signIn], [undefined, undefined], 'neither: nothing to sign in with');
 });
 
+test('SPECTRUM_CODEX_LOG has Codex log its traffic into its private home, with the filter given or the default one', { skip: nodeAdapters }, async () => {
+  const home = await setUp({ login: true });
+  try {
+    process.env.SPECTRUM_CODEX_LOG = '1';
+    let options = await launchOptions('codex', { workspace: path.join(home, 'tmp'), home });
+    assert.equal(options.env.APP_SERVER_LOGS, path.join(home, 'logs'));
+    assert.match(options.env.RUST_LOG, /codex_backend_client=debug/);
+    assert.ok((await fs.stat(path.join(home, 'logs'))).isDirectory());
+    process.env.SPECTRUM_CODEX_LOG = 'reqwest=trace';
+    options = await launchOptions('codex', { workspace: path.join(home, 'tmp'), home });
+    assert.equal(options.env.RUST_LOG, 'reqwest=trace');
+    delete process.env.SPECTRUM_CODEX_LOG;
+    options = await launchOptions('codex', { workspace: path.join(home, 'tmp'), home });
+    assert.deepEqual([options.env.APP_SERVER_LOGS, options.env.RUST_LOG], [undefined, undefined], 'off unless asked');
+  } finally { delete process.env.SPECTRUM_CODEX_LOG; }
+});
+
 test('the sign-in choice is checked, kept with other changes, and a changed choice drops the last Test', { skip: nodeAdapters }, async () => {
   await setUp({ key: KEY, login: true });
   await assert.rejects(saveAgentConfig('codex', { signInWith: 'both' }), /Choose the API key or the copied login/);
