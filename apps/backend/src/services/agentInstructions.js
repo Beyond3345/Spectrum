@@ -107,8 +107,8 @@ export const INSTRUCTION_FILES = [
   { match: /(^|\/)(\.cursorrules$|\.cursor\/rules\/)/i, agents: ['cursor', 'hermes'] },
   { match: /(^|\/)\.?hermes\.md$/i, agents: ['hermes'] },
   { match: /(^|\/)\.agents\//i, agents: ['codex', 'gemini', 'antigravity', 'copilot', 'kimi', 'pi', 'deepseek', 'opencode'] },
-  // Antigravity's older rules folder, .agent without the s
-  { match: /(^|\/)\.agent\/rules\//i, agents: ['antigravity'] },
+  // Antigravity's older folder, .agent without the s
+  { match: /(^|\/)\.agent\/(rules|skills)\//i, agents: ['antigravity'] },
   { match: /(^|\/)\.codex\//i, agents: ['codex'] },
   { match: /(^|\/)\.gemini\//i, agents: ['gemini'] },
   { match: /(^|\/)\.kimi(-code)?\//i, agents: ['kimi'] },

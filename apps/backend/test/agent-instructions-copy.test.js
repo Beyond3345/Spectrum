@@ -125,6 +125,7 @@ test('every other agent’s instruction file is left out until allowed by its ha
     '.agents/skills/tidy/SKILL.md': 'A skill.\n',
     '.agents/rules/style.md': 'Antigravity rules.\n',
     '.agent/rules/old.md': 'Older Antigravity rules.\n',
+    '.agent/skills/old/SKILL.md': 'Older Antigravity skill.\n',
     '.gemini/settings.json': '{}\n',
     '.codex/config.toml': '\n'
   };
@@ -150,7 +151,7 @@ test('every other agent’s instruction file is left out until allowed by its ha
   assert.ok(listed.every((f) => f.state === 'ask'));
   const by = (rel) => listed.find((f) => f.path === rel);
   assert.deepEqual(by('GEMINI.md').readBy, ['gemini', 'antigravity', 'copilot']);
-  assert.deepEqual(by('.agent/rules/old.md').readBy, ['antigravity']);
+  assert.deepEqual([by('.agent/rules/old.md').readBy, by('.agent/skills/old/SKILL.md').readBy], [['antigravity'], ['antigravity']]);
   assert.ok(by('.agents/rules/style.md').readBy.includes('antigravity'));
   assert.deepEqual(by('.github/copilot-instructions.md').readBy, ['copilot']);
   assert.ok(by('CLAUDE.md').readBy.includes('claude') && !by('CLAUDE.md').readBy.includes('spectrum'));
