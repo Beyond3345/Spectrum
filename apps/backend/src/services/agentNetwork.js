@@ -145,8 +145,9 @@ const resolvesHere = (host) => Promise.race([
 /**
  * Opens a gate: { port, close, asked }. hosts(): the list now, read at each connection so a host the user allows works
  * at once, or null for any host (an agent on Any host that goes through a proxy); onRefused(host): a host off the list
- * was asked for; asked(): how many times the gate was asked for anything. proxy: the user's proxy (networkProxy.js),
- * which a host goes on through unless its NO_PROXY names it; without one the gate connects itself.
+ * was asked for; asked(): how many times the gate was asked for anything. proxy: the user's proxy (networkProxy.js), or
+ * a function giving it at each connection, which a host goes on through unless its NO_PROXY names it; without one the
+ * gate connects itself.
  */
 export async function openGate({ hosts, onRefused, proxy }) {
   const tunnels = new Set();
@@ -165,10 +166,11 @@ export async function openGate({ hosts, onRefused, proxy }) {
       return refuse('403 Forbidden', REFUSED);
     }
     let upstream;
-    if (proxy && !bypasses(host, proxy.noProxy)) {
+    const via = typeof proxy === 'function' ? proxy() : proxy;
+    if (via && !bypasses(host, via.noProxy)) {
       // a name this computer answers to is refused as below; one the lookup here can't answer is the proxy's to look up
       if (await resolvesHere(host)) return refuse('502 Bad Gateway', 'That host was not found, or is this computer.');
-      try { upstream = await throughProxy(proxy, host, 443); } catch (err) { return refuse('502 Bad Gateway', err.message); }
+      try { upstream = await throughProxy(via, host, 443); } catch (err) { return refuse('502 Bad Gateway', err.message); }
     } else {
       let target;
       if (standIns.has(host)) target = { address: '127.0.0.1', port: standIns.get(host) };

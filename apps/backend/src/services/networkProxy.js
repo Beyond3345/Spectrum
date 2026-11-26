@@ -135,9 +135,9 @@ export async function currentProxy() {
 async function openRelay() {
   const { throughProxy } = await import('./agentNetwork.js');
   const secret = crypto.randomBytes(18).toString('base64url');
-  const expected = `Basic ${Buffer.from(`spectrum:${secret}`).toString('base64')}`;
   const relay = { proxy: null };
-  const allowed = (req) => req.headers['proxy-authorization'] === expected;
+  // as each client writes it: the scheme in any case
+  const allowed = (req) => Buffer.from(/^basic\s+(\S+)$/i.exec(req.headers['proxy-authorization'] || '')?.[1] || '', 'base64').toString() === `spectrum:${secret}`;
   const server = http.createServer(async (req, res) => {
     let target;
     try { target = new URL(req.url); } catch { return res.writeHead(400).end(); }
@@ -182,12 +182,21 @@ export async function applyProxy(found) {
   restore?.();
   restore = null;
   applied = found;
+  // the variables Spectrum was started with come back without a proxy
+  for (const [name, value] of Object.entries(started ??= Object.fromEntries(VARIABLES.map((k) => [k, process.env[k]])))) {
+    if (value === undefined) delete process.env[name]; else process.env[name] = value;
+  }
   if (!found) { relay?.close(); relay = null; return null; }
   relay ??= await openRelay();
   relay.proxy = found;
   restore = http.setGlobalProxyFromEnv({ HTTP_PROXY: relay.url, HTTPS_PROXY: relay.url, NO_PROXY: [...LOCAL, ...found.noProxy].join(',') });
+  // and every program Spectrum starts outside isolation (Typst and Tinymist, a trusted compile, npm) inherits them;
+  // an isolated one is given its own environment
+  Object.assign(process.env, proxyVariables());
   return found;
 }
+const VARIABLES = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'NO_PROXY', 'no_proxy'];
+let started;
 /** The proxy the backend goes through now, as applyProxy last found it. */
 export const appliedProxy = () => applied;
 /**

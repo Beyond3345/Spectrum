@@ -4,7 +4,8 @@
 // program inside the agents' isolation.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { promises as fs, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -22,6 +23,8 @@ const np = await import('../src/services/networkProxy.js');
 const { openGate, helloName, throughProxy } = await import('../src/services/agentNetwork.js');
 const { spawnAgentProcess } = await import('../src/services/agentSandbox.js');
 const native = process.platform === 'darwin' && process.env.SPECTRUM_NATIVE_AGENT_TESTS === '1';
+// a program that goes through the gate or relay in this process is waited for without blocking it
+const run = promisify(execFile);
 const mac = process.platform !== 'darwin' && 'the proxy is used on a Mac only';
 after(async () => { await np.applyProxy(null); rmSync(tmp, { recursive: true, force: true }); });
 
@@ -93,7 +96,7 @@ async function socksProxy({ auth = false } = {}) {
 /** An HTTPS stand-in for names, with a certificate made here; and a plain HTTP one. */
 async function httpsStandIn(hostNames, answer = (req, res) => res.end(`stand-in for ${req.headers.host}${req.url}`)) {
   const key = path.join(tmp, `key-${hostNames[0]}.pem`), cert = path.join(tmp, `cert-${hostNames[0]}.pem`);
-  execFileSync('/usr/bin/openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-subj', `/CN=${hostNames[0]}`, '-days', '2', '-addext', `subjectAltName=${hostNames.map((n) => `DNS:${n}`).join(',')}`], { stdio: 'ignore' });
+  execFileSync('/usr/bin/openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-subj', `/CN=${hostNames[0]}`, '-days', '2', '-addext', `subjectAltName=${hostNames.map((n) => `DNS:${n}`).join(',')}`, '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'extendedKeyUsage=serverAuth', '-addext', 'keyUsage=critical,digitalSignature,keyCertSign'], { stdio: 'ignore' });
   const server = https.createServer({ key: await fs.readFile(key), cert: await fs.readFile(cert) }, answer);
   const port = await listen(server);
   for (const name of hostNames) names.set(name, port);
@@ -293,4 +296,60 @@ test('inside isolation, a program reaches a host only through the gate and the p
     assert.deepEqual(proxy.asked, ['listed.test:443'], 'the host off the list never reached the proxy');
     assert.deepEqual(await run(undefined), { listed: '200 stand-in for listed.test/', unlisted: '200 stand-in for unlisted.test/', standIn: 'EPERM', proxy: 'EPERM', refused: [] });
   } finally { standIn.close(); proxy.close(); names.delete('listed.test'); names.delete('unlisted.test'); }
+});
+
+test('a confined Tectonic compile behind the proxy reaches only Tectonic’s hosts, through a gate that goes on there; without one, as before', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.', timeout: 60000 }, async () => {
+  const { compileSandbox, TECTONIC_HOSTS } = await import('../src/services/compileSandbox.js');
+  const { SANDBOX_EXEC } = await import('../src/services/compileSandbox.js');
+  const dir = path.join(tmp, 'compile');
+  for (const sub of ['build', 'tmp']) await fs.mkdir(path.join(dir, sub), { recursive: true });
+  const box = () => compileSandbox({ build: path.join(dir, 'build'), tmp: path.join(dir, 'tmp'), tectonic: true, runs: [process.execPath] });
+  const plain = await box();
+  assert.match(plain.profile, /remote tcp "\*:443"/, 'no proxy: Tectonic reaches HTTPS as before');
+  assert.equal(plain.env.HTTPS_PROXY, undefined);
+  const standIn = await httpsStandIn([...TECTONIC_HOSTS, 'elsewhere.test']);
+  const cert = path.join(dir, 'build', 'stand-in.pem');
+  await fs.copyFile(standIn.cert, cert);
+  const proxy = await httpProxy();
+  try {
+    await np.saveTypedProxy(`http://127.0.0.1:${proxy.port}`);
+    await np.applyProxy();
+    const gated = await box();
+    assert.doesNotMatch(gated.profile, /\*:443|\*:53|mDNSResponder/);
+    assert.match(gated.profile, /remote tcp "localhost:\d+"/);
+    const script = `const get = (u) => fetch(u).then(async (r) => r.status + ' ' + await r.text(), () => 'failed');
+      const net = require('node:net'); const socket = (p) => new Promise((resolve) => { const s = net.connect(p, '127.0.0.1'); s.on('connect', () => resolve('connected')); s.on('error', (e) => resolve(e.code)); });
+      (async () => console.log(JSON.stringify({ tectonic: await get('https://relay.fullyjustified.net/bundle'), other: await get('https://elsewhere.test/'), proxy: await socket(${proxy.port}) })))();`;
+    const { stdout: out } = await run(SANDBOX_EXEC, ['-p', gated.profile, process.execPath, '-e', script], { env: { ...process.env, ...gated.env, NODE_USE_ENV_PROXY: '1', NODE_EXTRA_CA_CERTS: cert }, cwd: path.join(dir, 'build'), timeout: 30000 });
+    assert.deepEqual(JSON.parse(out), { tectonic: '200 stand-in for relay.fullyjustified.net/bundle', other: 'failed', proxy: 'EPERM' });
+    assert.deepEqual(proxy.asked, ['CONNECT relay.fullyjustified.net:443'], 'only Tectonic’s host, and only through the proxy');
+  } finally { await np.saveTypedProxy(''); await np.applyProxy(null); proxy.close(); standIn.close(); for (const n of [...TECTONIC_HOSTS, 'elsewhere.test']) names.delete(n); }
+});
+
+test('Typst, which Spectrum starts outside isolation, downloads a package through the proxy from the variables Spectrum gives it', { skip: mac, timeout: 60000 }, async (t) => {
+  const typst = ['/opt/homebrew/bin/typst', '/usr/local/bin/typst'].find((p) => { try { execFileSync(p, ['--version']); return true; } catch { return false; } });
+  if (!typst) return t.skip('no Typst here');
+  const dir = path.join(tmp, 'typst');
+  const pkg = path.join(dir, 'pkg');
+  await fs.mkdir(pkg, { recursive: true });
+  await fs.writeFile(path.join(pkg, 'typst.toml'), '[package]\nname = "standin"\nversion = "0.1.0"\nentrypoint = "lib.typ"\nauthors = ["Spectrum"]\nlicense = "MIT"\ndescription = "A stand-in"\n');
+  await fs.writeFile(path.join(pkg, 'lib.typ'), '#let hello = [Through the proxy]\n');
+  const tarball = path.join(dir, 'standin-0.1.0.tar.gz');
+  execFileSync('/usr/bin/tar', ['-czf', tarball, '-C', pkg, 'typst.toml', 'lib.typ']);
+  const asked = [];
+  const standIn = await httpsStandIn(['packages.typst.org'], async (req, res) => { asked.push(req.url); res.end(await fs.readFile(tarball)); });
+  const proxy = await socksProxy({ auth: true });
+  try {
+    await fs.writeFile(path.join(dir, 'main.typ'), '#import "@preview/standin:0.1.0": hello\n#hello\n');
+    await np.saveTypedProxy(`socks5://${USER}:${PASS}@127.0.0.1:${proxy.port}`);
+    await np.applyProxy();
+    // Spectrum's own environment now carries the relay, as any program it starts outside isolation inherits
+    assert.match(process.env.HTTPS_PROXY, /^http:\/\/spectrum:[\w-]+@127\.0\.0\.1:\d+$/);
+    await run(typst, ['--cert', standIn.cert, 'compile', 'main.typ', 'main.pdf'], { cwd: dir, env: { ...process.env, TYPST_PACKAGE_CACHE_PATH: path.join(dir, 'cache') }, timeout: 30000 });
+    assert.deepEqual(asked.map((u) => u.replace('https://packages.typst.org', '')), ['/preview/standin-0.1.0.tar.gz']);
+    assert.deepEqual(proxy.asked, ['packages.typst.org:443']);
+  } finally {
+    await np.saveTypedProxy(''); await np.applyProxy(null); proxy.close(); standIn.close(); names.delete('packages.typst.org');
+  }
+  assert.equal(process.env.HTTPS_PROXY, undefined, 'without a proxy, Spectrum’s environment is as it started');
 });
