@@ -187,6 +187,32 @@ test('Antigravity: its CLI’s ACP server, found where its installer puts it, a 
   await fs.rm(path.join(root, 'Applications/Antigravity.app'), { recursive: true });
 });
 
+test('an agent with its own server on a port it picks: a port on this computer only with the user’s switch, off at first', { skip: knownFolders }, async () => {
+  await program('.local/bin/agy');
+  const off = await listed('antigravity');
+  assert.deepEqual(off.network.loopback, { server: 'language server', on: false });
+  assert.equal((await launchOptions('antigravity', { workspace: dir, home: dir })).loopback, undefined);
+  // a Test that failed without it no longer holds once it is on
+  await recordTest('antigravity', { ok: false, code: 'exited', program: off.program });
+  await saveAgentConfig('antigravity', { network: { loopback: true } });
+  const config = (await agentConfigs()).antigravity;
+  assert.deepEqual([config.network, config.test], [{ loopback: true }, undefined]);
+  assert.deepEqual((await listed('antigravity')).network.loopback, { server: 'language server', on: true });
+  assert.equal((await launchOptions('antigravity', { workspace: dir, home: dir })).loopback, true);
+  // a host added later keeps it; only a boolean, and only for an agent that has such a server
+  await saveAgentConfig('antigravity', { network: { hosts: ['gateway.example.com'] } });
+  assert.deepEqual((await agentConfigs()).antigravity.network, { hosts: ['gateway.example.com'], loopback: true });
+  await assert.rejects(saveAgentConfig('antigravity', { network: { loopback: 'yes' } }), /Invalid network settings/);
+  await assert.rejects(saveAgentConfig('cursor', { network: { loopback: true } }), /Invalid network settings/);
+  assert.equal((await listed('cursor')).network.loopback, undefined);
+  // a hand-edited value other than true is off
+  await writeConfig({ ...await agentConfigs(), antigravity: { network: { loopback: 'true' } } });
+  assert.equal((await listed('antigravity')).network.loopback.on, false);
+  await saveAgentConfig('antigravity', { network: { loopback: true } });
+  await saveAgentConfig('antigravity', { network: { loopback: false, hosts: [] } });
+  assert.equal((await agentConfigs()).antigravity.network, undefined);
+});
+
 test('Windows: agy.exe in the folder Antigravity’s installer uses, off the PATH, from LOCALAPPDATA or the home folder', async () => {
   const platform = Object.getOwnPropertyDescriptor(process, 'platform');
   const localAppData = process.env.LOCALAPPDATA;

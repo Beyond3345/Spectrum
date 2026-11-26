@@ -4,7 +4,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createServer } from 'node:http';
-import { spawnAgentProcess, developerReads } from '../src/services/agentSandbox.js';
+import { spawnAgentProcess, developerReads, sandboxProfile } from '../src/services/agentSandbox.js';
+import { PORT } from '../src/config/constants.js';
 
 const native = process.platform === 'darwin' && process.env.SPECTRUM_NATIVE_AGENT_TESTS === '1';
 
@@ -157,4 +158,58 @@ test('an isolated process and its descendants die with the backend, and with the
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+test('an agent with its own server binds a port it picks and talks to itself only with the switch, and never reaches Spectrum’s ports', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.' }, async () => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-loopback-')));
+  const other = createServer((req, res) => res.end('another program'));
+  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+  try {
+    await fs.mkdir(path.join(root, 'home', 'tmp'), { recursive: true }); await fs.mkdir(path.join(root, 'work'));
+    // as Antigravity's language server does: 127.0.0.1:0, else localhost:0, then a connection to itself; then the ports of others
+    const script = `
+      const net = require('node:net');
+      const reach = (port, host = '127.0.0.1') => new Promise((r) => { const s = net.connect(port, host); s.on('connect', () => { s.destroy(); r('ok'); }); s.on('error', (e) => r(e.code)); });
+      const serve = (host) => new Promise((r) => { const srv = net.createServer((c) => c.end()); srv.on('error', (e) => r(e.code)); srv.listen(0, host, () => r(srv)); });
+      (async () => {
+        const said = {};
+        for (const host of ['127.0.0.1', '::1']) {
+          const srv = await serve(host);
+          said[host] = typeof srv === 'string' ? srv : await reach(srv.address().port, host);
+        }
+        said.other = await reach(${other.address().port});
+        said.spectrum = await reach(${PORT});
+        said.app = await reach(38787);
+        console.log(JSON.stringify(said));
+        process.exit(0);
+      })();
+    `;
+    const said = async (options) => {
+      const child = await spawnAgentProcess({ command: process.execPath, args: ['-e', script], workspace: path.join(root, 'work'), home: path.join(root, 'home'), ...options });
+      let output = '';
+      child.stdout.on('data', (c) => output += c);
+      await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', resolve); });
+      return JSON.parse(output);
+    };
+    // without it, the failure Antigravity met: no port to bind
+    assert.deepEqual(await said({}), { '127.0.0.1': 'EPERM', '::1': 'EPERM', other: 'EPERM', spectrum: 'EPERM', app: 'EPERM' });
+    // with it, its own server works; another program here is reachable too, which is what the switch's wording says;
+    // Spectrum's own ports never are
+    assert.deepEqual(await said({ loopback: true }), { '127.0.0.1': 'ok', '::1': 'ok', other: 'ok', spectrum: 'EPERM', app: 'EPERM' });
+    // held to a list it is so as well, its gate included
+    assert.deepEqual(await said({ loopback: true, hosts: () => [] }), { '127.0.0.1': 'ok', '::1': 'ok', other: 'ok', spectrum: 'EPERM', app: 'EPERM' });
+    // a program with no network gets nothing from it
+    assert.deepEqual(await said({ loopback: true, offline: true }), { '127.0.0.1': 'EPERM', '::1': 'EPERM', other: 'EPERM', spectrum: 'EPERM', app: 'EPERM' });
+  } finally { await new Promise((resolve) => other.close(resolve)); await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('the switch for an agent’s own server: every local port, then Spectrum’s own refused after it, and nothing for a program with no network', () => {
+  const base = { workspace: '/w', home: '/h', executable: '/usr/bin/true' };
+  assert.doesNotMatch(sandboxProfile(base), /tcp "localhost:\*"/);
+  const profile = sandboxProfile({ ...base, loopback: true });
+  const open = profile.indexOf('(allow network-outbound (remote tcp "localhost:*"))');
+  assert.ok(open > 0 && profile.includes('(allow network-bind network-inbound (local tcp "localhost:*"))'));
+  // the last rule that matches wins, so each refusal comes after the opening
+  for (const port of [PORT, 38787, 38796]) assert.ok(profile.indexOf(`(deny network-outbound (remote tcp "localhost:${port}"))`) > open, port);
+  assert.doesNotMatch(sandboxProfile({ ...base, loopback: true, offline: true }), /localhost/);
 });
