@@ -80,6 +80,20 @@ test('an isolated agent reaches the system’s name lookup, and a program with n
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
+test('an isolated agent reads the system’s trusted roots, which a program checking certificates itself needs', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.' }, async () => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-roots-')));
+  try {
+    await fs.mkdir(path.join(root, 'home', 'tmp'), { recursive: true }); await fs.mkdir(path.join(root, 'work'));
+    // what rustls-native-certs asks on a Mac (Codex's TLS): an empty list fails every handshake, chatgpt.com's included
+    const script = 'ObjC.import("Security"); var r = Ref(); var s = $.SecTrustSettingsCopyCertificates(2, r); s === 0 ? $.CFArrayGetCount(r[0]) : "status " + s';
+    const child = await spawnAgentProcess({ command: '/usr/bin/osascript', args: ['-l', 'JavaScript', '-e', script], workspace: path.join(root, 'work'), home: path.join(root, 'home') });
+    let output = '';
+    child.stdout.on('data', (c) => output += c);
+    await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', resolve); });
+    assert.ok(Number(output.trim()) > 50, `the system roots: ${output.trim()}`);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
 test('an agent started from an app reads and runs that bundle, not another app beside it', { skip: !native && 'Run with SPECTRUM_NATIVE_AGENT_TESTS=1 outside an existing sandbox.' }, async () => {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'spectrum-agent-app-')));
   const workspace = path.join(root, 'work'), home = path.join(root, 'home');
