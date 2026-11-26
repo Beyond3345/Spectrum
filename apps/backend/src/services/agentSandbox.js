@@ -91,10 +91,10 @@ export async function resolveExecutable(command, envPath = process.env.PATH || '
 
 /**
  * hosts: a function giving the hosts the process may reach now, for one held to a list (none: any public HTTPS host,
- * as before); onRefused(host): it asked for one off the list. localPorts: see sandboxProfile. macOS only: the Windows
+ * as before); onRefused(host): it asked for one off the list; proxy: the user's proxy, which the gate goes on through. localPorts: see sandboxProfile. macOS only: the Windows
  * worker opens every public address or none and never this computer's, so there neither is enforced or reachable.
  */
-export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false, hosts, onRefused, localPorts }) {
+export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false, hosts, onRefused, localPorts, proxy }) {
   if (!['darwin', 'win32'].includes(process.platform)) throw new Error('Native agent isolation is unavailable on this platform.');
   const executable = await resolveExecutable(command);
   if (process.platform === 'win32') return spawnWindowsAgent({ executable, args, workspace, home, runtimeExecutable, runtimePaths, forbiddenRoots, cwd, env, offline });
@@ -105,7 +105,9 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
   const workRoot = await fs.realpath(workspace), homeRoot = await fs.realpath(home);
   const reads = [...SYSTEM_READS, ...developerReads(), workRoot, homeRoot, ...roots, path.dirname(runtimeExecutable || executable)];
   if (!reads.some((root) => executable === root || executable.startsWith(root + path.sep))) throw new Error('This command is outside the approved runtime folders. Add its specific runtime folder in Setup.');
-  const gate = hosts && !offline ? await openGate({ hosts, onRefused }) : null;
+  // proxy (networkProxy.js): the user's proxy, which isolation never lets the process reach itself; through a gate it
+  // goes on there, for a process on any host too
+  const gate = (hosts || proxy) && !offline ? await openGate({ hosts: hosts || null, onRefused, proxy }) : null;
   const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline, gatePort: gate?.port, localPorts });
   const child = spawn('/bin/sh', ['-c', WATCHDOG, 'sh', profile, executable, ...args], {
     cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'],

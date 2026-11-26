@@ -1,3 +1,4 @@
+import { applyProxy, parseProxy, proxyText, saveTypedProxy, typedProxy } from '../services/networkProxy.js';
 import { execFile, spawn } from 'child_process';
 import path from 'path';
 import { stat } from 'fs/promises';
@@ -37,6 +38,16 @@ export function registerSystemRoutes(fastify) {
   // a newer Spectrum, asked of the release page at most once a day (updateService.js); the page asks only while the
   // user's setting is on
   fastify.get('/api/system/update', async () => ({ ok: true, ...(await updateNotice()) }));
+  // the proxy Spectrum goes through: the one in use, where it came from, and the one typed here, masked
+  const proxyView = async (found) => {
+    const typed = parseProxy(await typedProxy());
+    return { ok: true, supported: process.platform === 'darwin', proxy: found && { text: found.text, from: found.from, source: found.source }, typed: typed ? proxyText(typed) : '' };
+  };
+  fastify.get('/api/system/proxy', async () => proxyView(await applyProxy()));
+  fastify.put('/api/system/proxy', async (req) => {
+    await saveTypedProxy(req.body?.proxy);
+    return proxyView(await applyProxy());
+  });
 
   // What's installed on this machine, so the UI can explain a failing compile or plot.
   // texFolder: Settings › Engines › LaTeX's TeX folder, looked in first as a compile does

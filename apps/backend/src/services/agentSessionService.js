@@ -372,7 +372,7 @@ async function connect(r) {
   // the tools server starts with the environment Spectrum names, so it is told of the agent's gate here
   if (tools && r.child.gateEnv) tools.server.env.push(...Object.entries(r.child.gateEnv).map(([name, value]) => ({ name, value })));
   // how Codex may find a proxy, which a run that cannot reach chatgpt.com is compared by
-  if (r.agentId === 'codex') emit(r, 'notice', { message: proxyNote(profile.name, { ...r.child.gateEnv, ...r.processOptions.env }, await proxySettings()) });
+  if (r.agentId === 'codex') emit(r, 'notice', { message: proxyNote(profile.name, { ...r.child.gateEnv, ...r.processOptions.env }, await proxySettings(), process.env, r.processOptions.proxy) });
   let stderr = '';
   const redact = (text) => hide(text, r.processOptions.secrets);
   r.child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-12000); r.diagnostic = redact(stderr); });
@@ -1030,7 +1030,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       r.notes = [];
       r.openedNew = r.freshSession = false;
       r.turnCount++;
-      unreached = r.child?.gateAsked?.() === 0;
+      unreached = !!r.processOptions.hosts && r.child?.gateAsked?.() === 0;
       emit(r, 'complete', result);
       // the turn's tokens, where the agent counts them: { turn: { totalTokens, inputTokens, outputTokens, … } }
       if (result.usage) emit(r, 'usage', { turn: result.usage });
@@ -1046,7 +1046,7 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       // protocol's own word for a closed pipe doesn't take its place
       const child = r.child;
       // one that never got its task, or wants a sign-in, asked for no host for that reason, which its own message covers
-      unreached = sent && err.code !== -32000 && child?.gateAsked?.() === 0;
+      unreached = sent && err.code !== -32000 && !!r.processOptions.hosts && child?.gateAsked?.() === 0;
       if (!r.cancelled && child?.pid && child.exitCode === null && child.signalCode === null) await timeout(new Promise((resolve) => child.once('exit', resolve)), 500, 'still running').catch(() => {});
       const told = r.status === 'failed' && child && (child.exitCode !== null || child.signalCode !== null);
       const signIn = err.code === -32000 && !r.cancelled ? await signInNeeded(r) : '';

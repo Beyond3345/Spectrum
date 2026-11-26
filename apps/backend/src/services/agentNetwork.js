@@ -12,6 +12,7 @@ import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import { lookup } from 'node:dns/promises';
+import { bypasses } from './networkProxy.js';
 
 /** The hosts Spectrum's own tools server reaches from inside an agent's isolation (literature_search, fetch_bibtex, check_references). */
 export const SCHOLARLY_HOSTS = ['api.openalex.org', 'api.crossref.org', 'doi.org', 'data.crossref.org', 'api.datacite.org', 'data.crosscite.org', 'export.arxiv.org', 'arxiv.org', 'api.semanticscholar.org'];
@@ -79,10 +80,75 @@ export function helloName(b) {
 const REFUSED = 'Spectrum’s isolation does not let this program reach that host. The user can allow it in Spectrum.';
 
 /**
- * Opens a gate: { port, close, asked }. hosts(): the list now, read at each connection so a host the user allows works
- * at once; onRefused(host): a host off the list was asked for; asked(): how many times the gate was asked for anything.
+ * A tunnel to host:port through the user's proxy (networkProxy.js): HTTP CONNECT for an http:// proxy, SOCKS5 CONNECT for
+ * a socks5:// one, the name given to the proxy to look up. Resolves to the socket once the proxy says it is open.
  */
-export async function openGate({ hosts, onRefused }) {
+export function throughProxy(proxy, host, port) {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(proxy.port, proxy.host);
+    let got = Buffer.alloc(0), step = 0;
+    const fail = (why) => { socket.destroy(); reject(new Error(why)); };
+    socket.setTimeout(15000, () => fail('The proxy did not answer.'));
+    socket.on('error', (err) => fail(`The proxy could not be reached (${err.code || err.message}).`));
+    const done = (rest) => { socket.setTimeout(0); socket.removeAllListeners('data'); socket.removeAllListeners('error'); if (rest.length) socket.unshift(rest); resolve(socket); };
+    const name = Buffer.from(host);
+    const connectRequest = () => Buffer.concat([Buffer.from([5, 1, 0, 3, name.length]), name, Buffer.from([port >> 8, port & 255])]);
+    socket.once('connect', () => {
+      if (proxy.scheme === 'http') {
+        const auth = proxy.user ? `Proxy-Authorization: Basic ${Buffer.from(`${proxy.user}:${proxy.pass || ''}`).toString('base64')}\r\n` : '';
+        socket.write(`CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n${auth}\r\n`);
+      } else socket.write(Buffer.from(proxy.user ? [5, 2, 0, 2] : [5, 1, 0]));
+    });
+    socket.on('data', (chunk) => {
+      got = Buffer.concat([got, chunk]);
+      if (got.length > 16384) return fail('The proxy’s answer was too long.');
+      if (proxy.scheme === 'http') {
+        const end = got.indexOf('\r\n\r\n');
+        if (end < 0) return;
+        const status = Number(/^HTTP\/1\.[01] (\d{3})/.exec(got.toString('latin1', 0, end))?.[1]);
+        return status === 200 ? done(got.subarray(end + 4)) : fail(`The proxy refused the connection${status ? ` (${status})` : ''}.`);
+      }
+      // SOCKS5: the method it chose, its answer to the name and password, then to the connection
+      if (step === 0) {
+        if (got.length < 2) return;
+        const method = got[1];
+        got = got.subarray(2);
+        if (got[0] === undefined && method === 0) { step = 2; return socket.write(connectRequest()); }
+        if (method === 0) { step = 2; socket.write(connectRequest()); }
+        else if (method === 2 && proxy.user) { step = 1; const u = Buffer.from(proxy.user), w = Buffer.from(proxy.pass || ''); socket.write(Buffer.concat([Buffer.from([1, u.length]), u, Buffer.from([w.length]), w])); }
+        else return fail('The proxy wants a sign-in Spectrum does not have.');
+        if (!got.length) return;
+      }
+      if (step === 1) {
+        if (got.length < 2) return;
+        if (got[1] !== 0) return fail('The proxy refused the name and password.');
+        got = got.subarray(2);
+        step = 2;
+        socket.write(connectRequest());
+        if (!got.length) return;
+      }
+      if (got.length < 5) return;
+      if (got[1] !== 0) return fail(`The proxy refused the connection (SOCKS ${got[1]}).`);
+      const length = 6 + (got[3] === 1 ? 4 : got[3] === 4 ? 16 : 1 + got[4]);
+      if (got.length >= length) done(got.subarray(length));
+    });
+  });
+}
+
+// whether a name is this computer by the lookup here, given a moment, which a network that answers names only
+// through its proxy may not: then the proxy looks it up
+const resolvesHere = (host) => Promise.race([
+  lookup(host, { all: true }).then((all) => all.some(thisComputer), () => false),
+  new Promise((resolve) => setTimeout(resolve, 1500, false).unref())
+]);
+
+/**
+ * Opens a gate: { port, close, asked }. hosts(): the list now, read at each connection so a host the user allows works
+ * at once, or null for any host (an agent on Any host that goes through a proxy); onRefused(host): a host off the list
+ * was asked for; asked(): how many times the gate was asked for anything. proxy: the user's proxy (networkProxy.js),
+ * which a host goes on through unless its NO_PROXY names it; without one the gate connects itself.
+ */
+export async function openGate({ hosts, onRefused, proxy }) {
   const tunnels = new Set();
   let asked = 0;
   const server = http.createServer((req, res) => { asked++; res.writeHead(403, { Connection: 'close' }).end('Spectrum’s isolation allows HTTPS only.\n'); });
@@ -93,28 +159,36 @@ export async function openGate({ hosts, onRefused }) {
     const [, name = '', port] = /^([^:]*):(\d+)$/.exec(req.url || '') || [];
     const host = name.toLowerCase();
     if (port !== '443' || !HOST.test(host) || host.startsWith('*')) return refuse('403 Forbidden', 'Spectrum’s isolation allows HTTPS to a named host on port 443 only.');
-    // the list first: a host off it is never looked up
-    if (!hostAllowed(host, cleanHosts(await Promise.resolve().then(hosts).catch(() => [])))) {
+    // the list first: a host off it is never looked up, nor asked of the proxy
+    if (hosts && !hostAllowed(host, cleanHosts(await Promise.resolve().then(hosts).catch(() => [])))) {
       onRefused?.(host);
       return refuse('403 Forbidden', REFUSED);
     }
-    let target;
-    if (standIns.has(host)) target = { address: '127.0.0.1', port: standIns.get(host) };
-    else {
-      const found = (await lookup(host, { all: true }).catch(() => [])).find((a) => !thisComputer(a));
-      if (!found) return refuse('502 Bad Gateway', 'That host was not found, or is this computer.');
-      target = { address: found.address, port: 443 };
+    let upstream;
+    if (proxy && !bypasses(host, proxy.noProxy)) {
+      // a name this computer answers to is refused as below; one the lookup here can't answer is the proxy's to look up
+      if (await resolvesHere(host)) return refuse('502 Bad Gateway', 'That host was not found, or is this computer.');
+      try { upstream = await throughProxy(proxy, host, 443); } catch (err) { return refuse('502 Bad Gateway', err.message); }
+    } else {
+      let target;
+      if (standIns.has(host)) target = { address: '127.0.0.1', port: standIns.get(host) };
+      else {
+        const found = (await lookup(host, { all: true }).catch(() => [])).find((a) => !thisComputer(a));
+        if (!found) return refuse('502 Bad Gateway', 'That host was not found, or is this computer.');
+        target = { address: found.address, port: 443 };
+      }
+      if (client.destroyed) return;
+      upstream = net.connect(target.port, target.address);
+      try { await new Promise((resolve, reject) => { upstream.once('connect', resolve); upstream.once('error', reject); }); }
+      catch { return refuse('502 Bad Gateway', 'That host could not be reached.'); }
     }
-    if (client.destroyed) return;
-    const upstream = net.connect(target.port, target.address);
+    if (client.destroyed) return upstream.destroy();
+    upstream.on('error', () => {});
     const end = () => { client.destroy(); upstream.destroy(); tunnels.delete(end); };
     tunnels.add(end);
     client.on('close', end);
     upstream.on('close', end);
-    let open = false;
-    upstream.on('error', () => { if (!open) refuse('502 Bad Gateway', 'That host could not be reached.'); });
-    upstream.once('connect', () => {
-      open = true;
+    {
       client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       // nothing passes until the hello has named the host the list allowed, so the tunnel carries TLS to that host and
       // not, through an address two sites share, to another
@@ -134,7 +208,7 @@ export async function openGate({ hosts, onRefused }) {
       };
       client.on('data', check);
       if (head.length) check(Buffer.alloc(0));
-    });
+    }
   });
   server.on('clientError', (err, socket) => socket.destroy());
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -177,14 +251,14 @@ export function systemProxies(text = '') {
  * network settings name (scutil: `scutil --proxy`'s output, read outside isolation; undefined: not read), and the proxy
  * variables Spectrum's own environment has, which it does not pass on. Hosts and ports only.
  */
-export function proxyNote(name, passed = {}, scutil, own = process.env) {
+export function proxyNote(name, passed = {}, scutil, own = process.env, proxy) {
   const given = PROXY_VARS.filter((k) => passed[k]);
   const gate = given.length && given.every((k) => /^http:\/\/127\.0\.0\.1:\d+$/.test(passed[k]));
-  const parts = [given.length ? `Spectrum passed ${given.join(', ')} (${gate ? 'its own gate for the list of hosts' : proxyAt(passed[given[0]])})` : 'Spectrum passed no proxy variables'];
+  const parts = [given.length ? `Spectrum passed ${given.join(', ')} (${gate ? `its own gate${proxy ? `, which goes on through the proxy ${proxy.text} (${proxy.from.toLowerCase()})` : ' for the list of hosts'}` : proxyAt(passed[given[0]])})` : 'Spectrum passed no proxy variables'];
   const found = scutil === undefined ? null : systemProxies(scutil);
   parts.push(found === null ? 'this computer’s proxy settings were not read' : found.length ? `this Mac’s network settings name ${found.map(([kind, at]) => at ? `${kind} ${at}` : kind).join(', ')}` : 'this Mac’s network settings name no proxy');
   const kept = PROXY_VARS.filter((k) => own[k] && !passed[k]);
   if (kept.length) parts.push(`Spectrum’s own environment has ${kept.join(', ')} (${proxyAt(own[kept[0]])}), not passed on`);
-  const local = found?.some(([, at]) => at.endsWith('(this computer)'));
+  const local = !proxy && found?.some(([, at]) => at.endsWith('(this computer)'));
   return `Network check for ${name}: ${parts.join('; ')}.${local ? ` Isolation does not let ${name} reach a proxy on this computer.` : ''}`;
 }

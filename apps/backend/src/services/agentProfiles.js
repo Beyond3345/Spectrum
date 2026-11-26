@@ -9,6 +9,7 @@ import { writeJsonAtomic } from '../utils/fsUtils.js';
 import { resolveExecutable, isolationAvailable, SYSTEM_READS } from './agentSandbox.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { TOOL_HOSTS, cleanHost, cleanHosts } from './agentNetwork.js';
+import { currentProxy, proxyVariables } from './networkProxy.js';
 // each adapter's whole tree, every package pinned with its checksum (npm install --package-lock-only from the version)
 import codexLock from '../data/adapters/codex/package-lock.json' with { type: 'json' };
 import claudeLock from '../data/adapters/claude/package-lock.json' with { type: 'json' };
@@ -290,6 +291,7 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   // Advanced can't take it away
   if (id === 'claude' && !args.includes('--hide-claude-auth')) args.push('--hide-claude-auth');
   const signIn = await signInOf(profile, saved, agentHomeDir);
+  const proxy = await currentProxy();
   const forbidden = [...forbiddenRoots];
   // Codex keeps a login in CODEX_HOME/auth.json, which its API-key sign-in would overwrite: a key session has a Codex
   // home of its own that keeps the key in memory only, and isolation keeps the copied login out of its reach
@@ -321,7 +323,9 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const options = {
     command: found.command, args, workspace, home: agentHomeDir, runtimeExecutable: found.command,
     runtimePaths: [...new Set([...(saved.runtimePaths || []), ...found.reads, ...found.needs?.reads || []])], forbiddenRoots: forbidden, env,
-    program: found.program, secrets: [saved.apiKey].filter(Boolean), setup: setupOf(saved),
+    program: found.program, secrets: [saved.apiKey, proxy?.pass].filter(Boolean), setup: setupOf(saved),
+    // the user's proxy, which the agent reaches through Spectrum's gate, on any host too
+    ...(proxy && { proxy }),
     // the ACP authentication a session or Test asks for before its first: the profile's always, else the key's when the
     // key signs in; a copied login the agent finds itself
     ...((profile.auth || (signIn === 'key' && profile.keyAuth)) && { authMethod: profile.auth || profile.keyAuth }),
@@ -357,9 +361,10 @@ export function agentState({ planned, unavailable, found, needsMissing, adapter,
 const anyFile = async (root, files) => (await Promise.all(files.map((rel) => isFile(path.join(root, rel))))).some(Boolean);
 
 /** One agent as Settings and the workspace see it. Keys never leave the backend. */
-export async function agentEntry(id, config, isolated) {
+export async function agentEntry(id, config, isolated, proxy) {
   config ??= await agentConfigs();
   isolated ??= await isolationAvailable();
+  if (proxy === undefined) proxy = await currentProxy();
   const p = profileFor(id);
   const saved = config[id] || {};
   const found = p.planned ? null : await findProgram(p, saved);
@@ -377,7 +382,7 @@ export async function agentEntry(id, config, isolated) {
   const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, outdated: !!managed && !managed.current, test, credentials, configured });
   return {
     id, name: p.name, url: p.url, experimental: p.experimental, support: p.support, planned: p.planned, unavailable: p.unavailable,
-    command: chosen, args: saved.args || p.args, runtimePaths: saved.runtimePaths || [], keyEnv, network: networkOf(p, saved),
+    command: chosen, args: saved.args || p.args, runtimePaths: saved.runtimePaths || [], keyEnv, network: { ...networkOf(p, saved), ...(proxy && { proxy: { text: proxy.text, from: proxy.from } }) },
     keyEnvs: [...p.keys, ...(keyEnv && !p.keys.includes(keyEnv) ? [keyEnv] : [])], hasKey: !!saved.apiKey,
     canImport: !!p.login.length, installed: !!found, supported: isolated && !p.unavailable,
     ...(found && { program: found.program, source: found.source, where: found.where, reads: found.reads }),
@@ -395,7 +400,8 @@ export async function agentEntry(id, config, isolated) {
 export async function listAgents() {
   const config = await agentConfigs();
   const isolated = await isolationAvailable();
-  return Promise.all(PROFILES.map((p) => agentEntry(p.id, config, isolated)));
+  const proxy = await currentProxy();
+  return Promise.all(PROFILES.map((p) => agentEntry(p.id, config, isolated, proxy)));
 }
 
 export async function saveAgentConfig(id, value) {
@@ -500,7 +506,8 @@ export async function installAdapter(id, { npm } = {}) {
     // two files, as npm refuses one loaded as both
     const [rc, globalRc] = [path.join(staging, '.npmrc'), path.join(staging, '.npmrc-global')];
     for (const file of [rc, globalRc]) await fs.writeFile(file, '');
-    const proxies = Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(https?_proxy|no_proxy)$/i.test(k)));
+    // the user's proxy through Spectrum's relay, else the proxy variables Spectrum was started with
+    const proxies = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(https?_proxy|no_proxy)$/i.test(k))), ...proxyVariables() };
     const env = { PATH: process.env.PATH || '/usr/bin:/bin', HOME: path.join(staging, '.home'), npm_config_cache: path.join(staging, '.cache'), npm_config_userconfig: rc, npm_config_globalconfig: globalRc, ...proxies };
     // as the disk has it: through a link, npm ci takes the folder for a package the lock doesn't have
     const args = [npm || await bundledNpm(), 'ci', '--prefix', await fs.realpath(staging), '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'];
