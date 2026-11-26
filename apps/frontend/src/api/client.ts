@@ -2131,8 +2131,11 @@ export function revealCloudCopy(projectId: string, filePath?: string) {
 }
 
 // ─── Local ACP agents ───
-/** Where an agent stands (agentState() in the backend). Set up, which the workspace lists: ready, untested, or failed while configured. */
-export type AgentState = 'planned' | 'unavailable' | 'missing' | 'update' | 'adapter' | 'ready' | 'sign-in' | 'failed' | 'untested';
+/**
+ * Where an agent stands (agentState() in the backend). opened: its Test opened a session, with no key or login in
+ * Spectrum. Set up, which the workspace lists: ready, untested, or failed or opened while configured.
+ */
+export type AgentState = 'planned' | 'unavailable' | 'missing' | 'update' | 'adapter' | 'ready' | 'opened' | 'sign-in' | 'failed' | 'untested';
 /** What a Test (or a session) found: ready, sign-in, error, timeout, exited or not-acp. */
 export interface AgentTest { ok: boolean; code: string; version?: string; detail?: string; methods?: string[]; at: string }
 /**

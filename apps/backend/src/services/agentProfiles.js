@@ -291,17 +291,20 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
 /**
  * Where an agent stands, in this order: planned, unavailable, missing (its program, or one it needs), update (only an
  * adapter of another version is installed), adapter (an adapter is needed), the stored result for the program found
- * now (ready, sign-in or failed), untested when configured in Spectrum, else sign-in. Set up: ready, untested, or failed while configured, so a Test that timed out
- * never hides an agent the user set up; a program that isn't an ACP agent never is.
+ * now, untested when configured in Spectrum, else sign-in. A Test that opened a session is ready only with a key or a
+ * copied login in Spectrum (credentials), as every agent needs one in its private home; without, opened: it started,
+ * and a task may still ask for a sign-in. Set up: ready, untested, or failed or opened while configured (a program the
+ * user chose may carry its own sign-in), so a Test that timed out never hides an agent the user set up; a program
+ * that isn't an ACP agent never is.
  */
-export function agentState({ planned, unavailable, found, needsMissing, adapter, outdated, test, configured }) {
+export function agentState({ planned, unavailable, found, needsMissing, adapter, outdated, test, credentials, configured }) {
   const state = planned ? 'planned'
     : unavailable ? 'unavailable'
       : needsMissing || (!found && !adapter) ? 'missing'
         : !found ? (outdated ? 'update' : 'adapter')
-          : test ? (test.ok ? 'ready' : test.code === 'sign-in' ? 'sign-in' : 'failed')
+          : test ? (test.ok ? (credentials ? 'ready' : 'opened') : test.code === 'sign-in' ? 'sign-in' : 'failed')
             : configured ? 'untested' : 'sign-in';
-  return { state, setUp: state === 'ready' || state === 'untested' || (state === 'failed' && !!configured && test.code !== 'not-acp') };
+  return { state, setUp: state === 'ready' || state === 'untested' || (['failed', 'opened'].includes(state) && !!configured && test.code !== 'not-acp') };
 }
 
 const anyFile = async (root, files) => (await Promise.all(files.map((rel) => isFile(path.join(root, rel))))).some(Boolean);
@@ -317,12 +320,14 @@ export async function agentEntry(id, config, isolated) {
   const chosen = chosenCommand(p, saved);
   // the files alone could be ones the agent wrote itself during a Test
   const loginCopied = !!saved.loginCopied && await anyFile(path.join(AGENT_DIR, 'homes', id), p.login);
-  const configured = !!saved.apiKey || loginCopied || path.isAbsolute(chosen) || found?.source === 'spectrum';
+  const credentials = !!saved.apiKey || loginCopied;
+  // an adapter Spectrum installed is no sign-in: Claude Agent's card asks for its key before a task fails without one
+  const configured = credentials || path.isAbsolute(chosen);
   const test = found && saved.test?.program === found.program ? withoutProgram(saved.test) : undefined;
   const keyEnv = saved.keyEnv || p.key;
   const needs = p.needs && (found?.needs || await findNeeded(p.needs));
   const app = await agentApp(p);
-  const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, outdated: !!managed && !managed.current, test, configured });
+  const { state, setUp } = agentState({ planned: !!p.planned, unavailable: !!p.unavailable || !isolated, found: !!found, needsMissing: !!needs && !needs.found, adapter: !!p.adapter, outdated: !!managed && !managed.current, test, credentials, configured });
   return {
     id, name: p.name, url: p.url, experimental: p.experimental, support: p.support, planned: p.planned, unavailable: p.unavailable,
     command: chosen, args: saved.args || p.args, runtimePaths: saved.runtimePaths || [], keyEnv, network: networkOf(p, saved),

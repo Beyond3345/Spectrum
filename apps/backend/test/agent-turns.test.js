@@ -122,12 +122,15 @@ test('the agent’s usage reaches the session’s events, which the transcript d
   assert.ok(!run.events.some((e) => e.data?.sessionUpdate === 'usage_update'), 'once, as usage');
 });
 
-test('a task refused for want of a sign-in says where to add the key', { skip, timeout: 120000 }, async () => {
+test('a task refused for want of a sign-in fails with where to add the key, and its card says Sign-in needed', { skip, timeout: 120000 }, async () => {
   const { open, turn } = await setup();
+  const { agentEntry } = await import('../src/services/agentProfiles.js');
   const { run } = await open({ 'main.tex': 'original\n' }, { args: ['--auth-on-prompt'] });
+  assert.equal((await agentEntry('qoder')).state, 'opened', 'the session opened: no more than that is known');
   await turn(run, 'anything', 'failed');
-  const last = run.events.filter((e) => e.type === 'state').at(-1);
-  assert.match(JSON.stringify(last), /Authentication required Add its API key, or copy its login, in Settings › Agents\./);
+  assert.deepEqual(run.events.filter((e) => e.type === 'state').at(-1).data, { status: 'failed', error: 'Qoder needs a sign-in. Add its personal access token in Settings › Agents.' });
+  const card = await agentEntry('qoder');
+  assert.deepEqual([card.state, card.test.code], ['sign-in', 'sign-in']);
 });
 
 // r-agentic-08, A-15: a review session's agent waits between turns instead of starting again for each

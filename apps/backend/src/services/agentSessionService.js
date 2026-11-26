@@ -440,6 +440,7 @@ async function connect(r) {
   const initial = await timeout(r.peer.request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } }), 30000, 'The agent did not initialize.', r.connectionAbort.signal);
   if (initial.protocolVersion !== 1) throw new Error('This agent does not support ACP v1.');
   r.capabilities = initial.agentCapabilities || {};
+  r.agentVersion = initial.agentInfo?.version ? String(initial.agentInfo.version) : undefined;
   emit(r, 'initialized', { agentInfo: initial.agentInfo, capabilities: r.capabilities, authMethods: initial.authMethods });
   let session;
   // a persona goes in the agent's own system prompt where it takes one, on every new, loaded or resumed session
@@ -466,7 +467,7 @@ async function connect(r) {
     }
   } catch (err) {
     // the agent asked for authentication: its card says Sign-in needed
-    if (err.code === -32000) await recordTest(r.agentId, { ok: false, code: 'sign-in', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
+    if (err.code === -32000) throw new Error(await signInNeeded(r));
     throw new Error(`Agent setup failed: ${err.message}. Configure its API key or import a supported login in Agents.`);
   }
   finally { r.opening = false; }
@@ -474,6 +475,18 @@ async function connect(r) {
   if (!r.remoteId) throw new Error('The agent did not return a session id.');
   await recordTest(r.agentId, { ok: true, code: 'ready', program: r.processOptions.program, ...(initial.agentInfo?.version && { version: String(initial.agentInfo.version) }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
   emit(r, 'session', { modes: session.modes, configOptions: session.configOptions });
+}
+
+/**
+ * ACP's "authentication required" (-32000), as a session opens or a task starts: the agent has no key or login inside
+ * isolation, which its own words don't say how to give. Its card says Sign-in needed; the line says where to give one.
+ */
+async function signInNeeded(r) {
+  await recordTest(r.agentId, { ok: false, code: 'sign-in', program: r.processOptions.program, ...(r.agentVersion && { version: r.agentVersion }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
+  const p = profileFor(r.agentId);
+  const key = p.keys.some((k) => /TOKEN/.test(k)) && !p.keys.some((k) => /API_KEY/.test(k)) ? 'personal access token' : 'API key';
+  const how = p.keys.length && p.login.length ? `Add its ${key}, or copy its login,` : p.keys.length ? `Add its ${key}` : 'Copy its login';
+  return `${p.name} needs a sign-in. ${how} in Settings › Agents.`;
 }
 
 async function timeout(promise, ms, message, signal) {
@@ -1008,9 +1021,8 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       unreached = sent && err.code !== -32000 && child?.gateAsked?.() === 0;
       if (!r.cancelled && child?.pid && child.exitCode === null && child.signalCode === null) await timeout(new Promise((resolve) => child.once('exit', resolve)), 500, 'still running').catch(() => {});
       const told = r.status === 'failed' && child && (child.exitCode !== null || child.signalCode !== null);
-      // ACP's "authentication required": the agent has no key or login inside isolation, which its own words don't say how to give
-      const signIn = err.code === -32000 ? ' Add its API key, or copy its login, in Settings › Agents.' : '';
-      outcome = r.cancelled ? ['interrupted', 'Stopped.'] : ['failed', told ? undefined : `${err.message}${signIn}`];
+      const signIn = err.code === -32000 && !r.cancelled ? await signInNeeded(r) : '';
+      outcome = r.cancelled ? ['interrupted', 'Stopped.'] : ['failed', signIn || (told ? undefined : err.message)];
       disconnect(r);
     }
     finally {

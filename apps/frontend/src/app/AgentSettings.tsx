@@ -71,12 +71,13 @@ function statusLine(a: LocalAgent) {
   if (a.state === 'adapter') return `Install the ACP adapter to use ${a.name} here.`;
   const tested = `tested ${relativeTime(a.test?.at || '').toLowerCase()}`;
   if (a.state === 'ready') return a.test?.version ? `Version ${a.test.version}, ${tested}` : capital(tested);
+  if (a.state === 'opened') return `A session opened, ${tested}. No key or login yet.`;
   if (a.state === 'failed') return capital(testSentence(a).replace(/^Last Test, [^:]*: /, ''));
   if (a.state === 'untested') return 'Set up, not tested yet.';
-  return a.test ? 'It asked for a sign-in.' : 'Found. Sign in, copy the login or add a key.';
+  return a.test ? 'It asked for a sign-in.' : a.canImport ? 'Found. Sign in, copy the login or add a key.' : `Found. Add its ${tokenWord(a)}.`;
 }
 
-type Step = { text: string; code?: string; action?: 'test' | 'install' | 'update' | 'copy' | 'choose' };
+type Step = { text: string; code?: string; action?: 'test' | 'install' | 'update' | 'copy' | 'choose' | 'key' };
 /** The one next step a card suggests, with at most one button. */
 function nextStep(a: LocalAgent): Step | null {
   if (a.planned) return { text: `${a.name} will connect through its official platform in a later release.` };
@@ -97,10 +98,16 @@ function nextStep(a: LocalAgent): Step | null {
       return { text: `Install the ACP adapter to use ${a.name} here.`, action: 'install' };
     case 'sign-in':
       if (a.loginFound && a.canImport && !a.loginCopied) return { text: `A ${a.name} login was found on this computer. Copy it into Spectrum.`, action: 'copy' };
-      if (!a.test) return { text: 'Sign in, copy the login or add a key, then press Test. Some agents work without one.', action: 'test' };
+      // an agent with a key only (Claude Agent) is asked for it before a task fails without one
+      if (!a.test && a.canImport) return { text: 'Sign in, copy the login or add a key, then press Test. Some agents work without one.', action: 'test' };
       if (a.appSignIn) return { text: `Sign in inside the ${a.name} app, then press Copy existing login.` };
-      if (a.signIn && a.canImport) return { text: `Run the sign-in command in ${TERMINAL}, then press Copy existing login.` };
-      return { text: `Add your ${a.name} ${tokenWord(a)}, then press Save key.` };
+      if (a.signIn && a.canImport) return { text: `Run the sign-in command in ${TERMINAL}, then press Copy existing login${a.keyEnvs.length ? `, or add your ${tokenWord(a)}` : ''}.`, action: a.keyEnvs.length ? 'key' : undefined };
+      return { text: `Add your ${a.name} ${tokenWord(a)}, then press Save key.`, action: a.keyEnvs.length ? 'key' : undefined };
+    case 'opened':
+      return {
+        text: `${a.name} started and opened a session, but Spectrum has no key or login for it, so a task may ask for a sign-in. Add your ${tokenWord(a)}${a.canImport ? ' or copy its login' : ''}.`,
+        action: a.keyEnvs.length ? 'key' : a.canImport ? 'copy' : undefined
+      };
     case 'untested':
       return { text: `Press Test to check that ${a.name} starts in isolation.`, action: 'test' };
     case 'failed':
@@ -349,6 +356,10 @@ function AgentCard({
       <button className="btn small primary" disabled={!!busy} onClick={install}>
         {action === 'update' ? 'Update adapter' : 'Install adapter'}
       </button>
+    ) : action === 'key' ? (
+      <button className="btn small primary" disabled={!!busy} onClick={() => document.getElementById(`${id}-key-input`)?.focus()}>
+        Add {tokenWord(a)}
+      </button>
     ) : action === 'copy' ? (
       <button className="btn small primary" disabled={!!busy} onClick={copyLogin}>
         Copy existing login
@@ -500,6 +511,7 @@ function AgentCard({
                     className="input"
                     type="password"
                     autoComplete="off"
+                    id={`${id}-key-input`}
                     aria-labelledby={`${id}-key`}
                     value={key}
                     placeholder={a.hasKey && keyEnv === a.keyEnv ? 'Saved on this computer' : `Paste your ${tokenWord(a)}`}

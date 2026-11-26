@@ -31,7 +31,12 @@ test('Test stores each outcome; sessions store theirs; Tests, turns and installs
   try {
     await setUp('qoder');
     let agent = await testAgent('qoder');
-    assert.deepEqual([agent.state, agent.setUp, agent.test.code, agent.test.version], ['ready', true, 'ready', '1']);
+    // a program the user chose, which may carry its own sign-in: set up, but only a session is known to open
+    assert.deepEqual([agent.state, agent.setUp, agent.test.code, agent.test.version], ['opened', true, 'ready', '1']);
+    await saveAgentConfig('qoder', { apiKey: 'qoder-token' });
+    agent = await testAgent('qoder');
+    assert.deepEqual([agent.state, agent.setUp], ['ready', true], 'with a key it is ready');
+    await saveAgentConfig('qoder', { apiKey: '' });
     assert.deepEqual(await fs.readdir(path.join(dir, 'data', 'agents', 'homes', 'qoder', 'tmp')), [], 'the Test’s folder is gone');
 
     await setUp('qoder', '--auth-required');
@@ -63,7 +68,7 @@ test('Test stores each outcome; sessions store theirs; Tests, turns and installs
     await fs.writeFile(path.join(project.path, 'main.tex'), 'original\n');
     await setUp('gemini', '--auth-required');
     const refused = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'gemini' })).id);
-    await assert.rejects(refused.ready, /Agent setup failed/);
+    await assert.rejects(refused.ready, { message: 'Gemini CLI needs a sign-in. Add its API key, or copy its login, in Settings › Agents.' });
     assert.equal((await agentConfigs()).gemini.test.code, 'sign-in');
     await setUp('qoder');
     const run = await getAgentRun((await newAgentRun({ projectId: project.id, agentId: 'qoder' })).id);

@@ -189,7 +189,10 @@ test('each state a card shows, and which are set up', () => {
     [{ found: false, adapter: true }, 'adapter', false],
     [{ found: false, adapter: true, outdated: true }, 'update', false],
     [{ found: false, adapter: true, outdated: true, needsMissing: true }, 'missing', false],
-    [{ found: true, test: { ok: true, code: 'ready' } }, 'ready', true],
+    [{ found: true, test: { ok: true, code: 'ready' }, credentials: true, configured: true }, 'ready', true],
+    // a session opened, with no key or login in Spectrum: not ready, set up only for a program the user chose
+    [{ found: true, test: { ok: true, code: 'ready' } }, 'opened', false],
+    [{ found: true, test: { ok: true, code: 'ready' }, configured: true }, 'opened', true],
     [{ found: true, test: { ok: false, code: 'sign-in' }, configured: true }, 'sign-in', false],
     [{ found: true, test: { ok: false, code: 'timeout' }, configured: true }, 'failed', true],
     [{ found: true, test: { ok: false, code: 'error' } }, 'failed', false],
@@ -294,6 +297,7 @@ fs.writeFileSync(path.join(prefix, 'node_modules', '.package-lock.json'), JSON.s
     // an adapter an older Spectrum installed, and no codex-acp of the user's: the card offers to update it, and a
     // session says so
     const standalone = path.join(home, '.local/bin/codex-acp');
+    await saveAgentConfig('codex', { apiKey: '' });
     await fs.rename(standalone, `${standalone}.away`);
     const older = path.join(base, '2.3.0', 'node_modules', adapter.package);
     await fs.mkdir(path.join(older, 'dist'), { recursive: true });
@@ -325,7 +329,8 @@ fs.writeFileSync(path.join(prefix, 'node_modules', '.package-lock.json'), JSON.s
     assert.deepEqual(await fs.readdir(base), [adapter.version], 'older versions go');
     assert.deepEqual((await fs.readdir(path.join(base, adapter.version))).sort(), ['node_modules', 'package-lock.json', 'package.json']);
     const codex = await agentEntry('codex');
-    assert.deepEqual([codex.source, codex.adapter.installed, codex.configured, codex.state], ['spectrum', adapter.version, true, 'untested']);
+    // an installed adapter is no sign-in
+    assert.deepEqual([codex.source, codex.adapter.installed, codex.configured, codex.state], ['spectrum', adapter.version, false, 'sign-in']);
     const options = await launchOptions('codex', { workspace: dir, home: dir });
     assert.deepEqual([options.command, options.args[0]], [process.execPath, path.join(base, adapter.version, 'node_modules', adapter.package, adapter.bin)]);
     assert.ok(options.runtimePaths.includes(path.join(base, adapter.version)));
@@ -335,7 +340,7 @@ fs.writeFileSync(path.join(prefix, 'node_modules', '.package-lock.json'), JSON.s
       // an earlier test's folder, which isn't there
       await saveAgentConfig('codex', { runtimePaths: [] });
       const tested = await testAgent('codex');
-      assert.deepEqual([tested.state, tested.test.code, tested.test.version], ['ready', 'ready', '1']);
+      assert.deepEqual([tested.state, tested.test.code, tested.test.version], ['opened', 'ready', '1'], 'a session opened, with no key or login yet');
     }
     await fs.rename(`${standalone}.away`, standalone);
 
