@@ -42,6 +42,11 @@ test('Test stores each outcome; sessions store theirs; Tests, turns and installs
     await setUp('qoder', '--auth-required');
     agent = await testAgent('qoder');
     assert.deepEqual([agent.state, agent.test.code], ['sign-in', 'sign-in']);
+    // with a saved key, the Test names it as refused
+    await saveAgentConfig('qoder', { apiKey: 'qoder-secret-123' });
+    agent = await testAgent('qoder');
+    assert.deepEqual([agent.state, agent.test.code, agent.test.refused], ['sign-in', 'sign-in', 'key']);
+    await saveAgentConfig('qoder', { apiKey: '' });
     await setUp('qoder', '--error');
     agent = await testAgent('qoder');
     assert.deepEqual([agent.state, agent.test.code, agent.test.detail], ['failed', 'error', 'Invalid API key']);

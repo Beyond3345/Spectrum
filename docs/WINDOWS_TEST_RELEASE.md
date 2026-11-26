@@ -153,7 +153,7 @@ Settings › Agents lists every supported agent. For each agent the user has ins
 - **Gemini CLI and GitHub Copilot CLI:** Test decides whether they work on Windows (decision 11 of the part 2 plan).
 - **Antigravity:** if `agy` is installed (in `%LOCALAPPDATA%\agy\bin`), record whether it is an `.exe`, then save a Gemini API key on its card and press Test. Its Google sign-in is in Windows Credential Manager, which isolation is not expected to reach: record what Test says without a key too.
 - **Codex, Claude Agent, Pi and ZCode** are not run on Windows yet (see `docs/WINDOWS_AGENT_VALIDATION.md`); their cards should say so.
-- **OpenCode** is listed as Not supported on every system since 2.6.0, and Test is not offered for it.
+- **OpenCode 2** is listed as unavailable on Windows, since it needs a local port that Windows isolation does not open, and Test is not offered for it.
 - **Badges:** each card carries Supported (Claude Agent, DeepSeek Harness), In progress (Codex), Untested or Not supported. Those words describe the Mac; on Windows the card's own text says what does not run there.
 - **The Local agents tab** should say, on Windows only, that local agents do not get Spectrum's tools or Direct editing yet and that the Spectrum agent has every tool.
 - **DeepSeek Harness:** if the user has the app installed, find where the app keeps its `dsh` command, if anywhere, by looking inside its install folder without running it. Record the path and how it starts (a `.exe`, a `.cmd`, or a script run by the app's own binary). On a Mac it is `Contents/Resources/runtime/cli/bin/dsh`, a shell script that runs the app's binary with `ELECTRON_RUN_AS_NODE=1`. Windows isolation starts only `.exe` programs, so report what you find rather than changing code.

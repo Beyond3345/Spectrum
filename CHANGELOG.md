@@ -12,9 +12,13 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Codex signs in with an API key in a Codex home of its own, or with the copied ChatGPT login; with both, its card lets you choose, and a refused key or login is named with the way back
 - Antigravity's card has a switch, on unless turned off, that lets its own language server use a port on this computer, which it needs to start in isolation. Spectrum's own ports stay closed to it, and a session with the switch on says so once
 - docs/AGENT_ACCEPTANCE_TEST.md, a test to run on each local agent before calling it supported
+- OpenCode 2 as a local agent on a Mac again, with the same switch as Antigravity for the server it starts on a local port, on by default
+- Codex runs commands in an Isolated session: Spectrum starts it in its Full access mode there, since Codex's own sandbox cannot start inside Spectrum's isolation, which still holds it to its copy. Held to its list, Codex no longer syncs OpenAI's plugin catalogue from github.com
 
 ### Changed
 
+- Claude Agent is shown as untested until it passes the acceptance test
+- Spectrum starts Antigravity with its telemetry off, which went to a host off its list
 - An agent's permission card shows the full command and the files a change touches before you choose
 - An agent's question with choices also takes your own words
 
@@ -22,6 +26,8 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 
 - Codex works in isolation on a Mac. Isolation hid the system's list of trusted certificates from it, so every connection failed with “workspace routing discovery failed”
 - A Codex task that fails ends as Failed with Codex's own words, rather than looking done
+- A wrong API key or login is named as refused, with the way to replace it, for every agent and in Test, not only for Codex
+- An Antigravity task its model refused, such as for a wrong key, ends as Failed with the error, rather than looking done
 
 ## 2.6.4 (26 November 2026)
 

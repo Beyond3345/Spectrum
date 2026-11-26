@@ -166,6 +166,44 @@ test('a key session authenticates with api-key and sees the key, its own Codex h
   sessions.closeAgentRun(run);
 });
 
+test('Codex starts without a sandbox of its own on a copy, never in Direct; held to its list it syncs no plugins, with either credential', { skip: nodeAdapters }, async () => {
+  let home = await setUp({ key: KEY });
+  let options = await launchOptions('codex', { workspace: path.join(home, 'tmp'), home });
+  assert.equal(options.env.INITIAL_AGENT_MODE, 'agent-full-access');
+  options = await launchOptions('codex', { workspace: path.join(home, 'tmp'), home, direct: true });
+  assert.equal(options.env.INITIAL_AGENT_MODE, undefined, 'Direct keeps Codex’s own mode, which asks first');
+  await saveAgentConfig('codex', { network: { mode: 'hosts' } });
+  await launchOptions('codex', { workspace: path.join(home, 'tmp'), home });
+  assert.equal(await fs.readFile(path.join(home, '.codex-key', 'config.toml'), 'utf8'), 'cli_auth_credentials_store = "ephemeral"\n[features]\nplugins = false\n');
+  home = await setUp({ login: true });
+  await launchOptions('codex', { workspace: path.join(home, 'tmp'), home });
+  assert.equal(await fs.readFile(path.join(home, '.codex', 'config.toml'), 'utf8'), '[features]\nplugins = false\n');
+  await saveAgentConfig('codex', { network: { mode: 'any' } });
+  await launchOptions('codex', { workspace: path.join(home, 'tmp'), home });
+  assert.equal(await fs.readFile(path.join(home, '.codex', 'config.toml'), 'utf8'), '\n', 'on any host, Codex’s own default');
+});
+
+test('an agent without a key sign-in method names the saved key it was given, so a refusal names it', { skip: nodeAdapters }, async () => {
+  await saveAgentConfig('qoder', { command: process.execPath, args: [fixture], runtimePaths: [path.dirname(fixture)], apiKey: KEY });
+  const home = await agentHome('qoder');
+  let options = await launchOptions('qoder', { workspace: path.join(home, 'tmp'), home });
+  assert.deepEqual([options.signIn, options.authMethod], ['key', undefined]);
+  await saveAgentConfig('qoder', { apiKey: '' });
+  options = await launchOptions('qoder', { workspace: path.join(home, 'tmp'), home });
+  assert.equal(options.signIn, undefined, 'nothing saved');
+});
+
+test('Antigravity’s refused turn, which agy ends as end_turn, is Failed: a refused key names the key, another error is told', { skip, timeout: 120000 }, async () => {
+  const { open, turn } = await native$();
+  await saveAgentConfig('antigravity', { command: process.execPath, args: [fixture, '--auth-methods'], runtimePaths: [path.dirname(fixture)], apiKey: 'AIza-fixture-0123456789' });
+  const run = await open('antigravity');
+  assert.deepEqual(await turn(run, 'please-agy-key'), { status: 'failed', error: 'Antigravity refused the saved API key. Replace it in Settings › Agents.' });
+  assert.equal((await agentEntry('antigravity')).test.refused, 'key');
+  assert.deepEqual(await turn(run, 'please-agy-error'), { status: 'failed', error: 'generating and executing: doRequest: error sending request: Post "https://generativelanguage.googleapis.com/v1beta/models"' });
+  assert.deepEqual(await turn(run, 'hello'), { status: 'completed' });
+  sessions.closeAgentRun(run);
+});
+
 test('Codex’s AIR sessionFailure ends a turn Failed with its title; a retry that recovers, or a reply with no edits, is Completed', { skip, timeout: 120000 }, async () => {
   const { open, turn } = await native$();
   await setUp({ login: true });

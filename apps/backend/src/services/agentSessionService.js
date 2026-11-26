@@ -358,7 +358,7 @@ async function connect(r) {
   // they share the private home: a turn waits for that agent's Test, which is short
   await tests.get(r.agentId)?.catch(() => {});
   if (installing.has(r.agentId)) throw new Error(`${profile.name}’s adapter is being changed. Try again when it finishes.`);
-  r.processOptions = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] });
+  r.processOptions = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [], direct: r.mode === 'direct' });
   r.limits = limitsOf(r.processOptions, await skillsKey(r));
   // the port its own server may use is never opened silently: told once a session
   if (r.processOptions.loopback && !r.toldLoopback) {
@@ -492,6 +492,8 @@ async function connect(r) {
 const clientCapabilities = (air) => ({ fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} }, ...(air?.length && { _meta: { jetbrains: { air: { version: 1, capabilities: air } } } }) });
 
 // codex-acp's words for a ChatGPT login that chatgpt.com no longer takes (its ACCOUNT_READ_AUTH_FAILURE_MESSAGES)
+// agy acp 1.5.18's words for a turn that failed: `\n⚠ agent executor error: generating and executing: Error 400, …`
+const AGY_ERROR = /^\s*⚠\s*agent executor error:\s*([\s\S]+)$/;
 const LOGIN_REFUSED = ['workspace routing discovery unauthorized (401)', 'selected workspace missing from routing discovery', 'workspace routing requires a ChatGPT account id'];
 
 /**
@@ -588,7 +590,7 @@ async function runTest(profile, limit) {
       if (!err.test && typeof err.code !== 'number') await Promise.race([ended, new Promise((resolve) => setTimeout(resolve, 500))]);
       result = err.test === 'exited' || (exited && err.test !== 'timeout') ? { code: 'exited', detail: hide(output, options.secrets).slice(-2000) }
         : err.test === 'timeout' ? { code: 'timeout' }
-          : err.code === -32000 ? { code: 'sign-in', ...(initial?.authMethods?.length && { methods: initial.authMethods.map((m) => m.name || m.id).filter(Boolean) }) }
+          : err.code === -32000 ? { code: 'sign-in', ...(options.signIn && { refused: options.signIn }), ...(initial?.authMethods?.length && { methods: initial.authMethods.map((m) => m.name || m.id).filter(Boolean) }) }
             : typeof err.code === 'number' ? { code: 'error', detail: hide(err.message, options.secrets).slice(0, 2000) }
               : { code: 'not-acp' };
     }
@@ -1090,6 +1092,13 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
         const flagged = updates.map((e) => adapterError(e.data)).filter(Boolean).at(-1);
         if (flagged && !updates.some((e) => e.data?.sessionUpdate === 'tool_call')) outcome[1] = `Ended without changes. ${profileFor(r.agentId).name} reported a problem during this task: ${flagged}`;
       }
+      // agy acp ends a turn its model refused (a wrong key, an unreachable host) as end_turn, with the error as its only reply
+      if (outcome?.[0] === 'completed' && !changed && r.agentId === 'antigravity') {
+        const updates = r.events.filter((e) => e.id > asked.id && e.type === 'update');
+        const said = updates.filter((e) => e.data?.sessionUpdate === 'agent_message_chunk').map((e) => e.data.content?.text || '').join('');
+        const error = !updates.some((e) => e.data?.sessionUpdate === 'tool_call') && said.match(AGY_ERROR)?.[1].trim();
+        if (error) outcome = ['failed', r.processOptions.signIn === 'key' && /API_KEY_INVALID|API key not valid/.test(error) ? await signInNeeded(r) : error.slice(0, 2000)];
+      }
       // held to its list, an agent that works asks the gate for its model at least: one that asked for nothing either
       // ignores the proxy variables or never got that far, and the user is told once where the choice is
       if (unreached && !r.cancelled && !r.toldUnreached) {
@@ -1151,7 +1160,7 @@ export function closeAgentRun(r) {
 }
 // what isolation an agent starts in and the skills it is given, less what each start makes anew (OpenCode's port and
 // password)
-const limitsOf = ({ internalPort, secrets, args, env, ...rest }, skills) => JSON.stringify({ ...rest, args: internalPort ? args.slice(0, -4) : args, env: { ...env, OPENCODE_SERVER_PASSWORD: undefined }, skills });
+const limitsOf = ({ secrets, ...rest }, skills) => JSON.stringify({ ...rest, skills });
 const skillsKey = async (r) => (await activeSkills(r.root).catch(() => [])).map((s) => `${s.id} ${s.stamp}`).join('\n');
 /**
  * Whether the agent connected now can take the next turn: it still runs, and would start now with the same program,
@@ -1160,7 +1169,7 @@ const skillsKey = async (r) => (await activeSkills(r.root).catch(() => [])).map(
  */
 async function keptAgentFits(r) {
   if (r.child?.exitCode !== null || r.child.signalCode !== null || r.connection.signal.aborted || installing.has(r.agentId)) return false;
-  const options = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] }).catch(() => null);
+  const options = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [], direct: r.mode === 'direct' }).catch(() => null);
   if (!options || limitsOf(options, await skillsKey(r)) !== r.limits) return false;
   // skills only added while another project's session used the home: the ones off here go once it no longer does
   if (r.skillsAdded) await syncAgentSkills(r).catch(() => {});
