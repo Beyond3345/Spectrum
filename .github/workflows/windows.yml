@@ -168,7 +168,10 @@ jobs:
         run: |
           foreach ($dir in "$env:LOCALAPPDATA\MiKTeX\miktex\log", "$env:ProgramData\MiKTeX\miktex\log") {
             Get-ChildItem $dir -Filter 'pdflatex*.log' -ErrorAction SilentlyContinue | ForEach-Object {
-              Write-Host "== $($_.FullName)"; Get-Content $_.FullName -Tail 40
+              Write-Host "== $($_.FullName)"
+              # a pass from the precompiled preamble, and what MiKTeX said of it
+              Select-String -Path $_.FullName -Pattern 'fmt=' -Context 0,20 | Select-Object -First 2 | ForEach-Object { $_.Line; $_.Context.PostContext }
+              Get-Content $_.FullName -Tail 15
             }
           }
 
