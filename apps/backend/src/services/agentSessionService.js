@@ -17,6 +17,7 @@ import { readProjectSettings } from './projectSettings.js';
 import { checkedImages, openTodos, suggestedTodo } from './agentService.js';
 import { AGENT_DIR, profileFor, agentHome, agentEntry, launchOptions, recordTest, installing, installAdapter, removeAdapter, allowAgentHost } from './agentProfiles.js';
 import { spawnAgentProcess, killAgentProcess, isolationAvailable } from './agentSandbox.js';
+import { proxyNote } from './agentNetwork.js';
 import { initialiseWorkspace, workspaceChanges, workspaceFiles, applyWorkspaceChanges, captureAgentProposal, fileHash, readCurrent, rebaseChange, refreshDraft } from './agentWorkspace.js';
 import { ITEM_ID, readItems } from '../routes/todos.js';
 import { activeSkills, listSkills, loadSkill, SKILL_ID } from './skillService.js';
@@ -375,6 +376,8 @@ async function connect(r) {
   if (r.cancelled || r.connectionAbort.signal.aborted) { killAgentProcess(r.child); throw new Error('Task cancelled.'); }
   // the tools server starts with the environment Spectrum names, so it is told of the agent's gate here
   if (tools && r.child.gateEnv) tools.server.env.push(...Object.entries(r.child.gateEnv).map(([name, value]) => ({ name, value })));
+  // how Codex may find a proxy, which a run that cannot reach chatgpt.com is compared by
+  if (r.agentId === 'codex') emit(r, 'notice', { message: proxyNote(profile.name, { ...r.child.gateEnv, ...r.processOptions.env }, await proxySettings(), process.env, r.processOptions.proxy) });
   let stderr = '';
   const redact = (text) => hide(text, r.processOptions.secrets);
   r.child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-12000); r.diagnostic = redact(stderr); });
@@ -442,7 +445,7 @@ async function connect(r) {
   for (const method of ['cursor/create_plan', '_cursor/create_plan']) app.onRequest(method, (v) => v, ({ params }) => requestUser(r, 'plan', params));
   r.connection = app.connect(ndJsonStream(Writable.toWeb(r.child.stdin), Readable.toWeb(r.child.stdout)));
   r.peer = r.connection.agent;
-  const initial = await timeout(r.peer.request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } }), 30000, 'The agent did not initialize.', r.connectionAbort.signal);
+  const initial = await timeout(r.peer.request('initialize', { protocolVersion: 1, clientCapabilities: clientCapabilities(r.processOptions.air), clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } }), 30000, 'The agent did not initialize.', r.connectionAbort.signal);
   if (initial.protocolVersion !== 1) throw new Error('This agent does not support ACP v1.');
   r.capabilities = initial.agentCapabilities || {};
   r.agentVersion = initial.agentInfo?.version ? String(initial.agentInfo.version) : undefined;
@@ -483,16 +486,34 @@ async function connect(r) {
 }
 
 /**
- * ACP's "authentication required" (-32000), as a session opens or a task starts: the agent has no key or login inside
- * isolation, which its own words don't say how to give. Its card says Sign-in needed; the line says where to give one.
+ * What Spectrum tells the agent it can do: files, terminals and forms, and to one that takes them (profile.air), the
+ * capabilities of JetBrains' AIR extension, of which Spectrum reads only a failed turn's sessionFailure.
+ */
+const clientCapabilities = (air) => ({ fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} }, ...(air?.length && { _meta: { jetbrains: { air: { version: 1, capabilities: air } } } }) });
+
+// codex-acp's words for a ChatGPT login that chatgpt.com no longer takes (its ACCOUNT_READ_AUTH_FAILURE_MESSAGES)
+const LOGIN_REFUSED = ['workspace routing discovery unauthorized (401)', 'selected workspace missing from routing discovery', 'workspace routing requires a ChatGPT account id'];
+
+/**
+ * ACP's "authentication required" (-32000), as a session opens or a task starts, or a failure that says the copied
+ * login was refused. An agent that signed in with a key or a copied login (processOptions.signIn) had it refused, and
+ * its card says which, with the way to replace it; otherwise the agent has no key or login inside isolation, which its
+ * own words don't say how to give. Its card says Sign-in needed; the line says where to give one.
  */
 async function signInNeeded(r) {
-  await recordTest(r.agentId, { ok: false, code: 'sign-in', program: r.processOptions.program, ...(r.agentVersion && { version: r.agentVersion }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
+  const refused = r.processOptions.signIn;
+  await recordTest(r.agentId, { ok: false, code: 'sign-in', ...(refused && { refused }), program: r.processOptions.program, ...(r.agentVersion && { version: r.agentVersion }) }, { setup: r.processOptions.setup, fromSession: true }).catch(() => {});
   const p = profileFor(r.agentId);
   const key = p.keys.some((k) => /TOKEN/.test(k)) && !p.keys.some((k) => /API_KEY/.test(k)) ? 'personal access token' : 'API key';
+  if (refused === 'key') return `${p.name} refused the saved ${key}. Replace it in Settings › Agents.`;
+  if (refused === 'login') return `${p.name} refused the copied login: it may have expired or been signed out. Sign in again${p.signIn ? ` with ${p.signIn}` : ''}, then copy the login again in Settings › Agents.`;
   const how = p.keys.length && p.login.length ? `Add its ${key}, or copy its login,` : p.keys.length ? `Add its ${key}` : 'Copy its login';
   return `${p.name} needs a sign-in. ${how} in Settings › Agents.`;
 }
+
+/** This Mac's proxy settings as `scutil --proxy` gives them, read outside isolation and never sent anywhere; undefined elsewhere or when unread. */
+const proxySettings = () => process.platform !== 'darwin' ? Promise.resolve(undefined)
+  : execFileAsync((process.env.NODE_ENV !== 'production' && process.env.SPECTRUM_SCUTIL) || '/usr/sbin/scutil', ['--proxy'], { timeout: 3000 }).then(({ stdout }) => stdout, () => undefined);
 
 async function timeout(promise, ms, message, signal) {
   let timer, abort;
@@ -555,7 +576,7 @@ async function runTest(profile, limit) {
     });
     let result;
     try {
-      initial = await ask('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } });
+      initial = await ask('initialize', { protocolVersion: 1, clientCapabilities: clientCapabilities(options.air), clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } });
       if (initial?.protocolVersion !== 1) result = { code: 'not-acp' };
       else {
         if (options.authMethod) await ask('authenticate', { methodId: options.authMethod });
@@ -1014,17 +1035,23 @@ export async function promptAgent(r, prompt, { context = {}, persona } = {}) {
       r.notes = [];
       r.openedNew = r.freshSession = false;
       r.turnCount++;
-      unreached = r.child?.gateAsked?.() === 0;
+      unreached = !!r.processOptions.hosts && r.child?.gateAsked?.() === 0;
       emit(r, 'complete', result);
       // the turn's tokens, where the agent counts them: { turn: { totalTokens, inputTokens, outputTokens, … } }
       if (result.usage) emit(r, 'usage', { turn: result.usage });
       outcome = [r.cancelled || result.stopReason === 'cancelled' || ['max_tokens', 'max_turn_requests'].includes(result.stopReason) ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed', result.stopReason === 'refusal' ? 'The agent refused this task.' : undefined];
+      // AIR's word that the turn failed, on a turn that still ends as end_turn; a warning (a retry) that it recovered from isn't
+      const failure = r.processOptions.air?.includes('sessionFailure') && result._meta?.jetbrains?.air?.sessionFailure;
+      if (outcome[0] === 'completed' && failure?.severity === 'error') {
+        const title = String(failure.title || 'The task failed.').slice(0, 2000);
+        outcome = ['failed', r.processOptions.signIn === 'login' && LOGIN_REFUSED.some((words) => title.includes(words)) ? await signInNeeded(r) : title];
+      }
     } catch (err) {
       // an agent that stopped by itself is told of by its exit, with its last words: wait a moment for that, so the
       // protocol's own word for a closed pipe doesn't take its place
       const child = r.child;
       // one that never got its task, or wants a sign-in, asked for no host for that reason, which its own message covers
-      unreached = sent && err.code !== -32000 && child?.gateAsked?.() === 0;
+      unreached = sent && err.code !== -32000 && !!r.processOptions.hosts && child?.gateAsked?.() === 0;
       if (!r.cancelled && child?.pid && child.exitCode === null && child.signalCode === null) await timeout(new Promise((resolve) => child.once('exit', resolve)), 500, 'still running').catch(() => {});
       const told = r.status === 'failed' && child && (child.exitCode !== null || child.signalCode !== null);
       const signIn = err.code === -32000 && !r.cancelled ? await signInNeeded(r) : '';

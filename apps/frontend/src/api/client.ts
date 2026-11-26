@@ -2137,7 +2137,8 @@ export function revealCloudCopy(projectId: string, filePath?: string) {
  */
 export type AgentState = 'planned' | 'unavailable' | 'missing' | 'update' | 'adapter' | 'ready' | 'opened' | 'sign-in' | 'failed' | 'untested';
 /** What a Test (or a session) found: ready, sign-in, error, timeout, exited or not-acp. */
-export interface AgentTest { ok: boolean; code: string; version?: string; detail?: string; methods?: string[]; at: string }
+/** refused: with code sign-in, the credential the agent refused as it signed in with it */
+export interface AgentTest { ok: boolean; code: string; version?: string; detail?: string; methods?: string[]; refused?: 'key' | 'login'; at: string }
 /**
  * command: the program the user chose, '' for none; keyEnvs: the agent's own key variables plus one saved outside them;
  * experimental, planned and unavailable: the reasons; source: where its program was found; reads: the folders of its
@@ -2155,6 +2156,8 @@ export interface LocalAgent {
   needs?: { name: string; found: boolean; install: string; path?: string };
   signIn?: string; then?: string; appSignIn?: boolean; install?: string;
   loginFound: boolean; loginCopied: boolean; configured: boolean;
+  /** with a saved key and a copied login, for an agent that signs in with either: the one it uses */
+  signInWith?: 'key' | 'login';
   /** official: from the ACP project; installed: the version Spectrum installed, when one is there (another than version: state update) */
   adapter?: { package: string; version: string; official: boolean; publisher: string; size: string; folder: string; platform: string; installed?: string };
   test?: AgentTest;
@@ -2165,9 +2168,18 @@ export interface LocalAgent {
  * Where an agent may connect: 'hosts' (its provider's, the scholarly sites of Spectrum's tools and the ones the user
  * added) or 'any' public HTTPS host; enforced: whether this computer can hold an agent to a list (a Mac can); sure:
  * whether the agent's own documentation says enough to expect it to work held to its list; loopback: for an agent that
- * starts its own server on a port of this computer it picks, what that server is and the user's switch for it
+ * starts its own server on a port of this computer it picks, what that server is and the user's switch for it; proxy: the
+ * proxy the agent goes through, through Spectrum's gate (Settings › System), as shown
  */
-export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools: string[]; hosts: string[]; enforced: boolean; sure: boolean; loopback?: { server: string; on: boolean } }
+export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools: string[]; hosts: string[]; enforced: boolean; sure: boolean; loopback?: { server: string; on: boolean }; proxy?: { text: string; from: string } }
+/**
+ * The proxy Spectrum goes through (Settings › System › Network): the one in use (text, its name and password masked,
+ * and where it came from), and the one typed there, masked; supported: false on Windows, where Spectrum connects as before.
+ */
+export interface ProxyState { supported: boolean; proxy: { text: string; from: string; source: 'typed' | 'system' | 'shell' } | null; typed: string }
+export const getProxy = () => request<ProxyState>('/api/system/proxy');
+/** Saves the proxy typed in Settings ('' for none); the backend checks it and says which one is in use now. */
+export const saveProxy = (proxy: string) => request<ProxyState>('/api/system/proxy', json('PUT', { proxy }));
 /**
  * type 'update' carries an ACP session/update; 'todo' a to-do the agent suggested ({ text, link? }); 'reset' the paths a
  * rejection put back in the draft. first: a stored event that joins streamed pieces names its first piece's id, and
@@ -2197,7 +2209,7 @@ export interface LocalAgentSession {
 }
 export const listLocalAgents = () => request<{ ok: boolean; agents: LocalAgent[] }>('/api/agents');
 /** Only what changed: command '' finds the program automatically again; apiKey '' removes the saved key. */
-export const configureLocalAgent = (id: string, value: { command?: string; args?: string[]; runtimePaths?: string[]; apiKey?: string; keyEnv?: string; network?: { mode?: 'hosts' | 'any'; hosts?: string[]; loopback?: boolean } }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
+export const configureLocalAgent = (id: string, value: { command?: string; args?: string[]; runtimePaths?: string[]; apiKey?: string; keyEnv?: string; signInWith?: 'key' | 'login'; network?: { mode?: 'hosts' | 'any'; hosts?: string[]; loopback?: boolean } }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
 export const importLocalAgentLogin = (id: string) => request<{ ok: boolean; files: number }>(`/api/agents/${id}/import-login`, json('POST', {}));
 /** Starts the agent in isolation without a prompt; resolves to its listing with the result. */
 export const testLocalAgent = (id: string) => request<{ ok: boolean; agent: LocalAgent }>(`/api/agents/${id}/test`, json('POST', {}));

@@ -1,7 +1,7 @@
 // Self-check for the local agent transcript. Run:
 // npx esbuild apps/frontend/src/editor/agent/transcript.check.ts --bundle --platform=node --log-level=warning --outfile=<scratch>/transcript.cjs && node <scratch>/transcript.cjs
 import type { AgentEvent } from '../../api/client';
-import { addEvent, addRunEvent, askAnswer, askRequest, closeChanges, metaOf, openChanges, planOf, planPrompt, project, resumeNote, retryLine, runView, stepCall, storedChanges, threadItems, turnReply } from './transcript';
+import { addEvent, addRunEvent, askAnswer, choicesOf, permissionShows, askRequest, closeChanges, metaOf, openChanges, planOf, planPrompt, project, resumeNote, retryLine, runView, stepCall, storedChanges, threadItems, turnReply } from './transcript';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -384,4 +384,18 @@ console.log('transcript: all checks passed');
   eq(shown(threadItems([{ role: 'assistant', content: none.text, createdAt: '', meta: { error: true, resume: 'stopped' } }])), [['notice', 'Stopped before the agent finished.', false]], 'shown as no failure');
   eq(turnReply({ ok: false, reply: 'Overloaded.', incomplete: 'failed' }, false), { text: 'Request failed: Overloaded.', error: true }, 'a failure is one');
   eq(turnReply({ ok: true, reply: '' }, true).text, 'The changes are ready to review.', 'a finished turn with nothing to say');
+}
+
+{
+  // Codex under JetBrains' AIR extension: the title says only "Run command", the command is in rawInput, in full
+  const long = `latexmk -pdf -interaction=nonstopmode ${'-e x '.repeat(80)}main.tex`;
+  eq(permissionShows({ title: 'Run command', rawInput: { command: long, cwd: '/w' } }).command, long, 'the whole command, never cut');
+  eq(permissionShows({ title: 'Run', rawInput: { command: ['git', 'status'] } }).command, 'git status', 'one given as words');
+  const edit = permissionShows({ title: 'Editing files', locations: [{ path: 'main.tex' }], content: [{ type: 'diff', path: 'refs.bib', oldText: 'a', newText: 'b' }] });
+  eq([edit.command, edit.paths, edit.diffs.length], ['', ['main.tex', 'refs.bib'], 1], 'an edit shows its files and changes');
+  eq(permissionShows(undefined), { command: '', paths: [], diffs: [], texts: [] }, 'nothing to show');
+  // codex-acp's choices are oneOf, not enum; a field without either takes the user's own words
+  eq(choicesOf({ type: 'string', oneOf: [{ const: 'A', title: 'A' }, { const: 'B', title: 'Bee' }] }), [{ value: 'A', label: 'A' }, { value: 'B', label: 'Bee' }], 'oneOf');
+  eq(choicesOf({ enum: ['x'] }), [{ value: 'x', label: 'x' }], 'enum');
+  eq(choicesOf({ type: 'string', title: 'Additional answer or note' }), null, 'the note is a field of its own');
 }

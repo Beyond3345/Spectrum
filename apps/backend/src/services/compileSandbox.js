@@ -12,6 +12,8 @@ import { DATA_DIR } from '../config/constants.js';
 import { AGENT_SECRET_EXTENSIONS, secretNamePattern } from '../utils/pathUtils.js';
 import { thinned } from '../utils/fsUtils.js';
 import { resolveExecutable } from './agentSandbox.js';
+import { openGate, proxyEnv } from './agentNetwork.js';
+import { appliedProxy } from './networkProxy.js';
 
 export const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
 const q = (value) => JSON.stringify(value);
@@ -195,7 +197,7 @@ const KEY_FILES = `/(${secretNamePattern([...AGENT_SECRET_EXTENSIONS, 'kdbx'])})
 
 const subpaths = (list) => list.map((p) => `(subpath ${q(p)})`).join(' ');
 /** The profile's text: what is read (all but data and the stores, and `readable` inside data), written, run and reached. */
-const profileOf = ({ home, data, readable, writable, made, may, tectonic }) => `(version 1)
+const profileOf = ({ home, data, readable, writable, made, may, tectonic, gatePort }) => `(version 1)
 (deny default)
 (allow process-fork sysctl-read file-map-executable)
 (allow process-info* (target same-sandbox))
@@ -223,8 +225,9 @@ ${tectonic ? `(allow mach-lookup
   (global-name "com.apple.SystemConfiguration.DNSConfiguration")
   (global-name "com.apple.SystemConfiguration.configd"))
 (allow system-socket (require-all (socket-domain AF_SYSTEM) (socket-protocol 2)))
-(allow network-outbound (require-all (remote tcp "*:443") (require-not (remote ip "localhost:*"))))
-(allow network-outbound (remote udp "*:53") (literal "/private/var/run/mDNSResponder"))` : ''}
+${gatePort ? `; behind the user's proxy, Spectrum's gate is the only way out, to Tectonic's hosts
+(allow network-outbound (remote tcp "localhost:${Number(gatePort)}"))` : `(allow network-outbound (require-all (remote tcp "*:443") (require-not (remote ip "localhost:*"))))
+(allow network-outbound (remote udp "*:53") (literal "/private/var/run/mDNSResponder"))`}` : ''}
 `;
 
 /**
@@ -237,6 +240,12 @@ ${tectonic ? `(allow mach-lookup
  * also writes its cache and downloads its packages over HTTPS. root is read even when it is inside the data folder.
  * env: what the programs are told so their temp and cache files go where they can write.
  */
+// the hosts Tectonic downloads its bundle from (the relay hands on to the data host)
+export const TECTONIC_HOSTS = ['relay.fullyjustified.net', 'data1.fullyjustified.net'];
+let gateOpen;
+/** One gate for every confined Tectonic compile, opened the first time one runs behind a proxy, and kept. */
+const tectonicGate = () => (gateOpen ??= openGate({ hosts: () => TECTONIC_HOSTS, proxy: appliedProxy }));
+
 export async function compileSandbox({ build, tmp, searchPath = process.env.PATH || '', tectonic = false, root, runs = [] }) {
   if ((await confinement()) !== 'yes') return null;
   const home = await real(os.homedir());
@@ -264,7 +273,10 @@ export async function compileSandbox({ build, tmp, searchPath = process.env.PATH
   // Biber starts the copy of itself it unpacked into the cache
   const may = [...new Set([...filters, ...own]), `(subpath ${q(await real(caches[0]))})`, ...(biber ? [`(literal ${q(path.join(await real(biber), 'biber'))})`] : [])];
   const made = root ? [String.raw`^${quoted(await real(root))}/(.*/)?[^/]+-eps-converted-to\.pdf$`] : [];
+  // behind the user's proxy, which a confined compile can't reach, Tectonic's downloads go through a gate that goes on there
+  const gate = tectonic && appliedProxy() ? await tectonicGate() : null;
   const profile = profileOf({
+    gatePort: gate?.port,
     home,
     data,
     readable: [path.join(data, 'cache'), path.join(data, 'engines'), await real(cache), ...(root ? [await real(root)] : [])],
@@ -287,6 +299,7 @@ export async function compileSandbox({ build, tmp, searchPath = process.env.PATH
         VARTEXFONTS: fonts
       }),
       PAR_GLOBAL_TMPDIR: caches[0],
+      ...(gate && proxyEnv(gate.port)),
       ...((biber || python) && { PATH: [biber, python, searchPath].filter(Boolean).join(path.delimiter) })
     }
   };

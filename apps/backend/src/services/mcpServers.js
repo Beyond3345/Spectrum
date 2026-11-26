@@ -17,6 +17,7 @@ import { APP_VERSION, DATA_DIR, PORT } from '../config/constants.js';
 import { readJson, renameOver, writeJsonAtomic } from '../utils/fsUtils.js';
 import { httpError } from './projectService.js';
 import { killAgentProcess, spawnAgentProcess } from './agentSandbox.js';
+import { currentProxy } from './networkProxy.js';
 import { cleanHost, cleanHosts, hostAllowed } from './agentNetwork.js';
 import { heldValues, holdValues } from './keyStore.js';
 
@@ -217,7 +218,7 @@ async function started(server) {
     const asked = new Set();
     const child = await spawnAgentProcess({
       command: server.command, args: server.args, workspace: path.join(dir, 'work'), home: path.join(dir, 'home'), runtimePaths: [...new Set(named)],
-      env, localPorts: server.ports,
+      env, localPorts: server.ports, proxy: await currentProxy(),
       // its own list, as it is at each connection
       ...(!server.anyHost && {
         hosts: async () => (await listServers()).find((s) => s.name === server.name)?.hosts || [],

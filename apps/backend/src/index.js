@@ -56,6 +56,7 @@ import { dropOldAuxFolders, migrateLegacyProjects } from './services/projectServ
 import { migrateToV2 } from './services/mirrorService.js';
 import { killAllChildren } from './services/compileService.js';
 import { warmUpTectonic } from './services/tectonicWarmUp.js';
+import { applyProxy } from './services/networkProxy.js';
 import { offlineMessage, placeOf } from './services/syncService.js';
 import { hasSession, isLocalRequest, openSession, readSessionSecret } from './utils/authUtils.js';
 
@@ -225,7 +226,9 @@ await clearStaleRuns().catch((err) => fastify.log.error(err));
 
 await fastify.listen({ port: PORT, host: HOST });
 // the built-in Tectonic's packages for the templates, in the background (not in the tests' servers)
-if (!process.env.NODE_TEST_CONTEXT) warmUpTectonic().catch((err) => fastify.log.error(err));
+// the proxy first (networkProxy.js), so the warm-up's downloads and every later request go through it
+const proxyReady = applyProxy().catch((err) => fastify.log.error(err));
+if (!process.env.NODE_TEST_CONTEXT) proxyReady.then(() => warmUpTectonic()).catch((err) => fastify.log.error(err));
 
 console.log('');
 console.log(`  Spectrum started at http://localhost:${PORT}`);
