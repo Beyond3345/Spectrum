@@ -28,7 +28,7 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  * install: the command that installs it, which Spectrum only shows; adapter: the ACP adapter Spectrum can install,
  * pinned to its version and npm checksum, with its size for each Mac; needs: a program the adapter starts, passed to it
  * in env, or the app it drives; app: the agent's desktop app, by name, and bin: the agent program inside the Mac app,
- * when it carries one; experimental, windows and planned: why the agent is experimental, off on Windows or not yet
+ * when it carries one; auth: the ACP authentication method always asked for, keyAuth: the one that takes a saved key; experimental, windows and planned: why the agent is experimental, off on Windows or not yet
  * startable. hosts: the hosts its provider needs, which an agent held to a list reaches besides the scholarly sites of
  * Spectrum's tools and the ones the user adds; documented: its own documentation names those hosts and says it honours
  * the proxy variables a list relies on. Every agent starts on any host with its list ready, until it has been run on
@@ -40,8 +40,11 @@ export const PROFILES = [
   // never “Claude Code”: an API key only, with the claude.ai sign-in hidden (Anthropic's Agent SDK terms)
   { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', hosts: ['api.anthropic.com'], documented: true, keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
   { id: 'gemini', name: 'Gemini CLI', command: 'gemini', args: ['--acp'], url: 'https://github.com/google-gemini/gemini-cli', hosts: ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'oauth2.googleapis.com', 'www.googleapis.com'], keys: ['GEMINI_API_KEY'], login: ['.gemini/settings.json', '.gemini/oauth_creds.json', '.gemini/google_accounts.json'], signIn: 'gemini', then: 'Choose Sign in with Google.', install: 'npm install -g @google/gemini-cli' },
+  // Google's ACP server in its own CLI. Its Google sign-in lives in the system keychain, which isolation does not open,
+  // so a key is used through ACP's own Gemini API key method (keyAuth)
+  { id: 'antigravity', name: 'Antigravity', command: 'agy', args: ['acp'], url: 'https://antigravity.google/docs/ide/extensions/acp', hosts: ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'businessaicode.googleapis.com', 'aiplatform.googleapis.com', 'oauth2.googleapis.com'], keys: ['GEMINI_API_KEY'], keyAuth: 'gemini-api-key', login: [], install: process.platform === 'win32' ? 'irm https://antigravity.google/cli/install.ps1 | iex' : 'curl -fsSL https://antigravity.google/cli/install.sh | bash', app: { name: 'Antigravity' } },
   { id: 'copilot', name: 'GitHub Copilot CLI', command: 'copilot', args: ['--acp'], url: 'https://github.com/github/copilot-cli', hosts: ['api.github.com', 'api.githubcopilot.com', '*.githubcopilot.com', 'copilot-proxy.githubusercontent.com'], keys: ['GH_TOKEN'], login: [], install: 'npm install -g @github/copilot' },
-  { id: 'cursor', name: 'Cursor', command: 'cursor-agent', alt: ['agent'], args: ['acp'], url: 'https://cursor.com/docs/cli/acp', hosts: ['*.cursor.sh', 'cursor.com', '*.cursor.com'], keys: ['CURSOR_API_KEY'], login: [], install: 'curl https://cursor.com/install -fsS | bash' },
+  { id: 'cursor', name: 'Cursor', command: 'cursor-agent', alt: ['agent'], args: ['acp'], url: 'https://cursor.com/docs/cli/acp', hosts: ['*.cursor.sh', 'cursor.com', '*.cursor.com'], keys: ['CURSOR_API_KEY'], auth: 'cursor_login', login: [], install: 'curl https://cursor.com/install -fsS | bash' },
   { id: 'kimi', name: 'Kimi Code', command: 'kimi', args: ['acp'], url: 'https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-acp.html', hosts: ['api.kimi.com', 'www.kimi.com', 'api.moonshot.cn', 'api.moonshot.ai'], keys: ['KIMI_API_KEY'], login: ['.kimi-code/config.toml', '.kimi-code/credentials.json', '.kimi/config.toml', '.kimi/credentials.json'], signIn: 'kimi', then: 'Type /login.', install: 'npm install -g @moonshot-ai/kimi-code', app: { name: 'Kimi Code' } },
   { id: 'hermes', name: 'Hermes', command: 'hermes', args: ['acp'], url: 'https://hermes-agent.nousresearch.com/docs/user-guide/features/acp', hosts: ['openrouter.ai', 'api.openai.com', 'api.anthropic.com'], keys: ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'], login: ['.hermes/config.yaml', '.hermes/auth.json', '.hermes/.env'], signIn: 'hermes model', install: 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash' },
   { id: 'qoder', name: 'Qoder', command: 'qoder', alt: ['qodercli'], args: ['--acp'], url: 'https://docs.qoder.com/cli/acp', hosts: ['*.qoder.sh', '*.qoder.com'], keys: ['QODER_PERSONAL_ACCESS_TOKEN'], login: [], install: 'npm install -g @qoder-ai/qodercli', app: { name: 'Qoder' }, experimental: 'The ACP registry has paused Qoder because its ACP start failed in some releases. Test checks the version you have.' },
@@ -269,6 +272,8 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const env = {
     ...(saved.apiKey && keyEnv && { [keyEnv]: saved.apiKey }),
     ...(id === 'zcode' && { ZCODE_ACP_MODE: 'build' }),
+    // its self-updater would write beside a program isolation keeps read-only, and fetch from hosts off its list
+    ...(id === 'antigravity' && { AGY_CLI_DISABLE_AUTO_UPDATE: 'true' }),
     // Claude Code keeps its own temporary files in /tmp/claude-<uid>, which isolation does not open: its private home's instead
     ...(id === 'claude' && { CLAUDE_CODE_TMPDIR: path.join(agentHomeDir, 'tmp') }),
     // held to its list, Claude Code leaves out what the list would refuse anyway: telemetry, error reports, update checks
@@ -279,6 +284,8 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
     command: found.command, args, workspace, home: agentHomeDir, runtimeExecutable: found.command,
     runtimePaths: [...new Set([...(saved.runtimePaths || []), ...found.reads, ...found.needs?.reads || []])], forbiddenRoots, env,
     program: found.program, secrets: [saved.apiKey].filter(Boolean), setup: setupOf(saved),
+    // the ACP authentication a session or Test asks for before its first: the profile's always, else the key's when one is saved
+    ...((profile.auth || (saved.apiKey && profile.keyAuth)) && { authMethod: profile.auth || profile.keyAuth }),
     // the list as it is at each connection, so a host the user allows works without a restart
     network: listed ? 'hosts' : 'any',
     ...(listed && { hosts: async () => { const now = networkOf(profile, (await agentConfigs())[id]); return [...now.provider, ...now.tools, ...now.hosts]; } })

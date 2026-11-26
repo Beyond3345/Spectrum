@@ -443,7 +443,7 @@ async function connect(r) {
   r.opening = true;
   let loaded = false;
   try {
-    if (r.agentId === 'cursor') await timeout(r.peer.request('authenticate', { methodId: 'cursor_login' }), 30000, 'Cursor authentication did not finish. Configure its API key in Setup.', r.connectionAbort.signal);
+    if (r.processOptions.authMethod) await timeout(r.peer.request('authenticate', { methodId: r.processOptions.authMethod }), 30000, `${profileFor(r.agentId).name} authentication did not finish. Configure its API key in Setup.`, r.connectionAbort.signal);
     if (r.remoteId && !r.forceNew && (r.capabilities.loadSession || r.capabilities.sessionCapabilities?.resume)) {
       const method = r.capabilities.loadSession ? 'session/load' : 'session/resume';
       r.replaying = method === 'session/load';
@@ -535,7 +535,7 @@ async function runTest(profile, limit) {
       initial = await ask('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, elicitation: { form: {}, url: {} } }, clientInfo: { name: 'spectrum', title: 'Spectrum', version: APP_VERSION } });
       if (initial?.protocolVersion !== 1) result = { code: 'not-acp' };
       else {
-        if (profile.id === 'cursor') await ask('authenticate', { methodId: 'cursor_login' });
+        if (options.authMethod) await ask('authenticate', { methodId: options.authMethod });
         const session = await ask('session/new', { cwd: workspace, mcpServers: [] });
         result = session?.sessionId ? { ok: true, code: 'ready' } : { code: 'not-acp' };
       }

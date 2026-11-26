@@ -198,6 +198,8 @@ test('each agent has its provider’s hosts, and every agent starts on any host 
   assert.ok(SCHOLARLY_HOSTS.every((host) => TOOL_HOSTS.includes(host)));
   assert.equal(claude.enforced, process.platform === 'darwin');
   assert.deepEqual(networkOf(profileFor('deepseek')).provider, ['api.deepseek.com']);
+  // Google's: the Gemini API a key uses, and the ones Antigravity's enterprise guide lists; its docs name no proxy variables
+  assert.deepEqual(networkOf(profileFor('antigravity')).provider, ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'businessaicode.googleapis.com', 'aiplatform.googleapis.com', 'oauth2.googleapis.com']);
   // a saved choice that is no choice, and hosts that are no hosts, fall back
   assert.deepEqual(networkOf(profileFor('codex'), { network: { mode: 'everything', hosts: ['x.example.com', 'localhost', 5] } }), { ...networkOf(profileFor('codex')), hosts: ['x.example.com'] });
 });
