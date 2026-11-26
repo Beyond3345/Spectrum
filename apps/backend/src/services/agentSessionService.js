@@ -598,8 +598,9 @@ async function agentFile(r, operation, file, content = '') {
 // left a link anywhere in its home. While another project's session of the same agent runs, its skills stay: only
 // missing ones are added. Names isolation keeps from agents (.git, .env files, keys) stay behind, as it wouldn't let
 // them be written or read; a folder still held by a virus scanner on Windows is renamed again shortly. Windows has no
-// Claude, so only .agents/skills there.
+// Claude, so only .agents/skills there. Antigravity looks in its own global folder, not ~/.agents.
 const SKILL_FOLDERS = process.platform === 'win32' ? ['.agents/skills'] : ['.agents/skills', '.claude/skills'];
+const skillFolders = (agentId) => [...SKILL_FOLDERS, ...(agentId === 'antigravity' ? ['.gemini/config/skills'] : [])];
 const SKILL_MARK = '.spectrum-managed';
 const copySkills = `const fs=require('node:fs'), path=require('node:path');
   const { skills, folders, mark, onlyAdd } = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -641,7 +642,7 @@ async function syncAgentSkills(r) {
   child.stderr.on('data', (chunk) => { error = (error + chunk).slice(-4000); });
   child.stdout.resume();
   const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(error.trim().split('\n').at(-1) || 'Spectrum couldn’t copy the skills.'))); });
-  child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify({ skills, folders: SKILL_FOLDERS, mark: SKILL_MARK, onlyAdd }));
+  child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify({ skills, folders: skillFolders(r.agentId), mark: SKILL_MARK, onlyAdd }));
   try { await timeout(done, 30000, 'Copying the skills took too long.'); r.skillsAdded = onlyAdd; }
   finally { killAgentProcess(child); }
 }
