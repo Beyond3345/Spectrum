@@ -31,7 +31,7 @@ Record the first stage that does not pass, the exact message shown, the card's s
 | --- | --- | --- |
 | DeepSeek Harness | `DEEPSEEK_API_KEY` | Passed stages 1 to 9 in 2.6.4 |
 | Claude Agent | `ANTHROPIC_API_KEY` | Uses Spectrum's installed adapter. Update it first if the card says Update needed. Shown as untested until it passes this test |
-| Codex | ChatGPT login or `OPENAI_API_KEY` | Run the whole test twice, once with each credential. In an Isolated session it runs commands without asking (Full access), so check one runs. For a routing failure, follow `CODEX_ROUTING_CHECK.md` |
+| Codex | ChatGPT login or `OPENAI_API_KEY` | Run the whole test twice, once with each credential. It runs commands without asking (Full access), so check one runs, in an Isolated and a Direct session. For a routing failure, follow `CODEX_ROUTING_CHECK.md` |
 | Antigravity | `GEMINI_API_KEY` | Needs the switch for its language server under Network, on by default since 2.7.0 |
 | Gemini CLI | `GEMINI_API_KEY` or Google sign-in | |
 | Cursor | `CURSOR_API_KEY` | |

@@ -277,7 +277,7 @@ async function signInOf(profile, saved, home) {
 }
 
 /** Everything a session or a Test starts the agent with, through spawnAgentProcess(): its program, arguments, key and folders. */
-export async function launchOptions(id, { workspace, home: agentHomeDir, forbiddenRoots = [], direct = false }) {
+export async function launchOptions(id, { workspace, home: agentHomeDir, forbiddenRoots = [] }) {
   const profile = profileFor(id);
   if (profile.unavailable) throw new Error(profile.unavailable);
   const saved = (await agentConfigs())[id] || {};
@@ -320,9 +320,9 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
     // declared AIR, codex-acp would ask the model for a suggested next message after every turn, which Spectrum never shows
     ...(id === 'codex' && { CODEX_ACP_PROMPT_SUGGESTIONS: 'false' }),
     // Codex runs each command in a sandbox of its own, which can't start inside Spectrum's isolation, so every command
-    // failed. On a copy (Isolated, and Test) it starts in Full access: isolation holds it to the copy, and nothing reaches
-    // the project before Apply. Direct keeps Codex's own mode, which asks first.
-    ...(id === 'codex' && !direct && { INITIAL_AGENT_MODE: 'agent-full-access' }),
+    // failed: it starts in Full access, which runs commands without asking, and isolation holds it to its workspace (the
+    // owner's choice for Direct too, 27 November 2026)
+    ...(id === 'codex' && { INITIAL_AGENT_MODE: 'agent-full-access' }),
     ...(codexLog && { APP_SERVER_LOGS: path.join(agentHomeDir, 'logs'), RUST_LOG: codexLog === '1' ? CODEX_LOG_FILTER : codexLog }),
     ...(id === 'zcode' && { ZCODE_ACP_MODE: 'build' }),
     // its self-updater would write beside a program isolation keeps read-only, and fetch from hosts off its list

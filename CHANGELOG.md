@@ -13,7 +13,7 @@ This file records the changes in Spectrum. Version 1.0.0 is the first release of
 - Antigravity's card has a switch, on unless turned off, that lets its own language server use a port on this computer, which it needs to start in isolation. Spectrum's own ports stay closed to it, and a session with the switch on says so once
 - docs/AGENT_ACCEPTANCE_TEST.md, a test to run on each local agent before calling it supported
 - OpenCode 2 as a local agent on a Mac again, with the same switch as Antigravity for the server it starts on a local port, on by default
-- Codex runs commands in an Isolated session: Spectrum starts it in its Full access mode there, since Codex's own sandbox cannot start inside Spectrum's isolation, which still holds it to its copy. Held to its list, Codex no longer syncs OpenAI's plugin catalogue from github.com
+- Codex runs commands: Spectrum starts it in its Full access mode, since Codex's own sandbox cannot start inside Spectrum's isolation, which still holds it to its workspace. Codex then runs commands without asking, in a Direct session in the project folder itself. Held to its list, Codex no longer syncs OpenAI's plugin catalogue from github.com
 
 ### Changed
 

@@ -358,7 +358,7 @@ async function connect(r) {
   // they share the private home: a turn waits for that agent's Test, which is short
   await tests.get(r.agentId)?.catch(() => {});
   if (installing.has(r.agentId)) throw new Error(`${profile.name}’s adapter is being changed. Try again when it finishes.`);
-  r.processOptions = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [], direct: r.mode === 'direct' });
+  r.processOptions = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] });
   r.limits = limitsOf(r.processOptions, await skillsKey(r));
   // the port its own server may use is never opened silently: told once a session
   if (r.processOptions.loopback && !r.toldLoopback) {
@@ -1169,7 +1169,7 @@ const skillsKey = async (r) => (await activeSkills(r.root).catch(() => [])).map(
  */
 async function keptAgentFits(r) {
   if (r.child?.exitCode !== null || r.child.signalCode !== null || r.connection.signal.aborted || installing.has(r.agentId)) return false;
-  const options = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [], direct: r.mode === 'direct' }).catch(() => null);
+  const options = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] }).catch(() => null);
   if (!options || limitsOf(options, await skillsKey(r)) !== r.limits) return false;
   // skills only added while another project's session used the home: the ones off here go once it no longer does
   if (r.skillsAdded) await syncAgentSkills(r).catch(() => {});

@@ -166,12 +166,10 @@ test('a key session authenticates with api-key and sees the key, its own Codex h
   sessions.closeAgentRun(run);
 });
 
-test('Codex starts without a sandbox of its own on a copy, never in Direct; held to its list it syncs no plugins, with either credential', { skip: nodeAdapters }, async () => {
+test('Codex starts without a sandbox of its own, which can’t start inside isolation; held to its list it syncs no plugins, with either credential', { skip: nodeAdapters }, async () => {
   let home = await setUp({ key: KEY });
   let options = await launchOptions('codex', { workspace: path.join(home, 'tmp'), home });
   assert.equal(options.env.INITIAL_AGENT_MODE, 'agent-full-access');
-  options = await launchOptions('codex', { workspace: path.join(home, 'tmp'), home, direct: true });
-  assert.equal(options.env.INITIAL_AGENT_MODE, undefined, 'Direct keeps Codex’s own mode, which asks first');
   await saveAgentConfig('codex', { network: { mode: 'hosts' } });
   await launchOptions('codex', { workspace: path.join(home, 'tmp'), home });
   assert.equal(await fs.readFile(path.join(home, '.codex-key', 'config.toml'), 'utf8'), 'cli_auth_credentials_store = "ephemeral"\n[features]\nplugins = false\n');
