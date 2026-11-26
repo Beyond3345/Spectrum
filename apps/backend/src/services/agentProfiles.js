@@ -135,14 +135,17 @@ const home = () => os.homedir();
 const systemRoot = () => (process.env.NODE_ENV !== 'production' && process.env.SPECTRUM_SYSTEM_ROOT) || '/';
 /**
  * Where the vendors' install scripts, the package managers and Homebrew put programs, as an app started from the
- * Finder has a short PATH. .qoder/local is where the Qoder app's SDK looks for qodercli.
+ * Finder has a short PATH; on Windows, the vendor folders an installer adds to the PATH only for later programs. .qoder/local is where the Qoder app's SDK looks for qodercli.
  */
 const knownDirs = () => process.platform === 'darwin' ? [
   ...['.opencode/bin', '.local/bin', '.kimi-code/bin', '.qoder/local', '.pi/agent/bin', '.npm-global/bin', '.bun/bin', 'Library/pnpm', '.yarn/bin', '.cargo/bin'].map((d) => path.join(home(), d)),
   ...[process.env.npm_config_prefix, process.env.NPM_CONFIG_PREFIX].filter(Boolean).map((d) => path.join(d, 'bin')),
   process.env.PNPM_HOME,
   ...['opt/homebrew/bin', 'usr/local/bin'].map((d) => path.join(systemRoot(), d))
-].filter(Boolean) : [];
+].filter(Boolean) : process.platform === 'win32' ? [
+  // Antigravity's installer, whose PATH change an app started before it does not see
+  path.join(process.env.LOCALAPPDATA || path.join(home(), 'AppData', 'Local'), 'agy', 'bin')
+] : [];
 const searchPath = () => [process.env.PATH || '', ...knownDirs()].join(path.delimiter);
 // where desktop apps are installed, for everyone and then for this user
 const appDirs = () => process.platform === 'win32'

@@ -185,6 +185,35 @@ test('Antigravity: its CLI’s ACP server, found where its installer puts it, a 
   await fs.rm(path.join(root, 'Applications/Antigravity.app'), { recursive: true });
 });
 
+test('Windows: agy.exe in the folder Antigravity’s installer uses, off the PATH, from LOCALAPPDATA or the home folder', async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const localAppData = process.env.LOCALAPPDATA;
+  const exe = async (base) => {
+    const file = path.join(base, 'agy', 'bin', 'agy.exe');
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, 'MZ', { mode: 0o755 });
+    return file;
+  };
+  const local = await exe(path.join(dir, 'LocalAppData'));
+  const fromHome = await exe(path.join(home, 'AppData', 'Local'));
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  try {
+    process.env.LOCALAPPDATA = path.join(dir, 'LocalAppData');
+    let agent = await agentEntry('antigravity', {}, true);
+    assert.deepEqual([agent.source, agent.program], ['found', local]);
+    delete process.env.LOCALAPPDATA;
+    agent = await agentEntry('antigravity', {}, true);
+    assert.equal(agent.program, fromHome);
+    // the other agents' search is unchanged: none is found there
+    assert.equal((await agentEntry('gemini', {}, true)).installed, false);
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+    if (localAppData === undefined) delete process.env.LOCALAPPDATA; else process.env.LOCALAPPDATA = localAppData;
+    await fs.rm(path.join(dir, 'LocalAppData'), { recursive: true });
+    await fs.rm(path.join(home, 'AppData'), { recursive: true });
+  }
+});
+
 test('OpenCode is listed as unsupported and never started', async () => {
   assert.match(profileFor('opencode').unavailable, /does not run inside Spectrum’s isolation/);
   await assert.rejects(launchOptions('opencode', { workspace: dir, home: dir }), /isolation/);
