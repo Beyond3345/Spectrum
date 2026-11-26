@@ -361,7 +361,7 @@ test('a format of the preamble is made behind the first compile and used from th
   assert.match(second.log, FROM_FORMAT);
   assert.equal(passes(second.log), 1);
   // on Windows a format whose path has a space goes from the run's temp folder (MiKTeX can't take such a -fmt)
-  assert.match(second.log, /\(preloaded format=[^)]*(pdflatex\.format|preamble)\/main\)/);
+  assert.match(second.log, /\(preloaded format=[^)]*(pdflatex\.format|preamble)\/main(\.fmt)?\)/);
   // nothing Spectrum says of its shortcuts is a line the editor lists as an error
   assert.doesNotMatch(second.log, /^\[spectrum\] /m);
   // the preamble's own log comes with it, so its warnings are still listed

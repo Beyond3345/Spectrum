@@ -96,7 +96,7 @@ jobs:
             $false
           }
           $packages = 'latexmk', 'standalone', 'xkeyval', 'currfile', 'filemod', 'gincltex', 'adjustbox', 'collectbox',
-            'pgf', 'pgfplots', 'circuitikz', 'float', 'natbib', 'biblatex', 'glossaries', 'import', 'etoolbox'
+            'pgf', 'pgfplots', 'circuitikz', 'float', 'natbib', 'biblatex', 'glossaries', 'import', 'etoolbox', 'filehook'
           # and what MiKTeX's basic set lacks that they use too (TeX Live has these in the collections below): hyperref's
           # helpers, biblatex's logreq, xcolor's table option, the precompiled preamble's mylatexformat and the Simple
           # document template's packages, which two test files compile at once. (--require installs those not installed
