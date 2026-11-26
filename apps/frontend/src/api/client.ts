@@ -2164,9 +2164,10 @@ export interface LocalAgent {
 /**
  * Where an agent may connect: 'hosts' (its provider's, the scholarly sites of Spectrum's tools and the ones the user
  * added) or 'any' public HTTPS host; enforced: whether this computer can hold an agent to a list (a Mac can); sure:
- * whether the agent's own documentation says enough to expect it to work held to its list
+ * whether the agent's own documentation says enough to expect it to work held to its list; loopback: for an agent that
+ * starts its own server on a port of this computer it picks, what that server is and the user's switch for it
  */
-export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools: string[]; hosts: string[]; enforced: boolean; sure: boolean }
+export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools: string[]; hosts: string[]; enforced: boolean; sure: boolean; loopback?: { server: string; on: boolean } }
 /**
  * type 'update' carries an ACP session/update; 'todo' a to-do the agent suggested ({ text, link? }); 'reset' the paths a
  * rejection put back in the draft. first: a stored event that joins streamed pieces names its first piece's id, and
@@ -2196,7 +2197,7 @@ export interface LocalAgentSession {
 }
 export const listLocalAgents = () => request<{ ok: boolean; agents: LocalAgent[] }>('/api/agents');
 /** Only what changed: command '' finds the program automatically again; apiKey '' removes the saved key. */
-export const configureLocalAgent = (id: string, value: { command?: string; args?: string[]; runtimePaths?: string[]; apiKey?: string; keyEnv?: string; network?: { mode?: 'hosts' | 'any'; hosts?: string[] } }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
+export const configureLocalAgent = (id: string, value: { command?: string; args?: string[]; runtimePaths?: string[]; apiKey?: string; keyEnv?: string; network?: { mode?: 'hosts' | 'any'; hosts?: string[]; loopback?: boolean } }) => request<{ ok: boolean }>(`/api/agents/${id}`, json('PUT', value));
 export const importLocalAgentLogin = (id: string) => request<{ ok: boolean; files: number }>(`/api/agents/${id}/import-login`, json('POST', {}));
 /** Starts the agent in isolation without a prompt; resolves to its listing with the result. */
 export const testLocalAgent = (id: string) => request<{ ok: boolean; agent: LocalAgent }>(`/api/agents/${id}/test`, json('POST', {}));

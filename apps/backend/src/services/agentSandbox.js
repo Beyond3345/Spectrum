@@ -4,6 +4,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { spawnWindowsAgent, windowsWorker } from './agentSandboxWindows.js';
 import { AGENT_SECRET_EXTENSIONS, secretNamePattern } from '../utils/pathUtils.js';
 import { openGate, proxyEnv } from './agentNetwork.js';
+import { PORT } from '../config/constants.js';
 
 export async function isolationAvailable() {
   if (process.platform === 'darwin') return true;
@@ -34,9 +35,12 @@ const HIDDEN = `\\.spectrum|\\.git|\\.claude|${secretNamePattern(AGENT_SECRET_EX
  * offline: no network at all (a chart's script), where an agent has HTTPS. gatePort: the one way out is that port on
  * this computer, where Spectrum's gate checks each host against a list (agentNetwork.js): no other address, and no
  * name lookup, which would carry text out in the names asked for. localPorts: ports on this computer it may also reach
- * (an MCP server's local service), checked by the caller against Spectrum's own.
+ * (an MCP server's local service), checked by the caller against Spectrum's own. loopback: the program serves itself
+ * from a port on this computer that it picks (bind to port 0), which no rule can name, so it may bind, take connections
+ * on and reach every port here but Spectrum's fixed ones: a profile cannot limit a connection to the port the process
+ * itself bound. Only with the user's switch (agentProfiles' network.loopback).
  */
-export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort, offline = false, gatePort, localPorts = [] }) {
+export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort, offline = false, gatePort, localPorts = [], loopback = false }) {
   const reads = [...new Set([...SYSTEM_READS, ...developerReads(), path.dirname(runtimeExecutable), ...runtimePaths])];
   return `(version 1)
 (deny default)
@@ -70,10 +74,18 @@ ${gatePort ? `; the gate is the only way out
 (allow network-outbound (literal "/private/var/run/mDNSResponder"))`}
 ; the kernel's sockets that say which route and source address a connection takes, as every sandboxed network client has
 (allow network-outbound (control-name "com.apple.netsrc") (control-name "com.apple.network.statistics"))
-${localPorts.filter((p) => Number.isInteger(p) && p > 0 && p < 65536).map((p) => `(allow network-outbound (remote tcp "localhost:${p}"))`).join('\n')}`}
+${localPorts.filter((p) => Number.isInteger(p) && p > 0 && p < 65536).map((p) => `(allow network-outbound (remote tcp "localhost:${p}"))`).join('\n')}
+${loopback ? `; its own server, on a port of its choosing: any port on this computer, then (the last rule that matches wins) never Spectrum's own
+(allow network-bind network-inbound (local tcp "localhost:*"))
+(allow network-outbound (remote tcp "localhost:*"))
+${spectrumPorts().map((p) => `(deny network-outbound (remote tcp "localhost:${p}"))`).join('\n')}` : ''}`}
 ${Number.isInteger(internalPort) && internalPort > 0 && internalPort < 65536 ? `(allow network-bind network-inbound (local tcp "localhost:${internalPort}"))\n(allow network-outbound (remote tcp "localhost:${internalPort}"))` : ''}
 `;
 }
+
+// ponytail: the fixed ones only (the backend's, the dev page's, the ones the app takes at launch); a gate or tools server
+// of another agent takes a port the system picks, which the profile of a program with its own server leaves open
+const spectrumPorts = () => [...new Set([PORT, Number(process.env.VITE_PORT) || 5173, ...Array.from({ length: 10 }, (_, i) => 38787 + i)])];
 
 export async function resolveExecutable(command, envPath = process.env.PATH || '') {
   // never npm's extensionless shell shim, which Windows can't start
@@ -94,7 +106,7 @@ export async function resolveExecutable(command, envPath = process.env.PATH || '
  * as before); onRefused(host): it asked for one off the list. localPorts: see sandboxProfile. macOS only: the Windows
  * worker opens every public address or none and never this computer's, so there neither is enforced or reachable.
  */
-export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false, hosts, onRefused, localPorts }) {
+export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false, hosts, onRefused, localPorts, loopback }) {
   if (!['darwin', 'win32'].includes(process.platform)) throw new Error('Native agent isolation is unavailable on this platform.');
   const executable = await resolveExecutable(command);
   if (process.platform === 'win32') return spawnWindowsAgent({ executable, args, workspace, home, runtimeExecutable, runtimePaths, forbiddenRoots, cwd, env, offline });
@@ -106,7 +118,7 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
   const reads = [...SYSTEM_READS, ...developerReads(), workRoot, homeRoot, ...roots, path.dirname(runtimeExecutable || executable)];
   if (!reads.some((root) => executable === root || executable.startsWith(root + path.sep))) throw new Error('This command is outside the approved runtime folders. Add its specific runtime folder in Setup.');
   const gate = hosts && !offline ? await openGate({ hosts, onRefused }) : null;
-  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline, gatePort: gate?.port, localPorts });
+  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline, gatePort: gate?.port, localPorts, loopback });
   const child = spawn('/bin/sh', ['-c', WATCHDOG, 'sh', profile, executable, ...args], {
     cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
     env: {

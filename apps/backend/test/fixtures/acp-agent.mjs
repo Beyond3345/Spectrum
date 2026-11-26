@@ -1,6 +1,20 @@
 import readline from 'node:readline';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import net from 'node:net';
+// --serve-self: first serves itself from a port the system picks and connects to it, as Antigravity's agy acp does with
+// its language server, and stops when either is refused
+if (process.argv.includes('--serve-self')) {
+  const serve = (host) => new Promise((resolve, reject) => { const server = net.createServer((c) => c.end()); server.once('error', reject); server.listen(0, host, () => resolve(server)); });
+  try {
+    const server = await serve('127.0.0.1').catch(() => serve('localhost'));
+    await new Promise((resolve, reject) => net.connect(server.address().port, server.address().address).once('connect', resolve).once('error', reject));
+    server.unref();
+  } catch (err) {
+    process.stderr.write(`language server: listen 127.0.0.1:0: ${err.code}\n`);
+    process.exit(4);
+  }
+}
 const lines = readline.createInterface({ input: process.stdin });
 const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 let workspace;

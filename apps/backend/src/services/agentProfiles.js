@@ -32,7 +32,9 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  * startable. hosts: the hosts its provider needs, which an agent held to a list reaches besides the scholarly sites of
  * Spectrum's tools and the ones the user adds; documented: its own documentation names those hosts and says it honours
  * the proxy variables a list relies on. Every agent starts on any host with its list ready, until it has been run on
- * its list for real; network: 'hosts' would start one held to its list (none yet).
+ * its list for real; network: 'hosts' would start one held to its list (none yet). loopback: what its ACP mode starts on
+ * a port of this computer that it picks itself and cannot be told, which isolation opens with a switch that is on
+ * unless the user turns it off (networkOf's loopback; agentSandbox's loopback).
  */
 export const PROFILES = [
   { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', hosts: ['api.openai.com', 'api.anthropic.com', 'openrouter.ai', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'opencode.ai', 'models.dev'], keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', unsupported: 'OpenCode 2 does not run inside Spectrum’s isolation: its agent mode starts a private server on a port it chooses itself, which isolation does not open. Spectrum never runs an agent outside isolation.' },
@@ -41,8 +43,9 @@ export const PROFILES = [
   { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', hosts: ['api.anthropic.com'], documented: true, keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
   { id: 'gemini', name: 'Gemini CLI', command: 'gemini', args: ['--acp'], url: 'https://github.com/google-gemini/gemini-cli', hosts: ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'oauth2.googleapis.com', 'www.googleapis.com'], keys: ['GEMINI_API_KEY'], login: ['.gemini/settings.json', '.gemini/oauth_creds.json', '.gemini/google_accounts.json'], signIn: 'gemini', then: 'Choose Sign in with Google.', install: 'npm install -g @google/gemini-cli' },
   // Google's ACP server in its own CLI. Its Google sign-in lives in the system keychain, which isolation does not open,
-  // so a key is used through ACP's own Gemini API key method (keyAuth)
-  { id: 'antigravity', name: 'Antigravity', command: 'agy', args: ['acp'], url: 'https://antigravity.google/docs/ide/extensions/acp', hosts: ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'businessaicode.googleapis.com', 'aiplatform.googleapis.com', 'oauth2.googleapis.com'], keys: ['GEMINI_API_KEY'], keyAuth: 'gemini-api-key', login: [], install: process.platform === 'win32' ? 'irm https://antigravity.google/cli/install.ps1 | iex' : 'curl -fsSL https://antigravity.google/cli/install.sh | bash', app: { name: 'Antigravity' } },
+  // so a key is used through ACP's own Gemini API key method (keyAuth). agy acp serves itself from a language server it
+  // binds to 127.0.0.1:0 (localhost:0 if that fails); neither its documentation nor its flags offer a port or a socket
+  { id: 'antigravity', name: 'Antigravity', command: 'agy', args: ['acp'], loopback: 'language server', url: 'https://antigravity.google/docs/ide/extensions/acp', hosts: ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'businessaicode.googleapis.com', 'aiplatform.googleapis.com', 'oauth2.googleapis.com'], keys: ['GEMINI_API_KEY'], keyAuth: 'gemini-api-key', login: [], install: process.platform === 'win32' ? 'irm https://antigravity.google/cli/install.ps1 | iex' : 'curl -fsSL https://antigravity.google/cli/install.sh | bash', app: { name: 'Antigravity' } },
   { id: 'copilot', name: 'GitHub Copilot CLI', command: 'copilot', args: ['--acp'], url: 'https://github.com/github/copilot-cli', hosts: ['api.github.com', 'api.githubcopilot.com', '*.githubcopilot.com', 'copilot-proxy.githubusercontent.com'], keys: ['GH_TOKEN'], login: [], install: 'npm install -g @github/copilot' },
   { id: 'cursor', name: 'Cursor', command: 'cursor-agent', alt: ['agent'], args: ['acp'], url: 'https://cursor.com/docs/cli/acp', hosts: ['*.cursor.sh', 'cursor.com', '*.cursor.com'], keys: ['CURSOR_API_KEY'], auth: 'cursor_login', login: [], install: 'curl https://cursor.com/install -fsS | bash' },
   { id: 'kimi', name: 'Kimi Code', command: 'kimi', args: ['acp'], url: 'https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-acp.html', hosts: ['api.kimi.com', 'www.kimi.com', 'api.moonshot.cn', 'api.moonshot.ai'], keys: ['KIMI_API_KEY'], login: ['.kimi-code/config.toml', '.kimi-code/credentials.json', '.kimi/config.toml', '.kimi/credentials.json'], signIn: 'kimi', then: 'Type /login.', install: 'npm install -g @moonshot-ai/kimi-code', app: { name: 'Kimi Code' } },
@@ -75,7 +78,7 @@ export function updateConfig(id, change) {
 }
 const withoutTest = ({ test, ...entry }) => entry;
 // a host added to the list changes nothing a Test found; a list taken up or given up does
-const forTest = ({ test, network, ...entry }) => ({ ...entry, ...(network?.mode && { networkMode: network.mode }) });
+const forTest = ({ test, network, ...entry }) => ({ ...entry, ...(network?.mode && { networkMode: network.mode }), ...(network?.loopback !== undefined && { loopback: network.loopback }) });
 const withoutProgram = ({ program, ...test }) => test;
 /** An entry's setup, which launchOptions() hands on so a result is recorded only against the setup it started with. */
 const setupOf = (entry) => { const setup = forTest(entry); return JSON.stringify(setup, Object.keys(setup).sort()); };
@@ -107,11 +110,12 @@ const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
  * Where an agent may connect: mode 'hosts' (its provider's hosts, the sites Spectrum's tools search, check references
  * against and download a compile's packages from, and the ones the user added) or 'any' (every public HTTPS host), the user's choice or else the profile's; enforced: whether this
  * platform can hold an agent to a list (macOS; the Windows worker opens every public address or none); sure: whether
- * the agent's documentation says enough to expect it to work held to its list (profile.documented).
+ * the agent's documentation says enough to expect it to work held to its list (profile.documented); loopback, for an agent
+ * with its own server (profile.loopback): { server: what it is, on: the user's switch, on unless turned off }.
  */
 export function networkOf(profile, saved = {}) {
   const mode = ['hosts', 'any'].includes(saved.network?.mode) ? saved.network.mode : profile.network || 'any';
-  return { mode, provider: profile.hosts || [], tools: TOOL_HOSTS, hosts: cleanHosts(saved.network?.hosts), enforced: process.platform === 'darwin', sure: !!profile.documented };
+  return { mode, provider: profile.hosts || [], tools: TOOL_HOSTS, hosts: cleanHosts(saved.network?.hosts), enforced: process.platform === 'darwin', sure: !!profile.documented, ...(profile.loopback && { loopback: { server: profile.loopback, on: saved.network?.loopback !== false } }) };
 }
 /** Adds host to the ones the user allows the agent, and gives the host as saved. */
 export async function allowAgentHost(id, value) {
@@ -293,6 +297,8 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
     ...((profile.auth || (saved.apiKey && profile.keyAuth)) && { authMethod: profile.auth || profile.keyAuth }),
     // the list as it is at each connection, so a host the user allows works without a restart
     network: listed ? 'hosts' : 'any',
+    // macOS: the Windows worker gives no agent a port on this computer
+    ...(network.enforced && network.loopback?.on && { loopback: true }),
     ...(listed && { hosts: async () => { const now = networkOf(profile, (await agentConfigs())[id]); return [...now.provider, ...now.tools, ...now.hosts]; } })
   };
   return options;
@@ -377,15 +383,16 @@ export async function saveAgentConfig(id, value) {
     const was = networkOf(profile, old);
     const mode = value.network?.mode ?? was.mode;
     const hosts = value.network?.hosts ?? was.hosts;
-    if (!['hosts', 'any'].includes(mode) || !Array.isArray(hosts) || hosts.length > 100) throw new Error('Invalid network settings.');
+    const loopback = value.network?.loopback ?? !!was.loopback?.on;
+    if (!['hosts', 'any'].includes(mode) || !Array.isArray(hosts) || hosts.length > 100 || typeof loopback !== 'boolean' || (value.network?.loopback !== undefined && !profile.loopback)) throw new Error('Invalid network settings.');
     const notHost = hosts.find((h) => !cleanHost(h));
     if (notHost !== undefined) throw new Error(`“${String(notHost).slice(0, 80)}” is not a host name. Give a name such as api.example.com, or *.example.com for every host below one.`);
     // the profile's own choice isn't saved, so a later Spectrum's takes its place
-    const network = { ...(mode !== (profile.network || 'any') && { mode }), ...(hosts.length && { hosts: cleanHosts(hosts) }) };
+    const network = { ...(mode !== (profile.network || 'any') && { mode }), ...(hosts.length && { hosts: cleanHosts(hosts) }), ...(profile.loopback && !loopback && { loopback }) };
     // the profile's own arguments aren't saved, so a later Spectrum's take their place
     const next = { command, ...(args && !same(args, profile.args) && { args }), runtimePaths, apiKey, keyEnv, ...(old.loginCopied && { loginCopied: old.loginCopied }), ...(Object.keys(network).length && { network }) };
     // a Test's result no longer holds once any of these changes
-    const unchanged = command === chosenCommand(profile, old) && same(args ?? profile.args, old.args ?? profile.args) && same(runtimePaths, old.runtimePaths ?? []) && apiKey === (old.apiKey || '') && keyEnv === (old.keyEnv || profile.key) && mode === was.mode;
+    const unchanged = command === chosenCommand(profile, old) && same(args ?? profile.args, old.args ?? profile.args) && same(runtimePaths, old.runtimePaths ?? []) && apiKey === (old.apiKey || '') && keyEnv === (old.keyEnv || profile.key) && mode === was.mode && loopback === !!was.loopback?.on;
     return unchanged && old.test ? { ...next, test: old.test } : next;
   });
 }

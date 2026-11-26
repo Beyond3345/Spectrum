@@ -126,3 +126,10 @@ So on Windows the choice in the Network part is saved but changes nothing: every
 - **Should happen:** an agent's card shows, under Network, "On Windows, isolation opens every public address to an agent or none, so … is not held to a list of hosts yet", with its provider's hosts and the box that adds one. Under MCP servers there is no box for hosts and no Any host tick, and the note below says a server reaches any public address.
 - **Send back:** a picture of both, and whether adding a host in a card saves (the chip appears) without an error.
 - **Not tested here:** that the card and the MCP servers part look so on Windows, since the wording was only read in code, and that a saved choice of Listed hosts only starts an agent exactly as Any host does there (`launchOptions` gives `network: 'any'` off a Mac, which the backend test "an agent’s network setting" checks only when it runs on Windows).
+
+## 10. Antigravity's language server
+
+Only if you use Antigravity. `agy acp` starts a language server of its own on a port of the computer that the system picks (`127.0.0.1:0`) and talks to it through that port. On a Mac its card has a switch that opens such a port; Windows isolation refuses a program every address of its own computer (step 9), so there is no such switch, and it is not known whether a program may still reach a port it opened itself there.
+
+- **Should happen:** Antigravity's card shows, under Network, "Antigravity starts its own language server on a port of this computer. On Windows, isolation gives no agent such a port, so Antigravity may not start there." With a Gemini API key saved, Test most likely fails before authentication.
+- **Send back:** the Test's result and its detail, word for word. If it says Ready, Antigravity can reach its own port inside the isolation, and the card's sentence can go.

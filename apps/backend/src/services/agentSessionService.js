@@ -359,6 +359,11 @@ async function connect(r) {
   if (installing.has(r.agentId)) throw new Error(`${profile.name}’s adapter is being changed. Try again when it finishes.`);
   r.processOptions = await launchOptions(r.agentId, { workspace: r.workspace, home: r.home, forbiddenRoots: r.mode === 'review' ? [r.root] : [] });
   r.limits = limitsOf(r.processOptions, await skillsKey(r));
+  // the port its own server may use is never opened silently: told once a session
+  if (r.processOptions.loopback && !r.toldLoopback) {
+    r.toldLoopback = true;
+    emit(r, 'notice', { message: `${profile.name}’s own ${profile.loopback} may use a port on this computer (Settings › Agents › Network).` });
+  }
   // an agent held to its list: a host off it is shown in the session, where the user can allow it
   if (r.processOptions.hosts) r.processOptions.onRefused = (host) => refusedHost(r, host);
   await syncAgentSkills(r).catch((err) => emit(r, 'notice', { message: `The project’s skills weren’t copied for the agent: ${err.message}` }));
