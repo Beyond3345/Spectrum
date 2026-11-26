@@ -151,6 +151,7 @@ Spectrum opens on Home. Check that you can:
 Settings › Agents lists every supported agent. For each agent the user has installed, press Check, then Test. Test runs inside Windows isolation and must never ask for the user's real sign-in to be copied. Record each agent's result: found or not, where, and Test passed or failed with its message.
 
 - **Gemini CLI and GitHub Copilot CLI:** Test decides whether they work on Windows (decision 11 of the part 2 plan).
+- **Antigravity:** if `agy` is installed (in `%LOCALAPPDATA%\agy\bin`), record whether it is an `.exe`, then save a Gemini API key on its card and press Test. Its Google sign-in is in Windows Credential Manager, which isolation is not expected to reach: record what Test says without a key too.
 - **Codex, Claude Agent, Pi and ZCode** are not run on Windows yet (see `docs/WINDOWS_AGENT_VALIDATION.md`); their cards should say so.
 - **OpenCode** is listed as Not supported on every system since 2.6.0, and Test is not offered for it.
 - **Badges:** each card carries Supported (Claude Agent, DeepSeek Harness), In progress (Codex), Untested or Not supported. Those words describe the Mac; on Windows the card's own text says what does not run there.
