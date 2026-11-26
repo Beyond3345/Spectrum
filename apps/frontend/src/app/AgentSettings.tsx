@@ -582,6 +582,29 @@ function AgentCard({
                   </div>
                   <div className="field-hint">{a.network.hosts.length ? 'Added by you:' : 'Add a host of your own, such as a gateway your provider’s traffic goes through:'}</div>
                   <HostList hosts={a.network.hosts} label={`A host ${a.name} may reach`} disabled={!!busy} onChange={(hosts) => act('Saving…', () => configureLocalAgent(a.id, { network: { hosts } }), false)} />
+                  {a.network.loopback &&
+                    (a.network.enforced ? (
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          checked={a.network.loopback.on}
+                          disabled={!!busy}
+                          onChange={(e) => act('Saving…', () => configureLocalAgent(a.id, { network: { loopback: e.target.checked } }))}
+                        />
+                        <span>
+                          Let {a.name}’s own {a.network.loopback.server} use a port on this computer: it can then also reach other programs listening here
+                          <span className="field-hint">
+                            {a.name} needs it to start in isolation. Spectrum’s own ports stay closed to it, but a local proxy or database is open, even on Listed hosts only.
+                          </span>
+                        </span>
+                      </label>
+                    ) : (
+                      <div className="field-hint">
+                        {a.name} starts its own {a.network.loopback.server} on a port of this computer. On Windows, isolation gives no agent such a port, so {a.name} may not start
+                        there.
+                      </div>
+                    ))}
                 </div>
               )}
               {a.adapter && (
