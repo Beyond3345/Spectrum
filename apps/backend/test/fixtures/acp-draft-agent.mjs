@@ -12,7 +12,7 @@
 // client that declares JetBrains' AIR sessionFailure, please-air-fail warns of a retry and then ends the turn with a
 // sessionFailure error, please-air-retry warns and then answers, please-login-refused fails as an expired ChatGPT login
 // does; to one that doesn't, the first two are please-codex-error and please-codex-retry. please-auth asks for
-// authentication (-32000). please-air-run asks permission for a long command as codex-acp does to an AIR client (the
+// authentication (-32000). please-agy-key and please-agy-error end a turn as agy acp does after its model refused it. please-air-run asks permission for a long command as codex-acp does to an AIR client (the
 // title "Run command", the command in rawInput) and please-air-question asks a question in its AIR form (choices as
 // oneOf, no "None of the above", a note field), each waiting for the answer. Every request it gets, and every answer,
 // goes to $HOME/acp-log.jsonl.
@@ -78,6 +78,13 @@ lines.on('line', async (line) => {
       } } });
     }
     if (asked.endsWith('please-auth')) return send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
+    // agy acp 1.5.18 after its model refused the request: the error as its only reply, and end_turn
+    const agy = { 'please-agy-key': 'generating and executing: Error 400, Message: API key not valid. Please pass a valid API key., Status: INVALID_ARGUMENT, Details: [map[@type:type.googleapis.com/google.rpc.ErrorInfo domain:googleapis.com metadata:map[service:generativelanguage.googleapis.com] reason:API_KEY_INVALID]]', 'please-agy-error': 'generating and executing: doRequest: error sending request: Post "https://generativelanguage.googleapis.com/v1beta/models"' };
+    const said = Object.keys(agy).find((k) => asked.endsWith(k));
+    if (said) {
+      update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `\n⚠ agent executor error: ${agy[said]}\n` } });
+      return send({ id: m.id, result: { stopReason: 'end_turn' } });
+    }
     const warn = () => update({ sessionUpdate: 'session_info_update', _meta: airMeta({ category: 'connection', severity: 'warning', title: 'Reconnecting... 1/5' }) });
     if (air && asked.endsWith('please-air-fail')) {
       warn();

@@ -171,7 +171,7 @@ test('Antigravity: its CLI’s ACP server, found where its installer puts it, a 
   agent = await listed('antigravity');
   assert.deepEqual([agent.source, agent.program, agent.state, agent.canImport], ['found', agy, 'sign-in', false]);
   let options = await launchOptions('antigravity', { workspace: dir, home: dir });
-  assert.deepEqual([options.command, options.args, options.env, options.authMethod], [agy, ['acp'], { AGY_CLI_DISABLE_AUTO_UPDATE: 'true' }, undefined], 'no sign-in method asked for without a key');
+  assert.deepEqual([options.command, options.args, options.env, options.authMethod], [agy, ['acp', '--disable-telemetry'], { AGY_CLI_DISABLE_AUTO_UPDATE: 'true' }, undefined], 'no sign-in method asked for without a key');
   await saveAgentConfig('antigravity', { apiKey: 'gemini-private' });
   options = await launchOptions('antigravity', { workspace: dir, home: dir });
   assert.deepEqual([options.env.GEMINI_API_KEY, options.authMethod, options.secrets], ['gemini-private', 'gemini-api-key', ['gemini-private']]);
@@ -259,10 +259,11 @@ test('Windows: agy.exe in the folder Antigravity’s installer uses, off the PAT
   }
 });
 
-test('OpenCode is listed as unsupported and never started', async () => {
-  assert.match(profileFor('opencode').unavailable, /does not run inside Spectrum’s isolation/);
-  await assert.rejects(launchOptions('opencode', { workspace: dir, home: dir }), /isolation/);
-  assert.deepEqual(['deepseek', 'claude', 'codex', 'opencode', 'kimi'].map((id) => profileFor(id).support), ['supported', 'supported', 'progress', 'unsupported', 'untested']);
+test('OpenCode 2 starts on a Mac with the switch for its own local server, and reaches its model list; Claude Agent is untested until it passes', () => {
+  assert.equal(profileFor('opencode').unavailable, process.platform === 'win32' ? 'OpenCode 2 starts a local server on a port it chooses itself, which Windows isolation does not open. It works on a Mac.' : undefined);
+  assert.equal(profileFor('opencode').loopback, 'local server');
+  assert.ok(profileFor('opencode').hosts.includes('models.opencode.ai'));
+  assert.deepEqual(['deepseek', 'claude', 'codex', 'opencode', 'kimi'].map((id) => profileFor(id).support), ['supported', 'untested', 'progress', 'untested', 'untested']);
 });
 
 test('Pi: the adapter is told where Pi is, with its package readable and never the home folder', { skip: nodeAdapters || knownFolders }, async () => {

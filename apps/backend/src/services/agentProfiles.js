@@ -16,7 +16,7 @@ import claudeLock from '../data/adapters/claude/package-lock.json' with { type: 
 import piLock from '../data/adapters/pi/package-lock.json' with { type: 'json' };
 import zcodeLock from '../data/adapters/zcode/package-lock.json' with { type: 'json' };
 
-const SUPPORT = { deepseek: 'supported', claude: 'supported', codex: 'progress' };
+const SUPPORT = { deepseek: 'supported', codex: 'progress' };
 export const ADAPTER_LOCKS = { codex: codexLock, claude: claudeLock, pi: piLock, zcode: zcodeLock };
 
 export const AGENT_DIR = path.join(DATA_DIR, 'agents');
@@ -40,10 +40,10 @@ const ACP_PROJECT = 'the Agent Client Protocol project';
  * unless the user turns it off (networkOf's loopback; agentSandbox's loopback).
  */
 export const PROFILES = [
-  { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', hosts: ['api.openai.com', 'api.anthropic.com', 'openrouter.ai', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'opencode.ai', 'models.dev'], keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', unsupported: 'OpenCode 2 does not run inside Spectrum’s isolation: its agent mode starts a private server on a port it chooses itself, which isolation does not open. Spectrum never runs an agent outside isolation.' },
+  { id: 'opencode', name: 'OpenCode', command: 'opencode', args: ['acp'], url: 'https://opencode.ai/docs/acp/', hosts: ['api.openai.com', 'api.anthropic.com', 'openrouter.ai', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'opencode.ai', 'models.dev', 'models.opencode.ai'], loopback: 'local server', keys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'DEEPSEEK_API_KEY'], login: ['.local/share/opencode/auth.json', '.config/opencode/opencode.json', '.config/opencode/opencode.jsonc'], signIn: 'opencode auth login', then: 'In OpenCode 2, type /connect inside opencode instead.', install: 'brew install anomalyco/tap/opencode-v2', windows: 'OpenCode 2 starts a local server on a port it chooses itself, which Windows isolation does not open. It works on a Mac.' },
   { id: 'codex', name: 'Codex', command: 'codex-acp', args: [], url: 'https://github.com/agentclientprotocol/codex-acp', hosts: ['api.openai.com', 'chatgpt.com', 'auth.openai.com'], keys: ['OPENAI_API_KEY'], login: ['.codex/auth.json'], signIn: 'codex login', keyAuth: 'api-key', air: ['sessionFailure'], adapter: { package: '@agentclientprotocol/codex-acp', version: '2.7.0', bin: 'dist/index.js', integrity: 'sha512-fFFU/tV5DltBzN4cZIh5tJEWGTZFXbwHU7I5RxPkmrGraw3jhAIuvTeudYwK3wAbV311WgIi7qONl2I8uRV2jw==', official: true, publisher: ACP_PROJECT, size: { arm64: '370 MB', x64: '395 MB' } }, windows: NODE_ON_WINDOWS },
   // never “Claude Code”: an API key only, with the claude.ai sign-in hidden (Anthropic's Agent SDK terms)
-  { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', hosts: ['api.anthropic.com'], documented: true, keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
+  { id: 'claude', name: 'Claude Agent', command: 'claude-agent-acp', args: ['--hide-claude-auth'], url: 'https://github.com/agentclientprotocol/claude-agent-acp', hosts: ['api.anthropic.com'], documented: true, air: ['sessionFailure'], keys: ['ANTHROPIC_API_KEY'], login: [], adapter: { package: '@agentclientprotocol/claude-agent-acp', version: '0.108.1', bin: 'dist/index.js', integrity: 'sha512-Qn1EjtmqJtEhwvMLfeWPZXLv9++hfM5dkAiVOTJEp28TBcebLR7Gypm7KGWAf1g7/ei1R3w3teOlMIl9f3+j4Q==', official: true, publisher: ACP_PROJECT, size: { arm64: '350 MB', x64: '360 MB' } }, windows: NODE_ON_WINDOWS },
   { id: 'gemini', name: 'Gemini CLI', command: 'gemini', args: ['--acp'], url: 'https://github.com/google-gemini/gemini-cli', hosts: ['generativelanguage.googleapis.com', 'cloudcode-pa.googleapis.com', 'oauth2.googleapis.com', 'www.googleapis.com'], keys: ['GEMINI_API_KEY'], login: ['.gemini/settings.json', '.gemini/oauth_creds.json', '.gemini/google_accounts.json'], signIn: 'gemini', then: 'Choose Sign in with Google.', install: 'npm install -g @google/gemini-cli' },
   // Google's ACP server in its own CLI. Its Google sign-in lives in the system keychain, which isolation does not open,
   // so a key is used through ACP's own Gemini API key method (keyAuth). agy acp serves itself from a language server it
@@ -266,17 +266,18 @@ export async function findProgram(profile, saved = {}) {
 const CODEX_LOG_FILTER = 'codex_app_server=debug,codex_login=debug,codex_model_provider=debug,codex_backend_client=debug,codex_http_client=trace,codex_api=debug,codex_core=info,reqwest=debug,hyper_util=debug';
 
 /**
- * What an agent with a key sign-in method (keyAuth) signs in with: 'key', 'login' (a copied login, which the agent
- * finds itself) or neither. With both, the user's choice (signInWith), else the key. Other agents get what they have.
+ * What the agent signs in with, which a refusal names: 'key', 'login' (a copied login, which the agent finds itself) or
+ * neither. With both, an agent with a key sign-in method (keyAuth) uses the user's choice (signInWith), else the key;
+ * another agent gets both and picks itself, so neither is named.
  */
 async function signInOf(profile, saved, home) {
-  if (!profile.keyAuth) return undefined;
   const login = !!saved.loginCopied && await anyFile(home, profile.login);
-  return saved.apiKey && !(login && saved.signInWith === 'login') ? 'key' : login ? 'login' : undefined;
+  if (profile.keyAuth) return saved.apiKey && !(login && saved.signInWith === 'login') ? 'key' : login ? 'login' : undefined;
+  return saved.apiKey && !login ? 'key' : login && !saved.apiKey ? 'login' : undefined;
 }
 
 /** Everything a session or a Test starts the agent with, through spawnAgentProcess(): its program, arguments, key and folders. */
-export async function launchOptions(id, { workspace, home: agentHomeDir, forbiddenRoots = [] }) {
+export async function launchOptions(id, { workspace, home: agentHomeDir, forbiddenRoots = [], direct = false }) {
   const profile = profileFor(id);
   if (profile.unavailable) throw new Error(profile.unavailable);
   const saved = (await agentConfigs())[id] || {};
@@ -294,26 +295,34 @@ export async function launchOptions(id, { workspace, home: agentHomeDir, forbidd
   const args = [...found.args, ...(saved.args || profile.args)];
   // Advanced can't take it away
   if (id === 'claude' && !args.includes('--hide-claude-auth')) args.push('--hide-claude-auth');
+  // agy acp otherwise posts telemetry to play.googleapis.com, off its list
+  if (id === 'antigravity' && !args.includes('--disable-telemetry')) args.push('--disable-telemetry');
   const signIn = await signInOf(profile, saved, agentHomeDir);
   const proxy = await currentProxy();
   const forbidden = [...forbiddenRoots];
   // Codex keeps a login in CODEX_HOME/auth.json, which its API-key sign-in would overwrite: a key session has a Codex
   // home of its own that keeps the key in memory only, and isolation keeps the copied login out of its reach
-  if (id === 'codex' && signIn === 'key') {
-    const codexHome = path.join(agentHomeDir, '.codex-key');
+  // Codex's settings, in its private home: held to its list, no sync of OpenAI's curated plugins at startup, which asks
+  // github.com, api.github.com and chatgpt.com for a catalogue Spectrum never offers
+  if (id === 'codex') {
+    const codexHome = path.join(agentHomeDir, signIn === 'key' ? '.codex-key' : '.codex');
     await fs.mkdir(codexHome, { recursive: true, mode: 0o700 });
-    await fs.writeFile(path.join(codexHome, 'config.toml'), 'cli_auth_credentials_store = "ephemeral"\n');
-    forbidden.push(path.join(agentHomeDir, '.codex'));
+    await fs.writeFile(path.join(codexHome, 'config.toml'), [signIn === 'key' && 'cli_auth_credentials_store = "ephemeral"', listed && '[features]\nplugins = false'].filter(Boolean).join('\n') + '\n');
+    if (signIn === 'key') forbidden.push(path.join(agentHomeDir, '.codex'));
   }
   // SPECTRUM_CODEX_LOG in Spectrum's own environment (a RUST_LOG filter, or 1): Codex logs its traffic and errors to
   // logs/app-server.log in its private home, for a run the user is looking into
   const codexLog = id === 'codex' && process.env.SPECTRUM_CODEX_LOG;
   if (codexLog) await fs.mkdir(path.join(agentHomeDir, 'logs'), { recursive: true, mode: 0o700 });
   const env = {
-    ...(saved.apiKey && keyEnv && signIn !== 'login' && { [keyEnv]: saved.apiKey }),
+    ...(saved.apiKey && keyEnv && !(profile.keyAuth && signIn === 'login') && { [keyEnv]: saved.apiKey }),
     ...(id === 'codex' && signIn === 'key' && { CODEX_HOME: path.join(agentHomeDir, '.codex-key') }),
     // declared AIR, codex-acp would ask the model for a suggested next message after every turn, which Spectrum never shows
     ...(id === 'codex' && { CODEX_ACP_PROMPT_SUGGESTIONS: 'false' }),
+    // Codex runs each command in a sandbox of its own, which can't start inside Spectrum's isolation, so every command
+    // failed. On a copy (Isolated, and Test) it starts in Full access: isolation holds it to the copy, and nothing reaches
+    // the project before Apply. Direct keeps Codex's own mode, which asks first.
+    ...(id === 'codex' && !direct && { INITIAL_AGENT_MODE: 'agent-full-access' }),
     ...(codexLog && { APP_SERVER_LOGS: path.join(agentHomeDir, 'logs'), RUST_LOG: codexLog === '1' ? CODEX_LOG_FILTER : codexLog }),
     ...(id === 'zcode' && { ZCODE_ACP_MODE: 'build' }),
     // its self-updater would write beside a program isolation keeps read-only, and fetch from hosts off its list

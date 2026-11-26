@@ -40,7 +40,7 @@ const HIDDEN = `\\.spectrum|\\.git|\\.claude|${secretNamePattern(AGENT_SECRET_EX
  * on and reach every port here but Spectrum's fixed ones: a profile cannot limit a connection to the port the process
  * itself bound. Only with the user's switch (agentProfiles' network.loopback).
  */
-export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], internalPort, offline = false, gatePort, localPorts = [], loopback = false }) {
+export function sandboxProfile({ workspace, home, executable, runtimeExecutable = executable, runtimePaths = [], forbiddenRoots = [], offline = false, gatePort, localPorts = [], loopback = false }) {
   const reads = [...new Set([...SYSTEM_READS, ...developerReads(), path.dirname(runtimeExecutable), ...runtimePaths])];
   return `(version 1)
 (deny default)
@@ -82,7 +82,6 @@ ${loopback ? `; its own server, on a port of its choosing: any port on this comp
 (allow network-bind network-inbound (local tcp "localhost:*"))
 (allow network-outbound (remote tcp "localhost:*"))
 ${spectrumPorts().map((p) => `(deny network-outbound (remote tcp "localhost:${p}"))`).join('\n')}` : ''}`}
-${Number.isInteger(internalPort) && internalPort > 0 && internalPort < 65536 ? `(allow network-bind network-inbound (local tcp "localhost:${internalPort}"))\n(allow network-outbound (remote tcp "localhost:${internalPort}"))` : ''}
 `;
 }
 
@@ -109,7 +108,7 @@ export async function resolveExecutable(command, envPath = process.env.PATH || '
  * as before); onRefused(host): it asked for one off the list; proxy: the user's proxy, which the gate goes on through. localPorts: see sandboxProfile. macOS only: the Windows
  * worker opens every public address or none and never this computer's, so there neither is enforced or reachable.
  */
-export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], internalPort, cwd = workspace, env = {}, offline = false, hosts, onRefused, localPorts, loopback, proxy }) {
+export async function spawnAgentProcess({ command, args = [], workspace, home, runtimeExecutable, runtimePaths = [], forbiddenRoots = [], cwd = workspace, env = {}, offline = false, hosts, onRefused, localPorts, loopback, proxy }) {
   if (!['darwin', 'win32'].includes(process.platform)) throw new Error('Native agent isolation is unavailable on this platform.');
   const executable = await resolveExecutable(command);
   if (process.platform === 'win32') return spawnWindowsAgent({ executable, args, workspace, home, runtimeExecutable, runtimePaths, forbiddenRoots, cwd, env, offline });
@@ -123,7 +122,7 @@ export async function spawnAgentProcess({ command, args = [], workspace, home, r
   // proxy (networkProxy.js): the user's proxy, which isolation never lets the process reach itself; through a gate it
   // goes on there, for a process on any host too
   const gate = (hosts || proxy) && !offline ? await openGate({ hosts: hosts || null, onRefused, proxy }) : null;
-  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, internalPort, offline, gatePort: gate?.port, localPorts, loopback });
+  const profile = sandboxProfile({ workspace: workRoot, home: homeRoot, executable, runtimeExecutable, runtimePaths: roots, forbiddenRoots, offline, gatePort: gate?.port, localPorts, loopback });
   const child = spawn('/bin/sh', ['-c', WATCHDOG, 'sh', profile, executable, ...args], {
     cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
     env: {
