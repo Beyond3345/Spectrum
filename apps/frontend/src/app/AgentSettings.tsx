@@ -597,6 +597,14 @@ function AgentCard({
                       Mac.
                     </div>
                   )}
+                  {a.network.enforced && (
+                    <div className="field-hint">
+                      {a.network.proxy
+                        ? `${a.name} goes through Spectrum’s gate to the proxy ${a.network.proxy.text} (${a.network.proxy.from.toLowerCase()}), and never reaches this computer itself.`
+                        : 'No proxy: it connects directly.'}{' '}
+                      The proxy is set in Settings › System › Network.
+                    </div>
+                  )}
                   <div className="field-hint">
                     Its provider: <span className="mono">{a.network.provider.join(', ')}</span>
                   </div>

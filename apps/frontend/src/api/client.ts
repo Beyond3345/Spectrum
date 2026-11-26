@@ -2169,7 +2169,16 @@ export interface LocalAgent {
  * added) or 'any' public HTTPS host; enforced: whether this computer can hold an agent to a list (a Mac can); sure:
  * whether the agent's own documentation says enough to expect it to work held to its list
  */
-export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools: string[]; hosts: string[]; enforced: boolean; sure: boolean }
+/** proxy: the proxy the agent goes through, through Spectrum's gate (Settings › System), as shown */
+export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools: string[]; hosts: string[]; enforced: boolean; sure: boolean; proxy?: { text: string; from: string } }
+/**
+ * The proxy Spectrum goes through (Settings › System › Network): the one in use (text, its name and password masked,
+ * and where it came from), and the one typed there, masked; supported: false on Windows, where Spectrum connects as before.
+ */
+export interface ProxyState { supported: boolean; proxy: { text: string; from: string; source: 'typed' | 'system' | 'shell' } | null; typed: string }
+export const getProxy = () => request<ProxyState>('/api/system/proxy');
+/** Saves the proxy typed in Settings ('' for none); the backend checks it and says which one is in use now. */
+export const saveProxy = (proxy: string) => request<ProxyState>('/api/system/proxy', json('PUT', { proxy }));
 /**
  * type 'update' carries an ACP session/update; 'todo' a to-do the agent suggested ({ text, link? }); 'reset' the paths a
  * rejection put back in the draft. first: a stored event that joins streamed pieces names its first piece's id, and

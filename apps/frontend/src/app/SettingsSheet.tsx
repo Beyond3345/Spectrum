@@ -41,6 +41,7 @@ import {
   updateSyncSettings,
   writeSkillFile
 } from '../api/client';
+import ProxySettings from './ProxySettings';
 import type { BibTool, CheckerStatus, CompileEngine, Engines, JyutpingInfo, LanguageInfo, LanguageToolStatus, SearchProvider, Skill, SkillShare, SystemCheck } from '../api/client';
 import { COLOUR_ROLES, EDITOR_FONTS, EDITOR_THEMES, chosenColours, editorColours, highlightLines, themeFor, wellColour } from '../editor/editorThemes';
 import type { EditorMode } from '../editor/editorThemes';
@@ -971,6 +972,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
 
           {section === 'system' && !licences && (
             <>
+              <ProxySettings />
               <h3 className="form-section-title">Tools</h3>
               {checkError && <div className="field-hint error">{checkError}</div>}
               {!check && !checkError && <div className="field-hint"><span className="spinner" /> Checking…</div>}
