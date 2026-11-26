@@ -12,7 +12,10 @@
 // client that declares JetBrains' AIR sessionFailure, please-air-fail warns of a retry and then ends the turn with a
 // sessionFailure error, please-air-retry warns and then answers, please-login-refused fails as an expired ChatGPT login
 // does; to one that doesn't, the first two are please-codex-error and please-codex-retry. please-auth asks for
-// authentication (-32000). Every request it gets goes to $HOME/acp-log.jsonl.
+// authentication (-32000). please-air-run asks permission for a long command as codex-acp does to an AIR client (the
+// title "Run command", the command in rawInput) and please-air-question asks a question in its AIR form (choices as
+// oneOf, no "None of the above", a note field), each waiting for the answer. Every request it gets, and every answer,
+// goes to $HOME/acp-log.jsonl.
 import readline from 'node:readline';
 import { appendFileSync, readFileSync, promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -27,9 +30,14 @@ const methods = process.argv.includes('--auth-methods');
 let air = false;
 const readable = (file) => { try { readFileSync(file); return true; } catch { return false; } };
 const airMeta = (failure) => ({ jetbrains: { air: { version: 1, sessionFailure: { id: 'turn-1:error', revision: 1, actions: [], ...failure } } } });
+// the answers to what it asked the client, by request id
+const waiting = new Map();
+const askClient = (id, method, params) => new Promise((resolve) => { waiting.set(id, resolve); send({ id, method, params }); });
+const LONG_COMMAND = `latexmk -pdf -interaction=nonstopmode ${'-e "$x" '.repeat(60)}main.tex`;
 lines.on('line', async (line) => {
   const m = JSON.parse(line);
   if (m.method) log({ method: m.method, params: m.params });
+  else if (m.id !== undefined && waiting.has(m.id)) { log({ answered: m.id, result: m.result, error: m.error }); waiting.get(m.id)(m.result); waiting.delete(m.id); return; }
   if (m.method === 'initialize') {
     air = !!m.params.clientCapabilities?._meta?.jetbrains?.air?.capabilities?.includes('sessionFailure');
     const authMethods = methods ? [{ id: 'api-key', name: 'API Key', _meta: { 'api-key': { provider: 'openai' } } }, { id: 'chat-gpt', name: 'ChatGPT' }] : [];
@@ -60,6 +68,15 @@ lines.on('line', async (line) => {
       send({ id: 800, method: 'elicitation/create', params: { sessionId, mode: 'form', message: 'Which section?', requestedSchema: { type: 'object', properties: { section: { type: 'string' } } } } });
     }
     const retry = (n) => update({ sessionUpdate: 'session_info_update', _meta: { codex: { error: { message: `Reconnecting... ${n}/5`, codexErrorInfo: null, additionalDetails: 'workspace routing discovery failed', turnId: 'turn-1', willRetry: true } } } });
+    if (asked.endsWith('please-air-run')) {
+      await askClient(901, 'session/request_permission', { sessionId, toolCall: { toolCallId: 'cmd-1', title: 'Run command', rawInput: { command: LONG_COMMAND, cwd: workspace } }, options: [{ optionId: 'approved', name: 'Yes', kind: 'allow_once' }, { optionId: 'abort', name: 'No', kind: 'reject_once' }] });
+    }
+    if (asked.endsWith('please-air-question')) {
+      await askClient(902, 'elicitation/create', { sessionId, toolCallId: 'q-1', mode: 'form', message: 'Codex needs your input to continue.', requestedSchema: { type: 'object', required: ['section'], properties: {
+        section: { title: 'Which section?', type: 'string', oneOf: [{ const: 'Introduction', title: 'Introduction' }, { const: 'Methods', title: 'Methods' }], _meta: { codex: { isOther: true, isSecret: false } } },
+        section_note: { type: 'string', title: 'Additional answer or note', _meta: { codex: { questionId: 'section', role: 'user_note', isSecret: false }, _askUserQuestionCustomAnswer: true, jetbrains: { air: { version: 1, customAnswer: true } } } }
+      } } });
+    }
     if (asked.endsWith('please-auth')) return send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
     const warn = () => update({ sessionUpdate: 'session_info_update', _meta: airMeta({ category: 'connection', severity: 'warning', title: 'Reconnecting... 1/5' }) });
     if (air && asked.endsWith('please-air-fail')) {

@@ -203,3 +203,32 @@ test('an agent without AIR is told nothing of it, and its fatal error still ends
   assert.ok(!run.events.some((e) => e.type === 'notice' && /^Network check/.test(e.data.message)), 'the check is Codex’s');
   sessions.closeAgentRun(run);
 });
+
+test('under AIR, the permission for a long command carries it whole, and a question is answered in the user’s own words with no choice picked', { skip, timeout: 120000 }, async () => {
+  const { open, log } = await native$();
+  // as the fixture sends it
+  const LONG_COMMAND = `latexmk -pdf -interaction=nonstopmode ${'-e "$x" '.repeat(60)}main.tex`;
+  await setUp({ login: true });
+  const run = await open();
+  const answer = async (prompt, reply) => {
+    await sessions.promptAgent(run, prompt);
+    for (const deadline = Date.now() + 20000; !run.pending.size;) {
+      if (Date.now() > deadline) throw new Error('The agent never asked.');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const [[requestId, pending]] = [...run.pending];
+    const asked = pending.params;
+    sessions.answerAgentRequest(run, requestId, reply);
+    await run.task;
+    return asked;
+  };
+  const permission = await answer('please-air-run', { optionId: 'approved' });
+  assert.equal(permission.toolCall.title, 'Run command');
+  assert.equal(permission.toolCall.rawInput.command, LONG_COMMAND, 'the card has the command whole to show');
+  const question = await answer('please-air-question', { action: 'accept', content: { section_note: 'The discussion, please' } });
+  assert.equal(question.requestedSchema.properties.section_note.type, 'string', 'the note is its own field, shown beside the choices');
+  const answered = (await log(run)).filter((e) => e.answered);
+  assert.deepEqual(answered.map((e) => e.result), [{ outcome: { outcome: 'selected', optionId: 'approved' } }, { action: 'accept', content: { section_note: 'The discussion, please' } }], 'Codex hears the user’s words, with no choice picked');
+  assert.equal(run.status, 'completed');
+  sessions.closeAgentRun(run);
+});

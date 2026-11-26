@@ -18,6 +18,7 @@ import { useEditor } from '../EditorContext';
 import type { TodosState } from '../TodosList';
 import { Markdown, VERSIONS_CHANGED, errorText } from '../shared';
 import type { AgentCommand, Checkpoint, Item, PlanEntry, ToolCall } from './transcript';
+import { choicesOf, permissionShows } from './transcript';
 import { MAX_PICTURES, PictureChips, PictureStrip, ToolPicture, picturesOf } from './pictures';
 import type { Picture } from './pictures';
 
@@ -177,15 +178,22 @@ export function AgentQuestion({ request, onAnswer }: { request: AgentUserRequest
   const send = async (answer: unknown) => { setBusy(true); setError(''); try { await onAnswer(answer); } catch (err) { setError(errorText(err)); setBusy(false); } };
   const params = request.params;
   const properties = params.requestedSchema?.properties || {};
+  const uid = useId();
+  const shows = request.kind === 'permission' ? permissionShows(params.toolCall) : null;
   return <div className="agent-request">
     <strong>{request.kind === 'permission' ? params.toolCall?.title || 'Permission requested' : request.kind === 'plan' ? 'Review the agent’s plan' : params.message || 'The agent needs your input'}</strong>
+    {/* what it would run or change, in full, before Allow or Deny, whatever the title says */}
+    {shows?.command && <pre className="agent-output">$ {shows.command}</pre>}
+    {shows && shows.paths.length > 0 && <div className="field-hint">{shows.paths.length === 1 ? 'File' : 'Files'}: <span className="mono">{shows.paths.join(', ')}</span></div>}
+    {shows?.diffs.map((d, i) => <div className="agent-tool-diff" key={i}><SplitDiffView original={d.oldText || ''} proposed={d.newText || ''} leftLabel={nameOf(d.path)} rightLabel="Agent’s version" /></div>)}
+    {shows?.texts.map((text, i) => <pre className="agent-output" key={i}>{text}</pre>)}
     {params.toolCall?.rawInput && <details><summary>Details</summary><pre>{JSON.stringify(params.toolCall.rawInput, null, 2)}</pre></details>}
     {request.kind === 'plan' && <Markdown>{params.plan || params.content || params.title || 'Approve this plan to continue.'}</Markdown>}
     {request.kind === 'permission' ? <div className="row wrap">{(params.options || []).map((o: any) => <button className="btn small" disabled={busy} key={o.optionId} onClick={() => void send({ optionId: o.optionId })}>{o.name}</button>)}<button className="btn small" disabled={busy} onClick={() => void send({ cancelled: true })}>Cancel</button></div>
       : request.kind === 'plan' ? <div className="row"><button className="btn small" disabled={busy} onClick={() => void send({ approved: true })}>Approve</button><button className="btn small" disabled={busy} onClick={() => void send({ approved: false })}>Decline</button></div>
       : <>
         {params.mode === 'url' ? <p>Continue at <a href={/^https:\/\//i.test(params.url || '') ? params.url : undefined} target="_blank" rel="noreferrer">{params.url}</a>. Only proceed if you trust this agent and website.</p>
-          : Object.entries(properties).length ? Object.entries(properties).map(([key, schema]: [string, any]) => <label className="field" key={key}>{schema.title || key}{schema.description && <span className="field-hint">{schema.description}</span>}{schema.type === 'boolean' ? <input type="checkbox" checked={values[key] === true} onChange={(e) => setValues({ ...values, [key]: e.target.checked })} /> : schema.enum ? <select value={String(values[key] ?? '')} onChange={(e) => setValues({ ...values, [key]: e.target.value })}><option value="">Choose…</option>{schema.enum.map((v: string) => <option key={v}>{v}</option>)}</select> : <input value={String(values[key] ?? '')} onChange={(e) => setValues({ ...values, [key]: e.target.value })} />}</label>)
+          : Object.entries(properties).length ? Object.entries(properties).map(([key, schema]: [string, any]) => <label className="field" key={key}>{schema.title || key}{schema.description && <span className="field-hint">{schema.description}</span>}{schema.type === 'boolean' ? <input type="checkbox" checked={values[key] === true} onChange={(e) => setValues({ ...values, [key]: e.target.checked })} /> : schema.enum ? <select value={String(values[key] ?? '')} onChange={(e) => setValues({ ...values, [key]: e.target.value })}><option value="">Choose…</option>{schema.enum.map((v: string) => <option key={v}>{v}</option>)}</select> : choicesOf(schema) ? <>{/* a choice, or the user's own words: an agent such as Codex takes words that are no choice as the answer */}<input list={`${uid}-${key}`} placeholder="Choose, or type your own answer" value={String(values[key] ?? '')} onChange={(e) => setValues({ ...values, [key]: e.target.value })} /><datalist id={`${uid}-${key}`}>{choicesOf(schema)!.map((c) => <option key={c.value} value={c.value}>{c.label === c.value ? undefined : c.label}</option>)}</datalist></> : <input value={String(values[key] ?? '')} onChange={(e) => setValues({ ...values, [key]: e.target.value })} />}</label>)
           : (params.questions || [{ id: 'answer', question: params.question || 'Your answer' }]).map((q: any, i: number) => <label className="field" key={q.id || i}>{q.question || q.text || q.header || 'Your answer'}<input value={String(values[q.id || String(i)] ?? '')} onChange={(e) => setValues({ ...values, [q.id || String(i)]: e.target.value })} /></label>)}
         <div className="row"><button className="btn small" disabled={busy} onClick={() => void send({ action: 'accept', content: values })}>{params.mode === 'url' ? 'I continued on the website' : 'Submit'}</button><button className="btn small" disabled={busy} onClick={() => void send({ action: 'decline' })}>Decline</button></div>
       </>}

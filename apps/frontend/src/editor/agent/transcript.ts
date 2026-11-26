@@ -507,3 +507,25 @@ export function runView(events: AgentEvent[]) {
   if (!RUNNING.includes(status)) for (const item of calls.values()) if (item.call.status === 'in_progress') item.call = { ...item.call, status: 'failed' };
   return { items, waiting, status, usage, result, plan };
 }
+
+/**
+ * What a permission request asks for, shown before Allow or Deny whatever its title says: the command in full (from
+ * rawInput, where Codex under JetBrains' AIR extension puts it while its title says only "Run command"), the files
+ * it would touch, and the changes it carries.
+ */
+export function permissionShows(toolCall: { title?: string; rawInput?: any; content?: ToolContent[]; locations?: { path: string }[] } | undefined) {
+  const input = toolCall?.rawInput;
+  const raw = input && typeof input === 'object' ? input.command ?? input.cmd : undefined;
+  const command = Array.isArray(raw) ? raw.map(String).join(' ') : typeof raw === 'string' ? raw : '';
+  const paths = [...new Set([...(toolCall?.locations || []).map((l) => l.path), ...(toolCall?.content || []).flatMap((c) => (c.type === 'diff' && c.path ? [c.path] : []))].filter(Boolean))];
+  const diffs = (toolCall?.content || []).filter((c): c is Extract<ToolContent, { type: 'diff' }> => c.type === 'diff');
+  const texts = (toolCall?.content || []).flatMap((c) => (c.type === 'content' && c.content?.type === 'text' && c.content.text ? [c.content.text] : []));
+  return { command, paths, diffs, texts };
+}
+
+/** A form field's choices, whether the agent gives them as enum or, as codex-acp does, as oneOf with const and title. */
+export function choicesOf(schema: any): { value: string; label: string }[] | null {
+  if (Array.isArray(schema?.enum)) return schema.enum.map((v: unknown) => ({ value: String(v), label: String(v) }));
+  if (Array.isArray(schema?.oneOf)) return schema.oneOf.filter((o: any) => o && o.const !== undefined).map((o: any) => ({ value: String(o.const), label: String(o.title ?? o.const) }));
+  return null;
+}
