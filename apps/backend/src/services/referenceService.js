@@ -15,6 +15,7 @@ import { callOpenAICompatible, missingKey, resolveLLMConfig } from './llmService
 import { parseFrontMatter } from './markdownService.js';
 import { mutateProjectRoot, readMeta } from './projectService.js';
 import { extractJSON } from './transferAgent/utils.js';
+import { VALID_KEY, draftProblems, formatEntry, suggestKey } from './bibEntry.js';
 
 const TIMEOUT_MS = 20_000;
 const LLM_TIMEOUT_MS = 30_000;
@@ -27,6 +28,8 @@ const baseUrl = (name, fallback) => (process.env[name] || fallback).replace(/\/+
 const doiBase = () => baseUrl('SPECTRUM_DOI_BASE', 'https://doi.org');
 export const crossrefBase = () => baseUrl('SPECTRUM_CROSSREF_BASE', 'https://api.crossref.org');
 const arxivBase = () => baseUrl('SPECTRUM_ARXIV_BASE', 'https://export.arxiv.org');
+const openLibraryBase = () => baseUrl('SPECTRUM_OPENLIBRARY_BASE', 'https://openlibrary.org');
+const googleBooksBase = () => baseUrl('SPECTRUM_GOOGLEBOOKS_BASE', 'https://www.googleapis.com/books/v1');
 
 // ─── Input detection ───
 
@@ -95,8 +98,283 @@ export function splitLines(text) {
   return String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).flatMap((line) => {
     const dois = [...line.matchAll(DOI_ALL_RE)].map((m) => m[1]);
     const ids = dois.length ? dois : [...line.matchAll(ARXIV_ALL_RE)].map((m) => m[1]);
-    return ids.length > 1 ? ids.map(detectInput) : [detectInput(line)];
+    return ids.length > 1 ? ids.map(detectInput) : [classifyLine(line)];
   });
+}
+
+// ─── ISBNs, RIS and formatted citations ───
+
+const isbn13 = (twelve) => twelve + ((10 - ([...twelve].reduce((sum, c, i) => sum + Number(c) * (i % 2 ? 3 : 1), 0) % 10)) % 10);
+
+/** An ISBN-10 or ISBN-13 whose check digit is right, as 13 digits; '' for anything else. */
+export function isbnOf(raw) {
+  const d = String(raw ?? '').replace(/[\s-]/g, '').toUpperCase();
+  if (/^\d{9}[\dX]$/.test(d)) {
+    const sum = [...d].reduce((total, c, i) => total + (c === 'X' ? 10 : Number(c)) * (10 - i), 0);
+    return sum % 11 ? '' : isbn13(`978${d.slice(0, 9)}`);
+  }
+  return /^97[89]\d{10}$/.test(d) && isbn13(d.slice(0, 12)) === d ? d : '';
+}
+
+// "ISBN 978-0-262-04630-5" anywhere on a line, "ISBN-10: 0262046305", or the number alone
+const ISBN_LABELLED = /\bISBN(?:-1[03])?:?\s*([\dX][\dX\s-]{8,16}[\dX])/i;
+const ISBN_ALONE = /^([\dX][\dX\s-]{8,16}[\dX])$/i;
+const isbnIn = (line) => isbnOf((line.match(ISBN_LABELLED) || line.match(ISBN_ALONE))?.[1]);
+
+const RIS_TYPES = {
+  JOUR: 'article-journal', JFULL: 'article-journal', MGZN: 'article-magazine', NEWS: 'article-newspaper', BOOK: 'book', EBOOK: 'book',
+  EDBOOK: 'book', CHAP: 'chapter', ECHAP: 'chapter', CONF: 'paper-conference', CPAPER: 'paper-conference', RPRT: 'report', STAND: 'report',
+  THES: 'thesis', ELEC: 'webpage', WEB: 'webpage', BLOG: 'webpage', COMP: 'software', DATA: 'dataset'
+};
+
+const yearIssued = (value) => {
+  const text = String(value ?? '').replace(/\/+$/, '');
+  if (issuedFromDate(text)) return issuedFromDate(text);
+  const y = text.match(/\b(1[5-9]\d\d|20\d\d)\b/)?.[1];
+  return y ? { 'date-parts': [[Number(y)]] } : undefined;
+};
+
+/** RIS records (TY … ER), as reference managers export them, → CSL records */
+export function parseRis(text) {
+  const records = [];
+  let tags = null;
+  for (const line of String(text).split(/\r?\n/)) {
+    const m = line.match(/^([A-Z][A-Z0-9])  -\s?(.*)$/);
+    if (!m) continue;
+    if (m[1] === 'TY') tags = { TY: [m[2].trim()] };
+    else if (m[1] === 'ER') {
+      if (tags) records.push(risRecord(tags));
+      tags = null;
+    } else if (tags && m[2].trim()) (tags[m[1]] ||= []).push(m[2].trim());
+  }
+  return records;
+}
+
+function risRecord(t) {
+  const one = (...names) => names.map((n) => t[n]?.[0]).find(Boolean) || '';
+  const type = RIS_TYPES[one('TY')] || 'other';
+  const doi = one('DO').match(DOI_RE)?.[1];
+  return {
+    type,
+    title: one('TI', 'T1', 'CT', type === 'book' ? 'BT' : ''),
+    author: [...(t.AU || []), ...(t.A1 || [])].map(parseName).filter(Boolean),
+    editor: [...(t.ED || []), ...(type === 'chapter' ? t.A2 || [] : [])].map(parseName).filter(Boolean),
+    issued: yearIssued(one('PY', 'Y1', 'DA')),
+    'container-title': type === 'book' ? '' : one('T2', 'JO', 'JF', 'JA', 'BT'),
+    volume: one('VL'),
+    issue: one('IS'),
+    page: [one('SP'), one('EP')].filter(Boolean).join('-'),
+    publisher: one('PB'),
+    'publisher-place': one('CY', 'PP'),
+    edition: one('ET'),
+    ISBN: (t.SN || []).filter(isbnOf),
+    ...(doi && { DOI: cleanDoi(doi) }),
+    URL: one('UR', 'L2')
+  };
+}
+
+const ORDINALS = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10 };
+const EDITION_RE = /\(?\b(\d+)(?:st|nd|rd|th)?\s+ed(?:ition|n?\.)?(?![a-z])\)?|\(?\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+ed(?:ition|\.)?(?![a-z])\)?/i;
+
+/** "4th ed.", "(Fourth edition)" → "4" */
+export function editionOf(text) {
+  const m = String(text ?? '').match(EDITION_RE);
+  return m ? String(m[1] || ORDINALS[m[2].toLowerCase()]) : '';
+}
+
+const INITIALS = /^(?:\p{Lu}(?:\.|(?=[\s-]|$))\s?-?\s?)+$/u;
+const SURNAME = /^(?:(?:van|von|de|der|den|da|di|du|la|le|del|della|dos|das|ter|ten)\s+)*\p{Lu}[\p{L}'’-]*$/u;
+
+/**
+ * The authors of a formatted citation: "Cormen, T. H., Leiserson, C. E., & Stein, C." (APA), "Cormen, Thomas H.,
+ * Charles E. Leiserson, and Clifford Stein" (Chicago, MLA), "T. H. Cormen et al." (IEEE) → CSL names.
+ */
+export function splitAuthors(text) {
+  // a final full stop goes, but not an initial's
+  let s = String(text ?? '').trim().replace(/[,;:\s]+$/, '').replace(/(?<!(?:^|[\s.-])\p{Lu})\.$/u, '');
+  const etAl = /,?\s+et\s+al\.?$/i.test(s);
+  s = s.replace(/,?\s+et\s+al\.?$/i, '');
+  const tokens = s.replace(/\s*,?\s*(?:&|\band\b)\s+/g, ', ').split(/\s*[,;]\s*/).filter(Boolean);
+  const names = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const next = tokens[i + 1];
+    // "Cormen, T. H." (APA: every author) or "Cormen, Thomas H." (Chicago and MLA: the first)
+    if (SURNAME.test(tokens[i]) && next && (INITIALS.test(next) || (i === 0 && (/^\p{L}+$/u.test(next) || /\s\p{Lu}\.$/u.test(next))))) {
+      names.push({ family: tokens[i], given: next });
+      i++;
+    } else {
+      const name = parseName(tokens[i]);
+      if (name) names.push(name);
+    }
+  }
+  if (etAl) names.push({ literal: 'others' });
+  return names;
+}
+
+/** Text up to the first full stop, ? or ! that ends a sentence (not an initial, "ed.", "pp." or one in brackets), and what follows. */
+function firstSentence(text) {
+  const s = String(text).trim();
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (depth <= 0 && '.?!'.includes(c) && (i + 1 === s.length || /\s/.test(s[i + 1]))
+      && !(c === '.' && /(?:^|[\s(])(?:\p{Lu}|vs|Vol|vol|No|no|ed|eds|Ed|Eds|Proc|pp|p|Jr|St)$/u.test(s.slice(0, i)))) {
+      return [s.slice(0, c === '.' ? i : i + 1).trim(), s.slice(i + 1).trim()];
+    }
+  }
+  return [s, ''];
+}
+
+const PROCEEDINGS = /\b(?:proc\.?|proceedings|conference|symposium|workshop|congress|meeting)\b|advances in neural/i;
+
+/**
+ * A reference formatted in APA, IEEE, Chicago or MLA style → a CSL record of what it says, or null when the text
+ * doesn't read as one (a bare title, a sentence). Nothing is looked up.
+ */
+export function parseFormatted(raw) {
+  let s = cleanText(raw).replace(/^\s*(?:\[\d+\]|\(\d+\)|\d+\.)\s+/, '').replace(/[‘’]/g, "'");
+  const doi = s.match(DOI_RE)?.[1];
+  const url = s.match(/https?:\/\/\S+/)?.[0];
+  s = s.replace(/\s*(?:\[Online\]\.?\s*)?(?:(?:Retrieved from|Available(?: at)?:?)\s*)?(?:https?:\/\/\S+|doi:\s*\S+)/gi, '').replace(/[\s,]+$/, '').trim();
+  let authorsText = '';
+  let title = '';
+  let rest = '';
+  let year = '';
+  const quoted = s.match(/^(.*?)[“"]([^”"]{3,}?)[,.]?[”"][.,]?\s*(.*)$/);
+  const apa = s.match(/^(.+?)\s*\((1[5-9]\d\d|20\d\d)[a-z]?(?:,[^)]*)?\)\.?\s+(.+)$/);
+  const chicago = s.match(/^(.+?)\.\s+(1[5-9]\d\d|20\d\d)[a-z]?\.\s+(.+)$/);
+  if (quoted && quoted[1].trim()) {
+    [, authorsText, title, rest] = quoted;
+    // Chicago author-date puts the year after the authors
+    const y = authorsText.match(/[.,]\s*(1[5-9]\d\d|20\d\d)[a-z]?\.?\s*$/);
+    if (y) {
+      year = y[1];
+      authorsText = authorsText.slice(0, y.index);
+    }
+  } else if (apa) {
+    [, authorsText, year] = apa;
+    [title, rest] = firstSentence(apa[3]);
+  } else if (chicago) {
+    [, authorsText, year] = chicago;
+    [title, rest] = firstSentence(chicago[3]);
+  } else {
+    // IEEE: authors with initials first, then the title after a comma; else MLA and Chicago's bibliography style
+    const tokens = s.split(/,\s+/);
+    let n = 0;
+    while (n < tokens.length - 1 && /^(?:and\s+)?(?:\p{Lu}\.\s?-?)+\s*\p{Lu}[\p{L}'’-]+(?:\s+et\s+al\.?)?$/u.test(tokens[n])) n++;
+    if (n) {
+      authorsText = tokens.slice(0, n).join(', ');
+      [title, rest] = firstSentence(tokens.slice(n).join(', '));
+    } else {
+      let after;
+      [authorsText, after] = firstSentence(s);
+      [title, rest] = firstSentence(after);
+    }
+  }
+  // an edition written into the title ("Introduction to algorithms (4th ed.)", IEEE's "…, 4th ed. Cambridge")
+  const inTitle = title.match(new RegExp(String.raw`^(.*?)[,\s]*(${EDITION_RE.source})(.*)$`, 'i'));
+  if (inTitle) {
+    title = inTitle[1];
+    rest = `${inTitle[2]} ${inTitle.at(-1)} ${rest}`.trim();
+  }
+  title = title.replace(/[.,:;\s]+$/, '').trim();
+  const authors = splitAuthors(authorsText);
+  // a name has at most four words, each capitalised but its particles: anything else is a sentence or a title
+  const notAName = (a) => {
+    const words = `${a.given || ''} ${a.family || ''}`.trim().split(/\s+/);
+    return words.length > 4 || words.some((w) => !/^[\p{Lu}'’]/u.test(w) && !PARTICLES.has(w));
+  };
+  if (!/\p{L}{2}/u.test(title) || !authors.length || authors.some((a) => !a.literal && notAName(a))) return null;
+
+  const fields = {};
+  let r = ` ${rest.replace(/\.$/, '')} `;
+  const take = (re, use) => {
+    const m = r.match(re);
+    if (m) {
+      use(m);
+      r = r.slice(0, m.index) + ' ' + r.slice(m.index + m[0].length);
+    }
+    return m;
+  };
+  take(EDITION_RE, (m) => (fields.edition = String(m[1] || ORDINALS[m[2].toLowerCase()])));
+  take(/\bpp?\.\s*(\d+(?:\s*[-–—]+\s*\d+)?)/i, (m) => (fields.page = m[1]));
+  take(/\bvol(?:ume)?\.?\s*(\d+)/i, (m) => (fields.volume = m[1]));
+  take(/\b(?:no|iss(?:ue)?)\.?\s*(\d+)/i, (m) => (fields.issue = m[1]));
+  take(/,\s*(\d+)\s*\((\d+(?:[-–]\d+)?)\)/, (m) => { fields.volume = m[1]; fields.issue = m[2]; });
+  if (!fields.page) take(/(\d+)\s*[-–—]+\s*(\d+)/, (m) => (fields.page = `${m[1]}-${m[2]}`));
+  take(/\b(1[5-9]\d\d|20\d\d)[a-z]?\b/, (m) => (year ||= m[1]));
+  const thesis = take(/\b(Ph\.?\s?D\.?|Doctoral|Master'?s|M\.?S(?:c)?\.?)\s+(?:thesis|dissertation)\b/i, () => {});
+  const report = take(/\bTech(?:nical|\.)?\s+Rep(?:ort|\.)?(?:\s+no\.)?/i, () => {});
+  let editors = [];
+  const inPart = take(/^\s*,?\s*In:?\s+/i, () => {});
+  if (inPart) {
+    take(/^\s*(.+?)\s*\((?:Eds?|Hrsg)\.?\),\s*/i, (m) => (editors = splitAuthors(m[1])));
+    take(/^\s*(?:edited by|ed\.\s+by)\s+(.+?),\s*/i, (m) => (editors = splitAuthors(m[1])));
+  }
+  let place = '';
+  let publisher = '';
+  take(/([\p{L} .'-]+?(?:,\s*\p{Lu}{2}(?:,\s*USA)?)?)\s*:\s*(\p{L}[^,.;:()]*)/u, (m) => { place = m[1].trim(); publisher = m[2].trim(); });
+  // APA's bare volume: "Journal, 30, 5998–6008"
+  if (!fields.volume) take(/,\s*(\d+)[\s,]*$/, (m) => (fields.volume = m[1]));
+  // sentences (an abbreviation's full stop doesn't end one), then their comma-separated parts
+  const parts = [];
+  for (let left = r.replace(/\(\s*\)/g, ' ').replace(/\s+/g, ' ').trim(); left;) {
+    const [sentence, after] = firstSentence(left);
+    parts.push(...sentence.split(/\s*[,;:]\s*/));
+    left = after;
+  }
+  for (let i = parts.length - 1; i >= 0; i--) if (!parts[i].trim() || /^[\d\s]+$/.test(parts[i])) parts.splice(i, 1);
+
+  let type;
+  let container = '';
+  if (thesis) {
+    type = 'thesis';
+    publisher ||= parts.at(-1) || '';
+  } else if (report) {
+    type = 'report';
+    publisher ||= parts[0] || '';
+  } else if (inPart) {
+    container = parts[0] || '';
+    if (!publisher && parts.length > 1) publisher = parts.at(-1);
+    type = PROCEEDINGS.test(container) ? 'paper-conference' : 'chapter';
+  } else if (parts.length && (fields.volume || fields.issue || fields.page) && !fields.edition) {
+    container = parts[0];
+    // Chicago: "Nature 521, no. 7553"
+    const volume = container.match(/^(.*\D)\s+(\d+)$/);
+    if (volume && !fields.volume) [, container, fields.volume] = volume;
+    type = PROCEEDINGS.test(container) ? 'paper-conference' : 'article-journal';
+  } else {
+    type = 'book';
+    publisher ||= parts.at(-1) || '';
+  }
+  if (!year) return null;
+  return {
+    type,
+    title,
+    author: authors,
+    ...(editors.length && { editor: editors }),
+    ...(year && { issued: { 'date-parts': [[Number(year)]] } }),
+    ...(container && { 'container-title': container }),
+    ...fields,
+    ...(publisher && { publisher }),
+    ...(place && { 'publisher-place': place }),
+    ...(thesis && /master|m\.?s/i.test(thesis[1]) && { genre: "Master's thesis" }),
+    ...(doi && { DOI: cleanDoi(doi) }),
+    ...(url && !doi && { URL: trimTrailing(url) })
+  };
+}
+
+/** One pasted line: a DOI, arXiv id or link (detectInput), an ISBN, a formatted citation, else a title to search. */
+export function classifyLine(line) {
+  const item = detectInput(line);
+  // a citation with an id is looked up by it, and kept as it reads if the lookup fails
+  const parsed = /\s/.test(item.input) ? parseFormatted(item.input) : null;
+  if (item.kind !== 'query') return parsed ? { ...item, parsed } : item;
+  const isbn = isbnIn(item.input);
+  if (isbn) return { kind: 'isbn', input: item.input, isbn, ...(parsed && { parsed }) };
+  return parsed ? { kind: 'citation', input: item.input, parsed } : item;
 }
 
 async function splitWithLLM(text, llmConfig) {
@@ -124,6 +402,15 @@ async function splitWithLLM(text, llmConfig) {
 }
 
 export async function splitInput(text, llmConfig) {
+  // BibTeX and RIS are taken whole, entry by entry, never line by line
+  if (/^\s*@[A-Za-z]+\s*[{(]/m.test(text)) {
+    const entries = parseBibEntries(text);
+    if (entries.length) return entries.map((entry) => ({ kind: 'bibtex', input: `@${entry.type}{${entry.key}, …}`, entry }));
+  }
+  if (/^TY {2}- /m.test(text)) {
+    const records = parseRis(text);
+    if (records.length) return records.map((record) => ({ kind: 'ris', input: cleanText(record.title) || 'RIS record', record }));
+  }
   let items = splitLines(text);
   // Only free text needs splitting; a lone short title or a list of ids does not.
   const freeText = items.some((it) => it.kind === 'query');
@@ -356,13 +643,15 @@ export function uniqueKey(base, taken) {
 
 // ─── CSL → BibTeX ───
 
+// CSL types → the card's entry types (bibEntry.js), which formatEntry writes for Biber or classic BibTeX
 const TYPE_MAP = {
   'journal-article': 'article', 'article-journal': 'article', 'article-magazine': 'article', 'article-newspaper': 'article',
   'proceedings-article': 'inproceedings', 'paper-conference': 'inproceedings',
   book: 'book', monograph: 'book', 'edited-book': 'book', 'reference-book': 'book',
   chapter: 'incollection', 'book-chapter': 'incollection',
-  report: 'techreport',
-  thesis: 'phdthesis', dissertation: 'phdthesis'
+  report: 'report',
+  thesis: 'thesis', dissertation: 'thesis',
+  webpage: 'online', software: 'software'
 };
 
 function doiOf(rec) {
@@ -380,29 +669,40 @@ function arxivOf(rec) {
   return { id: stripVersion(id), primaryClass };
 }
 
-export function toBibtex(rec, key, legacyUrls = false) {
+/** A record's ISBN as 13 digits, or '' (the first that is one, of a list or a string of several) */
+function isbnOfRecord(rec) {
+  return [].concat(rec.ISBN || []).flatMap((v) => String(v).split(/[,;]\s*/)).map(isbnOf).find(Boolean) || '';
+}
+
+/** A CSL record → { type, key, fields } as the References card edits it, its values TeX already. */
+export function recordToDraft(rec, key) {
   const arxiv = arxivOf(rec);
   let type = TYPE_MAP[rec.type] || 'misc';
   const preprint = Boolean(arxiv) && type === 'misc';
   if (preprint) type = 'article';
-  const webpage = rec.type === 'webpage';
+  const webpage = type === 'online';
+  const chapter = type === 'incollection' || type === 'inbook';
   const container = texEscape(cleanText(first(rec['container-title'])));
   const doi = doiOf(rec);
   const url = arxiv ? `https://arxiv.org/abs/${arxiv.id}` : cleanText(rec.URL);
   const authors = (rec.author || []).map(bibName).filter(Boolean);
-  const editors = authors.length ? [] : (rec.editor || []).map(bibName).filter(Boolean);
+  const editors = authors.length && !chapter ? [] : (rec.editor || []).map(bibName).filter(Boolean);
   const plain = (v) => texEscape(cleanText(v));
 
-  const fields = [];
+  const fields = {};
   const add = (name, value) => {
-    if (value != null && String(value).trim()) fields.push([name, String(value).trim()]);
+    if (value != null && String(value).trim()) fields[name] = String(value).trim();
   };
   add('author', authors.join(' and '));
   add('editor', editors.join(' and '));
   // a page's title is plain text; a publisher's may carry TeX
   add('title', (webpage ? plainTex : texEscape)(cleanText(first(rec.title)), { protect: true }));
   if (type === 'article') add('journal', preprint ? `arXiv preprint arXiv:${arxiv.id}` : container);
-  if (type === 'inproceedings' || type === 'incollection') add('booktitle', container);
+  if (type === 'inproceedings' || chapter) add('booktitle', container);
+  add('chapter', plain(rec['chapter-number']));
+  add('edition', plain(rec.edition));
+  add('version', plain(rec.version));
+  if (type === 'thesis' && /master/i.test(rec.genre || '')) add('type', 'mastersthesis');
   add('year', yearOf(rec));
   if (webpage) {
     const parts = rec.issued?.['date-parts']?.[0];
@@ -411,33 +711,36 @@ export function toBibtex(rec, key, legacyUrls = false) {
     if (rec.author?.length !== 1 || displayName(rec.author[0]).toLowerCase() !== site.toLowerCase()) add('organization', plain(site));
   }
   add('volume', plain(rec.volume));
-  add('number', plain(rec.issue ?? (type === 'techreport' ? rec.number : '')));
+  add('number', plain(rec.issue ?? (type === 'report' ? rec.number : '')));
   // article-numbered journals (APS, Nature Communications…) have no page range
   add('pages', plain(rec.page || rec['article-number']).replace(/\s*[-–—]+\s*/g, '--'));
-  if (!preprint) add({ techreport: 'institution', phdthesis: 'school' }[type] || 'publisher', plain(rec.publisher));
+  if (!preprint) add(type === 'report' || type === 'thesis' ? 'institution' : type === 'software' ? 'organization' : 'publisher', plain(rec.publisher));
+  if (type === 'book' || chapter || type === 'inproceedings') add('address', plain(rec['publisher-place']));
+  if (type === 'book' || chapter) add('isbn', isbnOfRecord(rec));
   add('doi', doi);
-  if (webpage && legacyUrls) {
-    add('howpublished', url && `\\url{${url}}`);
-  }
-  if (!(webpage && legacyUrls) && (webpage || arxiv || !doi || type === 'misc')) add('url', url);
+  if (webpage || arxiv || !doi || type === 'misc') add('url', url);
   // published versions keep their arXiv id too, so pasting the preprint later is a duplicate
   if (arxiv) {
     add('eprint', arxiv.id);
     add('archivePrefix', 'arXiv');
     add('primaryClass', arxiv.primaryClass);
   }
-
-  const width = Math.max(...fields.map(([name]) => name.length));
-  return `@${type}{${key},\n${fields.map(([name, value]) => `  ${name.padEnd(width)} = {${value}},`).join('\n')}\n}`;
+  return { type, key, fields };
 }
+
+/** The entry for a record: Biber's types and names with biblatex, classic BibTeX's otherwise (formatEntry). */
+export const toBibtex = (rec, key, legacyUrls = false, biblatex = false) => formatEntry(recordToDraft(rec, key), { legacyUrls, biblatex });
 
 /** Last word of a surname, folded: "van den Oord" → "oord", "{OpenAI}" → "openai". */
 const surnameKey = (name) => normaliseTitle(name).split(' ').at(-1) || '';
+
+const BOOK_TYPES = new Set(['book', 'monograph', 'edited-book', 'reference-book']);
 
 function identityOf(rec) {
   const author = normaliseAuthor((rec.author || [])[0]);
   return {
     doi: doiOf(rec).toLowerCase(),
+    isbn: BOOK_TYPES.has(rec.type) ? isbnOfRecord(rec) : '',
     arxiv: (arxivOf(rec)?.id || '').toLowerCase(),
     title: normaliseTitle(cleanText(first(rec.title))),
     year: yearOf(rec),
@@ -511,6 +814,7 @@ export function bibIdentity(entry, file) {
     key: entry.key,
     file,
     doi,
+    isbn: entry.type === 'book' ? isbnOf(f.isbn) : '',
     arxiv: stripVersion(arxiv).toLowerCase(),
     firstAuthor: surnameKey(author.includes(',') ? author.split(',')[0] : author),
     title: normaliseTitle(f.title || ''),
@@ -528,6 +832,7 @@ export function findDuplicate(index, id) {
     || Boolean(e.firstAuthor && id.firstAuthor && e.firstAuthor === id.firstAuthor);
   return index.find((e) =>
     (id.doi && e.doi === id.doi.toLowerCase())
+    || (id.isbn && e.isbn === id.isbn)
     || (id.arxiv && e.arxiv === id.arxiv.toLowerCase())
     || (id.title && e.title === id.title && e.year === (id.year || '') && sameWork(e))
   ) || null;
@@ -1041,11 +1346,11 @@ export function pickCandidate(query, items) {
 
 function toCandidate(item) {
   return {
-    id: item.DOI || item.URL,
+    id: item.DOI || (item._isbn && `ISBN ${item._isbn}`) || item.URL,
     title: cleanText(first(item.title)),
     authors: (item.author || []).map(displayName).filter(Boolean),
     year: yearOf(item) || undefined,
-    venue: cleanText(first(item['container-title'])) || undefined,
+    venue: cleanText(first(item['container-title'])) || (item._isbn && cleanText(item.publisher)) || undefined,
     doi: item.DOI
   };
 }
@@ -1066,6 +1371,133 @@ async function searchCrossref(query) {
     .slice(0, 5);
 }
 
+// ─── Books: Open Library and Google Books, then Crossref ───
+
+const titleWithSubtitle = (title, subtitle) => cleanText(subtitle ? `${title}: ${subtitle}` : title);
+
+/** A book record, its edition read from a title that holds one ("Introduction to Algorithms, fourth edition") */
+function bookRecord({ title, edition, ...rest }) {
+  const fromTitle = editionOf(title);
+  const plainTitle = fromTitle ? title.replace(new RegExp(String.raw`[,:\s]*${EDITION_RE.source}`, 'i'), '').replace(/[,:;\s]+$/, '') : title;
+  return { type: 'book', title: plainTitle, edition: editionOf(edition) || cleanText(edition).replace(/\D+$/, '') || fromTitle, ...rest };
+}
+
+// Open Library's /api/books with jscmd=data
+const openLibraryRecord = (d, isbn) => d?.title ? bookRecord({
+  title: titleWithSubtitle(d.title, d.subtitle),
+  edition: d.edition_name,
+  author: (d.authors || []).map((a) => parseName(a?.name)).filter(Boolean),
+  issued: yearIssued(d.publish_date),
+  publisher: cleanText(d.publishers?.[0]?.name),
+  'publisher-place': cleanText(d.publish_places?.[0]?.name),
+  ISBN: isbn,
+  URL: d.url
+}) : null;
+
+// a Google Books volumeInfo
+const googleBooksRecord = (v) => v?.title ? bookRecord({
+  title: titleWithSubtitle(v.title, v.subtitle),
+  author: (v.authors || []).map(parseName).filter(Boolean),
+  issued: yearIssued(v.publishedDate),
+  publisher: cleanText(v.publisher),
+  ISBN: (v.industryIdentifiers || []).map((i) => isbnOf(i?.identifier)).find(Boolean) || '',
+  URL: v.canonicalVolumeLink || v.infoLink
+}) : null;
+
+const filled = (v) => (Array.isArray(v) ? v.length > 0 : Boolean(v));
+
+/** → { record, source }: Open Library, then Google Books and Crossref for what the first one found lacks. */
+async function recordFromIsbn(isbn) {
+  const json = async (url) => {
+    const res = await get(url, 'application/json');
+    return res.ok ? res.json().catch(() => null) : null;
+  };
+  const sources = [
+    ['Open Library', async () => openLibraryRecord((await json(`${openLibraryBase()}/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`))?.[`ISBN:${isbn}`], isbn)],
+    ['Google Books', async () => googleBooksRecord((await json(`${googleBooksBase()}/volumes?q=isbn:${isbn}`))?.items?.[0]?.volumeInfo)],
+    ['Crossref', async () => {
+      const item = (await json(`${crossrefBase()}/works?filter=isbn:${isbn}&rows=1`))?.message?.items?.[0];
+      return item?.title ? item : null;
+    }]
+  ];
+  let record = null;
+  let source = '';
+  for (const [name, fetchOne] of sources) {
+    const found = await fetchOne().catch(() => null);
+    if (!found) continue;
+    if (!record) {
+      record = { ...found, ISBN: isbn };
+      source = name;
+    } else {
+      for (const field of ['author', 'publisher', 'publisher-place', 'issued', 'edition']) if (!filled(record[field]) && filled(found[field])) record[field] = found[field];
+    }
+    if (record.author?.length && record.publisher && yearOf(record)) break;
+  }
+  if (!record) throw notFound(`No book found for ISBN ${isbn}.`);
+  return { record, source };
+}
+
+/** Books for a title: Open Library's search, else Google Books'. Only those with an ISBN, which fetches them again. */
+async function searchBooks(query) {
+  const json = async (url) => {
+    const res = await get(url, 'application/json');
+    if (!res.ok) throw lookupError(`The book search failed (HTTP ${res.status}).`);
+    return res.json().catch(() => null);
+  };
+  let books = [];
+  try {
+    const docs = (await json(`${openLibraryBase()}/search.json?q=${encodeURIComponent(query)}&limit=5&fields=title,subtitle,author_name,first_publish_year,publisher,isbn`))?.docs;
+    books = (Array.isArray(docs) ? docs : []).map((d) => d?.title && bookRecord({
+      title: titleWithSubtitle(d.title, d.subtitle),
+      author: (d.author_name || []).map(parseName).filter(Boolean),
+      issued: yearIssued(d.first_publish_year),
+      publisher: cleanText(d.publisher?.[0]),
+      ISBN: (d.isbn || []).map(isbnOf).find(Boolean) || ''
+    }));
+  } catch {
+    // Google Books below
+  }
+  if (!books.some((b) => b?.ISBN)) {
+    const items = (await json(`${googleBooksBase()}/volumes?q=${encodeURIComponent(query)}&maxResults=5&printType=books`).catch(() => null))?.items;
+    books = (Array.isArray(items) ? items : []).map((it) => googleBooksRecord(it?.volumeInfo));
+  }
+  // one each: a work's editions can share a listing
+  return books.filter((b, i) => b?.ISBN && books.findIndex((o) => o?.ISBN === b.ISBN) === i).map((b) => ({ ...b, _isbn: b.ISBN }));
+}
+
+/**
+ * A formatted citation checked online: the work Crossref has under the same title (and year), a book's ISBN from
+ * the book search, or else the citation as it reads.
+ */
+async function verifyCitation(parsed, input) {
+  const want = normaliseTitle(parsed.title);
+  const year = yearOf(parsed);
+  const sameTitle = (rec) => normaliseTitle(cleanText(first(rec.title))) === want;
+  try {
+    const hit = (await searchCrossref(input)).find((rec) => sameTitle(rec) && (!year || !yearOf(rec) || yearOf(rec) === year));
+    if (hit?.DOI) return { record: await recordFromDoi(hit.DOI), source: 'Crossref' };
+  } catch {
+    // the book search, or the citation as it reads
+  }
+  if (parsed.type === 'book') {
+    try {
+      const book = (await searchBooks([parsed.title, parsed.author[0]?.family].filter(Boolean).join(' '))).find(sameTitle);
+      if (book) {
+        // the edition pasted stands; the book found gives its ISBN when its year agrees, and fills what is missing
+        const { record, source } = await recordFromIsbn(book.ISBN);
+        const sameEdition = !year || yearOf(record) === year;
+        return {
+          record: { ...parsed, ISBN: sameEdition ? record.ISBN : undefined, publisher: parsed.publisher || record.publisher, 'publisher-place': parsed['publisher-place'] || record['publisher-place'] },
+          source
+        };
+      }
+    } catch {
+      // the citation as it reads
+    }
+  }
+  return { record: parsed, source: 'the citation as pasted', verified: false };
+}
+
 // ─── Orchestration ───
 
 function duplicateResult(input, existing, rec) {
@@ -1079,26 +1511,52 @@ function duplicateResult(input, existing, rec) {
   };
 }
 
-/** → { input, record } or { result } (duplicate / choose / not_found / error). */
+/** A title: Crossref, the book search when Crossref has no work of that title, then the search connections. */
+async function searchTitle(query, searchConfig) {
+  let hits = [];
+  let failure;
+  try { hits = await searchCrossref(query); } catch (err) { failure = err; }
+  if (!hits.some((hit) => titleMatch(query, hit))) hits = [...hits, ...(await searchBooks(query).catch(() => []))];
+  if (!hits.length && searchConfig) {
+    const { searchReferenceRecords } = await import('./searchService.js');
+    hits = await searchReferenceRecords({ searchConfig, query });
+  }
+  if (!hits.length) {
+    if (failure && !searchConfig) throw failure;
+    return { result: { status: 'not_found', message: 'No matching works found.' } };
+  }
+  const pick = pickCandidate(query, hits);
+  if (pick?.DOI) return { record: await recordFromDoi(pick.DOI), source: 'Crossref' };
+  if (pick?._isbn) return recordFromIsbn(pick._isbn);
+  if (pick) return { record: pick };
+  return { result: { status: 'choose', candidates: hits.map(toCandidate), message: 'Several works match. Choose the right one.' } };
+}
+
+/** An item from splitInput → { record, source, verified? } or { result } */
+async function find(item, searchConfig) {
+  switch (item.kind) {
+    case 'doi': return { record: await recordFromDoi(item.doi), source: 'doi.org' };
+    case 'arxiv': return { record: await recordFromArxiv(item.arxiv), source: 'arXiv' };
+    case 'url': return { record: await recordFromUrl(item.url, searchConfig), source: 'the web page' };
+    case 'isbn': return recordFromIsbn(item.isbn);
+    case 'citation': return verifyCitation(item.parsed, item.input);
+    case 'ris': return { record: item.record, source: 'the RIS you pasted' };
+    default: return searchTitle(item.query, searchConfig);
+  }
+}
+
+/** → { input, record | entry, source, verified? } or { result } (duplicate / choose / not_found / error). */
 async function lookup(item, index, searchConfig) {
   const { input } = item;
+  if (item.kind === 'bibtex') return { input, entry: item.entry, source: 'the BibTeX you pasted' };
   try {
-    const known = findDuplicate(index, { doi: item.doi, arxiv: item.arxiv });
+    const known = findDuplicate(index, { doi: item.doi, arxiv: item.arxiv, isbn: item.isbn });
     if (known) return { result: duplicateResult(input, known) };
-    if (item.kind === 'doi') return { input, record: await recordFromDoi(item.doi) };
-    if (item.kind === 'arxiv') return { input, record: await recordFromArxiv(item.arxiv) };
-    if (item.kind === 'url') return { input, record: await recordFromUrl(item.url, searchConfig) };
-    let hits;
-    try { hits = await searchCrossref(item.query); } catch (err) { if (!searchConfig) throw err; hits = []; }
-    if (!hits.length && searchConfig) {
-      const { searchReferenceRecords } = await import('./searchService.js');
-      hits = await searchReferenceRecords({ searchConfig, query: item.query });
-    }
-    if (!hits.length) return { result: { input, status: 'not_found', message: 'No matching works found.' } };
-    const pick = pickCandidate(item.query, hits);
-    if (pick) return { input, record: pick.DOI ? await recordFromDoi(pick.DOI) : pick };
-    return { result: { input, status: 'choose', candidates: hits.map(toCandidate), message: 'Several works match. Choose the right one to add it.' } };
+    const found = await find(item, searchConfig);
+    return found.result ? { result: { input, ...found.result } } : { input, ...found };
   } catch (err) {
+    // a citation whose id couldn't be looked up is kept as it reads
+    if (item.parsed) return { input, record: item.parsed, source: 'the citation as pasted', verified: false };
     const status = err.code === 'NOT_FOUND' ? 'not_found' : 'error';
     return { result: { input, status, message: err.code ? err.message : `Couldn’t resolve this reference: ${err.message}` } };
   }
@@ -1143,6 +1601,8 @@ async function bibContext(projectRoot, bibFile) {
   const bibliographySources = withoutComments(sources.filter((source) => texIncludesBib([source], target)).join('\n'));
   const BIBLATEX = /\\addbibresource\b|\{biblatex\}/;
   // Classic BibTeX styles ignore url; modern styles print it, so never emit both fields.
+  const biblatex = BIBLATEX.test(bibliographySources || withoutComments(sources.join('\n')));
+  const latex = mainFile ? /\.tex$/i.test(mainFile) : files.some((f) => /\.tex$/i.test(f));
   const legacyUrls = /\\bibliographystyle\s*\{(?:plain|abbrv|alpha|unsrt|acm|apalike|ieeetr)\}/.test(bibliographySources) && !BIBLATEX.test(bibliographySources);
   const index = await loadBibIndex(projectRoot, files);
   return {
@@ -1151,7 +1611,9 @@ async function bibContext(projectRoot, bibFile) {
     // loaded, or a Markdown main file whose front matter names no bibliography, which pandoc is given every .bib for
     included: texIncludesBib(sources, target) || (/\.(?:md|markdown)$/i.test(mainFile || '') && !sources.some((source) => [parseFrontMatter(source).meta.bibliography].flat().some(Boolean))),
     // a .bib no document loads yet goes with what the documents use
-    biblatex: BIBLATEX.test(bibliographySources || withoutComments(sources.join('\n'))),
+    biblatex,
+    // Biber's types and fields: biblatex, or Typst and pandoc, which read them (classic BibTeX only for LaTeX without biblatex)
+    biber: biblatex || !latex,
     legacyUrls,
     index,
     taken: new Set(index.map((e) => e.key.toLowerCase()))
@@ -1165,27 +1627,59 @@ function afterAdd(projectRoot, out) {
   return out;
 }
 
-/** items: detectInput's { kind, … }. Looks each up and appends the new ones to the target .bib, duplicates caught. */
-export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
-  return afterAdd(projectRoot, await withBibLock(async () => {
-    const { target, included, legacyUrls, index, taken } = await bibContext(projectRoot, bibFile);
-    const outcomes = await mapPool(items, 4, (item) => lookup(item, index, searchConfig));
+// a pasted entry's type as the card has it: classic BibTeX's own and Biber's aliases
+const PASTED_TYPES = { phdthesis: ['thesis', 'phdthesis'], mastersthesis: ['thesis', 'mastersthesis'], techreport: ['report'], conference: ['inproceedings'], electronic: ['online'], www: ['online'] };
 
+/** A pasted BibTeX entry as a draft: its fields as they were written (TeX already) */
+function entryDraft(entry, key) {
+  const [type, kind] = PASTED_TYPES[entry.type] || [entry.type];
+  return { type, key, fields: { ...entry.fields, ...(kind && !entry.fields.type && { type: kind }) } };
+}
+
+function entrySummary(entry) {
+  const text = (v) => latexToText(v || '').replace(/\s+/g, ' ').trim();
+  return {
+    title: text(entry.fields.title) || undefined,
+    authors: String(entry.fields.author || '').split(/\s+and\s+/i).map(text).filter(Boolean),
+    year: String(entry.fields.year || entry.fields.date || '').match(/\d{4}/)?.[0],
+    doi: entry.fields.doi || undefined
+  };
+}
+
+/**
+ * items: splitInput's. Looks each up and appends the new ones to the target .bib, duplicates caught. preview: writes
+ * nothing, and each new one comes back as a draft ({ status: 'draft', draft: { type, key, fields }, source }) for the
+ * References card, with how the project's .bib is written (biblatex, legacyUrls) and the keys it uses.
+ */
+export async function resolveItems(projectRoot, items, bibFile, searchConfig, { preview = false } = {}) {
+  const run = async () => {
+    const { target, included, biber, legacyUrls, index, taken } = await bibContext(projectRoot, bibFile);
+    const outcomes = await mapPool(items, 4, (item) => lookup(item, index, searchConfig));
+    // keys given to the drafts of this paste, which the project doesn't use yet
+    const drafted = new Set(taken);
     const results = [];
     for (const outcome of outcomes) {
       if (outcome.result) {
         results.push(outcome.result);
         continue;
       }
-      const { input, record } = outcome;
-      const id = identityOf(record);
+      const { input, record, entry, source, verified } = outcome;
+      const id = entry ? bibIdentity(entry, target) : identityOf(record);
       const existing = findDuplicate(index, id);
       if (existing) {
         results.push(duplicateResult(input, existing, record));
         continue;
       }
-      const key = uniqueKey(baseKey(record), taken);
-      const bibtex = toBibtex(record, key, legacyUrls);
+      const key = uniqueKey(entry && VALID_KEY.test(entry.key) ? entry.key : entry ? suggestKey(entry.fields) : baseKey(record), drafted);
+      const draft = entry ? entryDraft(entry, key) : recordToDraft(record, key);
+      const summary = entry ? entrySummary(entry) : summaryOf(record);
+      drafted.add(key.toLowerCase());
+      index.push({ ...id, key, file: target, displayTitle: summary.title });
+      if (preview) {
+        results.push({ input, status: 'draft', key, draft, source, ...(verified === false && { verified }), ...summary });
+        continue;
+      }
+      const bibtex = formatEntry(draft, { biblatex: biber, legacyUrls });
       try {
         await appendInProject(projectRoot, target, bibtex);
       } catch (err) {
@@ -1194,15 +1688,13 @@ export async function resolveItems(projectRoot, items, bibFile, searchConfig) {
         continue;
       }
       taken.add(key.toLowerCase());
-      index.push({ ...id, key, file: target, displayTitle: cleanText(first(record.title)) });
-      results.push({ input, status: 'added', key, bibtex, bibFile: target, ...summaryOf(record) });
+      results.push({ input, status: 'added', key, bibtex, bibFile: target, ...summary });
     }
-    return { results, bibFile: target, bibIncluded: included };
-  }));
+    return { results, bibFile: target, bibIncluded: included, ...(preview && { biblatex: biber, legacyUrls, keys: [...taken] }) };
+  };
+  // a preview writes nothing, so it waits for no add
+  return preview ? run() : afterAdd(projectRoot, await withBibLock(run));
 }
-
-// what a key may hold: not what ends one in an entry's head (parseBibEntries), nor TeX's specials
-const VALID_KEY = /^[^,\s{}()"=#%~\\]+$/;
 
 /**
  * Ready-made entries (Zotero's) appended to the target .bib as resolveItems appends its own, under the same lock and
@@ -1243,20 +1735,44 @@ export async function appendEntries(projectRoot, bibFile, make) {
   }));
 }
 
-export async function resolveReferences({ projectRoot, input, bibFile, llmConfig, searchConfig }) {
+export async function resolveReferences({ projectRoot, input, bibFile, llmConfig, searchConfig, preview = false }) {
   const items = await splitInput(String(input || ''), llmConfig);
   if (!items.length) throw badRequest('Paste a DOI, link, arXiv ID or title.');
-  const out = await resolveItems(projectRoot, items.slice(0, MAX_ITEMS), bibFile, searchConfig);
+  const out = await resolveItems(projectRoot, items.slice(0, MAX_ITEMS), bibFile, searchConfig, { preview });
   if (items.length > MAX_ITEMS) {
     out.results.push({ input: '…', status: 'error', message: `Only the first ${MAX_ITEMS} references were processed. Paste the rest separately.` });
   }
   return out;
 }
 
-/** candidateId is a DOI, arXiv id or URL from a 'choose' result. */
-export async function addReference({ projectRoot, candidateId, bibFile, searchConfig }) {
-  const item = detectInput(candidateId);
-  if (item.kind === 'query') throw badRequest('That isn’t a DOI, arXiv ID or link.');
-  const { results, ...rest } = await resolveItems(projectRoot, [item], bibFile, searchConfig);
+/** candidateId is a DOI, arXiv id, URL or "ISBN …" from a 'choose' result. */
+export async function addReference({ projectRoot, candidateId, bibFile, searchConfig, preview = false }) {
+  const item = classifyLine(candidateId);
+  if (item.kind === 'query' || item.kind === 'citation') throw badRequest('That isn’t a DOI, arXiv ID, ISBN or link.');
+  const { results, ...rest } = await resolveItems(projectRoot, [item], bibFile, searchConfig, { preview });
+  return { result: results[0], ...rest };
+}
+
+/** A blank draft for the card's New entry, with how the project's .bib is written and the keys it uses. */
+export async function newEntry({ projectRoot, bibFile }) {
+  const { target, included, biber, legacyUrls, taken } = await bibContext(projectRoot, bibFile);
+  const draft = { type: 'article', key: '', fields: {} };
+  return { results: [{ input: 'New entry', status: 'draft', key: '', draft, source: 'manual' }], bibFile: target, bibIncluded: included, biblatex: biber, legacyUrls, keys: [...taken] };
+}
+
+/**
+ * A draft the user has checked, written to the target .bib as the project writes entries (formatEntry): refused when
+ * it can't be written, reported when the .bib has the work already, and put under the next free key when another
+ * work took its key since.
+ */
+export async function commitReference({ projectRoot, draft, bibFile, input = '' }) {
+  const problems = draftProblems(draft);
+  if (problems.key || problems.type || Object.keys(problems.fields).length) {
+    throw badRequest(problems.key || problems.type || Object.entries(problems.fields).map(([name, message]) => `${name}: ${message}`)[0]);
+  }
+  const key = draft.key || suggestKey(draft.fields);
+  const { results, ...rest } = await appendEntries(projectRoot, bibFile, ({ biber, legacyUrls }) => [
+    { input: input || key, bibtex: formatEntry({ ...draft, key }, { biblatex: biber, legacyUrls }), key }
+  ]);
   return { result: results[0], ...rest };
 }
