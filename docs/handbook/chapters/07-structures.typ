@@ -84,7 +84,7 @@ A note may follow it, such as a moment applied at a joint where every member end
 
 == The rail <sec-structures-rail>
 
-The rail on the left holds every tool, in five groups (@fig-structures-rail). #ui[Find a part] at its top narrows the list as you type, and hovering a tool shows a tooltip that says how to use it. Pick a tool, then click or drag on the canvas. A tool that places one part goes back to #ui[Select] once it has placed it, while the two member tools stay on so that a whole frame can be drawn in one go. Click a picked tool again, or press #key("Esc"), to go back to #ui[Select].
+The rail on the left holds every tool, in five groups (@fig-structures-rail). #ui[Find a part] at its top narrows the list as you type, and hovering a tool shows a tooltip that says how to use it. Pick a tool, then click or drag on the canvas. A tool that places one part goes back to #ui[Select] once it has placed it, while the three member tools stay on so that a whole frame can be drawn in one go. Click a picked tool again, or press #key("Esc"), to go back to #ui[Select].
 
 #figure(
   grid(
@@ -96,7 +96,7 @@ The rail on the left holds every tool, in five groups (@fig-structures-rail). #u
         columns: (auto, 1fr),
         align: left,
         [Group], [Tools],
-        [Members], [Beam or frame member (#key("M")), Truss bar (#key("T"))],
+        [Members], [Beam or frame member (#key("M")), Bent beam, Truss bar (#key("T"))],
         [Joints], [Joint, Internal hinge, Internal shear release, Released member end],
         [Supports], [Pin, Roller, Fixed, Guided (slider), Spring, Rotational spring],
         [Loads], [Point force, Moment anticlockwise and clockwise, Uniform load, Linearly varying load],
@@ -131,6 +131,35 @@ Each end lands on a joint already there, or makes a new one. An end that lands o
 
 Joints are named with capital letters as they are made, A to Z and then A1, B1 and so on. A member is named by its joints' letters, so the member from C to B is CB, and its force is written $F_"CB"$.
 
+=== Bent beams <sec-structures-bent>
+
+A beam can be drawn bent, as a textbook draws a beam deflected under its load or a shallow arch. The bend belongs to the drawing only. Specifically, the reactions, the force diagrams and the deflected shape are still worked out along the straight line between the member's joints (its chord), so a bent beam shows a shape but does not analyse a curved member.
+
+To draw one,
+
+#howto[draw a bent beam][
++ Pick #ui[Bent beam] on the rail
++ Drag from one point to another, as for a beam
++ Drag the round handle on the selected beam to change its sag
+]
+
+A new bent beam sags by a tenth of its span. Any beam selected on its own has the handle, where its curve is furthest from its chord, so a straight beam can be bent in the same way. The handle moves in whole grid steps, and dragging it back onto the chord makes the beam straight again.
+
+The inspector of a beam gives it a *Shape* of three (@fig-structures-bent),
+
+- *Straight*, the usual beam,
+- *Parabola*, which sags by *Sag δ* at mid-span, and
+- *S-bend*, which bends to one side near one end and to the other side near the other, *Sag δ* being its largest offset, about a fifth of the span from each end.
+
+A positive sag bends the beam up, or to the left of an upright member, whichever way round it was drawn. *Dashed straight axis, with the sag marked* draws the chord as a faint dashed line, with an arrow across to the curve near where it is furthest from it. *Sag label* names the arrow, $delta$ by default, in LaTeX such as `$v_{\max}$`, and an empty label leaves the arrow out.
+
+Loads, released ends and the member forces' labels sit on the curve. A load is still placed by its distance along the chord, and a load perpendicular to the member stays perpendicular to the chord. A joint dropped on a bent beam does not split it, and a truss bar is always straight.
+
+#figure(
+  grid(columns: (1fr, 25%), gutter: 10pt, align: horizon, frame("figures/07-structures/bent-beam.png"), frame("figures/07-structures/inspector-bent.png")),
+  caption: [A simply supported beam drawn deflected under $P$, as a parabola with a sag of 0.75~m, its dashed axis and its sag marked $delta$. The round handle at mid-span drags the sag, and the inspector on the right sets the shape, the sag and the label.],
+) <fig-structures-bent>
+
 === The joint tools
 
 The four tools of the #ui[Joints] group change how members meet (@fig-structures-joints).
@@ -148,6 +177,7 @@ Click a member to select it. The inspector shows its name, its kind and its leng
 
 - *Kind* switches it between #ui[Beam or frame member] and #ui[Truss bar].
 - *Released at C* and *Released at B* release the moment at either end, as the #ui[Released member end] tool does.
+- *Shape* keeps a beam straight or bends it as a parabola or an S-bend, with its sag and its dashed axis (@sec-structures-bent).
 - *Stiffness, EI and EA* folds the member's stiffness away, and opens by itself when either is set. *EI* is its bending stiffness in the drawing's units, kN~m² by default, and 1 when left alone. An indeterminate structure needs only the members' ratios of EI, but a settlement and the deflections use the value itself, so give each member its real EI before reading a deflection. *Relative EA* is its axial stiffness against the others: members are nearly rigid along their length, and a smaller EA lets this one stretch.
 
 Click a joint to select it. Its inspector has its *Name* (letters, digits and a prime), its *Position* as x and y, which can be typed exactly, and the fold *Hinge and shear release* with a switch for each.
@@ -385,9 +415,10 @@ Structures writes its drawing as a standalone TikZ document in `diagrams/`, whic
 
 - The document loads only `tikz`, with the `arrows.meta` and `babel` libraries, and `siunitx` when units are written with it.
 - The picture's options define a style for each kind of line, such as `struct member` at 1.2~pt and `struct load` at 0.6~pt, the fills of the force diagrams and each support symbol as a pic, such as `spx/struct/pin`. Nothing reaches the document's preamble.
+- A bent beam is one Bézier curve, such as `\draw[struct member] (0,0) .. controls (2.667,-1.333) and (5.333,-1.333) .. (8,0);` for the beam of @fig-structures-bent, which is exact for a parabola, and its dashed axis has the style `struct chord`.
 - A part's own colour and thickness follow its style, as in `\draw[struct member, draw=blue, very thick]`, `\pic[red] at (0,0) {spx/struct/pin};` or `\node[anchor=south, red]`. A part without them is written as before.
 - A comment first names the view and the status, such as `% Structure, free-body diagram with shear and bending moment diagrams: Determinate and stable`. Then each part of the picture is headed by its own comment: `% Structure`, `% Supports`, `% Loads`, `% Reactions`, `% Dimensions and labels` and one for each diagram, which sits in a scope shifted below or beside the structure.
 
 #shot("figures/07-structures/code.png", [The Code tab of the beam, with the styles in the picture's options and the comment that heads each part.], width: 92%) <fig-structures-code>
 
-A drawing that uses something added in 2.5 (a settlement, a load per horizontal length, an internal shear release, the deflected shape or x of zero shear) or a part's colour or thickness is saved as file version 5, which Spectrum 2.4 and earlier open as code. Spectrum 2.5 opens one with a colour or a thickness but draws those parts in their own look.
+A drawing that uses something added in 2.5 (a settlement, a load per horizontal length, an internal shear release, the deflected shape or x of zero shear), a part's colour or thickness or a bent beam is saved as file version 5, which Spectrum 2.4 and earlier open as code. Spectrum 2.5 opens one with a colour or a thickness but draws those parts in their own look.
