@@ -10,7 +10,11 @@
   --scrim: rgba(0, 0, 0, 0.28);
   /* the raised segment of a segmented control: white in light, lifted grey in dark */
   --segment-active: var(--bg-panel-solid);
-  --control-height: 34px;
+  /* the three control heights of the UI plan: chips and small buttons, toolbar pills, form fields and sheet buttons */
+  --ctrl-sm: 24px;
+  --ctrl-md: 28px;
+  --ctrl-lg: 34px;
+  --control-height: var(--ctrl-lg);
   /* a switch's track when off: darker than macOS's pale grey so it meets 3:1 against the panel and its thumb */
   --switch-off: color-mix(in srgb, var(--text-tertiary) 75%, var(--bg-panel-solid));
 }
@@ -457,7 +461,8 @@ input[type='checkbox'][role='switch']:checked::before {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 64px;
+  /* one height, the traffic lights' 52px, whether the sidebar shows or not, so nothing jumps */
+  height: 52px;
   padding: 0 16px 0 24px;
 }
 
@@ -475,7 +480,7 @@ input[type='checkbox'][role='switch']:checked::before {
 }
 
 .desktop.fullscreen .sidebar-collapsed .panel-header {
-  height: 64px;
+  height: 52px;
   padding-left: 24px;
 }
 
@@ -1189,10 +1194,10 @@ button.chip.active:hover {
   z-index: 1000;
   min-width: 200px;
   max-width: 360px;
-  padding: 5px;
+  padding: 6px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--bg-elevated);
   box-shadow: var(--shadow-lg);
   font-size: 13px;
@@ -1206,7 +1211,8 @@ button.chip.active:hover {
   gap: 8px;
   min-height: 30px;
   padding: 0 10px 0 8px;
-  border-radius: 7px;
+  /* concentric with the menu: 14px outside, 6px of padding, 8px rows */
+  border-radius: 8px;
   color: var(--text);
   white-space: nowrap;
 }
