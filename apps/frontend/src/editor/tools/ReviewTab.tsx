@@ -14,8 +14,8 @@ import { Markdown, errorText, fixTitle, fixWithAI, isSource, relativeTime } from
 import ReferenceCheckRows from './ReferenceCheck';
 import { checkCounts, checkReport, existRead } from './referenceWords';
 import { mergePart, partLine, partsLimit } from './reviewParts';
-import { PANELS, isGroup, panelsFor, runAllPanels, runPanels } from './reviewRun';
-import type { AiRow, AiResult, GroupResult, Panel, Results, Row } from './reviewRun';
+import { PANELS, isGroup, panelsFor, runAllPanels, runPanels, tagsFor, toneOf } from './reviewRun';
+import type { AiRow, AiResult, GroupResult, Panel, PanelInfo, Results, Row, Tone } from './reviewRun';
 import { sendLocated } from '../agent/handoff';
 import type { Located } from '../agent/handoff';
 import { untrusted } from '../../../../backend/src/utils/outsideText.js';
@@ -31,11 +31,11 @@ GlobalWorkerOptions.workerSrc ||= pdfWorker;
 
 /** the source as the last run read it: the newest source file's time and the text of each source file, to tell when they've changed */
 type Last = { at: string; doc: string; sourceAt: number | null; texts: Record<string, string> };
-type Kept = { results: Results; last: Last | null; ticks: Record<Panel, boolean>; anonymous: boolean; accessibilityTags: boolean; dismissed: string[] };
+type Kept = { results: Results; last: Last | null; anonymous: boolean; accessibilityTags: boolean; dismissed: string[] };
 
 const kept = new Map<string, Kept>();
 
-const LABEL = Object.fromEntries(PANELS.map(([panel, label]) => [panel, label])) as Record<Panel, string>;
+const LABEL = Object.fromEntries(PANELS.map(({ panel, label }) => [panel, label])) as Record<Panel, string>;
 const ICON = { error: 'xmark.octagon.fill', warning: 'exclamationmark.triangle.fill', info: 'info.circle' } as const;
 const SEVERITY_WORD = { error: 'Error', warning: 'Warning', info: 'Note' } as const;
 const AI_SEVERITY = { major: 'error', minor: 'warning', note: 'info' } as const;
@@ -108,14 +108,12 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
       kept.get(projectId) ?? {
         results: {},
         last: null,
-        // the AI review is ticked, and Run all takes it once a model is set up
-        ticks: { compile: true, references: true, exist: false, privacy: true, accessibility: true, submission: true, ai: true },
         anonymous: false,
         accessibilityTags: false,
         dismissed: []
       }
   );
-  const { results, last, ticks } = state;
+  const { results, last } = state;
   const panels = panelsFor(doc);
   const set = (patch: Partial<Kept> | ((was: Kept) => Partial<Kept>)) => setState((was) => ({ ...was, ...(typeof patch === 'function' ? patch(was) : patch) }));
   useEffect(() => void kept.set(projectId, state), [projectId, state]);
@@ -243,10 +241,12 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
         step: (panel, text) => setSteps((was) => ({ ...was, [panel]: text })),
         update: (panel, result) => set((was) => ({ results: { ...was.results, [panel]: result } }))
       });
+      const at = new Date().toISOString();
+      // a run of Verify citations or the AI review alone read no source: what the last source run read stays
       if (list.some(isGroup)) {
         setDiskChanged(false);
-        set({ last: { at: new Date().toISOString(), doc: read.doc, sourceAt: read.sourceAt, texts: Object.fromEntries([...read.texts].filter(([path]) => isSource(path))) } });
-      }
+        set({ last: { at, doc: read.doc, sourceAt: read.sourceAt, texts: Object.fromEntries([...read.texts].filter(([path]) => isSource(path))) } });
+      } else set((was) => ({ last: { at, doc: read.doc, sourceAt: was.last?.sourceAt ?? read.sourceAt, texts: was.last?.texts ?? {} } }));
     } catch (err) {
       if (!list.every((panel) => signal(panel).aborted)) api.notify(`The review stopped: ${errorText(err)}`, 'error');
     } finally {
@@ -255,7 +255,12 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
     }
   };
   const stop = (list: Panel[]) => list.forEach((panel) => aborts.current.get(panel)?.abort());
-  const runAll = runAllPanels(doc, ticks, aiReady);
+  const runAll = runAllPanels(doc, aiReady);
+  const reset = () => {
+    set({ results: {}, last: null, dismissed: [] });
+    setNotes({});
+    setDiskChanged(false);
+  };
 
   const fix = async (id: string, label: string, prompt: string, file: string | undefined, withLog: boolean) => {
     setFixing(id);
@@ -346,69 +351,94 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
     </div>
   );
 
-  /** A panel: its tick for Run all, its name, what it checks, its state, its own Run, then its results. */
-  const panelCard = (panel: Panel, desc: string, counts: string[] | null, body: ReactNode, opts: { extra?: ReactNode; options?: ReactNode; blocked?: string } = {}) => {
+  /**
+   * A panel: its icon in its colour, its name and what it checks, its status (which folds its results away) and its own
+   * Run; then its switch, if it has one, the tags naming what it checks and its results.
+   */
+  const panelCard = (info: PanelInfo, status: { text: string; tone?: Tone } | null, body: ReactNode, opts: { extra?: ReactNode; option?: ReactNode; blocked?: string } = {}) => {
+    const { panel } = info;
     const step = steps[panel];
     const running = aborts.current.has(panel) || Boolean(step);
+    const pill = running ? { text: 'Running…', tone: 'running' } : status ?? { text: 'Not run' };
     return (
-      <section key={panel} className="tool-card review-panel" aria-label={LABEL[panel]}>
-        <div className="review-panel-head">
-          <label className="checkbox-row" title="Run all runs the ticked checks">
-            <input type="checkbox" checked={ticks[panel]} onChange={(e) => set({ ticks: { ...ticks, [panel]: e.target.checked } })} />
-            <span className="tool-card-title">{LABEL[panel]}</span>
-          </label>
-          {counts && body ? (
-            <button className="disclosure-head log-counts" aria-expanded={!closed.has(panel)} onClick={() => toggle(panel)}>
-              {counts.join(' · ') || 'No problems'}
+      <section key={panel} className="review-card" aria-label={info.label}>
+        <div className="review-card-head">
+          <span className={`review-card-icon ${info.colour}`}>
+            <Icon name={info.icon} />
+          </span>
+          <div className="review-card-titles">
+            <h3>{info.label}</h3>
+            <div className="review-card-desc">{info.desc}</div>
+          </div>
+          {status && body && !running ? (
+            <button className={`review-status-pill ${pill.tone ?? ''}`} aria-expanded={!closed.has(panel)} title={closed.has(panel) ? 'Show the results' : 'Hide the results'} onClick={() => toggle(panel)}>
+              {pill.text}
               <Icon name={closed.has(panel) ? 'chevron.right' : 'chevron.down'} />
             </button>
           ) : (
-            <span className="log-counts">{running ? '' : 'Not run'}</span>
+            <span className={`review-status-pill ${pill.tone ?? ''}`}>{pill.text}</span>
           )}
           {running ? (
-            <button className="btn small" onClick={() => stop([panel])}>
+            <button className="btn small review-run" onClick={() => stop([panel])}>
               <span className="spinner" /> Stop
             </button>
           ) : (
-            <button className="btn small" disabled={!doc || Boolean(opts.blocked)} onClick={() => run([panel])}>
-              <Icon name="play.fill" /> Run
+            <button className="btn small review-run" disabled={!doc || Boolean(opts.blocked)} onClick={() => run([panel])}>
+              Run
             </button>
           )}
         </div>
-        <div className="tool-card-desc">{desc}</div>
         {opts.blocked && <span className="field-hint">{opts.blocked}</span>}
-        {opts.options}
+        {opts.option}
+        <div className="review-card-tags">
+          {tagsFor(info, doc, state.accessibilityTags).map((tag) => (
+            <span key={tag} className="review-tag">
+              {tag}
+            </span>
+          ))}
+        </div>
         {step && (
           <div className="review-step" role="status">
             {step}
           </div>
         )}
-        {opts.extra && <div className="review-panel-actions">{opts.extra}</div>}
-        {body && !closed.has(panel) && body}
+        {body && !closed.has(panel) && (
+          <div className="review-result">
+            {opts.extra && <div className="review-panel-actions">{opts.extra}</div>}
+            {body}
+          </div>
+        )}
       </section>
     );
   };
 
-  const groupCard = (group: PreflightGroup, desc: string) => {
+  /** A switch in its own row under a panel's head, as the double-blind one */
+  const option = (label: ReactNode, checked: boolean, onChange: (on: boolean) => void) => (
+    <label className="review-option">
+      <span>{label}</span>
+      <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
+
+  const groupCard = (info: PanelInfo & { panel: PreflightGroup }) => {
+    const group = info.panel;
     const result: GroupResult | undefined = results[group];
     const list = result?.findings.filter((f) => !hidden.has(f.id)) ?? [];
     const fixable = list.filter((f) => f.fixable);
     const [errors, warnings, infos] = severities(list, 'error', 'warning', 'info');
-    const options =
-      group === 'privacy' ? (
-        <label className="checkbox-row review-option">
-          <input type="checkbox" role="switch" checked={state.anonymous} onChange={(e) => set({ anonymous: e.target.checked })} />
-          <span>Anonymous review: the authors, \thanks, the acknowledgements and the PDF’s Author field count too</span>
-        </label>
-      ) : group === 'accessibility' ? (
-        <label className="checkbox-row review-option">
-          <input type="checkbox" role="switch" checked={state.accessibilityTags} onChange={(e) => set({ accessibilityTags: e.target.checked })} />
-          <span>
-            Tags and alt text: a tagged PDF and alt text on every image
-            <span className="field-hint">Off by default, as standard LaTeX templates fail them for every figure.</span>
-          </span>
-        </label>
-      ) : null;
+    const switchRow =
+      group === 'privacy'
+        ? option('Double-blind review: the authors, \\thanks, affiliations, the acknowledgements and the PDF’s Author field count too', state.anonymous, (on) => set({ anonymous: on }))
+        : group === 'accessibility'
+          ? option(
+              <>
+                Tags and alt text: a tagged PDF and alt text on every image
+                <span className="field-hint">Off by default, as standard LaTeX templates fail them for every figure.</span>
+              </>,
+              state.accessibilityTags,
+              (on) => set({ accessibilityTags: on })
+            )
+          : null;
     const extra = (
       <>
         {group === 'accessibility' && result?.pages && (
@@ -423,9 +453,9 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
         )}
       </>
     );
-    const body = result && (
+    // while the PDF half runs, the panel's step says so; the source half's findings show meanwhile
+    const body = result && !(result.waiting && !list.length) && (
       <div className="review-group">
-        {result.waiting && <div className="tool-footnote">{result.waiting}</div>}
         {result.gap && <div className="tool-footnote">{result.gap}</div>}
         {notes[group] && (
           <div className="log-card note">
@@ -448,12 +478,13 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
         ))}
       </div>
     );
-    // a group with nothing found and something it couldn't check isn't "No problems"
-    const counts = result ? [...counted(errors, 'error'), ...counted(warnings, 'warning'), ...counted(infos, 'note')] : null;
-    return panelCard(group, desc, counts && !counts.length && result?.gap ? ['Not checked'] : counts, body, { options, extra: (group === 'accessibility' && result?.pages) || fixable.length > 1 ? extra : undefined });
+    // a group with nothing found and something it couldn't check isn't "Passed"
+    const counts = [...counted(errors, 'error'), ...counted(warnings, 'warning'), ...counted(infos, 'note')];
+    const status = !result ? null : !counts.length && result.gap ? { text: 'Not checked' } : { text: counts.join(' · ') || 'Passed', tone: toneOf({ error: errors, warning: warnings }) };
+    return panelCard(info, status, body, { option: switchRow, extra: (group === 'accessibility' && result?.pages) || fixable.length > 1 ? extra : undefined });
   };
 
-  const existCard = (desc: string) => {
+  const existCard = (info: PanelInfo) => {
     const exist = results.exist;
     const shown = existRows.filter((r) => !hidden.has(`exist|${r.key}`));
     const body = exist && !('running' in exist) && (
@@ -470,10 +501,16 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
         {'rows' in exist && exist.read && <div className="tool-footnote">{exist.read}</div>}
       </div>
     );
-    return panelCard('exist', desc, exist && !('running' in exist) ? ('rows' in exist ? checkCounts(shown) : ['Failed']) : null, body);
+    const status =
+      !exist || 'running' in exist
+        ? null
+        : 'error' in exist
+          ? { text: 'Failed', tone: 'fail' as const }
+          : { text: checkCounts(shown).join(' · ') || 'Passed', tone: toneOf({ error: shown.filter((r) => r.status === 'retracted').length, warning: shown.filter((r) => r.status !== 'found').length }) };
+    return panelCard(info, status, body);
   };
 
-  const aiCard = (desc: string) => {
+  const aiCard = (info: PanelInfo) => {
     const ai = results.ai;
     const counts = AI_PARTS.flatMap(([severity]) => {
       const n = aiRows.filter((f) => f.severity === severity).length;
@@ -572,7 +609,13 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
         )}
       </div>
     );
-    return panelCard('ai', desc, ai && !('running' in ai) ? ('error' in ai ? ['Failed'] : counts) : null, body, {
+    const status =
+      !ai || 'running' in ai
+        ? null
+        : 'error' in ai
+          ? { text: 'Failed', tone: 'fail' as const }
+          : { text: counts.join(' · ') || 'Passed', tone: toneOf({ warning: aiRows.filter((f) => f.severity !== 'note').length }) };
+    return panelCard(info, status, body, {
       extra: extra || undefined,
       blocked: aiReady ? undefined : 'Set up a model in Settings › Models first.'
     });
@@ -580,40 +623,48 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
 
   return (
     <div className="tool-page review-page">
-      <div className="tool-page-head">
-        <h2>Review</h2>
-        {busy ? (
-          <button className="btn" onClick={() => stop([...aborts.current.keys()])}>
-            <span className="spinner" /> Stop
+      <div className="review-top">
+        <div>
+          <h2>
+            Review{doc && ' · '}
+            {doc && <code>{doc}</code>}
+          </h2>
+          <div className="review-top-desc">Run each check on its own, or run them all before you submit.</div>
+        </div>
+        <div className="review-top-actions">
+          <button className="btn small review-run" disabled={busy || !anyResult} onClick={reset}>
+            Reset
           </button>
-        ) : (
-          <button className="btn primary" disabled={!doc || !runAll.length} onClick={() => run(runAll)}>
-            <Icon name="checklist" /> Run all
-          </button>
-        )}
-      </div>
-      <div className="tool-card-desc">
-        Checks {doc || 'the document'} before it goes anywhere. Run all runs the ticked checks at once, compiling first only for those that read the PDF when it is older than the source. The AI review reads the document without changing it.
+          {busy ? (
+            <button className="btn primary" onClick={() => stop([...aborts.current.keys()])}>
+              <span className="spinner" /> Stop
+            </button>
+          ) : (
+            <button className="btn primary" disabled={!doc || !runAll.length} onClick={() => run(runAll)}>
+              <Icon name="play.fill" /> Run all
+            </button>
+          )}
+        </div>
       </div>
 
-      {(last || anyResult) && (
+      {last && (
         <div className="review-status">
           <span>
-            {last ? `Last run ${relativeTime(last.at).replace(/^Just/, 'just')}` : 'Results'}
-            {last && last.doc !== doc && ` · ${last.doc}`}
+            Last run {relativeTime(last.at).replace(/^Just/, 'just')}
+            {last.doc !== doc && ` · ${last.doc}`}
             {(diskChanged || typed) && ' · source changed'}
             {' · '}
             <span className="review-counts">{countsLine(rows, aiResult && aiRows)}</span>
           </span>
-          {last && (
-            <button className="btn small" onClick={copy}>
-              <Icon name="doc.on.doc" /> Copy report
-            </button>
-          )}
+          <button className="btn small" onClick={copy}>
+            <Icon name="doc.on.doc" /> Copy report
+          </button>
         </div>
       )}
 
-      {PANELS.filter(([panel]) => panels.includes(panel)).map(([panel, , desc]) => (panel === 'exist' ? existCard(desc) : panel === 'ai' ? aiCard(desc) : groupCard(panel, desc)))}
+      {PANELS.filter((info) => panels.includes(info.panel)).map((info) =>
+        info.panel === 'exist' ? existCard(info) : info.panel === 'ai' ? aiCard(info) : groupCard(info as PanelInfo & { panel: PreflightGroup })
+      )}
 
       {dismissedHere > 0 && (
         <button className="btn small review-restore" onClick={() => set({ dismissed: [] })}>

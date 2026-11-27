@@ -1923,36 +1923,211 @@ span.log-location {
    Review
    -------------------------------------------------------------------------- */
 
-/* a panel for each check: its tick for Run all and name, its state, its own Run */
-.review-panel {
-  gap: 8px;
+/* the top bar: "Review · main.tex", a line under it, Reset and Run all */
+.review-page {
+  gap: 14px;
 }
 
-.review-panel-head {
+.review-top {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
-  min-height: 28px;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
 }
 
-.review-panel-head .tool-card-title {
+.review-top > :first-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.review-top h2 {
+  font: 700 16px/1.2 var(--font-display);
+}
+
+.review-top h2 code {
+  font: 600 14px/1.2 var(--font-mono);
+}
+
+.review-top-desc {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.review-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-top-actions .btn.primary {
+  height: 30px;
+  padding: 0 14px;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+/* a panel for each check: its icon, name and line, its status, its own Run; then its switch, tags and results */
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-app);
+  transition: border-color 0.14s ease;
+}
+
+.review-card:hover {
+  border-color: var(--border-strong);
+}
+
+.review-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* the icon in its panel's colour in the Spectrum colour style (an area or icon colour, appearance.ts); grey in Simple */
+.review-card-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+}
+
+:root[data-colour-style='spectrum'] .review-card-icon {
+  color: var(--area);
+}
+
+.review-card-icon .sf {
+  width: 15px;
+  height: 15px;
+}
+
+.review-card-titles {
+  flex: 1;
+  min-width: 160px;
+}
+
+.review-card-titles h3 {
+  font: 600 13.5px/1.25 var(--font-display);
+}
+
+.review-card-desc {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* Not run, Running…, and the counts: green with no errors or warnings, orange with warnings, red with errors */
+.review-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--bg-subtle);
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.review-panel-head .disclosure-head {
-  gap: 4px;
-  color: var(--text-secondary);
+.review-status-pill .sf {
+  width: 9px;
+  height: 9px;
 }
 
+.review-status-pill.pass {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green-text);
+}
+
+.review-status-pill.warn {
+  background: color-mix(in srgb, var(--orange) 14%, transparent);
+  color: var(--orange-text);
+}
+
+.review-status-pill.fail {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red-text);
+}
+
+.review-status-pill.running {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+/* Run and Reset: small outlined pills */
+.btn.review-run {
+  height: 26px;
+  padding: 0 11px;
+  border-color: var(--border-strong);
+  background: var(--bg-panel);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.review-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-top: 4px;
+}
+
+.review-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-panel);
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+/* a panel's switch, such as Privacy's double-blind review, in a row of its own */
 .review-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-panel);
   color: var(--text-secondary);
   font-size: 12.5px;
+}
+
+.review-option .field-hint {
+  display: block;
 }
 
 .review-step {
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: 12px;
+}
+
+.review-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-panel);
 }
 
 .review-panel-actions {

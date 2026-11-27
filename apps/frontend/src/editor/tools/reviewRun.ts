@@ -17,22 +17,92 @@ export type ExistResult = { running: true } | { error: string } | { rows: Refere
 export type AiResult = { running: true } | { error: string } | { review: Omit<PartsReview, 'findings'> & { findings: AiRow[] } };
 export type Results = { [G in PreflightGroup]?: GroupResult } & { exist?: ExistResult; ai?: AiResult };
 
-/** The panels in their order on the page, with a line on what each checks. */
-export const PANELS: [Panel, string, string][] = [
-  ['compile', 'Compile and layout', 'The build log and the PDF: errors, lines past the margin, ?? in place of citations, missing glyphs, odd page sizes and text past the page’s edge.'],
-  ['references', 'References and assets', 'Citations and labels with nothing behind them, the bibliography’s own problems, missing images and figures the text never mentions. Reads the source alone.'],
-  ['exist', 'Verify citations', 'Looks each bibliography entry up in Crossref, doi.org, arXiv or OpenAlex, compares it with the record found and reads retractions. Goes online.'],
-  ['privacy', 'Privacy and blind review', 'Keys and passwords left in the project, \\todo notes, TODO comments and highlighted text.'],
-  ['accessibility', 'Accessibility', 'The PDF’s title and language, pages with no text a screen reader can read and vague link text.'],
-  ['submission', 'Submission readiness', 'From the source: absolute paths, letter case, image formats, file names, heading levels, the abstract and keywords. From the PDF: its version, encryption, fonts, bookmarks and text under 6pt.'],
-  ['ai', 'AI review', 'One read-only pass by your main model for logic, notation, data that disagrees and missing citations, each point tied to a line.']
+/**
+ * A panel as the page shows it: its name, a line on what it checks, its icon and the colour the Spectrum colour style
+ * gives it (an area of palette.json, or one of the icon colours), and tags naming what it checks.
+ */
+export type PanelInfo = { panel: Panel; label: string; desc: string; icon: string; colour: string; tags: string[] };
+
+/** The panels in their order on the page. */
+export const PANELS: PanelInfo[] = [
+  {
+    panel: 'compile',
+    label: 'Compile and layout',
+    desc: 'Reads the build log and the PDF for typesetting and layout problems.',
+    icon: 'doc.richtext',
+    colour: 'area-writing',
+    tags: ['TeX errors', 'Lines past the margin', 'Unresolved ??', 'Missing glyphs', 'Page size mismatch', 'Text past the edge']
+  },
+  {
+    panel: 'references',
+    label: 'References and assets',
+    desc: 'Citations, cross-references, the bibliography and image paths, from the source alone (no compile).',
+    icon: 'book.closed',
+    colour: 'hue-yellow',
+    tags: ['Undefined \\cite and \\ref', 'Duplicate labels', 'Missing BibTeX fields', 'Missing images', 'Unreferenced figures']
+  },
+  {
+    panel: 'exist',
+    label: 'Verify citations',
+    desc: 'Looks each bibliography entry up online to catch wrong details and retractions.',
+    icon: 'checkmark.seal',
+    colour: 'area-circuits',
+    tags: ['Crossref and DOI', 'arXiv and OpenAlex', 'Title, author and year', 'Retractions']
+  },
+  {
+    panel: 'privacy',
+    label: 'Privacy and blind review',
+    desc: 'Scans the project for leaked keys, draft notes left in and what names the authors.',
+    icon: 'lock',
+    colour: 'hue-blue',
+    tags: ['Leaked keys and .env files', '\\todo and TODO notes', '\\hl highlights', 'Author and PDF metadata']
+  },
+  {
+    panel: 'submission',
+    label: 'Submission readiness',
+    desc: 'What venues and arXiv refuse: fonts, the PDF version, portable paths, bookmarks and heading order.',
+    icon: 'paperplane',
+    colour: 'area-plots',
+    tags: ['Embedded and Type 3 fonts', 'PDF version', 'Case-sensitive paths', 'Absolute paths', 'Bookmarks and text under 6pt', 'Heading levels', 'Abstract and keywords']
+  },
+  {
+    panel: 'accessibility',
+    label: 'Accessibility',
+    desc: 'What a screen reader gets from the PDF: its title and language, pages with no text and vague links.',
+    icon: 'eyeglasses',
+    colour: 'hue-teal',
+    tags: ['PDF title and language', 'Pages with no text', 'Vague link text']
+  },
+  {
+    panel: 'ai',
+    label: 'AI review',
+    desc: 'A read-only referee pass by your main model for logic, notation, missing citations and clarity.',
+    icon: 'sparkles',
+    colour: 'hue-purple',
+    tags: ['Logic and claims', 'Notation and data', 'Citation needed', 'Points tied to a line']
+  }
 ];
 export const isGroup = (panel: Panel): panel is PreflightGroup => panel !== 'exist' && panel !== 'ai';
 
+/** What a panel's tags say for this document: Typst's and Markdown's References and assets read their own syntax. */
+export function tagsFor(info: PanelInfo, doc: string, accessibilityTags: boolean) {
+  if (info.panel === 'references' && /\.typ$/i.test(doc)) return ['@ref and #cite', 'Duplicate labels', 'Missing BibTeX fields', 'Missing #image files'];
+  if (info.panel === 'references' && /\.(?:md|markdown)$/i.test(doc)) return ['[@key] citations', 'Missing BibTeX fields', 'Missing images', 'Links to files'];
+  const latex = /\.(?:tex|ltx)$/i.test(doc);
+  if (info.panel === 'compile' && !latex) return ['Compile errors', ...info.tags.slice(1)];
+  if (info.panel === 'privacy' && !latex) return ['Leaked keys and .env files', 'TODO notes', 'Author and PDF metadata'];
+  if (info.panel === 'accessibility' && accessibilityTags) return [...info.tags, 'PDF tags and alt text'];
+  return info.tags;
+}
+
 /** The panels a document shows: a Typst or Markdown one has no Accessibility or Submission readiness. */
-export const panelsFor = (doc: string) => PANELS.map(([panel]) => panel).filter((panel) => /\.(tex|ltx)$/i.test(doc) || (panel !== 'accessibility' && panel !== 'submission'));
-/** What Run all runs: the ticked panels, and the AI review only with a model set up. */
-export const runAllPanels = (doc: string, ticks: Record<Panel, boolean>, aiReady: boolean) => panelsFor(doc).filter((panel) => ticks[panel] && (panel !== 'ai' || aiReady));
+export const panelsFor = (doc: string) => PANELS.map(({ panel }) => panel).filter((panel) => /\.(tex|ltx)$/i.test(doc) || (panel !== 'accessibility' && panel !== 'submission'));
+/** What Run all runs: every panel, the AI review only with a model set up. */
+export const runAllPanels = (doc: string, aiReady: boolean) => panelsFor(doc).filter((panel) => panel !== 'ai' || aiReady);
+
+/** A panel's status pill: fail with errors (or a retraction), warn with warnings, pass with neither. */
+export type Tone = 'pass' | 'warn' | 'fail';
+export const toneOf = (counts: { error?: number; warning?: number }): Tone => (counts.error ? 'fail' : counts.warning ? 'warn' : 'pass');
 
 const STOPPED = 'Stopped before the PDF checks ran.';
 const rowId = (f: Finding) => [f.group, f.severity, f.message, f.file, f.line, f.page].join('|');

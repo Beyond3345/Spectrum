@@ -2,7 +2,7 @@
 // the PDF, Verify citations and the AI review don't wait for it, and a PDF that can't be read says so. Bundle with
 // esbuild and run with node.
 import type { PdfFacts } from '../preflight/run';
-import { runAllPanels, runPanels } from './reviewRun';
+import { runAllPanels, runPanels, tagsFor, toneOf, PANELS } from './reviewRun';
 import type { GroupResult, Panel, Results, RunDeps } from './reviewRun';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
@@ -89,8 +89,8 @@ const messages = (result?: GroupResult) => result?.findings.map((f) => f.message
       return { error: 'stub' };
     }
   });
-  const all = runAllPanels('main.tex', { compile: true, references: true, exist: true, privacy: true, accessibility: true, submission: true, ai: true }, true);
-  eq(all, ['compile', 'references', 'exist', 'privacy', 'accessibility', 'submission', 'ai'], 'Run all takes every ticked panel');
+  const all = runAllPanels('main.tex', true);
+  eq(all, ['compile', 'references', 'exist', 'privacy', 'submission', 'accessibility', 'ai'], 'Run all takes every panel, in the page’s order');
   await runPanels(all, w.deps);
   ok(messages(group(w.results, 'privacy')).some((m) => /^TODO comment/.test(m)), 'Privacy ran from the source');
   ok(/Another compile was running/.test(group(w.results, 'compile').gap ?? ''), 'Compile and layout says the compile was busy');
@@ -147,8 +147,15 @@ const messages = (result?: GroupResult) => result?.findings.map((f) => f.message
 }
 
 // Run all: the AI review only with a model set up, and no Accessibility or Submission readiness for Typst
-const ticks = { compile: true, references: true, exist: false, privacy: true, accessibility: true, submission: true, ai: true };
-eq(runAllPanels('main.tex', ticks, false), ['compile', 'references', 'privacy', 'accessibility', 'submission'], 'no AI review without a model, nor unticked panels');
-eq(runAllPanels('main.typ', ticks, true), ['compile', 'references', 'privacy', 'ai'], 'a Typst document’s panels');
+eq(runAllPanels('main.tex', false), ['compile', 'references', 'exist', 'privacy', 'submission', 'accessibility'], 'no AI review without a model');
+eq(runAllPanels('main.typ', true), ['compile', 'references', 'exist', 'privacy', 'ai'], 'a Typst document’s panels');
+
+// the status pill's colour, and the tags that follow the document and the switches
+eq([toneOf({ error: 1, warning: 2 }), toneOf({ warning: 1 }), toneOf({})], ['fail', 'warn', 'pass'], 'status tones');
+const info = (panel: string) => PANELS.find((p) => p.panel === panel)!;
+eq(tagsFor(info('references'), 'main.typ', false)[0], '@ref and #cite', 'Typst’s references tags');
+eq([tagsFor(info('compile'), 'main.typ', false)[0], tagsFor(info('compile'), 'main.tex', false)[0]], ['Compile errors', 'TeX errors'], 'a Typst compile’s errors aren’t TeX’s');
+eq(tagsFor(info('accessibility'), 'main.tex', true).slice(-1)[0], 'PDF tags and alt text', 'the optional checks named when on');
+eq(tagsFor(info('accessibility'), 'main.tex', false).includes('PDF tags and alt text'), false, 'and not when off');
 
 console.log('reviewRun.check: ok');
