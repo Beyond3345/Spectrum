@@ -17,7 +17,7 @@ import type { EditorApi } from '../EditorContext';
 import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
 import type { VisionMode } from '../shared';
 import { PLACEMENT_LETTERS, afterFloat, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, markdownTableRows, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge, imageOf } from '../floats';
-import { typstTableRows } from '../outlines';
+import { typstTableRows } from '../tableRows';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 

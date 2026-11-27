@@ -3,10 +3,14 @@ import type { ComponentProps } from 'react';
 import { getFile, getProjectTree } from '../../../api/client';
 import Icon from '../../../app/Icon';
 import Select from '../../../app/Select';
+import Sheet from '../../../app/Sheet';
+import { parseDelimited } from '../../../editor/floats';
+import { cellNumber, plainCell, tableKind, tablesIn } from '../../../editor/tableRows';
+import type { FoundTable } from '../../../editor/tableRows';
 import { ColourField, More, ProjectContext, Row, UnitsSwitch } from '../../controls';
 import type { DiagramMode } from '../../types';
 import { nextId } from '../tikz/code';
-import { asKind, axesFolded, columnsOf, emptyPlot, fitEquation, isSemicolonCsv, newSeries, plotCode, pointsOf, seriesFolded } from './code';
+import { asKind, axesFolded, columnsOf, emptyPlot, fitEquation, isSemicolonCsv, newSeries, plotCode, pointsOf, seriesFolded, tableSeries } from './code';
 import type { Annotation, AnnotationKind, LegendPos, MarkShape, Piece, PlotModel, Series, SeriesSource, Signal } from './code';
 
 // Plots: the form that writes the axis, previewed below it
@@ -340,6 +344,187 @@ function useDataFiles(projectId: string, wanted: string[]) {
   return { files, columns, semicolons };
 }
 
+/**
+ * The document open in the editor's window, as it is there with any unsaved changes, asked over the channel the
+ * composer hands diagrams back on; null when no window answers.
+ */
+function openDocument(projectId: string): Promise<{ path: string; text: string } | null> {
+  if (typeof BroadcastChannel === 'undefined') return Promise.resolve(null);
+  const channel = new BroadcastChannel('spectrum-diagram');
+  return new Promise((resolve) => {
+    const done = (value: { path: string; text: string } | null) => {
+      window.clearTimeout(timer);
+      channel.close();
+      resolve(value);
+    };
+    const timer = window.setTimeout(() => done(null), 500);
+    channel.onmessage = ({ data }: MessageEvent) => {
+      if (data?.type === 'document' && data.projectId === projectId && typeof data.path === 'string' && typeof data.text === 'string') done({ path: data.path, text: data.text });
+    };
+    channel.postMessage({ type: 'document?', projectId });
+  });
+}
+
+/** A table to import: where it came from, and whether its cells are LaTeX as written. */
+type Source = FoundTable & { file: string; open?: boolean; latex: boolean };
+
+/** The tables in the project's documents, the one open in the editor first and as it is there. */
+async function projectTables(projectId: string): Promise<Source[]> {
+  const [{ documents, mainFile }, open] = await Promise.all([getProjectTree(projectId), openDocument(projectId)]);
+  // ponytail: reads every document; a project of hundreds would want the open one only
+  const files = [...new Set([open?.path, mainFile, ...documents].filter((f): f is string => !!f && !!tableKind(f)))];
+  const read = await Promise.all(files.map((file) => (file === open?.path ? Promise.resolve(open.text) : getFile(projectId, file).then((f) => f.content, () => ''))));
+  return files.flatMap((file, i) => tablesIn(read[i], tableKind(file)!).map((t) => ({ ...t, file, open: file === open?.path, latex: tableKind(file) === 'latex' })));
+}
+
+/** The first row names the columns when a column of numbers below it doesn't hold one. */
+const hasHeader = (rows: string[][]) => rows.length > 1 && rows[0].some((cell, c) => cellNumber(cell) === null && rows.slice(1).some((row) => cellNumber(row[c] ?? '') !== null));
+
+/** Import table: a table from the project's documents or a CSV file, as a series of points for each column chosen. */
+function ImportTable({ model, onChange }: { model: PlotModel; onChange(m: PlotModel): void }) {
+  const projectId = useContext(ProjectContext);
+  const [open, setOpen] = useState(false);
+  const [found, setFound] = useState<Source[] | null>(null);
+  const [table, setTable] = useState<Source | null>(null);
+  const [header, setHeader] = useState(true);
+  const [x, setX] = useState(0);
+  const [ys, setYs] = useState<number[]>([]);
+  const [error, setError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const pick = (next: Source | null) => {
+    setTable(next);
+    if (!next) return;
+    const head = hasHeader(next.rows);
+    const body = head ? next.rows.slice(1) : next.rows;
+    const numeric = (c: number) => body.some((row) => cellNumber(row[c] ?? '') !== null);
+    const width = Math.max(...next.rows.map((r) => r.length));
+    setHeader(head);
+    setX(0);
+    setYs(Array.from({ length: width }, (_, c) => c).filter((c) => c > 0 && numeric(c)));
+  };
+  const show = () => {
+    setOpen(true);
+    setError('');
+    setFound(null);
+    projectTables(projectId)
+      .then((list) => {
+        setFound(list);
+        if (!table) pick(list[0] ?? null);
+      })
+      .catch(() => setFound([]));
+  };
+  const readCsv = async (file: File | undefined) => {
+    if (!file) return;
+    const rows = parseDelimited(await file.text()).filter((row) => row.some((cell) => cell.trim()));
+    if (rows.length < 1 || Math.max(...rows.map((r) => r.length)) < 2) return setError(`${file.name} has no columns to plot: a CSV file holds them split by commas or tabs.`);
+    setError('');
+    pick({ rows, caption: '', file: file.name, latex: false });
+  };
+  const columns = table ? Array.from({ length: Math.max(...table.rows.map((r) => r.length)) }, (_, c): [string, string] => [String(c), (header && plainCell(table.rows[0][c] ?? '')) || `Column ${c + 1}`]) : [];
+  const importIt = () => {
+    if (!table || !ys.length) return;
+    // the untouched series a new plot starts with gives way to the table
+    const blank = model.series.length === 1 && JSON.stringify(model.series[0]) === JSON.stringify(newSeries(model.series[0].id));
+    const kept = blank ? [] : model.series;
+    const got = tableSeries(table.rows, x, ys, { header, latex: table.latex, ids: kept.map((s) => s.id) });
+    const fresh = (label: string) => !label || label === '$x$' || label === '$y$';
+    onChange({
+      ...model,
+      series: [...kept, ...got.series],
+      xlabel: got.xlabel && fresh(model.xlabel) ? got.xlabel : model.xlabel,
+      ylabel: fresh(model.ylabel) ? got.ylabel || model.ylabel : model.ylabel,
+      ...(got.xticks && { xticks: got.xticks })
+    });
+    setOpen(false);
+  };
+  const name = (t: Source) => `${t.file}${t.open ? ' (open)' : ''}: ${t.caption || t.rows[0].map(plainCell).filter(Boolean).join(', ')}`;
+
+  return (
+    <>
+      <button type="button" className="btn small" onClick={show}>
+        <Icon name="tablecells" /> Import table…
+      </button>
+      {open && (
+        <Sheet
+          title="Import a table"
+          width={560}
+          onClose={() => setOpen(false)}
+          actions={
+            <>
+              <button type="button" className="btn" onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn primary" disabled={!table || !ys.length} onClick={importIt}>
+                Import
+              </button>
+            </>
+          }
+        >
+          <div className="plot-import">
+            <div className="field">
+              <span className="field-label">Table</span>
+              <div className="diagram-pair">
+                <Select
+                  value={table && found?.includes(table) ? String(found.indexOf(table)) : ''}
+                  options={(found ?? []).map((t, i): [string, string] => [String(i), name(t)])}
+                  placeholder={found === null ? 'Looking for tables…' : found.length ? (table ? table.file : 'Choose a table') : 'No tables in the project’s documents'}
+                  onChange={(i) => pick(found?.[Number(i)] ?? null)}
+                />
+                <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
+                  CSV file…
+                </button>
+              </div>
+              <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,text/csv" hidden onChange={(e) => (void readCsv(e.target.files?.[0]), (e.target.value = ''))} />
+              {error && (
+                <div className="field-hint error" role="alert">
+                  {error}
+                </div>
+              )}
+            </div>
+            {table && (
+              <>
+                <div className="plot-import-preview">
+                  <table>
+                    <tbody>
+                      {table.rows.slice(0, 5).map((row, r) => (
+                        <tr key={r} className={header && r === 0 ? 'head' : undefined}>
+                          {row.map((cell, c) => (
+                            <td key={c}>{plainCell(cell)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {table.rows.length > 5 && <div className="field-hint">and {table.rows.length - 5} more rows</div>}
+                </div>
+                <Switch label="The first row names the columns" checked={header} onChange={setHeader} />
+                <Row label="x from">
+                  <Select value={String(x)} options={columns} onChange={(c) => (setX(Number(c)), setYs(ys.filter((y) => y !== Number(c))))} />
+                </Row>
+                <div className="field">
+                  <span className="field-label">A series for each of</span>
+                  {columns.map(([c, label]) =>
+                    Number(c) === x ? null : (
+                      <label className="checkbox-row" key={c}>
+                        <input type="checkbox" checked={ys.includes(Number(c))} onChange={(e) => setYs(e.target.checked ? [...ys, Number(c)].sort((a, b) => a - b) : ys.filter((y) => y !== Number(c)))} />
+                        <span>{label}</span>
+                      </label>
+                    )
+                  )}
+                  <div className="field-hint">
+                    Each becomes a series of points you can change like any other. An x column of words is plotted at 1, 2, 3 with the words as its ticks, as bars for one series. The plot does not follow later changes to the table.
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </Sheet>
+      )}
+    </>
+  );
+}
+
 type CanvasProps = ComponentProps<DiagramMode<PlotModel>['Canvas']>;
 
 function Canvas({ model, onChange, readOnly }: CanvasProps) {
@@ -461,6 +646,7 @@ function Canvas({ model, onChange, readOnly }: CanvasProps) {
         <button type="button" className="btn small" onClick={() => patch({ series: [...model.series, newSeries(nextId('s', model.series.map((s) => s.id)))] })}>
           <Icon name="plus" /> Add a series
         </button>
+        <ImportTable model={model} onChange={onChange} />
       </section>
       <section>
         <h3 className="form-section-title">Axes</h3>

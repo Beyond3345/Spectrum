@@ -1,4 +1,6 @@
+import { cellNumber, plainCell } from '../../../editor/tableRows';
 import { unitWriter } from '../../units';
+import { nextId } from '../tikz/code';
 import { escapeTex, latexColour, num } from '../shared';
 
 // Plots (pgfplots): a form rather than a drawing. Each series is a function of x over a domain, two columns of a data
@@ -162,6 +164,36 @@ export function asKind(s: Series, source: SeriesSource): Partial<Series> {
     default:
       return { source, marks: false };
   }
+}
+
+/**
+ * Columns of a table as series of typed points: x from column x, a series for each column of ys (header: the first row
+ * names them). An x column of words is plotted at 1, 2, 3 with the words as its tick labels, as bars when there is
+ * one series. latex: the cells are LaTeX as written, kept so in the labels but for bold and italics; other cells are escaped.
+ */
+export function tableSeries(rows: string[][], x: number, ys: number[], { header, latex, ids }: { header: boolean; latex: boolean; ids: string[] }): Pick<PlotModel, 'series' | 'xlabel' | 'ylabel'> & { xticks?: string } {
+  const [head, body] = header ? [rows[0] ?? [], rows.slice(1)] : [[], rows];
+  // a LaTeX header keeps its maths and units, not the table's bold
+  const label = (cell = '') => (latex ? cell.replace(/\\(?:textbf|textit|emph|textsc|mbox|makecell)\s*\{([^{}]*)\}|\\(?:bfseries|itshape)\s*/g, '$1').trim() : escapeTex(plainCell(cell), '%&#_'));
+  const words = body.some((row) => cellNumber(row[x] ?? '') === null);
+  const at = (row: string[], i: number) => (words ? i + 1 : cellNumber(row[x] ?? ''));
+  const taken = [...ids];
+  const series = ys.map((y): Series => {
+    const id = nextId('s', taken);
+    taken.push(id);
+    const points = body.flatMap((row, i) => {
+      const [px, py] = [at(row, i), cellNumber(row[y] ?? '')];
+      return px === null || py === null ? [] : [`${px}, ${py}`];
+    });
+    return { ...newSeries(id), source: 'points', points: points.join('\n'), marks: true, legend: ys.length > 1 ? label(head[y]) : '', ...(words && ys.length === 1 && { bars: true }) };
+  });
+  return {
+    series,
+    xlabel: label(head[x]),
+    ylabel: ys.length === 1 ? label(head[ys[0]]) : '',
+    // a tick's label is read up to the next semicolon
+    ...(words && { xticks: body.map((row, i) => `${i + 1} = ${plainCell(row[x] ?? '').replace(/;/g, ',')}`).join('; ') })
+  };
 }
 
 /** The Signal sketch starter: a square wave on axes with arrows and no ticks. */

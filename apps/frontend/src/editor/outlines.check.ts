@@ -1,6 +1,7 @@
 // Self-check for the Typst and Markdown outlines. Run:
 // npx esbuild apps/frontend/src/editor/outlines.check.ts --bundle --platform=node --log-level=warning | node
-import { includedPath, numberTypstOutline, typstTableRows, parseMarkdownOutline, parseTypstOutline, typstDocumentOutline, typstFigure } from './outlines.ts';
+import { includedPath, numberTypstOutline, parseMarkdownOutline, parseTypstOutline, typstDocumentOutline, typstFigure } from './outlines.ts';
+import { typstTableRows } from './tableRows.ts';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(what + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
@@ -36,7 +37,7 @@ eq(fig('#figure(caption: [Code])[```py\nx = 1\n```]'), { supplement: 'Listing', 
 eq(fig('#figure(grid(figure(image("a.png"), caption: [Inner])), caption: [Outer], kind: "algorithm")'), { supplement: 'Algorithm', caption: 'Outer' }, 'its own caption and kind, not an inner figure’s');
 eq(fig('#figure(image("a.png"))'), null, 'no caption, not in the outline');
 
-// a selected Typst table's cells, for Table → chart
+// a selected Typst table's cells
 eq(
   typstTableRows('#figure(\n  table(\n    columns: (auto, 1fr),\n    stroke: none,\n    table.hline(),\n    table.header([*Month*], [Energy (kWh)]),\n    [Jan], [$612$],\n    table.cell(colspan: 2)[Winter, below],\n    "Feb", [540],\n  ),\n  caption: [Energy],\n)'),
   [['Month', 'Energy (kWh)'], ['Jan', '612'], ['Winter, below', ''], ['Feb', '540']],

@@ -2959,11 +2959,17 @@ function Editor({ projectId }: { projectId: string }) {
   }, [texlabOn, docRoot, editorValue, fileSet, filesVersion, compileLog]);
 
   // the diagram composer's window (desktop.ts openDiagram): its Insert as figure hands the diagram to the Floats panel's
-  // Insert diagram card and brings this window forward, and its saves show without waiting for the folder watch
+  // Insert diagram card and brings this window forward, its saves show without waiting for the folder watch, and Plot's
+  // Import table reads the open document
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
     const channel = new BroadcastChannel('spectrum-diagram');
     channel.onmessage = ({ data }: MessageEvent) => {
+      // Plot's Import table asks for the open document, unsaved changes and all
+      if (data?.type === 'document?' && data.projectId === projectId && apiRef.current?.activePath) {
+        channel.postMessage({ type: 'document', projectId, path: apiRef.current.activePath, text: apiRef.current.editorValue });
+        return;
+      }
       if (data?.projectId !== projectId || typeof data.path !== 'string') return;
       const path: string = data.path;
       if (data.type === 'saved') {

@@ -249,35 +249,3 @@ export function numberTypstOutline<T extends OutlineItem>(items: T[], numbers: T
     return headings[at].number ? { ...item, title: `${headings[at].number} ${item.title}` } : item;
   });
 }
-
-/**
- * A selected Typst #table's cells, row by row, as its text reads (markup gone, a colspan's cell followed by blanks);
- * null when the text holds no table(…) with its columns.
- */
-export function typstTableRows(text: string): string[][] | null {
-  const at = /(?:^|[^\w.-])table\s*\(/.exec(text);
-  if (!at) return null;
-  const args = typstArgs(text, at.index + at[0].length - 1);
-  const columns = args?.find((a) => a.name === 'columns')?.value ?? '';
-  // columns: 3, or (auto, 1fr, 2cm), one column a item
-  const count = /^\d+$/.test(columns) ? Number(columns) : columns.startsWith('(') ? (typstArgs(columns, 0)?.length ?? 0) : 0;
-  if (!args || count < 1) return null;
-  const cells: string[] = [];
-  const cell = (value: string) => {
-    const call = /^(table\.(?:header|footer|cell)|\w[\w.]*)\s*\(/.exec(value);
-    if (!call) return void cells.push(readable(value.replace(/^"|"$/g, '')));
-    if (/^table\.(?:hline|vline)$/.test(call[1])) return;
-    const inner = typstArgs(value, call[0].length - 1) ?? [];
-    if (call[1] === 'table.header' || call[1] === 'table.footer') return inner.filter((a) => !a.name).forEach((a) => cell(a.value));
-    if (call[1] === 'table.cell') {
-      const span = Number(inner.find((a) => a.name === 'colspan')?.value) || 1;
-      cells.push(readable(inner.find((a) => !a.name)?.value ?? ''), ...Array<string>(span - 1).fill(''));
-      return;
-    }
-    cells.push(readable(value));
-  };
-  for (const { name, value } of args) if (!name) cell(value);
-  const rows: string[][] = [];
-  for (let i = 0; i < cells.length; i += count) rows.push(cells.slice(i, i + count));
-  return rows.length ? rows : null;
-}

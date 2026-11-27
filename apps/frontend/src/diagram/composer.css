@@ -619,6 +619,33 @@
   font-weight: 600;
 }
 
+/* Import table's sheet: the table it found, its first rows as they read */
+.plot-import {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plot-import-preview {
+  overflow-x: auto;
+}
+
+.plot-import-preview table {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plot-import-preview td {
+  padding: 3px 10px 3px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.plot-import-preview tr.head td {
+  font-weight: 600;
+}
+
 /* ─── Mermaid ─── */
 
 .mermaid-split {
