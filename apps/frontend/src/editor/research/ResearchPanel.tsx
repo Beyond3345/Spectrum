@@ -324,7 +324,7 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
             aria-controls={`${formId}-sources`}
             onClick={() => setSourcesOpen((v) => !v)}
           >
-            <Icon name="books.vertical" className="hue-blue" /> {sourcesLabel(sources)} <Icon name="chevron.down" className="btn-chevron" />
+            <Icon name="custom.database" className="hue-blue" /> {sourcesLabel(sources)} <Icon name="chevron.down" className="btn-chevron" />
           </button>
           <FiltersChip words={filterWords({ ...years, preprints, triage })} invalid={!!badYears}>
             <div className="research-filters">

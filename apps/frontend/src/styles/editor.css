@@ -148,6 +148,15 @@
   height: 100%;
 }
 
+/* as the UI plan has the strip: a hairline under it, inside its margins, and the open tab in a heavier weight */
+.sidebar-tabs {
+  background: linear-gradient(var(--border), var(--border)) left 18px bottom 0 / calc(100% - 28px) 1px no-repeat;
+}
+
+.sidebar-tabs .tab.active {
+  font-weight: 600;
+}
+
 .sidebar-search.search-field {
   flex: none;
   width: auto;
