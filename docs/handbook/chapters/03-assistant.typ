@@ -277,7 +277,7 @@ A picture can go with a message too, such as a sketch of a figure or a photo of 
 
 #shot("figures/03-assistant/agent-send-page.png", [#ui[Send page to agent] on the results table of a paper. The page is a chip with its small copy, and the message names the line the table comes from.], width: 60%) <fig-assistant-send-page>
 
-In the Spectrum agent's tab, the menu at the right of the header chooses the model and the thinking for the thread (@fig-assistant-model-menu). It lists the models of the provider in #menu[Settings][Models], and under #ui[Thinking] only the levels the chosen model accepts, while #ui[Models and prices…] opens Settings. A new thread starts with the model and effort from Settings, and each thread keeps its own choice, which applies from its next request. If the provider in Settings changes, a thread goes back to the model in Settings.
+In the Spectrum agent's tab, the menu in the message box, beside #ui[Send], chooses the model and the effort for the thread (@fig-assistant-model-menu), as it does in the assistant panel. It lists the models of the provider in #menu[Settings][Models], and under #ui[Effort] only the levels the chosen model accepts, while #ui[Models and prices…] opens Settings. A new thread starts with the model and effort from Settings, and each thread keeps its own choice, which applies from its next request. If the provider in Settings changes, a thread goes back to the model in Settings.
 
 #shot("figures/03-assistant/agent-model-menu.png", [The model and thinking menu of a Spectrum agent thread, with the Anthropic Claude preset.], width: 35%) <fig-assistant-model-menu>
 
