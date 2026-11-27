@@ -155,7 +155,7 @@ The project's name at the top of the editor's sidebar is the project switcher (@
 - #ui[Save as template…] and #ui[Show in Finder] and
 - the conversions that suit the main file: #ui[Convert to Typst project…], #ui[Convert to LaTeX project…], or #ui[Export to Word] and #ui[Convert to LaTeX project…] for a Markdown document (@sec-writing-convert).
 
-#menu[Settings][Projects][Project switcher opens at] chooses whether the list starts at Home or at the folder the project is in. Inside a folder, the folder's name heads the list. In the Spectrum colour style each project's mark is in a colour of its own, TeX in orange, Typst in teal and Markdown in blue, so a folder of mixed projects reads at a glance.
+#menu[Settings][Projects][Project switcher opens at] chooses whether the list starts at Home or at the folder the project is in. Inside a folder, the folder's name heads the list. Each project is marked TeX, Typ or MD for its kind, as the button at the top marks the open one, and in the Spectrum colour style each mark has its own colour, orange, teal and blue, so a folder of mixed projects reads at a glance. The open project's row is filled, with a tick at its end.
 
 #shot("figures/01-getting-started/project-switcher.png", [The project switcher in the editor, open at Semester 2, the folder the project is filed in. Back to Semester 2 opens Home at that folder.], width: 50%) <fig-start-switcher>
 

@@ -575,12 +575,12 @@ The #ui[Research] tab in the sidebar, between #ui[Files] and #ui[To-dos], looks 
 
 #howto[run a search][
 + Type the question in "What are you looking for?"
-+ Choose the sources under #ui[Sources], which says how many are on. Its list holds OpenAlex, Semantic Scholar, arXiv, Crossref, PubMed, Web, Zotero and the project's `.bib`, and it stays open while you tick them
++ Choose the sources: #ui[Sources], which says how many are on, opens the list of them below it, OpenAlex, Semantic Scholar, arXiv, Crossref, PubMed, Web, Zotero and the project's `.bib`. A click turns one on or off, and the dot of one that is off is hollow
 + Under #ui[Filters], give a range of years in #ui[From] and #ui[To] if you want one, untick #ui[Preprints] to leave them out and tick #ui[Sort the results with AI] to have the results sorted, as described below. The chip counts the filters that are set
 + Press #ui[Search]
 ]
 
-#shot("figures/03-assistant/research-panel.png", [The #ui[Research] tab with a question typed in. #ui[Sources] has five of its eight sources on, as it does at first, with PubMed, Web and Zotero off. The tools that need a model are the rows of the card below #ui[Search].], width: 38%) <fig-assistant-research>
+#shot("figures/03-assistant/research-panel.png", [The #ui[Research] tab with a question typed in. #ui[Sources] has five of its eight sources on, as it does at first, with PubMed, Web and Zotero off. Three of the tools that need a model are the rows of the Workflows card.], width: 38%) <fig-assistant-research>
 
 Every source is searched at once, and one that fails or is busy does not stop the others. The results are merged by DOI, arXiv ID and title, keeping the fullest record, so a paper found both as a preprint and as published is shown once, as published. Each result shows its authors, year, venue, the sources that found it and its citation count, with #ui[Open access] when there is a free copy, #ui[Preprint] when no source knows it as published and #ui[In .bib] with its key when the project already has it. #ui[Sort the results with AI] makes one call to the search model, which adds a line on why each result matters, a keep or drop suggestion and a theme.
 
@@ -593,7 +593,7 @@ Each result has four actions,
 
 Each question is kept as a session in the project's `.spectrum/research` folder, with a log of every search and your decisions. #ui[Search again] runs another search into the open session, and the list shows All, Kept, Dropped or To decide. #ui[Add kept papers to .bib] adds every kept paper through the same look-up as the References chat, so a paper already in the project keeps its key. Nothing is written to `research/` until #ui[Open note] or #ui[Get PDF] is used.
 
-The tab has four further tools, each of which needs a model. #ui[Deep research] sits beside #ui[Search], and the other three are the rows of the card below them,
+The tab has four further tools, each of which needs a model. #ui[Deep research] sits beside #ui[Search], and the other three are the rows of the #ui[Workflows] card below them,
 
 - #ui[Find citations for selection], which finds up to five papers that support the selected passage and, with #ui[Add to .bib and cite], adds the ticked ones and cites them after the selection (when the model cannot be reached, the results are a plain search of the passage's words and a line above them says why),
 - #ui[Deep research], which opens the agent workspace with #ui[Plan] on and a task that first proposes a plan (the questions, the sources to search and how many papers to read in full) for you to approve or change, then searches further, follows references, reads the papers and writes notes and a reading list,
