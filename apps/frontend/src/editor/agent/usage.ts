@@ -184,8 +184,8 @@ export function turnChoice(
  */
 export const holdsSend = (choice: { off?: true }, mode: 'assistant' | 'references' = 'assistant') => !!choice.off && mode === 'assistant';
 
-export const offNotice = (choice: { model: string; models: [string, string][]; off?: true }) =>
-  choice.off ? `${choice.models.find(([id]) => id === choice.model)?.[1] || choice.model}, this thread’s model, is switched off in Settings › Models.` : '';
+export const offNotice = (choice: { model: string; models: [string, string][]; off?: true }, noun: 'thread' | 'chat' = 'thread') =>
+  choice.off ? `${choice.models.find(([id]) => id === choice.model)?.[1] || choice.model}, this ${noun}’s model, is switched off in Settings › Models.` : '';
 
 /** A chip of the stats row under an agent's message box, as DeepSeek Harness shows it, and the popover it opens */
 export type StatChip = {

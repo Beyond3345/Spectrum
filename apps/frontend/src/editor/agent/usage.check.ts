@@ -124,7 +124,7 @@ eq(c.models[0], ['typed', 'typed'], 'a typed model listed first');
   // waits while a References look-up, which never uses the chat's model, goes on
   const chat = { model: 'plain', effort: 'low' as const, mode: 'assistant' as const };
   c = turnChoice(shown, settings, { model: chat.model, effort: chat.effort });
-  eq([c.model, c.off, offNotice(c), holdsSend(c, chat.mode), holdsSend(c, 'references')], ['plain', true, 'Plain, this thread’s model, is switched off in Settings › Models.', true, false], 'an Assistant chat on a switched-off model');
+  eq([c.model, c.off, offNotice(c, 'chat'), holdsSend(c, chat.mode), holdsSend(c, 'references')], ['plain', true, 'Plain, this chat’s model, is switched off in Settings › Models.', true, false], 'an Assistant chat on a switched-off model');
   eq([holdsSend(turnChoice(shown, settings, {}), 'assistant'), holdsSend(turnChoice(shown, settings, { model: 'big' }), 'assistant')], [false, false], 'a new chat, or a chat on a model that is on, sends as before');
   // any other thread is as before
   c = turnChoice(shown, settings, { model: 'big' });

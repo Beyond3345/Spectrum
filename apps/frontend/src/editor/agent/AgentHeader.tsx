@@ -102,9 +102,9 @@ export function StatsRow({ chips }: { chips: StatChip[] }) {
  * the same words and the same two actions in the Spectrum agent's tab and the assistant panel. Nothing while the
  * choice can be sent. onChoose opens the box's model menu.
  */
-export function ModelOffNotice({ choice, onChoose }: { choice: Choice; onChoose(): void }) {
+export function ModelOffNotice({ choice, onChoose, noun = 'thread' }: { choice: Choice; onChoose(): void; noun?: 'thread' | 'chat' }) {
   const providers = useProviders();
-  const notice = offNotice(choice);
+  const notice = offNotice(choice, noun);
   if (!notice) return null;
   return (
     <div className="composer-hint row" role="status">

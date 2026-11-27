@@ -785,7 +785,7 @@ export default function Composer({
           </div>
         ) : (
           <>
-          <ModelOffNotice choice={choice} onChoose={() => setMenuOpened((n) => n + 1)} />
+          <ModelOffNotice choice={choice} noun="chat" onChoose={() => setMenuOpened((n) => n + 1)} />
           <div className="composer-box">
             <textarea
               ref={inputRef}
