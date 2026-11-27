@@ -84,7 +84,7 @@ import { markdownIncludes } from '../editor/insights';
 // the live preview of a Markdown document, with KaTeX, loaded when first shown
 const MarkdownPreview = lazy(() => import('../editor/MarkdownPreview'));
 import { jyutpingWrap, loadsXjyutping } from '../editor/jyutping';
-import { switcherList, switcherStart } from './ProjectSwitcher';
+import { KindMark, projectKind, switcherList, switcherStart } from './ProjectSwitcher';
 import { withDeletionCheck } from './github';
 import { toast } from './Toast';
 import { IS_DESKTOP, focusWindow, openDiagram } from './desktop';
@@ -3359,16 +3359,15 @@ function Editor({ projectId }: { projectId: string }) {
   const projectItems: MenuItems = [
     // the Home folder the project is in, opened on Home
     homeFolder && { label: `Back to ${homeFolder.name}`, icon: 'arrow.uturn.backward', onSelect: () => leave('/projects', () => openProjectsOn('home', homeFolder.id)) },
-    { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects', () => openProjectsOn('all')) },
-    { label: 'Home', icon: 'house', onSelect: () => leave('/projects', () => openProjectsOn('home')) },
+    { label: 'Home', icon: <Icon name="house" className="area-projects" />, onSelect: () => leave('/projects', () => openProjectsOn('home')) },
+    { separator: true },
     // a working copy has its own Save as new template… above the editor
     !draft && { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: openSaveTemplate },
     IS_DESKTOP && { label: `Show in ${FILE_MANAGER}`, icon: 'folder', onSelect: () => revealProject(projectId).catch(() => undefined) },
-    (markdownMain || latexMain || typstMain) && { separator: true },
     markdownMain && { label: 'Export to Word', icon: 'doc.richtext', onSelect: exportWord },
-    markdownMain && { label: 'Convert to LaTeX project…', icon: 'doc.text', onSelect: convertMarkdownToLatex },
-    latexMain && !draft && { label: 'Convert to Typst project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('typst')) },
-    typstMain && !draft && { label: 'Convert to LaTeX project…', icon: 'arrow.triangle.2.circlepath', onSelect: () => saveNow().then(() => setConverting('latex')) }
+    markdownMain && { label: 'Convert to LaTeX project…', icon: <Icon name="arrow.triangle.2.circlepath" className="area-plots" />, onSelect: convertMarkdownToLatex },
+    latexMain && !draft && { label: 'Convert to Typst project…', icon: <Icon name="arrow.triangle.2.circlepath" className="area-plots" />, onSelect: () => saveNow().then(() => setConverting('typst')) },
+    typstMain && !draft && { label: 'Convert to LaTeX project…', icon: <Icon name="arrow.triangle.2.circlepath" className="area-plots" />, onSelect: () => saveNow().then(() => setConverting('latex')) }
   ];
   const switcherItems: MenuItems = [
     ...switcherList({ projects, tree, at: switcherAt, projectId, go: setSwitcherAt, open: (id) => leave(`/editor/${id}`) }),
@@ -3655,7 +3654,16 @@ function Editor({ projectId }: { projectId: string }) {
             <div className="sidebar-project">
               <MenuButton
                 className="project-switcher"
-                label={project?.name || 'Loading…'}
+                label={
+                  project ? (
+                    <>
+                      <KindMark kind={projectKind(project)} />
+                      {project.name}
+                    </>
+                  ) : (
+                    'Loading…'
+                  )
+                }
                 items={switcherItems}
                 title="Switch project"
                 onOpen={() => setSwitcherAt(switcherStart(tree, projectId, settings.switcherOpensAt))}

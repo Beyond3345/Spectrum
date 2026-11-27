@@ -21,13 +21,13 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: 40px;
-  padding: 0 12px 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: transparent;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-panel);
   color: var(--text);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   text-align: left;
   transition: background-color 0.12s ease;
@@ -46,37 +46,88 @@
   white-space: nowrap;
 }
 
+.project-switcher .btn-label .kind-mark {
+  width: auto;
+  margin-right: 7px;
+  font-size: 10.5px;
+}
+
 .project-switcher .btn-chevron {
   width: 11px;
   height: 11px;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
 }
 
-/* the switcher's list (ProjectSwitcher.tsx): Home's folders and each project's kind, at the menu's icon size */
+/* the switcher's list (ProjectSwitcher.tsx): Home's folders, and each project's kind as a short mark */
 .switcher-folder {
   display: block;
   width: 16px;
 }
 
-.kind-logo {
-  display: block;
-  width: 16px;
-  height: 16px;
+.kind-mark {
+  display: inline-block;
+  width: 24px;
+  color: var(--text-secondary);
+  font: 700 10px/1 var(--font-mono);
 }
 
-/* Typst's teal, a little lighter on a dark menu */
-.kind-logo.typst {
+/* Typst's teal in either style, a little lighter on a dark menu */
+.kind-mark.typst {
   color: #239dad;
 }
 
-:root[data-theme='dark'] .kind-logo.typst {
+:root[data-theme='dark'] .kind-mark.typst {
   color: #4cc1cf;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .kind-logo.typst {
+  :root:not([data-theme='light']) .kind-mark.typst {
     color: #4cc1cf;
   }
+}
+
+/* the Spectrum style: each kind in its colour, so a folder of mixed kinds reads at a glance; Home and the conversions
+   in theirs */
+:root[data-colour-style='spectrum'] :is(.kind-mark, .menu-icon > .sf):is([class*='area-'], [class*='hue-']) {
+  color: var(--area);
+}
+
+/* the marks are wider than an icon: the switcher's icon column takes their width, so the names line up */
+.menu:has(.kind-mark) .menu-icon {
+  width: 24px;
+}
+
+.menu-icon .kind-mark {
+  width: auto;
+  text-align: center;
+}
+
+/* the folder's name over its projects, as a section heading */
+.switcher-heading {
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* the open project: its row filled, its name in bold and a tick at the end */
+.menu-item:has(.switcher-current) {
+  background: var(--bg-selected);
+  font-weight: 600;
+}
+
+.switcher-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.switcher-current .sf {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  color: var(--accent);
 }
 
 .sidebar-tabs {
@@ -1689,7 +1740,7 @@ button.compile-status:hover {
   color: var(--text);
 }
 
-/* Find in the PDF (PdfFindBar), over the top right of the pages */
+/* Find in the PDF (PdfFindBar), over the top right of the pages: a 28px capsule */
 .pdf-find {
   position: absolute;
   top: 10px;
@@ -1698,9 +1749,9 @@ button.compile-status:hover {
   display: flex;
   align-items: center;
   gap: 2px;
-  width: min(330px, calc(100% - 28px));
-  height: 36px;
-  padding: 0 4px 0 12px;
+  width: min(300px, calc(100% - 28px));
+  height: 28px;
+  padding: 0 2px 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--bg-elevated);
@@ -1714,8 +1765,8 @@ button.compile-status:hover {
 }
 
 .pdf-find > .sf {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .pdf-find input {
@@ -1727,7 +1778,7 @@ button.compile-status:hover {
   outline: none;
   background: transparent;
   color: var(--text);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .pdf-find-count {

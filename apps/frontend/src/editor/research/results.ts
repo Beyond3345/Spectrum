@@ -43,13 +43,22 @@ export function runLine(run: ResearchRun) {
   return parts.join(' · ');
 }
 
-/** The year and preprint filters a run had, in words: "2017–2020, no preprints". */
-export function filtersLine(run: ResearchRun) {
-  const f = run.filters;
-  if (!f) return '';
+type Filters = { yearFrom?: number | null; yearTo?: number | null; preprints?: boolean; triage?: boolean };
+
+/** The filters that differ from a plain search, each in words: ["2017–2020", "no preprints", "AI sorting"]. */
+export function filterWords(f: Filters) {
   const years = f.yearFrom && f.yearTo ? `${f.yearFrom}–${f.yearTo}` : f.yearFrom ? `from ${f.yearFrom}` : f.yearTo ? `to ${f.yearTo}` : '';
-  return [years, f.preprints === false && 'no preprints'].filter(Boolean).join(', ');
+  return [years, f.preprints === false && 'no preprints', f.triage && 'AI sorting'].filter((w): w is string => !!w);
 }
+
+/** The year and preprint filters a run had, in words: "2017–2020, no preprints". */
+export const filtersLine = (run: ResearchRun) => (run.filters ? filterWords(run.filters).join(', ') : '');
+
+/** The Sources chip: how many are chosen, or that none is (Search waits for one). */
+export const sourcesLabel = (sources: ResearchSource[]) => (sources.length ? `Sources · ${sources.length}` : 'No sources');
+
+/** The Filters chip: how many filters are set, its title the words. */
+export const filtersLabel = (words: string[]) => (words.length ? `Filters · ${words.length}` : 'Filters');
 
 export type Show = 'all' | 'keep' | 'drop' | 'undecided';
 

@@ -17,6 +17,9 @@ export const LABELS: [ToolsTab, string][] = [
   ['github', 'GitHub']
 ];
 
+/** Each tab's colour in the Spectrum style, as the sidebar's tabs have theirs: Checkpoints that of Save checkpoint */
+const HUES: Record<ToolsTab, string> = { versions: 'hue-teal', logs: 'hue-orange', review: 'hue-green', github: 'hue-github' };
+
 /** Right column when Tools is open. Tabs stay mounted once visited so results survive switching. */
 /**
  * doc: the document Compile builds, which Review checks. `trailing` ends the header (Close and the view switcher).
@@ -54,7 +57,7 @@ export default function ToolsPanel({ tab, onTabChange, doc, trailing, onOpenSett
           className="tools-tabs"
           value={tab}
           onChange={onTabChange}
-          items={LABELS.map(([value, label]) => ({ value, label, badge: value === 'logs' && compileErrors.length ? compileErrors.length : undefined }))}
+          items={LABELS.map(([value, label]) => ({ value, label, className: HUES[value], badge: value === 'logs' && compileErrors.length ? compileErrors.length : undefined }))}
         />
         {trailing}
       </div>

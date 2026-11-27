@@ -151,13 +151,13 @@ A folder's menu has #ui[Open], #ui[New folder…], #ui[Rename…], #ui[Customise
 The project's name at the top of the editor's sidebar is the project switcher (@fig-start-switcher). Its list shows the folders and projects at the same level, so another project is two clicks away, and below them it has the following,
 
 - #ui[Back to] the folder the project is in, which opens Home at that folder. It only appears for a project that has been filed in a folder,
-- #ui[All projects] and #ui[Home], which open those views,
+- #ui[Home], which opens the projects page at Home, where #ui[All projects] is one click away in the sidebar,
 - #ui[Save as template…] and #ui[Show in Finder] and
 - the conversions that suit the main file: #ui[Convert to Typst project…], #ui[Convert to LaTeX project…], or #ui[Export to Word] and #ui[Convert to LaTeX project…] for a Markdown document (@sec-writing-convert).
 
-#menu[Settings][Projects][Project switcher opens at] chooses whether the list starts at Home or at the folder the project is in.
+#menu[Settings][Projects][Project switcher opens at] chooses whether the list starts at Home or at the folder the project is in. Inside a folder, the folder's name heads the list. Each project is marked TeX, Typ or MD for its kind, as the button at the top marks the open one, and in the Spectrum colour style each mark has its own colour, orange, teal and blue, so a folder of mixed projects reads at a glance. The open project's row is filled, with a tick at its end.
 
-#shot("figures/01-getting-started/project-switcher.png", [The project switcher in the editor. For a project filed in Semester 2 it offers Back to Semester 2, which opens Home at that folder.], width: 50%) <fig-start-switcher>
+#shot("figures/01-getting-started/project-switcher.png", [The project switcher in the editor, open at Semester 2, the folder the project is filed in. Back to Semester 2 opens Home at that folder.], width: 50%) <fig-start-switcher>
 
 == Templates <sec-start-templates>
 

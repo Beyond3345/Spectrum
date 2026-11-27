@@ -3,7 +3,7 @@
 // npx esbuild apps/frontend/src/editor/research/research.check.ts --bundle --platform=node --log-level=warning | node
 import type { ResearchResult, ResearchRun } from '../../api/client';
 import { citationCommand, parseJsonReply } from '../shared';
-import { badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, searched, shown, yearOf } from './results';
+import { badges, counts, filterWords, filtersLabel, filtersLine, keptToAdd, linkOf, metaLine, runLine, searched, shown, sourcesLabel, yearOf } from './results';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -43,6 +43,14 @@ eq(runLine(run), 'OpenAlex 10 · PubMed failed (PubMed returned 500.) · .bib 2 
 eq(filtersLine(run), '2017–2020, no preprints', 'both years and the preprints');
 eq(filtersLine({ ...run, filters: { yearFrom: 2019 } }), 'from 2019', 'only a first year');
 eq(filtersLine({ ...run, filters: undefined }), '', 'no filters');
+
+// the form's chips: Sources · n and Filters · n, the words in its title
+eq(sourcesLabel(['openalex', 'arxiv', 'bib']), 'Sources · 3', 'the sources chosen, counted');
+eq(sourcesLabel([]), 'No sources', 'none chosen');
+eq(filterWords({ yearFrom: null, yearTo: null, preprints: true, triage: false }), [], 'a plain search has no filters');
+eq(filterWords({ yearFrom: 2017, yearTo: null, preprints: false, triage: true }), ['from 2017', 'no preprints', 'AI sorting'], 'each filter set, in words');
+eq(filtersLabel([]), 'Filters', 'no count without filters');
+eq(filtersLabel(filterWords({ yearTo: 2020, triage: true })), 'Filters · 2', 'the filters set, counted');
 
 const results = [
   result('dropped', { decision: 'drop', title: 'Graph networks' }),

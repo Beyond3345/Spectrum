@@ -206,7 +206,7 @@ export function dropIndex(ids: string[], over: string | null, after: boolean) {
 
 /** What the tab says when it shows nothing: a first hint, a search that found nothing, or the filter's own. */
 export function emptyText({ total, show, search }: { total: number; show: 'open' | 'done' | 'all'; search: string }) {
-  if (!total) return 'Nothing to do yet. Type one above, or right-click a line in the editor or a page of the PDF to add one that links to it.';
+  if (!total) return 'Type a task above, or right-click any line in the editor or a PDF page to link a to-do.';
   if (search) return `No to-dos match “${search}”.`;
   // with to-dos and no search, only Open or Done can be empty
   return show === 'done' ? 'Nothing ticked off yet.' : 'All done. Ticked ones are under Done.';
@@ -240,10 +240,15 @@ export const groupNamed = (groups: TodoGroups, name: string) => {
   return orderedGroups(groups).find((g) => g.name.toLocaleLowerCase() === want)?.id ?? '';
 };
 
-/** A new group, after the others, in a colour from the menu's clear of the other groups' and of the to-dos in no group (taken). */
+/**
+ * A new group, after the others, in a colour from the menu's clear of the other groups' and of the to-dos in no group
+ * (taken); a starter group in its own colour (STARTER_HUES) while no colour in use is near it.
+ */
 export const newGroup = (groups: TodoGroups, name: string, taken: number[] = []): TodoGroup => {
   const others = Object.values(groupHues(groups));
-  return { name: groupName(name), order: Math.max(0, ...Object.values(groups).map((g) => g.order)) + 1, hue: pickHue(PICKER_HUES, others, taken, [...others, ...taken]) };
+  const own = STARTER_HUES[groupName(name)];
+  const free = own !== undefined && [...others, ...taken].every((h) => hueDistance(h, own) >= NEAR);
+  return { name: groupName(name), order: Math.max(0, ...Object.values(groups).map((g) => g.order)) + 1, hue: free ? own : pickHue(PICKER_HUES, others, taken, [...others, ...taken]) };
 };
 
 /** What moves a group one place up (-1) or down (1): the order numbered again from 1, only the groups whose place changed. */
@@ -372,6 +377,9 @@ const BLUE = TODO_HUES.findIndex((c) => c.label === 'Blue');
  * sit 9 to 11 from the selection, as far as the palette's neighbours sit from each other.
  */
 export const PICKER_HUES = TODO_HUES.map((_, i) => i).filter((i) => i !== BLUE);
+
+/** The starter groups' colours, which their chips show: Still to write takes Cyan, the nearest hue to blue a group can have. */
+export const STARTER_HUES: Record<string, number> = Object.fromEntries(STARTER_GROUPS.map((name, i) => [name, TODO_HUES.findIndex((c) => c.label === ['Red', 'Amber', 'Green', 'Cyan'][i])]));
 
 /** Below this CIE ΔE (CIE76, as the highlights are drawn, the closer of light and dark) two highlights read as one colour. */
 export const NEAR = 10;

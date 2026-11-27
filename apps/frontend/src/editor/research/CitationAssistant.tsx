@@ -92,7 +92,7 @@ export default function CitationAssistant() {
   return (
     <details className="research-card">
       <summary className="research-card-title">
-        <Icon name="quote.opening" /> Find citations for selection
+        <Icon name="quote.opening" className="area-references" /> Find citations for selection
         <Icon name="chevron.right" className="disclosure" />
       </summary>
       <div className="research-card-body">
