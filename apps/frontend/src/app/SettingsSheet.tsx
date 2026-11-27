@@ -1023,7 +1023,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                       </div>
                     );
                   })}
-                  {(['matplotlib', 'ddgs'] as const).map((module) => (
+                  {(['ddgs'] as const).map((module) => (
                     <div key={module} className={`sys-row ${check.python[module] ? 'ok' : 'missing'}`}>
                       <Icon name={check.python[module] ? 'checkmark.circle.fill' : 'minus.circle'} />
                       <span className="sys-name">python + {module}</span>

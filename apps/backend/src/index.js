@@ -18,7 +18,6 @@ import { registerCompileRoutes } from './routes/compile.js';
 import { registerDiagramRoutes } from './routes/diagram.js';
 import { registerLLMRoutes } from './routes/llm.js';
 import { registerVisionRoutes } from './routes/vision.js';
-import { registerPlotRoutes } from './routes/plot.js';
 import { registerAgentRoutes } from './routes/agent.js';
 import { registerAgentSessionRoutes } from './routes/agentSessions.js';
 import { registerSkillRoutes } from './routes/skills.js';
@@ -130,7 +129,6 @@ registerCompileRoutes(fastify);
 registerDiagramRoutes(fastify);
 registerLLMRoutes(fastify);
 registerVisionRoutes(fastify);
-registerPlotRoutes(fastify);
 registerAgentRoutes(fastify);
 registerAgentSessionRoutes(fastify);
 registerSkillRoutes(fastify);
@@ -192,7 +190,7 @@ startRetries();
 // the settings repository, pulled now, then pushed after each change
 startSettingsRepo();
 
-// Stop compiles, plots, TexLab, Tinymist and LanguageTool (they run in their own process groups, so nothing else would), let
+// Stop compiles, TexLab, Tinymist and LanguageTool (they run in their own process groups, so nothing else would), let
 // in-flight requests such as a file save finish for up to 2 s, then exit.
 let quitting = false;
 async function quit() {
