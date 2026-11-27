@@ -104,6 +104,8 @@ export type AppSettings = {
   modelPrices: Prices;
   /** Settings › Models: fill in the prices not typed from models.dev's public list, taken again every six hours */
   autoPrices: boolean;
+  /** Settings › Models: the models switched off, by provider id ('custom' for Other), which leave the model menus (this computer's, as the models are). A model missing here is on. */
+  hiddenModels: Record<string, string[]>;
   searchEndpoint: string;
   searchApiKey: string;
   searchModel: string;
@@ -272,6 +274,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reasoningEffort: 'default',
   modelPrices: {},
   autoPrices: true,
+  hiddenModels: {},
   searchEndpoint: '',
   searchApiKey: '',
   searchModel: '',
@@ -485,6 +488,25 @@ export function cleanPrices(value: unknown): Prices {
   );
 }
 
+/** The models switched off as kept: each provider's ids once each, as text; anything else is nothing switched off. */
+export function cleanHidden(value: unknown): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(typeof value === 'object' && value && !Array.isArray(value) ? value : {}).flatMap(([provider, list]) => {
+      const ids = Array.isArray(list) ? [...new Set(list.filter((id): id is string => typeof id === 'string' && !!id))].slice(0, 2000) : [];
+      return provider && ids.length ? [[provider, ids]] : [];
+    })
+  );
+}
+
+/**
+ * A provider as the model menus list it: without the models switched off in Settings › Models. The main model stays
+ * whatever the switches say, so the menu always has the model in use.
+ */
+export function shownPreset<T extends ProviderPreset | null>(preset: T, settings: Pick<AppSettings, 'hiddenModels' | 'llmModel'>): T {
+  const off = preset ? settings.hiddenModels[preset.id] : undefined;
+  return preset && off?.length ? { ...preset, models: preset.models.filter((m) => m.id === settings.llmModel || !off.includes(m.id)) } : preset;
+}
+
 const effortLabel = (level: ReasoningEffort) => REASONING_EFFORTS.find(([value]) => value === level)?.[1] || level;
 
 /** Effort choices for a model: the levels it accepts, or all of them for a model Spectrum doesn't know. */
@@ -531,6 +553,7 @@ function parse(raw: string | null): AppSettings {
     if (!REASONING_EFFORTS.some(([value]) => value === merged.reasoningEffort)) merged.reasoningEffort = 'default';
     merged.modelPrices = cleanPrices(merged.modelPrices);
     merged.autoPrices = merged.autoPrices !== false;
+    merged.hiddenModels = cleanHidden(merged.hiddenModels);
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
     merged.editorKeymap = editorKeymap(merged.editorKeymap);
     merged.updateCheck = merged.updateCheck !== false;
@@ -954,7 +977,7 @@ export function llmConfigFor(settings: AppSettings, purpose: LLMPurpose): Partia
   };
 }
 
-const hostOf = (url: string) => {
+export const hostOf = (url: string) => {
   try {
     return new URL(url).host;
   } catch {
@@ -1047,7 +1070,7 @@ function endpointAndKey(known: Known[], next: ProviderPreset | null, typed?: str
 }
 
 /** The key a role leaves behind is kept for its provider, without touching the main model saved there. */
-function keepRoleKey(settings: AppSettings, providers: ProviderPreset[], role: ModelRole) {
+export function keepRoleKey(settings: AppSettings, providers: ProviderPreset[], role: ModelRole) {
   const f = ROLE_FIELDS[role];
   if (followsMain(settings, role) || !settings[f.apiKey] || !settings[f.endpoint]) return settings.providerSaved;
   const id = rolePresetOf(providers, settings, role)?.id || 'custom';
@@ -1092,9 +1115,10 @@ const liveLists = new Map<string, Promise<LiveList>>();
 
 /**
  * A live preset (Ollama) with the models its server lists now, and why there are none if it can't
- * be reached; any other preset as it is.
+ * be reached; any other preset as it is. Without the models switched off in Settings › Models, unless `all` (Settings
+ * itself, which lists every one).
  */
-export function useLivePreset(preset: ProviderPreset | null, endpoint: string) {
+export function useLivePreset(preset: ProviderPreset | null, endpoint: string, all = false) {
   const key = preset?.live ? `${preset.id} ${endpoint || preset.endpoint}` : '';
   const [got, setGot] = useState<{ key: string; list: LiveList } | null>(null);
   const [asked, setAsked] = useState(0);
@@ -1114,8 +1138,10 @@ export function useLivePreset(preset: ProviderPreset | null, endpoint: string) {
     };
   }, [key, asked]);
   const list = got?.key === key ? got.list : null;
+  const [settings] = useSettings();
+  const full = preset && list?.ok && list.models ? { ...preset, models: list.models, recommended: list.recommended || preset.recommended } : preset;
   return {
-    preset: preset && list?.ok && list.models ? { ...preset, models: list.models, recommended: list.recommended || preset.recommended } : preset,
+    preset: all ? full : shownPreset(full, settings),
     error: list?.ok ? '' : list?.error || '',
     refresh: () => {
       liveLists.delete(key);

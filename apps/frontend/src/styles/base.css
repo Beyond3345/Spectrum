@@ -1753,9 +1753,267 @@ button.chip.active:hover {
 .settings-pane {
   display: flex;
   flex-direction: column;
-  gap: 16px;
   padding: 20px 24px 28px;
   overflow-y: auto;
+}
+
+/* the pane scrolls rather than squeezing what is in it */
+.settings-pane > * {
+  flex-shrink: 0;
+  margin-top: 16px;
+}
+
+.settings-pane > :first-child {
+  margin-top: 0;
+}
+
+.settings-pane > .form-section-title:not(:first-child) {
+  margin-top: 26px;
+}
+
+.settings-pane > .section-hint {
+  margin-top: 8px;
+}
+
+/* Each section as a grouped inset card. A pane's settings sit straight in it, between its headings: every run of
+   rows (a field, a switch, a row of controls, and the hints under them) is drawn as one card, with the corners of the
+   app's other cards and a hairline between its rows. What has an outline of its own (a list, a path, a card) stands
+   between the cards as it is, and so does a hint that follows one or opens a section. */
+.settings-pane > :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)) {
+  margin-top: 0;
+  padding: 11px 14px;
+  border: solid var(--border);
+  border-width: 1px 1px 0;
+}
+
+/* a hint belongs to the row above it */
+.settings-pane > .field-hint:not(.section-hint) {
+  margin-top: -5px;
+  padding-top: 0;
+  border-top-width: 0;
+}
+
+/* the first row of a card */
+.settings-pane > :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)):first-child,
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class])),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class])),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + .field-hint:not(.section-hint) + :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class])),
+.settings-pane > .field-hint:not(.section-hint):first-child + :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class])) {
+  margin-top: 12px;
+  border-top-width: 1px;
+  border-top-left-radius: var(--radius-card);
+  border-top-right-radius: var(--radius-card);
+}
+
+.settings-pane > :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)):first-child {
+  margin-top: 0;
+}
+
+/* the last */
+.settings-pane > :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))) {
+  border-bottom-width: 1px;
+  border-bottom-left-radius: var(--radius-card);
+  border-bottom-right-radius: var(--radius-card);
+}
+
+/* a hint with no row above it is plain text */
+.settings-pane > .field-hint:not(.section-hint):first-child,
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + .field-hint:not(.section-hint) {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+}
+
+.settings-pane > .field-hint:not(.section-hint):first-child {
+  margin-top: 0;
+}
+
+/* a lone button or bar of buttons is no card */
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + .field-hint:not(.section-hint) + :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)),
+.settings-pane > .field-hint:not(.section-hint):first-child + :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)),
+.settings-pane > :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)):first-child {
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+}
+
+/* Settings › Shortcuts: a group's heading over its list */
+.shortcut-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* the sidebar's search, and the setting a search found a pane by */
+.settings-search {
+  width: auto;
+  flex: none;
+  margin: 0 0 10px;
+}
+
+.settings-nav .nav-row > span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 5px 0;
+}
+
+.settings-nav-found {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-nav-none {
+  padding: 4px 10px;
+}
+
+/* a button that reads as a link in a sentence */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* Settings › Providers: a card for each provider connected, and the list of the others */
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-pane > .form-section-title + :is(.provider-list, .kv-list, .search-field) {
+  margin-top: 12px;
+}
+
+.skill-card.provider-card {
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.provider-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.provider-head .skill-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.provider-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.provider-fields > .field-hint:empty,
+.provider-fields .field-hint:empty {
+  display: none;
+}
+
+.provider-available .kv-row > span:first-child {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text);
+}
+
+/* Settings › Models: a provider's models under a heading that folds */
+.model-search {
+  width: auto;
+}
+
+.model-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-group-head > .btn {
+  margin-right: 10px;
+}
+
+.skill-card.model-group {
+  gap: 0;
+  padding: 0;
+}
+
+.model-group-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-group-toggle > .sf {
+  width: 12px;
+  height: 12px;
+  color: var(--text-tertiary);
+}
+
+.model-rows {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+.model-rows > .field-hint {
+  padding: 10px 14px;
+}
+
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px 9px 14px;
+}
+
+.model-row + .model-row {
+  border-top: 1px solid var(--border);
+}
+
+.model-row > .checkbox-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-row .badge {
+  margin-left: 6px;
+}
+
+.model-meta {
+  flex: none;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .theme-picker {
