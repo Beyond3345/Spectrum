@@ -2181,6 +2181,16 @@ span.log-location {
 .table-align {
   display: flex;
   justify-content: center;
+  min-width: 0;
+}
+
+/* in a narrow column the letters wrap rather than run into the next */
+.table-align .segmented {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: center;
+  border-radius: var(--radius-control);
 }
 
 .table-align .segmented.small .segment {
