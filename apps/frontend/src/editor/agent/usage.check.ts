@@ -1,6 +1,6 @@
 // Self-check for the agent tabs' meter and their model and effort choice. Run:
 // npx esbuild apps/frontend/src/editor/agent/usage.check.ts --bundle --platform=node --format=esm --loader:.svg=text --loader:.css=empty --outfile=/tmp/usage.mjs && node /tmp/usage.mjs
-import { costOf, localMeter, localStats, money, offNotice, spectrumMeter, spectrumStats, tokens, turnChoice } from './usage';
+import { costOf, holdsSend, localMeter, localStats, money, offNotice, spectrumMeter, spectrumStats, tokens, turnChoice } from './usage';
 import { shownPreset } from '../../app/settings';
 import { CURRENCIES, cleanPrices } from '../../app/settings';
 import { withAutoPrices } from '../../app/autoPrices';
@@ -119,6 +119,13 @@ eq(c.models[0], ['typed', 'typed'], 'a typed model listed first');
   c = turnChoice(shown, settings, { model: 'plain', effort: 'low' });
   eq([c.model, c.off, c.models, c.efforts.map(([v]) => v), c.effort], ['plain', true, [['big', 'Big'], ['plain', 'Plain']], ['default'], 'default'], 'the thread keeps its model, named, with its own efforts');
   eq(offNotice(c), 'Plain, this thread’s model, is switched off in Settings › Models.', 'the notice');
+  eq(holdsSend(c), true, 'and its sending waits');
+  // the assistant panel: a chat's own model and effort are the same choice, with the same notice, and Assistant mode
+  // waits while a References look-up, which never uses the chat's model, goes on
+  const chat = { model: 'plain', effort: 'low' as const, mode: 'assistant' as const };
+  c = turnChoice(shown, settings, { model: chat.model, effort: chat.effort });
+  eq([c.model, c.off, offNotice(c), holdsSend(c, chat.mode), holdsSend(c, 'references')], ['plain', true, 'Plain, this thread’s model, is switched off in Settings › Models.', true, false], 'an Assistant chat on a switched-off model');
+  eq([holdsSend(turnChoice(shown, settings, {}), 'assistant'), holdsSend(turnChoice(shown, settings, { model: 'big' }), 'assistant')], [false, false], 'a new chat, or a chat on a model that is on, sends as before');
   // any other thread is as before
   c = turnChoice(shown, settings, { model: 'big' });
   eq([c.model, c.off, c.models, offNotice(c)], ['big', undefined, [['big', 'Big']], ''], 'a thread on another model sees nothing of it');

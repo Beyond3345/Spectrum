@@ -178,6 +178,12 @@ export function turnChoice(
  * What the Spectrum agent's tab says, above its message box, while the thread's model is switched off: sending waits
  * until another model is chosen or this one is switched back on. '' while the choice can be sent as it is.
  */
+/**
+ * Whether sending waits on that notice: in the Spectrum agent's tab, and in the assistant panel's Assistant mode. A
+ * References look-up never uses the chat's own model, so it goes on.
+ */
+export const holdsSend = (choice: { off?: true }, mode: 'assistant' | 'references' = 'assistant') => !!choice.off && mode === 'assistant';
+
 export const offNotice = (choice: { model: string; models: [string, string][]; off?: true }) =>
   choice.off ? `${choice.models.find(([id]) => id === choice.model)?.[1] || choice.model}, this thread’s model, is switched off in Settings › Models.` : '';
 
