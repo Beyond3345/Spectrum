@@ -820,7 +820,7 @@ export default function Composer({
             </div>
             <div className="composer-bar">
               <span className="grow" />
-              <AgentTuning options={tuning} modes={null} disabled={busy} onChange={(id, value) => choose(id === 'model' ? { model: value } : { effort: value as TurnChoice['effort'] })} more={{ label: 'Models and prices…', onSelect: () => api.openSettings('models') }} />
+              <AgentTuning options={tuning} modes={null} disabled={busy} onChange={(id, value) => choose(id === 'model' ? { model: value } : { effort: value as TurnChoice['effort'] })} more={{ label: 'Manage models…', onSelect: () => api.openSettings('models') }} />
               <button className="composer-send" title="Send (↵)" aria-label="Send" disabled={busy || !input.trim()} onClick={() => send()}>
                 {busy ? <span className="spinner" /> : <Icon name="arrow.up" />}
               </button>

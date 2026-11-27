@@ -112,7 +112,7 @@ The message box has two rows under the text. The first holds the context of the 
 
 The second row holds the picture button, which opens the image to LaTeX menu described below, the model and effort menu and #ui[Send]. This row never wraps, so #ui[Send] stays in reach however narrow the panel is.
 
-The model and effort menu is the one the Spectrum agent's tab has (@fig-assistant-thinking). It lists the models of the provider in #menu[Settings][Models], with the keys 1 to 9 choosing one, and under #ui[Effort] only the levels the chosen model accepts, coloured from red for the lowest to purple for the highest. #ui[Models and prices…] opens Settings. A new chat starts with the model and effort from #menu[Settings][Models], and each chat keeps its own choice, which applies from its next request.
+The model and effort menu is the one the Spectrum agent's tab has (@fig-assistant-thinking). It lists the models of the provider in #menu[Settings][Models], with the keys 1 to 9 choosing one, and under #ui[Effort] only the levels the chosen model accepts, coloured from red for the lowest to purple for the highest. #ui[Manage models…] opens Settings. A new chat starts with the model and effort from #menu[Settings][Models], and each chat keeps its own choice, which applies from its next request.
 
 #shot("figures/03-assistant/thinking-menu.png", [The model and effort menu, with #ui[Effort] open. Only the levels the chosen model accepts are listed.], width: 60%) <fig-assistant-thinking>
 
