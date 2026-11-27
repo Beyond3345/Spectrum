@@ -1793,8 +1793,10 @@ export function suggestCitations(payload: { text: string; maxResults?: number; l
 // ─── References chat (DOI / URL / arXiv / title → BibTeX) ───
 
 export interface ReferenceCandidate {
-  /** pass back to addReference: a DOI, an arXiv id or a URL */
+  /** pass back to addReference: a DOI, an arXiv id, a URL or "ISBN …" */
   id: string;
+  /** a book's Open Library work, whose editions the card offers */
+  work?: string;
   title: string;
   authors: string[];
   year?: string;
@@ -1817,6 +1819,8 @@ export interface ReferenceResult {
   draft?: ReferenceDraft;
   source?: string;
   verified?: false;
+  /** a book's Open Library work, whose editions the draft card offers */
+  work?: string;
   key?: string;
   bibtex?: string;
   bibFile?: string;
@@ -1843,6 +1847,11 @@ export function addReference(payload: { projectId: string; candidateId: string; 
     '/api/references/add',
     json('POST', payload)
   );
+}
+
+/** A book's editions, newest first (Open Library's, then Google Books' where they differ) */
+export function bookEditions(payload: { work: string; title?: string; author?: string }) {
+  return request<{ ok: boolean; editions: import('../../../backend/src/services/bibEntry.js').Edition[]; error?: string }>('/api/references/editions', json('POST', payload));
 }
 
 /** A checked draft written to the .bib: 'added', or 'duplicate' when the .bib has the work */

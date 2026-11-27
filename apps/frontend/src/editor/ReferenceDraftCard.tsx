@@ -1,5 +1,7 @@
 import { useEffect, useId, useState } from 'react';
-import { ENTRY_TYPES, FIELD_HINTS, FIELD_LABELS, draftProblems, fieldsShown, formatEntry, hasProblems, suggestKey } from '../../../backend/src/services/bibEntry.js';
+import { ENTRY_TYPES, FIELD_HINTS, FIELD_LABELS, applyEdition, draftProblems, editionLabel, fieldsShown, formatEntry, hasProblems, suggestKey } from '../../../backend/src/services/bibEntry.js';
+import type { Edition } from '../../../backend/src/services/bibEntry.js';
+import { bookEditions } from '../api/client';
 import type { ReferenceDraft, ReferenceResult } from '../api/client';
 import Icon from '../app/Icon';
 import Select from '../app/Select';
@@ -64,6 +66,17 @@ export default function ReferenceDraftCard({
   const locator = kind ? { kind, value: where } : null;
   const problems = draftProblems(draft, keys);
   const known = ENTRY_TYPES.some((t) => t.id === draft.type);
+  // a book found by its title: the work's editions, to choose the one cited
+  const [editions, setEditions] = useState<Edition[]>([]);
+  useEffect(() => {
+    if (!result.work) return;
+    let live = true;
+    const author = String(draft.fields.author || '').split(/\s+and\s+/)[0].split(',')[0];
+    bookEditions({ work: result.work, title: result.title || draft.fields.title, author }).then((res) => live && setEditions(res.editions || []), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [result.work]);
 
   useEffect(() => {
     let live = true;
@@ -98,6 +111,19 @@ export default function ReferenceDraftCard({
       </div>
 
       <div className="dc-grid">
+        {editions.length > 1 && (
+          <div className="dc-field full">
+            <span id={`${id}-ed`}>Edition ({editions.length} found)</span>
+            <Select
+              labelId={`${id}-ed`}
+              className="dc-edition"
+              value={draft.fields.isbn || ''}
+              placeholder="Choose the edition you cite"
+              options={editions.map((e): [string, string] => [e.isbn, editionLabel(e)])}
+              onChange={(isbn) => setDraft((d) => applyEdition(d, editions.find((e) => e.isbn === isbn)!))}
+            />
+          </div>
+        )}
         <label className="dc-field">
           <span>Cite key</span>
           <input value={draft.key} placeholder={suggestKey(draft.fields)} spellCheck={false} onChange={(e) => setDraft((d) => ({ ...d, key: e.target.value.trim() }))} />

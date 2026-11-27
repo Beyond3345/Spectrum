@@ -11,3 +11,6 @@ export function formatEntry(draft: Draft, options?: { biblatex?: boolean; legacy
 export function suggestKey(fields?: Record<string, string>): string;
 export function draftProblems(draft?: Partial<Draft>, taken?: Set<string>): DraftProblems;
 export function hasProblems(problems: DraftProblems): boolean;
+export type Edition = { isbn: string; year: string; publisher: string; place: string; edition: string; format: string; source: string };
+export function editionLabel(edition: Edition): string;
+export function applyEdition(draft: Draft, edition: Edition): Draft;

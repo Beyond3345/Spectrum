@@ -269,7 +269,7 @@ export default function Composer({
     updateMeta(owner, index, { ...metaOf(message), references: { ...refs, ...extra, results } });
   };
 
-  const addCandidate = async (index: number, resultIndex: number, candidateId: string) => {
+  const addCandidate = async (index: number, resultIndex: number, candidateId: string, work?: string) => {
     const owner = threadRef.current;
     const message = owner?.messages[index];
     const refs = message && metaOf(message).references;
@@ -280,7 +280,7 @@ export default function Composer({
         searchConfig: searchConfigFor(api.settings, api.llm.search), preview: true });
       if (!res.ok) throw new Error(res.error || 'The reference couldn’t be looked up.');
       if (res.keys) keysRef.current = new Set(res.keys);
-      replaceResult(owner, index, resultIndex, res.result, { bibFile: res.bibFile, bibIncluded: res.bibIncluded, biblatex: res.biblatex, legacyUrls: res.legacyUrls });
+      replaceResult(owner, index, resultIndex, { ...res.result, ...(work && !res.result.work && res.result.status === 'draft' && { work }) }, { bibFile: res.bibFile, bibIncluded: res.bibIncluded, biblatex: res.biblatex, legacyUrls: res.legacyUrls });
       autoCite([res.result]);
     } catch (err) {
       latest.current.notify(errorText(err), 'error');
@@ -510,7 +510,7 @@ export default function Composer({
                         <div className="ref-title">{c.title}</div>
                         <div className="ref-meta">{authorLine(c.authors, c.year, c.venue)}</div>
                       </div>
-                      <button className="btn small outline" disabled={busy} onClick={() => addCandidate(index, ri, c.id)}>Choose</button>
+                      <button className="btn small outline" disabled={busy} onClick={() => addCandidate(index, ri, c.id, c.work)}>Choose</button>
                     </div>
                   ))}
                 </>

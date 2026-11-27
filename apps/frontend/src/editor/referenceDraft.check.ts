@@ -2,7 +2,7 @@
 // type and keep any field it holds; what stops an Add; the preview is the entry as written, for Biber or BibTeX; the
 // badge says where a draft came from; a suggestion's lines added and removed, and where. Run:
 // npx esbuild apps/frontend/src/editor/referenceDraft.check.ts --bundle --platform=node --loader:.svg=text --loader:.css=empty --log-level=warning | node
-import { draftProblems, formatEntry, hasProblems, suggestKey } from '../../../backend/src/services/bibEntry.js';
+import { applyEdition, draftProblems, editionLabel, formatEntry, hasProblems, suggestKey } from '../../../backend/src/services/bibEntry.js';
 import { cardFields, sourceBadge } from './ReferenceDraftCard';
 import { changeStat } from './shared';
 
@@ -44,6 +44,17 @@ eq(sourceBadge({ source: 'Open Library' }), { text: 'Found on Open Library', ton
 eq(sourceBadge({ source: 'the BibTeX you pasted' }), { text: 'From the BibTeX you pasted', tone: 'success' }, 'pasted');
 eq(sourceBadge({ source: 'the citation as pasted', verified: false }), { text: 'Not found online · kept as pasted', tone: 'warning' }, 'no source had it');
 eq(sourceBadge({ source: 'manual' }), { text: 'New entry', tone: 'accent' }, 'a blank entry');
+
+// ─── A book's edition, chosen in the card ───
+
+const fourth = { isbn: '9780262046305', year: '2022', publisher: 'MIT Press', place: 'Cambridge, MA', edition: '4', format: 'Hardcover', source: 'Open Library' };
+const third = { isbn: '9780262033848', year: '2009', publisher: 'MIT Press', place: '', edition: '3', format: '', source: 'Google Books' };
+eq(editionLabel(fourth), '2022 · 4th ed. · MIT Press · Hardcover · 9780262046305', 'the menu’s row');
+eq(editionLabel({ ...third, edition: 'Rev. ed' }), '2009 · Rev. ed · MIT Press · 9780262033848', 'an edition statement that is no number');
+const picked = applyEdition({ ...book, key: 'Cormen2022', fields: { ...book.fields, edition: '4', address: 'Cambridge, MA', isbn: fourth.isbn } }, third);
+eq([picked.key, picked.fields.year, picked.fields.edition, picked.fields.isbn, picked.fields.address], ['Cormen2009', '2009', '3', third.isbn, undefined], 'the edition’s details, and the suggested key follows its year');
+eq(applyEdition({ ...book, key: 'Mine' }, third).key, 'Mine', 'a key typed by hand stays');
+eq(applyEdition(book, third).key, '', 'a blank key stays blank: it is still the suggested one');
 
 // ─── A suggestion's lines ───
 

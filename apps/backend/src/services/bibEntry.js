@@ -147,3 +147,24 @@ export function draftProblems({ type, key, fields } = {}, taken = new Set()) {
 }
 
 export const hasProblems = (p) => Boolean(p.key || p.type || Object.keys(p.fields).length);
+
+/** An edition of a book (referenceService bookEditions) as its row in the card's Edition menu */
+export function editionLabel(e) {
+  const n = Number(e.edition);
+  const ordinal = n ? `${n}${[, 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th'} ed.` : e.edition;
+  return [e.year, ordinal, e.publisher, e.format, e.isbn].filter(Boolean).join(' · ');
+}
+
+/**
+ * A book's draft with an edition's details in place of the ones it had: its year, publisher, place, ISBN and edition
+ * statement. The key follows the year while it is still the suggested one.
+ */
+export function applyEdition(draft, e) {
+  const fields = { ...draft.fields };
+  for (const [name, value] of [['year', e.year], ['publisher', e.publisher], ['address', e.place], ['isbn', e.isbn], ['edition', e.edition]]) {
+    if (value) fields[name] = String(value);
+    else delete fields[name];
+  }
+  const key = !draft.key || draft.key === suggestKey(draft.fields) ? (draft.key && suggestKey(fields)) : draft.key;
+  return { ...draft, key, fields };
+}

@@ -694,6 +694,13 @@
   background: var(--bg-panel);
 }
 
+.composer .dc-edition {
+  width: 100%;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
 .dc-field .dc-problem {
   color: var(--red-text);
   font-size: 11.5px;

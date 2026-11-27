@@ -1347,6 +1347,7 @@ export function pickCandidate(query, items) {
 function toCandidate(item) {
   return {
     id: item.DOI || (item._isbn && `ISBN ${item._isbn}`) || item.URL,
+    ...(item._work && { work: item._work }),
     title: cleanText(first(item.title)),
     authors: (item.author || []).map(displayName).filter(Boolean),
     year: yearOf(item) || undefined,
@@ -1446,13 +1447,15 @@ async function searchBooks(query) {
   };
   let books = [];
   try {
-    const docs = (await json(`${openLibraryBase()}/search.json?q=${encodeURIComponent(query)}&limit=5&fields=title,subtitle,author_name,first_publish_year,publisher,isbn`))?.docs;
+    const docs = (await json(`${openLibraryBase()}/search.json?q=${encodeURIComponent(query)}&limit=5&fields=key,title,subtitle,author_name,first_publish_year,publisher,isbn,edition_count`))?.docs;
     books = (Array.isArray(docs) ? docs : []).map((d) => d?.title && bookRecord({
       title: titleWithSubtitle(d.title, d.subtitle),
       author: (d.author_name || []).map(parseName).filter(Boolean),
       issued: yearIssued(d.first_publish_year),
       publisher: cleanText(d.publisher?.[0]),
-      ISBN: (d.isbn || []).map(isbnOf).find(Boolean) || ''
+      ISBN: (d.isbn || []).map(isbnOf).find(Boolean) || '',
+      // the work, whose editions the card offers
+      _work: String(d.key || '').match(/OL\d+W$/)?.[0]
     }));
   } catch {
     // Google Books below
@@ -1461,8 +1464,53 @@ async function searchBooks(query) {
     const items = (await json(`${googleBooksBase()}/volumes?q=${encodeURIComponent(query)}&maxResults=5&printType=books`).catch(() => null))?.items;
     books = (Array.isArray(items) ? items : []).map((it) => googleBooksRecord(it?.volumeInfo));
   }
-  // one each: a work's editions can share a listing
   return books.filter((b, i) => b?.ISBN && books.findIndex((o) => o?.ISBN === b.ISBN) === i).map((b) => ({ ...b, _isbn: b.ISBN }));
+}
+
+/**
+ * The editions of an Open Library work, newest first, each { isbn, year, publisher, place, edition, format, source },
+ * and Google Books' for the same title and author where they have an ISBN Open Library doesn't list.
+ */
+export async function bookEditions({ work, title = '', author = '' }) {
+  if (!/^OL\d+W$/.test(String(work))) throw badRequest('That isn’t an Open Library work.');
+  const json = async (url) => {
+    const res = await get(url, 'application/json');
+    if (!res.ok) throw lookupError(`The book search failed (HTTP ${res.status}).`);
+    return res.json().catch(() => null);
+  };
+  const editions = [];
+  const add = (e) => {
+    if (e.isbn && !editions.some((o) => o.isbn === e.isbn)) editions.push(e);
+  };
+  const entries = (await json(`${openLibraryBase()}/works/${work}/editions.json?limit=50`).catch(() => null))?.entries;
+  for (const d of Array.isArray(entries) ? entries : []) {
+    add({
+      isbn: [...(d.isbn_13 || []), ...(d.isbn_10 || [])].map(isbnOf).find(Boolean) || '',
+      year: yearOf({ issued: yearIssued(d.publish_date) }),
+      publisher: cleanText(d.publishers?.[0]),
+      place: cleanText(d.publish_places?.[0]),
+      edition: editionOf(d.edition_name) || cleanText(d.edition_name).replace(/[.\s]+$/, ''),
+      format: cleanText(d.physical_format),
+      source: 'Open Library'
+    });
+  }
+  if (title) {
+    const q = `intitle:${title}${author ? ` inauthor:${author}` : ''}`;
+    const items = (await json(`${googleBooksBase()}/volumes?q=${encodeURIComponent(q)}&maxResults=10&printType=books`).catch(() => null))?.items;
+    for (const v of (Array.isArray(items) ? items : []).map((it) => it?.volumeInfo).filter(Boolean)) {
+      if (normaliseTitle(v.title) !== normaliseTitle(title)) continue;
+      add({
+        isbn: (v.industryIdentifiers || []).map((i) => isbnOf(i?.identifier)).find(Boolean) || '',
+        year: yearOf({ issued: yearIssued(v.publishedDate) }),
+        publisher: cleanText(v.publisher),
+        place: '',
+        edition: editionOf(`${v.title} ${v.subtitle || ''}`),
+        format: v.printType === 'BOOK' ? '' : cleanText(v.printType),
+        source: 'Google Books'
+      });
+    }
+  }
+  return { editions: editions.sort((a, b) => Number(b.year || 0) - Number(a.year || 0)) };
 }
 
 /**
@@ -1527,7 +1575,7 @@ async function searchTitle(query, searchConfig) {
   }
   const pick = pickCandidate(query, hits);
   if (pick?.DOI) return { record: await recordFromDoi(pick.DOI), source: 'Crossref' };
-  if (pick?._isbn) return recordFromIsbn(pick._isbn);
+  if (pick?._isbn) return { ...(await recordFromIsbn(pick._isbn)), ...(pick._work && { work: pick._work }) };
   if (pick) return { record: pick };
   return { result: { status: 'choose', candidates: hits.map(toCandidate), message: 'Several works match. Choose the right one.' } };
 }
@@ -1663,7 +1711,7 @@ export async function resolveItems(projectRoot, items, bibFile, searchConfig, { 
         results.push(outcome.result);
         continue;
       }
-      const { input, record, entry, source, verified } = outcome;
+      const { input, record, entry, source, verified, work } = outcome;
       const id = entry ? bibIdentity(entry, target) : identityOf(record);
       const existing = findDuplicate(index, id);
       if (existing) {
@@ -1676,7 +1724,7 @@ export async function resolveItems(projectRoot, items, bibFile, searchConfig, { 
       drafted.add(key.toLowerCase());
       index.push({ ...id, key, file: target, displayTitle: summary.title });
       if (preview) {
-        results.push({ input, status: 'draft', key, draft, source, ...(verified === false && { verified }), ...summary });
+        results.push({ input, status: 'draft', key, draft, source, ...(verified === false && { verified }), ...(work && { work }), ...summary });
         continue;
       }
       const bibtex = formatEntry(draft, { biblatex: biber, legacyUrls });
