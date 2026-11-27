@@ -21,7 +21,7 @@ async function withProject(req, reply, run) {
 }
 
 export function registerReferenceRoutes(fastify) {
-  // Review's References exist: each entry against its record, by code
+  // Review's Verify citations: each entry against its record, by code
   fastify.post('/api/references/check', async (req, reply) => {
     // doc: the document reviewed, whose own .bib files are checked
     const { keys, doc } = req.body || {};

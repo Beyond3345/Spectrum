@@ -1837,7 +1837,7 @@ span.log-location {
   gap: 2px 12px;
 }
 
-/* References exist: the fields that differ, the .bib's and the record's side by side */
+/* Verify citations: the fields that differ, the .bib's and the record's side by side */
 .refcheck-diff {
   margin: 4px 0;
   border-collapse: collapse;

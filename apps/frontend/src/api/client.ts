@@ -1864,7 +1864,7 @@ export function addReference(payload: { projectId: string; candidateId: string; 
   );
 }
 
-/** A .bib entry against the record its DOI, arXiv id or title finds (Review’s References exist), and where it was read. */
+/** A .bib entry against the record its DOI, arXiv id or title finds (Review’s Verify citations), and where it was read. */
 export interface ReferenceCheckRow {
   key: string;
   file: string;

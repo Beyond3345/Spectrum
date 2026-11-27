@@ -1,6 +1,6 @@
 import type { ReferenceCheckRow } from '../../api/client';
 
-// Review’s References exist: what each row of the check says, in words, and as the report copies it.
+// Review’s Verify citations: what each row of the check says, in words, and as the report copies it.
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -62,6 +62,6 @@ export function checkReport(rows: ReferenceCheckRow[]) {
   return out;
 }
 
-/** Which .bib files References exist read, and what it noticed (a file the document loads that is missing, none at all). */
+/** Which .bib files Verify citations read, and what it noticed (a file the document loads that is missing, none at all). */
 export const existRead = ({ bibFiles, note }: { bibFiles?: string[]; note?: string }) =>
   [bibFiles?.length ? `Read ${bibFiles.join(', ')}.` : '', note || ''].filter(Boolean).join(' ');

@@ -41,7 +41,7 @@ The LaTeX and Typst templates cite in APA 7th edition, and so does a Markdown do
 
 === Checking citations
 
-Spectrum checks citations in three places. While editing a LaTeX document, TexLab underlines a citation with no entry and an entry defined twice, as @ch-writing describes. #menu[Tools][Review] lists citations with no entry, entries never cited, keys or works in the bibliography twice, entries missing a field their type needs and DOIs that do not look like one, each with its line, and with #ui[References exist] ticked, the entries that were retracted, that no source knows or whose title, first author or year differs from their record (@ch-assistant). Lastly, #ui[Citation audit] and #ui[Verify claims] in the agent workspace ask a model to check the citations and the claims they support.
+Spectrum checks citations in three places. While editing a LaTeX document, TexLab underlines a citation with no entry and an entry defined twice, as @ch-writing describes. #menu[Tools][Review] lists citations with no entry, entries never cited, keys or works in the bibliography twice, entries missing a field their type needs and DOIs that do not look like one, each with its line, and with #ui[Verify citations], the entries that were retracted, that no source knows or whose title, first author or year differs from their record (@ch-assistant). Lastly, #ui[Citation audit] and #ui[Verify claims] in the agent workspace ask a model to check the citations and the claims they support.
 
 == Zotero <sec-references-zotero>
 
