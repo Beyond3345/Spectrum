@@ -452,9 +452,24 @@
 }
 
 .composer-badge {
-  max-width: 40%;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* a narrow card keeps the icons of its head's buttons */
+@container (max-width: 640px) {
+  .composer-head .btn .btn-label {
+    display: none;
+  }
+}
+
+/* and a very narrow one drops the badge, so Close stays */
+@container (max-width: 460px) {
+  .composer-badge {
+    display: none;
+  }
 }
 
 /* References: the box and Resolve */

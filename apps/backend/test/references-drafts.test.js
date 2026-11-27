@@ -348,7 +348,7 @@ test('pasted BibTeX keeps its key and fields; RIS becomes drafts; a blank entry 
   assert.deepEqual([blank.results[0].status, blank.results[0].draft, blank.bibFile], ['draft', { type: 'article', key: '', fields: {} }, 'refs.bib']);
   // a blank entry filled in and added under its suggested key
   const manual = await commitReference({ projectRoot: root, draft: { type: 'manual', key: '', fields: { title: 'MSP430 User’s Guide', organization: 'Texas Instruments', version: '2.1', year: '2021', urldate: '2026-11-27' } } });
-  assert.equal(manual.result.key, 'MSP2021', 'no author: a word of the title');
+  assert.equal(manual.result.key, 'Instruments2021', 'no author: the organisation');
   assert.match(manual.result.bibtex, /note {9}= \{Version 2\.1\. Accessed 2026-11-27\}/);
 });
 

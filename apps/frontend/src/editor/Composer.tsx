@@ -449,7 +449,7 @@ export default function Composer({
   const placeholder = mode === 'references' ? 'Paste a DOI, ISBN, link, arXiv ID, title, citation or BibTeX' : `Ask about ${api.activePath.split('/').pop() || 'your paper'}, or pick a quick action above`;
   // an Edit chat from before 2.0, whose suggested changes the agent workspace now looks after
   const editChat = mode === 'assistant' && isEditChat(messages);
-  const selectionLines = hasSelection ? api.selectionText.split('\n').length : 0;
+  const selectionLines = hasSelection ? api.selectionText.replace(/\n$/, '').split('\n').length : 0;
   const lastDraft = [...messages].reverse().flatMap((m) => metaOf(m).references?.results.filter((r) => r.status === 'draft') || [])[0];
   const badge = mode === 'references'
     ? lastDraft && sourceBadge(lastDraft)
@@ -598,11 +598,11 @@ export default function Composer({
           <span className="composer-title">{history ? 'History' : badge ? '' : thread?.title}</span>
           {mode === 'references' && !history && (
             <>
-              <button className="btn small outline" disabled={busy} title="A blank entry to fill in yourself" onClick={() => void newEntry()}>
-                <Icon name="plus" /> New entry
+              <button className="btn small outline" disabled={busy} title="New entry: a blank one to fill in yourself" aria-label="New entry" onClick={() => void newEntry()}>
+                <Icon name="plus" /> <span className="btn-label">New entry</span>
               </button>
-              <button className="btn small outline" title="Pick references from your Zotero library and cite them at the cursor" onClick={() => window.dispatchEvent(new Event(ZOTERO_CITE))}>
-                <Icon name="quote.opening" /> Zotero
+              <button className="btn small outline" aria-label="Cite from Zotero" title="Pick references from your Zotero library and cite them at the cursor" onClick={() => window.dispatchEvent(new Event(ZOTERO_CITE))}>
+                <Icon name="quote.opening" /> <span className="btn-label">Zotero</span>
               </button>
             </>
           )}

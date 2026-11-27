@@ -117,7 +117,8 @@ export function formatEntry({ type, key, fields }, { biblatex = false, legacyUrl
 
 /** First author's surname and the year, as the lookups key an entry: `Cormen2022` */
 export function suggestKey(fields = {}) {
-  const first = String(fields.author || fields.editor || '').split(/\s+and\s+/i)[0].trim().replace(/^\{(.*)\}$/, '$1');
+  // a manual or a web page with no author goes under its organisation
+  const first = String(fields.author || fields.editor || fields.organization || '').split(/\s+and\s+/i)[0].trim().replace(/^\{(.*)\}$/, '$1');
   const surname = first.includes(',') ? first.split(',')[0] : first.split(/\s+/).at(-1) || '';
   const stem = (surname || String(fields.title || '').split(/\s+/).find((w) => w.length > 3) || 'Ref')
     .normalize('NFD').replace(/[^A-Za-z]/g, '');
