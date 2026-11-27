@@ -212,12 +212,15 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
 
   // ─── the structure itself ───
 
-  /** a bent member's straight axis, faint and dashed, and its sag marked across to the curve where it's furthest */
+  /**
+   * a bent member's straight axis, faint and dashed, and its sag marked across to the curve where it's furthest (a
+   * little to one side, clear of a load at mid-span; the curve is level there)
+   */
   const axisItems = (m: Member, f: ReturnType<typeof frameOf>, bend: NonNullable<Member['bend']>): Item[] => {
     const out: Item[] = [{ t: 'line', pts: [P(f.a), P(f.b)], ink: 'chord' }];
     const label = bend.label ?? '$\\delta$';
     if (!label) return out;
-    const s = bendPeak(bend) * f.length;
+    const s = bendPeak(bend) * f.length - Math.min(0.3 / scale, 0.05 * f.length);
     const [from, to] = [P(add(f.a, times(f.u, s))), P(pointAlong(model, m, s, f))];
     // too short for two arrowheads, a plain line
     out.push({ t: 'line', pts: [from, to], ink: 'dimension', ...(Math.abs(bend.sag) * scale >= 0.4 && { arrow: '<->' as const }), id: m.id });
@@ -242,7 +245,6 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         continue;
       }
       const whole = range[0] <= 0 && range[1] >= f.length;
-      if (whole && bend.ghost) out.push(...axisItems(m, f, bend));
       // whole, the curve as TikZ draws it; cut by a section, the part kept as points along it
       const [lo, hi] = [Math.max(0, range[0]), Math.min(f.length, range[1])];
       if (whole) out.push({ t: 'line', pts: [P(f.a), P(f.b)], controls: bendControls({ ...f, a: P(f.a), b: P(f.b) }, { ...bend, sag: bend.sag * scale }), ink, id: m.id, ...own(m) });
@@ -446,6 +448,11 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         for (const end of [s, t]) out.push({ t: 'line', pts: [add(end, times(n, -0.35)), add(end, times(n, 0.1))], ink: 'dimension', id: p.id, ...own(p) });
         out.push({ t: 'line', pts: [s, t], ink: 'dimension', arrow: '<->', id: p.id, ...own(p) });
         out.push({ t: 'text', at: add(times(add(s, t), 0.5), times(n, 0.06)), tex: p.label || value(length, L), anchor: anchorFor(n), id: p.id, around: times(add(s, t), 0.5), ...own(p, false) });
+      } else if (p.kind === 'member') {
+        // a bent member's axis, over the loads on it
+        const m = all.find((x) => x.id === p.id);
+        const bend = m && bendOf(m);
+        if (bend?.ghost) out.push(...axisItems(p, frameOf(model, p), bend));
       } else if (p.kind === 'label') {
         out.push({ t: 'text', at: P(p.at), tex: p.text, anchor: 'center', id: p.id, ...own(p, false) });
       } else if (p.kind === 'angle') {

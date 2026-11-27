@@ -137,12 +137,13 @@ const memberOf = (m: StructureModel) => m.parts.find((p): p is Member => p.kind 
   eq(curved.some((l) => l.includes('struct chord')), false, 'no axis unless asked');
   const ghost = lines(bent({ sag: -0.6, ghost: true }));
   eq(ghost.filter((l) => l.includes('chord')), ['  struct chord/.style={line width=0.4pt, black!35, dashed},', '\\draw[struct chord] (0,0) -- (8,0);'], 'the faint dashed axis');
-  eq(ghost.includes('\\draw[struct dimension, <->] (4,0) -- (4,-0.8);'), true, 'the sag marked at mid-span');
+  // 0.3 cm to the side of mid-span, 2.775 m along, where the curve is 0.5966 m (0.796 cm) below
+  eq(ghost.includes('\\draw[struct dimension, <->] (3.7,0) -- (3.7,-0.796);'), true, 'the sag marked beside mid-span');
   eq(ghost.some((l) => l.startsWith('\\node') && l.endsWith('{$\\delta$};')), true, 'labelled δ');
   const named = lines(bent({ sag: -0.6, ghost: true, label: '$v_{\\max}$' }));
   eq(named.some((l) => l.endsWith('{$v_{\\max}$};')), true, 'or as the label says');
   const unmarked = lines(bent({ sag: -0.6, ghost: true, label: '' }));
-  eq([unmarked.some((l) => l.includes('struct chord]')), unmarked.some((l) => l.includes('struct dimension, <->] (4,0)'))], [true, false], 'an empty label: the axis without the mark');
+  eq([unmarked.some((l) => l.includes('struct chord]')), unmarked.some((l) => l.includes('struct dimension, <->] (3.7,0)'))], [true, false], 'an empty label: the axis without the mark');
   const sb = lines(bent({ sag: 0.5, shape: 'sbend' }));
   const k = (0.5 * 2 * Math.sqrt(3) * 8) / 6;
   eq(sb.includes(`\\draw[struct member] (0,0) .. controls (2.667,${k.toFixed(3)}) and (5.333,${(-k).toFixed(3)}) .. (8,0);`), true, 'an S-bend as a Bézier');
