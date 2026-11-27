@@ -30,11 +30,36 @@
   background-color: transparent;
 }
 
-/* overlays let a little through and blur what's under them */
-:root.glass :is(.menu, .sheet, .alert, .toast, .pdf-find, .cm-tooltip) {
+/* overlays let a little through and blur what's under them: the menus and sheets, the agents' model menu and
+   figures, the command palette, the / menu and the floating Assistant box */
+:root.glass :is(.menu, .sheet, .alert, .toast, .pdf-find, .cm-tooltip, .tuning-pop, .stat-pop, .palette, .agent-slash, .composer) {
   background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+}
+
+/* the floating ones catch the light along their top edge, as macOS 27's glass does */
+:root.glass :is(.menu, .sheet, .alert, .toast, .tuning-pop, .stat-pop, .palette, .agent-slash, .composer) {
+  box-shadow: inset 0 0.5px 0 color-mix(in srgb, #fff 45%, transparent), var(--shadow-lg);
+}
+
+/* Reduce transparency in the Mac's Accessibility settings: every surface solid, nothing blurred */
+@media (prefers-reduced-transparency: reduce) {
+  :root.glass {
+    --bg-app: var(--bg-app-solid);
+    --bg-panel: var(--bg-panel-solid);
+    --bg-editor: var(--editor-bg, var(--bg-editor-solid));
+    --bg-pdf: var(--bg-pdf-solid);
+  }
+  :root.glass :is(.menu, .sheet, .alert, .toast, .pdf-find, .cm-tooltip, .tuning-pop, .stat-pop, .palette, .agent-slash, .composer) {
+    background: var(--bg-elevated);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  :root.glass .project-row.list-header {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 /* the project list scrolls under its sticky header */
