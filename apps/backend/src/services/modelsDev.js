@@ -49,7 +49,7 @@ export function pricesOf(data) {
       const free = !num(cost.input) && !num(cost.output);
       const was = prices[key];
       if (was && (free || ((original.has(key) || !own) && (was.input || was.output)))) continue;
-      prices[key] = { input: num(cost.input) ?? 0, output: num(cost.output) ?? 0, ...(num(cost.cache_read) !== undefined && { cacheRead: cost.cache_read }), ...(num(cost.cache_write) !== undefined && { cacheWrite: cost.cache_write }) };
+      prices[key] = { input: num(cost.input) ?? 0, output: num(cost.output) ?? 0, ...(num(model.limit?.context) && { context: model.limit.context }), ...(num(cost.cache_read) !== undefined && { cacheRead: cost.cache_read }), ...(num(cost.cache_write) !== undefined && { cacheWrite: cost.cache_write }) };
       if (own) original.add(key);
     }
   }

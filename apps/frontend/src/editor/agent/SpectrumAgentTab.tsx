@@ -24,7 +24,7 @@ import type { Checkpoint, ThreadMeta as Meta } from './transcript';
 import { INSTRUCTIONS_FILE, starterInstructions } from './instructions';
 import AgentHeader, { StatsRow, useTurnChoice } from './AgentHeader';
 import { spectrumStats } from './usage';
-import { useAutoPrices, withAutoPrices } from '../../app/autoPrices';
+import { autoContext, useAutoPrices, withAutoPrices } from '../../app/autoPrices';
 import type { TurnChoice } from './usage';
 import type { Picture } from './pictures';
 
@@ -301,6 +301,7 @@ export default function SpectrumAgentTab({
       ...(res.steps?.length && { steps: res.steps }),
       ...(res.says?.length && { says: res.says }),
       ...(res.usage && { usage: res.usage }),
+      ...(res.ms && { ms: res.ms }),
       // a question, a plan or the next file: the thread's last word until the user answers it
       ...(res.ask && { ask: res.ask }),
       ...(res.plan?.length && { plan: res.plan }),
@@ -629,8 +630,9 @@ export default function SpectrumAgentTab({
             }))
           ]}
         />
-        <span className="badge" title="The Spectrum agent proposes changes; nothing reaches your files until you apply it">
-          Isolated
+        {/* always isolated: a quiet mark, where local agents have their Isolated or Direct choice */}
+        <span className="agent-lock" role="img" aria-label="Isolated" title="Isolated: the Spectrum agent proposes changes, and nothing reaches your files until you apply it">
+          <Icon name="lock" />
         </span>
         <PersonaPicker
           value={personaId}
@@ -730,7 +732,7 @@ export default function SpectrumAgentTab({
               onManage={() => onOpenSettings('models')}
             />
           }
-          below={<StatsRow chips={spectrumStats(thread?.messages || [], here ? live.usage : null, turn.current.model, withAutoPrices(api.settings.modelPrices, auto.prices))} />}
+          below={<StatsRow chips={spectrumStats(thread?.messages || [], here ? live.usage : null, turn.current.model, withAutoPrices(api.settings.modelPrices, auto.prices), { contextSize: (m) => autoContext(auto.prices, m), ownPrice: (m) => !!api.settings.modelPrices[m], autoError: api.settings.autoPrices ? auto.error : undefined })} />}
           busy={!!running}
           queues={here}
           firstTurn={!items.length}

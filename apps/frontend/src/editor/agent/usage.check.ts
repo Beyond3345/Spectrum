@@ -1,6 +1,6 @@
 // Self-check for the agent tabs' meter and their model and effort choice. Run:
 // npx esbuild apps/frontend/src/editor/agent/usage.check.ts --bundle --platform=node --format=esm --loader:.svg=text --loader:.css=empty --outfile=/tmp/usage.mjs && node /tmp/usage.mjs
-import { costOf, localMeter, localStats, money, spectrumMeter, tokens, turnChoice } from './usage';
+import { costOf, localMeter, localStats, money, spectrumMeter, spectrumStats, tokens, turnChoice } from './usage';
 import { CURRENCIES, cleanPrices } from '../../app/settings';
 import { withAutoPrices } from '../../app/autoPrices';
 import type { AgentEvent, ChatMessage, ProviderPreset } from '../../api/client';
@@ -127,6 +127,21 @@ eq(c.models[0], ['typed', 'typed'], 'a typed model listed first');
   eq(priced[1].text, ['1.6M tok', 'Cache hit 50%', 'est. US$3.15'], 'estimated at the model’s price');
   const prices = withAutoPrices({ mine: { input: 1, output: 2 } }, { 'claude-sonnet-4-5': { input: 3, output: 15, cacheRead: 0.3 } });
   eq([prices.mine, prices['anthropic/claude-sonnet-4-5'], prices.unknown], [{ input: 1, output: 2 }, { input: 3, output: 15, cached: 0.3 }, undefined], 'the user’s price, else models.dev’s by its plain name');
+}
+
+// the Spectrum agent's row: its turns with their steps and time, and the context of the last call of its window
+{
+  const reply = (meta: object) => ({ role: 'assistant', content: '', meta }) as unknown as ChatMessage;
+  const chips = spectrumStats(
+    [reply({ usage: { input: 3000, output: 200, cacheRead: 1000, model: 'deepseek-flash', context: 2600 }, steps: [{}, {}, {}], ms: 6000 }), reply({ usage: { input: 2000, output: 100, model: 'deepseek-flash', context: 4800 }, steps: [{}], ms: 4000 })],
+    null,
+    'deepseek-flash',
+    withAutoPrices({}, { 'deepseek-flash': { input: 0.15, output: 0.6, cacheRead: 0.003, context: 128000 } }),
+    { contextSize: () => 128000, ownPrice: () => false }
+  );
+  eq(chips.map((c) => [c.key, c.text]), [['session', ['2 turns 4 steps', '10s']], ['tokens', ['5.3k tok', 'Cache hit 20%', 'est. under US$0.01']], ['context', ['4%']]], 'turns, steps, time, tokens, cost and context');
+  eq(chips[1].note?.startsWith('Estimated at models.dev’s prices'), true, 'the price is models.dev’s');
+  eq(spectrumStats([reply({ usage: { input: 10, output: 1, model: 'x' } })], null, 'x', {}, { autoError: 'offline' })[1].note?.includes('could not be loaded (offline)'), true, 'a list that did not load says so');
 }
 
 console.log('usage.check: ok');

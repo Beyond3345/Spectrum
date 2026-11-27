@@ -1075,6 +1075,8 @@ export function AgentComposer({
         }}
       />
       <div className="agent-composer-bar">
+        {/* what goes with the message, which wraps in its own box, so the actions after it stay on one line at the right */}
+        <div className="agent-composer-chips">
         {skillName && (
           <span className="chip active" title="This skill’s instructions go with the message">
             <Icon name="book.pages" /> {skillName}
@@ -1101,6 +1103,7 @@ export function AgentComposer({
             )
         )}
         {extras}
+        </div>
         <button className="chip" title="Add a picture for the agent to look at (or paste or drop one in the box)" aria-label="Add a picture" disabled={pictures.length >= MAX_PICTURES} onClick={() => fileRef.current?.click()}>
           <Icon name="photo" />
         </button>

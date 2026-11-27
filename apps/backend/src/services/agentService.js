@@ -788,11 +788,14 @@ export async function runToolAgent({
 
   if (state && !readOnly) await prepare();
   const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  // when the turn began, and what the last model call read and wrote: how full the model's context is now
+  const began = Date.now();
+  let context = 0;
   let counted = 0;
   // the provider's reported cost of the steps (OpenRouter), the turn's only while every counted step reported one
   let cost = 0;
   let costed = 0;
-  const summed = () => ({ ...total, ...(costed && costed === counted && { cost }) });
+  const summed = () => ({ ...total, ...(context && { context }), ...(costed && costed === counted && { cost }) });
   /** One compile of the proposals as they are, as a step: { ok, errors }. */
   const build = async () => {
     if (lastBuild?.version === version) return lastBuild;
@@ -823,6 +826,7 @@ export async function runToolAgent({
       changes: final.map(([rel, d]) => ({ path: rel, kind: d.deleted ? 'deleted' : d.original === null ? 'created' : 'modified', binary: false, beforeHash: d.original === null ? null : fileHash(Buffer.from(d.original)), afterHash: d.deleted ? null : fileHash(Buffer.from(d.content)), size: Buffer.byteLength(d.content), original: d.original ?? '', proposed: d.content })),
       todos,
       steps,
+      ms: Date.now() - began,
       ...(says.length && { says }),
       ...(incomplete && { incomplete }),
       ...(counted && { usage: summed() }),
@@ -873,6 +877,7 @@ export async function runToolAgent({
     if (result.usage) {
       counted += 1;
       for (const key of Object.keys(total)) total[key] += result.usage[key] || 0;
+      context = (result.usage.input || 0) + (result.usage.output || 0);
       if (result.usage.cost !== undefined) {
         costed += 1;
         cost += result.usage.cost;

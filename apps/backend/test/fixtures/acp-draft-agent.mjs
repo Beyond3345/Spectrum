@@ -61,7 +61,8 @@ lines.on('line', async (line) => {
   } else if (m.method === 'session/set_config_option' && process.argv.includes('--models')) {
     log({ set: [m.params.configId, m.params.value] });
     model = m.params.value;
-    send({ id: m.id, result: { configOptions: modelMenu() } });
+    // --quiet-options: takes the change and answers with nothing, as some adapters do
+    send({ id: m.id, result: process.argv.includes('--quiet-options') ? {} : { configOptions: modelMenu() } });
   } else if (m.method === 'session/prompt' && process.argv.includes('--auth-on-prompt')) {
     send({ id: m.id, error: { code: -32000, message: 'Authentication required' } });
   } else if (m.method === 'session/prompt') {

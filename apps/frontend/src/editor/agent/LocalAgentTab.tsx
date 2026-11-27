@@ -400,15 +400,27 @@ export default function LocalAgentTab({
   // before a session starts, the agent's menus as it last reported them, with the choices made since; a session's own
   const remembered = !session ? agents.find((a) => a.id === currentId)?.options : undefined;
   const chosen = chosenOptions(currentId);
-  const shownOptions: ConfigOption[] = session ? view.configOptions : (remembered?.configOptions || []).map((o: ConfigOption) => (chosen[o.id] ? { ...o, currentValue: chosen[o.id] } : o));
-  const shownModes = session ? view.modes : remembered?.modes ? { ...remembered.modes, currentModeId: chosen.__mode || remembered.modes.currentModeId } : null;
+  // a change in a session shows at once, until the agent's answer (or its refusal, which puts it back)
+  const [optimistic, setOptimistic] = useState<Record<string, string>>({});
+  useEffect(() => setOptimistic({}), [view.configOptions, view.modes, session?.id]);
+  const shownOptions: ConfigOption[] = (session ? view.configOptions : remembered?.configOptions || []).map((o: ConfigOption) => {
+    const value = (session ? optimistic : chosen)[o.id];
+    return value ? { ...o, currentValue: value } : o;
+  });
+  const shownModes = session ? (view.modes && optimistic.__mode ? { ...view.modes, currentModeId: optimistic.__mode } : view.modes) : remembered?.modes ? { ...remembered.modes, currentModeId: chosen.__mode || remembered.modes.currentModeId } : null;
   const modes = shownModes && !shownOptions.some((o) => o.category === 'mode') ? shownModes : null;
   const [, rerender] = useState(0);
   const auto = useAutoPrices(api.settings.autoPrices);
   const priceOf = (model?: string) => (model ? api.settings.modelPrices[model] ?? autoPrice(auto.prices, model) : undefined);
   const tune = (id: string, value: string) => {
     write(`spectrum-agent-options:${currentId}`, JSON.stringify({ ...chosenOptions(currentId), [id]: value }));
-    if (session) setLocalAgentOption(session.id, id, value).catch(fail);
+    if (session) {
+      setOptimistic((old) => ({ ...old, [id]: value }));
+      setLocalAgentOption(session.id, id, value).catch((err) => {
+        setOptimistic((old) => Object.fromEntries(Object.entries(old).filter(([k]) => k !== id)));
+        fail(err);
+      });
+    }
     else rerender((n) => n + 1);
   };
 

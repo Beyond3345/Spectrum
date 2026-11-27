@@ -268,17 +268,38 @@ export function localStats(events: AgentEvent[], price?: Price): StatChip[] {
 const RUNNING_STATES = ['starting', 'running', 'stopping'];
 
 /** The Spectrum agent's stats row: the thread's turns and its tokens, with the cache's share and the cost */
-export function spectrumStats(messages: ChatThread['messages'], live: AgentUsage | null, model: string, prices: Prices): StatChip[] {
-  const turns: Counted[] = messages.flatMap((m) => (m.role === 'assistant' && (m.meta as { usage?: Counted } | undefined)?.usage ? [(m.meta as { usage: Counted }).usage] : []));
+export function spectrumStats(
+  messages: ChatThread['messages'],
+  live: AgentUsage | null,
+  model: string,
+  prices: Prices,
+  /** the model's context window (models.dev's), whether a model's price is the user's own, and why models.dev's list is missing */
+  more: { contextSize?: (model: string) => number | undefined; ownPrice?: (model: string) => boolean; autoError?: string } = {}
+): StatChip[] {
+  type Meta = { usage?: Counted; steps?: unknown[]; ms?: number };
+  const replies = messages.filter((m) => m.role === 'assistant' && (m.meta as Meta | undefined)?.usage).map((m) => m.meta as Meta);
+  const turns: Counted[] = replies.map((m) => m.usage!);
   if (live) turns.push({ ...live, model });
   if (!turns.length) return [];
+  const steps = replies.reduce((n, m) => n + (m.steps?.length || 0), 0);
+  const busy = replies.reduce((n, m) => n + (m.ms || 0), 0);
   const thread = turns.reduce(add, { input: 0, output: 0 });
   const costs = turns.map((u) => costOf(u, prices));
   const sums = costs.every(Boolean) ? costSums(costs as Cost[]) : null;
   const hit = thread.input ? (thread.cacheRead || 0) / thread.input : 0;
   const total = thread.input + thread.output;
   return [
-    { key: 'session', text: [`${turns.length} ${turns.length === 1 ? 'turn' : 'turns'}`], title: 'Thread statistics', rows: [['Turns', String(turns.length)], ['Last turn', `${whole(turns[turns.length - 1].input + turns[turns.length - 1].output)} tok`]] },
+    {
+      key: 'session',
+      text: [`${turns.length} ${turns.length === 1 ? 'turn' : 'turns'}${steps ? ` ${steps} ${steps === 1 ? 'step' : 'steps'}` : ''}`, ...(busy ? [duration(busy)] : [])],
+      title: 'Thread statistics',
+      rows: [
+        ['Turns', String(turns.length)],
+        ...(steps ? [['Steps (tool calls)', String(steps)]] as [string, string][] : []),
+        ...(busy ? [['Time working', duration(busy)], ['Average per turn', duration(busy / replies.filter((m) => m.ms).length)]] as [string, string][] : []),
+        ['Last turn', `${whole(turns[turns.length - 1].input + turns[turns.length - 1].output)} tok`]
+      ]
+    },
     {
       key: 'tokens',
       text: [`${tokens(total)} tok`, ...(hit >= 0.005 ? [`Cache hit ${Math.round(hit * 100)}%`] : []), ...(sums || []).map((c) => `${c.reported ? '' : 'est. '}${money(c.cost, c.currency)}`)],
@@ -291,7 +312,30 @@ export function spectrumStats(messages: ChatThread['messages'], live: AgentUsage
         ['Output', `${whole(thread.output)} tok`],
         ...(sums || []).map((c): [string, string] => [c.reported ? 'Cost, as OpenRouter reports it' : `Estimated cost (${c.currency})`, money(c.cost, c.currency)])
       ],
-      note: sums ? (sums.some((c) => !c.reported) ? 'Estimates use your prices in Settings › Models; the provider’s bill may differ.' : undefined) : `Set a price for ${model || 'this model'} in Settings › Models to see an estimate of the cost.`
-    }
+      note: sums
+        ? sums.some((c) => !c.reported)
+          ? `Estimated at ${turns.every((u) => !u.model || more.ownPrice?.(u.model)) ? 'your prices in Settings › Models' : turns.some((u) => u.model && more.ownPrice?.(u.model)) ? 'your prices in Settings › Models and models.dev’s' : 'models.dev’s prices'}; the provider’s bill may differ. Change a price in Settings › Models.`
+          : undefined
+        : more.autoError
+          ? `models.dev’s price list could not be loaded (${more.autoError}). Set a price for ${model || 'this model'} in Settings › Models to see an estimate.`
+          : `Neither Settings › Models nor models.dev has a price for ${model || 'this model'}. Set one there to see an estimate.`
+    },
+    ...contextChip(turns[turns.length - 1].context, model ? more.contextSize?.(model) : undefined)
   ];
+}
+
+/** How full the model's context was at the turn's last call, of its window, as a chip; none without both */
+function contextChip(used: number | undefined, size: number | undefined): StatChip[] {
+  if (!used || !size) return [];
+  const full = Math.min(1, used / size);
+  return [{
+    key: 'context',
+    text: [`${Math.round(full * 100)}%`],
+    ring: full,
+    title: `${Math.round(full * 100)}% of context used`,
+    total: `${tokens(used)} / ${tokens(size)}`,
+    bar: full,
+    rows: [['In the context', `${whole(used)} tok`], ['Free space', `${whole(size - used)} tok`]],
+    note: full >= 0.8 ? 'Nearly full: Spectrum sums up the start of the thread when it no longer fits.' : 'At the last turn’s last model call, of the window models.dev gives for the model.'
+  }];
 }

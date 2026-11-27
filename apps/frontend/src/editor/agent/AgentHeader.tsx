@@ -97,10 +97,10 @@ export function StatsRow({ chips }: { chips: StatChip[] }) {
  * are in the StatsRow under the message box; a local agent's model is in AgentTuning, in the box.
  */
 export default function AgentHeader({ choice, onChoose, onManage }: { choice: Choice; onChoose(choice: TurnChoice): void; onManage(): void }) {
-  // the recommended level by its name: “Recommended (Medium)” is “Medium”
+  // “Recommended (High)” is a badge on High in the menu (effortLevels), not a second High
   const options: ConfigOption[] = [
     { id: 'model', name: 'Model', category: 'model', currentValue: choice.model, options: choice.models.map(([value, name]) => ({ value, name })) },
-    ...(choice.efforts.length > 1 ? [{ id: 'effort', name: 'Thinking', category: 'thought_level', currentValue: choice.effort, options: choice.efforts.map(([value, name]) => ({ value, name: name.replace(/^Recommended \((.+)\)$/, '$1') })) }] : [])
+    ...(choice.efforts.length > 1 ? [{ id: 'effort', name: 'Thinking', category: 'thought_level', currentValue: choice.effort, options: choice.efforts.map(([value, name]) => ({ value, name })) }] : [])
   ];
   return (
     <AgentTuning

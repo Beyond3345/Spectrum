@@ -1364,6 +1364,8 @@ export type AgentRunResult = {
   says?: AgentSaid[];
   incomplete?: Incomplete;
   usage?: AgentUsage;
+  /** how long the turn took, in milliseconds */
+  ms?: number;
   build?: { ok: boolean; errors: string[] };
   unsent?: string[];
   /** in a run's `result` event: which of its turns this is */
@@ -1392,7 +1394,8 @@ export type AgentStep = { tool: string; about?: string; ok: boolean; ms?: number
 export type AgentSaid = { before: number; text: string; user?: boolean };
 /** Tokens as the provider counted them: all it read (cacheRead and cacheWrite are part of input) and what it wrote */
 /** cost: what the provider reported the calls cost, in US dollars (OpenRouter; none from the others) */
-export type AgentUsage = { input: number; output: number; cacheRead?: number; cacheWrite?: number; cost?: number };
+/** context: what the turn's last model call read and wrote, which is how full the model's context is */
+export type AgentUsage = { input: number; output: number; cacheRead?: number; cacheWrite?: number; cost?: number; context?: number };
 
 // ─── The Spectrum agent's runs (agentRunService.js): a thread's turns as jobs, heard as events ───
 
@@ -2181,7 +2184,7 @@ export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools
 export interface ProxyState { supported: boolean; proxy: { text: string; from: string; source: 'typed' | 'system' | 'shell' } | null; typed: string }
 export const getProxy = () => request<ProxyState>('/api/system/proxy');
 /** models.dev's prices in US dollars per million tokens, by model name without vendor or variant (normalizeModelId) */
-export type AutoPrice = { input: number; output: number; cacheRead?: number; cacheWrite?: number };
+export type AutoPrice = { input: number; output: number; cacheRead?: number; cacheWrite?: number; context?: number };
 export const getModelsDevPrices = (refresh = false) => request<{ ok: boolean; syncedAt: number | null; prices: Record<string, AutoPrice>; error?: string }>(`/api/models-dev/prices${refresh ? '?refresh=1' : ''}`);
 /** Saves the proxy typed in Settings ('' for none); the backend checks it and says which one is in use now. */
 export const saveProxy = (proxy: string) => request<ProxyState>('/api/system/proxy', json('PUT', { proxy }));

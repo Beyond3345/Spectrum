@@ -1229,7 +1229,15 @@ export async function setAgentOption(r, configId, value) {
     const result = await timeout(configId === '__mode'
       ? r.peer.request('session/set_mode', { sessionId: r.remoteId, modeId: value })
       : r.peer.request('session/set_config_option', { sessionId: r.remoteId, configId, value }), 30000, 'The agent did not change its settings.', r.connectionAbort.signal);
-    emit(r, 'session', result); return result;
+    // an agent that took the change without repeating its menus (an empty answer) still made it: the menus as the
+    // session last had them, with this one changed, so the tab shows what the agent now uses
+    const last = r.events.findLast((e) => e.type === 'session')?.data || {};
+    const shown = configId === '__mode'
+      ? { ...(last.modes && { modes: { ...last.modes, currentModeId: value } }), ...(Array.isArray(result?.configOptions) && { configOptions: result.configOptions }) }
+      : Array.isArray(result?.configOptions) ? result : { ...result, ...(Array.isArray(last.configOptions) && { configOptions: last.configOptions.map((o) => (o.id === configId ? { ...o, currentValue: value } : o)) }) };
+    emit(r, 'session', shown);
+    if (Array.isArray(shown.configOptions) || shown.modes) await rememberOptions(r.agentId, { configOptions: shown.configOptions ?? last.configOptions, modes: shown.modes ?? last.modes }).catch(() => {});
+    return shown;
   } finally {
     r.busy = false;
     if (r.child) idle(r);

@@ -198,6 +198,8 @@ export type ThreadMeta = {
   says?: AgentSaid[];
   /** the tokens of the turn's model calls */
   usage?: AgentUsage;
+  /** how long the turn took, in milliseconds */
+  ms?: number;
   /** the run and turn this reply is the result of ("run:turn"), so a page that connects later saves it once */
   run?: string;
   error?: boolean;

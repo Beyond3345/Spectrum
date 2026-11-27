@@ -42,8 +42,18 @@ export function normalizeModelId(id: string) {
 
 /** models.dev's price for a model as Spectrum's own Price (US dollars per million tokens), or undefined */
 export function autoPrice(auto: Record<string, AutoPrice>, model: string | undefined): Price | undefined {
-  const p = model ? auto[normalizeModelId(model)] : undefined;
+  // Ollama's models (gemma4:31b, gpt-oss:latest) run on this computer, which costs nothing: never a cloud price
+  if (!model || isLocalModel(model)) return undefined;
+  const p = auto[normalizeModelId(model)];
   return p && { input: p.input, output: p.output, ...(p.cacheRead !== undefined && { cached: p.cacheRead }) };
+}
+
+/** An Ollama model's name: a size or version tag after the colon (gemma4:31b, qwen3:latest), not a provider variant (:free) */
+export const isLocalModel = (model: string) => /:(\d[\w.]*|latest)$/i.test(model);
+
+/** A model's context window from models.dev, in tokens, or undefined */
+export function autoContext(auto: Record<string, AutoPrice>, model: string | undefined) {
+  return model && !isLocalModel(model) ? auto[normalizeModelId(model)]?.context : undefined;
 }
 
 /** The user's prices, with models.dev's for every model they have not priced */

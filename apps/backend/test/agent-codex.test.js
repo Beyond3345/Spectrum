@@ -216,6 +216,16 @@ test('an agent’s menus are remembered from its Test and sessions, and a choice
   sessions.closeAgentRun(run);
 });
 
+test('an agent that takes a change of its settings without repeating its menus still shows the change', { skip, timeout: 120000 }, async () => {
+  const { open } = await native$();
+  await saveAgentConfig('qoder', { command: process.execPath, args: [fixture, '--models', '--quiet-options'], runtimePaths: [path.dirname(fixture)], apiKey: '' });
+  const run = await open('qoder');
+  await sessions.setAgentOption(run, 'model', 'deepseek/chat');
+  assert.equal(run.events.findLast((e) => e.type === 'session').data.configOptions[0].currentValue, 'deepseek/chat');
+  assert.equal((await agentEntry('qoder')).options.configOptions[0].currentValue, 'deepseek/chat', 'remembered for the next session');
+  sessions.closeAgentRun(run);
+});
+
 test('Antigravity’s refused turn, which agy ends as end_turn, is Failed: a refused key names the key, another error is told', { skip, timeout: 120000 }, async () => {
   const { open, turn } = await native$();
   await saveAgentConfig('antigravity', { command: process.execPath, args: [fixture, '--auth-methods'], runtimePaths: [path.dirname(fixture)], apiKey: 'AIza-fixture-0123456789' });
