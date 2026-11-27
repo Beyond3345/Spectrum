@@ -78,6 +78,8 @@ export interface ProviderPreset {
   local?: boolean;
   /** its server lists the models (Ollama); `models` is only a fallback */
   live?: boolean;
+  /** the models switched off in Settings › Models, which `models` then leaves out (settings.ts shownPreset) */
+  off?: ProviderModel[];
 }
 
 export interface TemplateMeta {
@@ -1205,6 +1207,8 @@ export interface ChatSummary {
   updatedAt: string;
   messageCount: number;
   agent?: true;
+  /** the model the chat chose for itself, when it has */
+  model?: string;
 }
 
 export function listChats(projectId: string) {

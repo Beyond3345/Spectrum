@@ -132,8 +132,20 @@ export function credsPatch(settings: AppSettings, providers: ProviderPreset[], c
 }
 
 /**
- * Disconnect: the connection's key is forgotten wherever the settings hold it. A quick or vision model on it goes
- * back to the main model's provider; the main model stays pointed at it, without a key, until another is chosen.
+ * Why a connection can't be disconnected yet, or '': a model runs on it, and another must be chosen first, so that
+ * no role is left pointing at a provider with no key.
+ */
+export function disconnectBlock(conn: Connection) {
+  if (!conn.uses.length) return '';
+  const roles = conn.uses.map((use) => `${use} model`);
+  const list = roles.length > 1 ? `${roles.slice(0, -1).join(', ')} and ${roles[roles.length - 1]}` : roles[0];
+  return `The ${list} ${roles.length > 1 ? 'run' : 'runs'} on it. Choose ${roles.length > 1 ? 'others' : 'another'} in Settings › Models first.`;
+}
+
+/**
+ * Disconnect: the connection's key is forgotten wherever the settings hold it. Settings offers it only for a
+ * connection no model runs on (disconnectBlock); should one be in use all the same, a quick or vision model on it
+ * goes back to the main model's provider and the main model stays pointed at it, without a key.
  */
 export function disconnectPatch(settings: AppSettings, providers: ProviderPreset[], conn: Connection): Partial<AppSettings> {
   const host = hostOf(conn.endpoint);
@@ -200,6 +212,37 @@ export function roleModelPatch(settings: AppSettings, providers: ProviderPreset[
   const hidden = conn && isHidden(settings, conn.id, model) ? hiddenPatch(settings, conn.id, model, false) : {};
   if (!conn || conn.uses.includes('main')) return { providerSaved, [f.provider]: '', [f.endpoint]: '', [f.apiKey]: '', [f.model]: model, ...hidden };
   return { providerSaved, [f.provider]: conn.id, [f.endpoint]: conn.endpoint, [f.apiKey]: conn.key, [f.model]: model, ...hidden };
+}
+
+/** What uses a model: one of the three roles, and the chats of the open project that chose it for themselves. */
+export type ModelUse = { role?: Use; threads: string[] };
+
+/**
+ * The models of a connection that are in use, which Settings › Models does not let be switched off: the main, quick
+ * or vision model, and on the main model's connection the model a Spectrum agent thread or an Assistant chat of the
+ * open project chose (a chat's model is always one of the main provider's).
+ * ponytail: only the open project's saved chats are known here; a chat of another project that chose a model shows
+ * the notice in its own tab instead (usage.ts offNotice). The upgrade is a list of chosen models across projects.
+ */
+export function modelUses(settings: AppSettings, conns: Connection[], conn: Connection, chats: { title: string; model?: string }[] = []): Map<string, ModelUse> {
+  const used = new Map<string, ModelUse>();
+  const at = (model: string) => used.get(model) || used.set(model, { threads: [] }).get(model)!;
+  if (conn === conns[0]) {
+    for (const chat of chats) if (chat.model) at(chat.model).threads.push(chat.title);
+    if (settings.llmModel) at(settings.llmModel).role = 'main';
+  }
+  for (const role of ROLES) {
+    const run = roleAt(settings, conns, role);
+    if (run.conn === conn && run.model && !used.get(run.model)?.role) at(run.model).role = role;
+  }
+  return used;
+}
+
+/** Why a model's switch is off limits, for its tooltip. */
+export function useText(use: ModelUse) {
+  const threads = use.threads.length === 1 ? `the thread “${use.threads[0]}”` : use.threads.length ? `${use.threads.length} threads of this project` : '';
+  const what = [use.role && `as the ${use.role} model`, threads && `by ${threads}`].filter(Boolean).join(' and ');
+  return `In use ${what}. Choose another model there before switching this one off.`;
 }
 
 /** Where a role's model runs: its connection (the main model's while it follows it) and the model's name ('' = the main model). */

@@ -1,6 +1,7 @@
 // Self-check for the agent tabs' meter and their model and effort choice. Run:
 // npx esbuild apps/frontend/src/editor/agent/usage.check.ts --bundle --platform=node --format=esm --loader:.svg=text --loader:.css=empty --outfile=/tmp/usage.mjs && node /tmp/usage.mjs
-import { costOf, localMeter, localStats, money, spectrumMeter, spectrumStats, tokens, turnChoice } from './usage';
+import { costOf, localMeter, localStats, money, offNotice, spectrumMeter, spectrumStats, tokens, turnChoice } from './usage';
+import { shownPreset } from '../../app/settings';
 import { CURRENCIES, cleanPrices } from '../../app/settings';
 import { withAutoPrices } from '../../app/autoPrices';
 import type { AgentEvent, ChatMessage, ProviderPreset } from '../../api/client';
@@ -108,6 +109,31 @@ c = turnChoice(null, { llmModel: 'my-model', reasoningEffort: 'xhigh' }, { model
 eq([c.model, c.effort, c.models], ['my-model', 'xhigh', [['my-model', 'my-model']]], 'another server: its model, every effort');
 c = turnChoice(preset, { llmModel: 'typed', reasoningEffort: 'default' }, {});
 eq(c.models[0], ['typed', 'typed'], 'a typed model listed first');
+
+// a thread's model switched off in Settings › Models (before this rule, in another project, or on another computer):
+// the thread keeps it and says so, and no longer goes to the main model behind the user's back
+{
+  const hidden = { hiddenModels: { [preset.id]: ['plain'] }, llmModel: 'big' };
+  const shown = shownPreset(preset, hidden);
+  eq([shown.models.map((m) => m.id), shown.off?.map((m) => m.id)], [['big'], ['plain']], 'the menus lose it, and it goes along as off');
+  c = turnChoice(shown, settings, { model: 'plain', effort: 'low' });
+  eq([c.model, c.off, c.models, c.efforts.map(([v]) => v), c.effort], ['plain', true, [['big', 'Big'], ['plain', 'Plain']], ['default'], 'default'], 'the thread keeps its model, named, with its own efforts');
+  eq(offNotice(c), 'Plain, this thread’s model, is switched off in Settings › Models.', 'the notice');
+  // any other thread is as before
+  c = turnChoice(shown, settings, { model: 'big' });
+  eq([c.model, c.off, c.models, offNotice(c)], ['big', undefined, [['big', 'Big']], ''], 'a thread on another model sees nothing of it');
+  c = turnChoice(shown, settings, {});
+  eq([c.model, c.off], ['big', undefined], 'nor a thread with no choice of its own');
+  // a model the provider no longer has at all still falls back
+  c = turnChoice(shown, settings, { model: 'gone' });
+  eq([c.model, c.off], ['big', undefined], 'a model the provider no longer has falls back, as before');
+  // switched back on, the thread sends again
+  c = turnChoice(shownPreset(preset, { hiddenModels: {}, llmModel: 'big' }), settings, { model: 'plain' });
+  eq([c.model, c.off, offNotice(c)], ['plain', undefined, ''], 'switched back on');
+  // the main model is never off for the menus, whatever the switches say
+  c = turnChoice(shownPreset(preset, { hiddenModels: { [preset.id]: ['big'] }, llmModel: 'big' }), settings, { model: 'big' });
+  eq([c.model, c.off], ['big', undefined], 'the main model');
+}
 
 // the stats row under a local agent's box: its tasks and steps, its tokens with the cache's share, its context
 {

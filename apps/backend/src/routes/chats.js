@@ -32,7 +32,9 @@ export function registerChatRoutes(fastify) {
           updatedAt: chat.updatedAt || chat.createdAt || '',
           messageCount: Array.isArray(chat.messages) ? chat.messages.length : 0,
           // a Spectrum agent thread, which the agent workspace lists rather than the bottom card (1.10.4 ignores it)
-          ...(chat.agent === true && { agent: true })
+          ...(chat.agent === true && { agent: true }),
+          // the model the chat chose for itself, for Settings › Models to say it is in use
+          ...(typeof chat.model === 'string' && chat.model && { model: chat.model })
         });
       } catch {
         // half-written or hand-edited file

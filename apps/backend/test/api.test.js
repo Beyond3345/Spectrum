@@ -875,8 +875,9 @@ test('saves, lists and deletes chats', async () => {
   assert.deepEqual(list[1], { id: 'chat_1', title: 'Fix the intro', mode: 'assistant', updatedAt: chat.updatedAt, messageCount: 1 });
   assert.deepEqual((await api(`${chats}/chat_1`)).json.chat, chat);
   // a Spectrum agent thread is marked as one in the list
-  await api(`${chats}/chat_3`, { method: 'PUT', body: { chat: { ...chat, id: 'chat_3', agent: true, persona: 'p1', updatedAt: '2026-01-04T00:00:00.000Z' } } });
-  assert.deepEqual((await api(chats)).json.chats[0], { id: 'chat_3', title: 'Fix the intro', mode: 'assistant', updatedAt: '2026-01-04T00:00:00.000Z', messageCount: 1, agent: true });
+  // and the model it chose for itself is listed with it, for Settings › Models to say it is in use
+  await api(`${chats}/chat_3`, { method: 'PUT', body: { chat: { ...chat, id: 'chat_3', agent: true, persona: 'p1', model: 'deepseek-v4-pro', updatedAt: '2026-01-04T00:00:00.000Z' } } });
+  assert.deepEqual((await api(chats)).json.chats[0], { id: 'chat_3', title: 'Fix the intro', mode: 'assistant', updatedAt: '2026-01-04T00:00:00.000Z', messageCount: 1, agent: true, model: 'deepseek-v4-pro' });
   assert.equal((await api(`${chats}/chat_3`)).json.chat.persona, 'p1');
   await api(`${chats}/chat_3`, { method: 'DELETE' });
 

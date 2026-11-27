@@ -7,7 +7,8 @@ import type { Section } from '../../app/SettingsSheet';
 import Icon from '../../app/Icon';
 import { MenuButton } from '../../app/Menu';
 import { confirmDialog } from '../../app/Dialogs';
-import { loadSettings, searchConfigFor } from '../../app/settings';
+import { loadSettings, presetOf, searchConfigFor, updateSettings, useProviders } from '../../app/settings';
+import { hiddenPatch } from '../../app/providerCards';
 import { useEditor } from '../EditorContext';
 import type { PendingChange } from '../EditorContext';
 import type { TodosState } from '../TodosList';
@@ -23,7 +24,7 @@ import { RESUME_HINT, RUNNING, addRunEvent, askAnswer, closeChanges, metaOf, ope
 import type { Checkpoint, ThreadMeta as Meta } from './transcript';
 import { INSTRUCTIONS_FILE, starterInstructions } from './instructions';
 import AgentHeader, { StatsRow, useTurnChoice } from './AgentHeader';
-import { spectrumStats } from './usage';
+import { offNotice, spectrumStats } from './usage';
 import { autoContext, useAutoPrices, withAutoPrices } from '../../app/autoPrices';
 import type { TurnChoice } from './usage';
 import type { Picture } from './pictures';
@@ -99,6 +100,11 @@ export default function SpectrumAgentTab({
     onCreate: remember
   });
   const turn = useTurnChoice(thread ?? newChoice);
+  // the thread's model switched off in Settings › Models: it keeps the model, and sending waits until another is
+  // chosen or this one is switched back on
+  const modelOff = offNotice(turn.current);
+  const providers = useProviders();
+  const foot = useRef<HTMLDivElement>(null);
   const [threads, setThreads] = useState<ChatSummary[]>([]);
   const [tray, setTray] = useState<PendingChange[]>([]);
   const trayRef = useRef(tray);
@@ -238,6 +244,8 @@ export default function SpectrumAgentTab({
 
   const send = async (text: string, { skill, research, context, plan, images }: SendOptions, sent: Sent = {}) => {
     const a = latest.current;
+    // held while the thread's model is switched off: the message goes back in the box, for when that is settled
+    if (turn.current.off) return setDraft({ text, skill, research, images, n: Date.now() });
     // while the agent works on this thread, a message waits its turn
     if (runningRef.current) {
       const thread = threadRef.current?.id;
@@ -680,8 +688,20 @@ export default function SpectrumAgentTab({
         </div>
       )}
 
-      <div className="agent-foot">
+      <div className="agent-foot" ref={foot}>
         {!reviewing && <ChangesTray changes={trayChanges} onOpen={() => setReviewing(true)} />}
+        {modelOff && !reviewing && (
+          <div className="composer-hint row" role="status">
+            <span className="grow">{modelOff} Nothing is sent until you choose another model or turn it back on.</span>
+            {/* the model menu is the header's own button, at the right of the message box */}
+            <button className="btn small" onClick={() => foot.current?.querySelector<HTMLButtonElement>('.tuning-button')?.click()}>
+              Choose another model
+            </button>
+            <button className="btn small" onClick={() => updateSettings(hiddenPatch(loadSettings(), presetOf(providers, loadSettings())?.id || 'custom', turn.current.model, false))}>
+              Turn it back on
+            </button>
+          </div>
+        )}
         {rules?.exists && !rules.approved && !reviewing && (
           <div className="composer-hint row">
             <span className="grow">This project’s {INSTRUCTIONS_FILE} is not given to the agent yet: it came with the project, or was changed by an agent or outside Spectrum. Read it, then choose.</span>
@@ -735,6 +755,7 @@ export default function SpectrumAgentTab({
           }
           below={<StatsRow chips={spectrumStats(thread?.messages || [], here ? live.usage : null, turn.current.model, withAutoPrices(api.settings.modelPrices, auto.prices), { contextSize: (m) => autoContext(auto.prices, m), ownPrice: (m) => !!api.settings.modelPrices[m], autoError: api.settings.autoPrices ? auto.error : undefined })} />}
           busy={!!running}
+          disabled={!!modelOff}
           queues={here}
           firstTurn={!items.length}
           skills={skills}

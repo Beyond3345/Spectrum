@@ -2,7 +2,7 @@
 // always been stored, and every change is written back in that format. Run:
 // npx esbuild apps/frontend/src/app/providerCards.check.ts --bundle --platform=node --format=esm --outfile=/tmp/cards.mjs --loader:.svg=text --loader:.css=empty && node /tmp/cards.mjs
 import type { ProviderPreset } from '../api/client';
-import { connectPatch, connectionName, connections, contextText, credsPatch, disconnectPatch, draftConnection, hiddenPatch, isHidden, mainModelPatch, modelRows, ready, roleAt, roleModelPatch } from './providerCards';
+import { connectPatch, connectionName, connections, contextText, credsPatch, disconnectBlock, disconnectPatch, draftConnection, hiddenPatch, isHidden, mainModelPatch, modelRows, modelUses, ready, roleAt, roleModelPatch, useText } from './providerCards';
 import { DEFAULT_SETTINGS, SETTINGS_KEY, cleanHidden, followsMain, llmConfigFor, loadSettings, shownPreset } from './settings';
 import type { AppSettings } from './settings';
 
@@ -103,6 +103,32 @@ eq([draft.endpoint, draft.key], ['', ''], 'another custom endpoint starts empty'
 two = at(credsPatch(two, providers, draft, { endpoint: 'http://localhost:1234/v1' }), two);
 eq([two.providerSaved.custom, two.visionEndpoint, two.visionApiKey], [{ model: '', key: '', endpoint: 'http://localhost:1234/v1' }, 'https://one.example/v1', 'sk-one'], 'the first’s key stays with the first');
 eq(cards(two), ['main deepseek main+quick key', 'vision custom vision key', 'saved:custom custom '], 'two custom endpoints');
+
+// Disconnect waits while a model runs on the provider: no role is left pointing at a provider with no key
+eq([disconnectBlock(deepseek), disconnectBlock(kimi), disconnectBlock(openai), disconnectBlock(ollama)],
+  ['The main model and quick model run on it. Choose others in Settings › Models first.', 'The vision model runs on it. Choose another in Settings › Models first.', '', ''], 'only a provider no model runs on can be disconnected');
+eq(disconnectBlock(connections(DEFAULT_SETTINGS, providers)[0]), 'The main model, quick model and vision model run on it. Choose others in Settings › Models first.', 'a fresh Spectrum’s only provider');
+// once the vision model is chosen elsewhere, its old provider can go
+eq(connections(at(roleModelPatch(old, providers, 'vision', deepseek, 'deepseek-main'), old), providers).filter((c) => c.id === 'moonshot').map(disconnectBlock), [''], 'after another vision model is chosen');
+
+// a model in use can't be switched off: the three roles, and what the open project's chats chose for themselves
+{
+  const conns = connections(old, providers);
+  const chats = [{ title: 'Tidy the methods', model: 'deepseek-text' }, { title: 'Plot the results', model: 'deepseek-text' }, { title: 'No choice of its own' }, { title: 'Rewrite the intro', model: 'deepseek-main' }];
+  const uses = (conn: (typeof conns)[number], list = chats) => [...modelUses(old, conns, conn, list)].map(([model, use]) => `${model}: ${use.role || '-'} ${use.threads.length}`);
+  eq(uses(conns[0]), ['deepseek-text: - 2', 'deepseek-main: main 1', 'deepseek-fast: quick 0'], 'the main provider: its roles and the chats’ models');
+  eq(uses(conns[1]), ['moonshot-main: vision 0'], 'the vision model’s provider');
+  eq([uses(conns[2]), uses(conns[3])], [[], []], 'a provider no model runs on has none in use: a chat’s model is the main provider’s');
+  eq(uses(conns[0], []), ['deepseek-main: main 0', 'deepseek-fast: quick 0'], 'without a project open, the roles alone');
+  const main = modelUses(old, conns, conns[0], chats);
+  eq(useText(main.get('deepseek-text')!), 'In use by 2 threads of this project. Choose another model there before switching this one off.', 'why, for two threads');
+  eq(useText(main.get('deepseek-main')!), 'In use as the main model and by the thread “Rewrite the intro”. Choose another model there before switching this one off.', 'why, for a role and a thread');
+  eq(useText(main.get('deepseek-fast')!), 'In use as the quick model. Choose another model there before switching this one off.', 'why, for a role');
+  // a model that is both the main and the quick model is said once, as the main model
+  const both = at({ referencesModel: 'deepseek-main' }, old);
+  const bothConns = connections(both, providers);
+  eq([...modelUses(both, bothConns, bothConns[0])].map(([m, u]) => `${m}: ${u.role}`), ['deepseek-main: main'], 'one model, two roles');
+}
 
 // Disconnect forgets the key wherever it is held
 s = at(disconnectPatch(old, providers, openai), old);

@@ -1721,7 +1721,8 @@ button.chip.active:hover {
 }
 
 /* a card's tint on the sheet, a shade off it in either mode */
-.settings-sheet {
+.settings-sheet,
+.settings-pane {
   --inset-fill: color-mix(in srgb, var(--text) 3.5%, transparent);
 }
 
@@ -1783,6 +1784,12 @@ button.chip.active:hover {
   flex-direction: column;
   padding: 20px 24px 28px;
   overflow-y: auto;
+}
+
+/* the diagram composer's own settings sheet: the same cards, in a sheet that pads and scrolls itself */
+.settings-pane.composer-settings {
+  padding: 0;
+  overflow: visible;
 }
 
 /* the pane scrolls rather than squeezing what is in it */
