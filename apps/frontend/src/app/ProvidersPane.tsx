@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ProviderPreset } from '../api/client';
 import { confirmDialog } from './Dialogs';
+import ProviderMark from './ProviderMark';
 import Select from './Select';
 import { testSays, useConnectionTest } from './connectionTest';
 import { isKeyRef, keyFailure, selectSavedKey } from './keys';
@@ -60,6 +61,7 @@ function ProviderCard({
   return (
     <div className={`skill-card provider-card ${editing ? 'open' : ''}`} role="group" aria-labelledby={`${id}-name`}>
       <div className="provider-head">
+        <ProviderMark id={conn.id} />
         <span className="agent-card-title">
           <span className="skill-name">
             <span id={`${id}-name`}>{name}</span>
@@ -228,6 +230,7 @@ export default function ProvidersPane({ onSection }: { onSection: (section: Sect
       <div className="kv-list provider-available">
         {available.map((p) => (
           <div className="kv-row" key={p.id}>
+            <ProviderMark id={p.id} />
             <span>
               {p.name}
               <span className="field-hint">{p.local ? 'On this computer or your network, without a key' : hostOf(p.endpoint)}</span>
@@ -238,6 +241,7 @@ export default function ProvidersPane({ onSection }: { onSection: (section: Sect
         {/* the settings keep one other server besides a quick or vision model's own */}
         {!cards.some((c) => c.id === CUSTOM && (c.at === 'main' || c.at.startsWith('saved:'))) && (
           <div className="kv-row">
+            <ProviderMark id={CUSTOM} />
             <span>
               Custom endpoint
               <span className="field-hint">{CUSTOM_NOTE}</span>

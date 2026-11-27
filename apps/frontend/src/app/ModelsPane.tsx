@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { AutoPrice, ProviderPreset } from '../api/client';
 import Icon from './Icon';
+import ProviderMark from './ProviderMark';
 import Select from './Select';
 import { autoPrice, normalizeModelId, useAutoPrices } from './autoPrices';
 import { useConnectionTest } from './connectionTest';
@@ -175,6 +176,7 @@ function ProviderModels({
       <div className="model-group-head">
         <button className="model-group-toggle" aria-expanded={shown} aria-controls={shown ? id : undefined} onClick={onToggle}>
           <Icon name={shown ? 'chevron.down' : 'chevron.right'} />
+          <ProviderMark id={conn.id} />
           <span className="agent-card-title">
             <span className="skill-name">{name}</span>
           </span>
@@ -280,7 +282,13 @@ export default function ModelsPane({
       return rowsOf(conn)
         // a model only the provider lists may not read images, so the vision menu keeps to Spectrum's own
         .filter((m) => (role !== 'vision' || (m.known && m.vision)) && (`${i}|${m.id}` === current || !isHidden(settings, conn.id, m.id)))
-        .map((m): [string, string] => [`${i}|${m.id}`, `${multi ? `${connectionName(conn)} · ` : ''}${m.label}${m.id === recommended ? ' (recommended)' : ''}`]);
+        .map((m): [string, ReactNode] => [
+          `${i}|${m.id}`,
+          <>
+            <ProviderMark id={conn.id} />
+            {`${multi ? `${connectionName(conn)} · ` : ''}${m.label}${m.id === recommended ? ' (recommended)' : ''}`}
+          </>
+        ]);
     });
   const split = (value: string): [Connection, string] => [conns[Number(value.slice(0, value.indexOf('|')))], value.slice(value.indexOf('|') + 1)];
 
@@ -428,7 +436,19 @@ export default function ModelsPane({
       </div>
       <label className="search-field model-search">
         <Icon name="magnifyingglass" />
-        <input type="search" aria-label="Search models" placeholder="Search models" value={query} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+        <input
+          aria-label="Search models"
+          placeholder="Search models"
+          value={query}
+          spellCheck={false}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && query && (e.stopPropagation(), setQuery(''))}
+        />
+        {query && (
+          <button className="search-clear" aria-label="Clear search" onClick={() => setQuery('')}>
+            <Icon name="xmark.circle.fill" />
+          </button>
+        )}
       </label>
       <div className="provider-list">
         {conns.map((conn) => (

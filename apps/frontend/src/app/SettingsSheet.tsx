@@ -260,15 +260,22 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
           <label className="search-field settings-search">
             <Icon name="magnifyingglass" />
             <input
-              type="search"
               aria-label="Search settings"
               placeholder="Search"
               value={query}
               spellCheck={false}
               onChange={(e) => setQuery(e.target.value)}
-              // Return opens the first pane found
-              onKeyDown={(e) => e.key === 'Enter' && found.size && !found.has(section) && go([...found.keys()][0])}
+              onKeyDown={(e) => {
+                // Return opens the first pane found; Escape clears the search before it closes Settings
+                if (e.key === 'Enter' && found.size && !found.has(section)) go([...found.keys()][0]);
+                if (e.key === 'Escape' && query) (e.stopPropagation(), setQuery(''));
+              }}
             />
+            {query && (
+              <button className="search-clear" aria-label="Clear search" onClick={() => setQuery('')}>
+                <Icon name="xmark.circle.fill" />
+              </button>
+            )}
           </label>
           <div className="settings-nav-list">
           {SECTION_GROUPS.map(([heading, sections]) => {
