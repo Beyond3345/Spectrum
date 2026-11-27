@@ -1,7 +1,8 @@
 import { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
 export { extractJsonBlock } from '../../../backend/src/utils/jsonUtils.js';
-import { withoutComments } from '../../../backend/src/latex/text.js';
+import { escapeTexText, withoutComments } from '../../../backend/src/latex/text.js';
 import { docKind } from '../../../backend/src/utils/docLanguage.js';
+import { diffLines } from 'diff';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { runAgent } from '../api/client';
@@ -46,11 +47,68 @@ export async function mainCitationCommand(api: EditorApi) {
   return citationCommand(source);
 }
 
-export async function citationText(api: EditorApi, keys: string[]) {
+/** Where in the work a citation points: a page, pages, a chapter or a section */
+export type LocatorKind = 'page' | 'pages' | 'chapter' | 'section';
+export type Locator = { kind: LocatorKind; value: string };
+export const LOCATOR_KINDS: [LocatorKind | '', string][] = [['', 'None'], ['page', 'Page (p.)'], ['pages', 'Pages (pp.)'], ['chapter', 'Chapter (Ch.)'], ['section', 'Section (§)']];
+
+const LOCATOR_WORDS: Record<'latex' | 'typst' | 'markdown', Record<LocatorKind, string>> = {
+  latex: { page: 'p.~', pages: 'pp.~', chapter: 'Ch.~', section: '\\S~' },
+  typst: { page: 'p. ', pages: 'pp. ', chapter: 'Ch. ', section: '§ ' },
+  // pandoc's own locator terms, which the citation style then words
+  markdown: { page: 'p. ', pages: 'pp. ', chapter: 'chap. ', section: 'sec. ' }
+};
+const RANGE = /\s*[-–—]+\s*/g;
+
+/**
+ * The citation of keys in a document of kind, with a locator when it has a value: \cite[p.~42]{Key} (in the command
+ * the main file calls for), #cite(<Key>, supplement: [pp. 42–45]) in Typst, [@Key, pp. 42-45] in Markdown.
+ */
+export function formatCitation(kind: ReturnType<typeof docKind>, command: string, keys: string[], locator?: Locator | null) {
+  const value = locator?.value.trim() || '';
+  const on = locator && value ? locator : null;
+  if (kind === 'typst') {
+    const label = (key: string) => (/^[A-Za-z0-9_:.-]+$/.test(key) ? `<${key}>` : `label(${JSON.stringify(key)})`);
+    const plain = (key: string) => (/^[A-Za-z0-9_:.-]+$/.test(key) ? `@${key}` : `#cite(${label(key)})`);
+    if (!on) return keys.map(plain).join(' ');
+    // a locator belongs to the last key, as in LaTeX's and pandoc's
+    const supplement = (LOCATOR_WORDS.typst[on.kind] + value.replace(RANGE, '–')).replace(/[\\[\]#*_$@<>`]/g, '\\$&');
+    return [...keys.slice(0, -1).map(plain), `#cite(${label(keys[keys.length - 1])}, supplement: [${supplement}])`].join(' ');
+  }
+  if (kind === 'markdown') {
+    const cites = keys.map((key) => `@${key}`).join('; ');
+    return on ? `[${cites}, ${LOCATOR_WORDS.markdown[on.kind]}${value.replace(RANGE, '-')}]` : `[${cites}]`;
+  }
+  const note = on ? `[${LOCATOR_WORDS.latex[on.kind]}${escapeTexText(value.replace(RANGE, '-')).replace(/-/g, '--').replace(/----+/g, '--')}]` : '';
+  return `${command}${note}{${keys.join(',')}}`;
+}
+
+export async function citationText(api: EditorApi, keys: string[], locator?: Locator | null) {
   const kind = docKind(api.activePath);
-  if (kind === 'typst') return keys.map((key) => (/^[A-Za-z0-9_:.-]+$/.test(key) ? `@${key}` : `#cite(label(${JSON.stringify(key)}))`)).join(' ');
-  if (kind === 'markdown') return `[${keys.map((key) => `@${key}`).join('; ')}]`;
-  return `${await mainCitationCommand(api)}{${keys.join(',')}}`;
+  return formatCitation(kind, kind === 'typst' || kind === 'markdown' ? '' : await mainCitationCommand(api), keys, locator);
+}
+
+/** lines a suggestion adds and removes, and where the first file's change starts and ends (in its new text) */
+export type ChangeStat = { added: number; removed: number; from: number; to: number };
+
+export function changeStat(changes: { original: string; proposed: string }[]): ChangeStat {
+  const stat = { added: 0, removed: 0, from: 0, to: 0 };
+  changes.forEach((c, i) => {
+    let line = 1;
+    for (const part of diffLines(c.original, c.proposed)) {
+      const n = part.count ?? 0;
+      if (part.added || part.removed) {
+        if (part.added) stat.added += n;
+        else stat.removed += n;
+        if (i === 0) {
+          stat.from ||= line;
+          stat.to = Math.max(stat.to, line + Math.max(0, (part.added ? n : 1) - 1));
+        }
+      }
+      if (!part.removed) line += n;
+    }
+  });
+  return stat;
 }
 
 /** After references went into bibFile: the editor reads it again, and the file tree too when the file is new. */

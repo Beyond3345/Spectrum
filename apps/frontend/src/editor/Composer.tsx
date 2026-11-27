@@ -1,31 +1,54 @@
 import { useEffect, useRef, useState } from 'react';
 import { docLanguage, translatePrompt } from '../../../backend/src/utils/docLanguage.js';
-import { addReference, getAgentInstructions, getChat, resolveReferences, runAgent, visionToLatex } from '../api/client';
-import type { ChatMessage, ChatMode, ChatThread, ReferenceResult } from '../api/client';
+import { addReference, commitReference, getAgentInstructions, getChat, resolveReferences, runAgent } from '../api/client';
+import type { ChatMessage, ChatMode, ChatThread, ReferenceDraft, ReferenceResult } from '../api/client';
 import Icon from '../app/Icon';
-import Select from '../app/Select';
 import { MenuButton } from '../app/Menu';
-import { effortOptions, modelOf, presetOf, searchConfigFor, updateSettings, useLivePreset, useProviders } from '../app/settings';
+import { presetOf, searchConfigFor, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
-import { Markdown, VISION_HINTS, VISION_MODES, bibIncludeLine, citationText, docKind, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
+import { Markdown, bibIncludeLine, changeStat, citationText, docKind, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
+import type { ChangeStat, Locator } from './shared';
 import { ZOTERO_CITE } from './zotero';
-import type { VisionMode } from './shared';
 import { assistantSaid, chatMessage, isEditChat, useChatThread } from './chatThread';
 import { resolveInstructions } from './personas';
 import { PersonaPicker } from './agent/parts';
 import { INSTRUCTIONS_FILE } from './agent/instructions';
+import AgentTuning, { LOGO } from './agent/AgentTuning';
+import type { ConfigOption } from './agent/AgentTuning';
+import { turnChoice } from './agent/usage';
+import type { TurnChoice } from './agent/usage';
 import ChatsList from './ChatsList';
+import ReferenceDraftCard, { sourceBadge } from './ReferenceDraftCard';
 
 type QuickAction = 'polish' | 'rewrite' | 'structure' | 'translate';
 type TranslateScope = 'selection' | 'file' | 'project';
-type ProposedFile = { filePath: string; proposed: string };
-type ReferencesMeta = { results: ReferenceResult[]; bibFile: string; bibIncluded: boolean };
+/** status: applied from its card, so the Spectrum agent doesn't offer it again */
+type ProposedFile = { filePath: string; proposed: string; status?: 'applied' };
+type ReferencesMeta = { results: ReferenceResult[]; bibFile: string; bibIncluded: boolean; biblatex?: boolean; legacyUrls?: boolean };
 /** what we keep in ChatMessage.meta */
-type MessageMeta = { changes?: ProposedFile[]; quick?: boolean; references?: ReferencesMeta; latex?: string; error?: boolean; /** the answer stopped at the model's output limit */ cut?: boolean };
+type MessageMeta = {
+  changes?: ProposedFile[]; quick?: boolean; action?: QuickAction; stat?: ChangeStat; references?: ReferencesMeta;
+  /** an Image → LaTeX answer from before 2.8, still offered for the cursor */
+  latex?: string;
+  error?: boolean; /** the answer stopped at the model's output limit */ cut?: boolean
+};
 
 const LANGUAGES = ['English', 'Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish'];
 const ACTION_VERBS: Record<Exclude<QuickAction, 'translate'>, string> = { polish: 'Polish', rewrite: 'Rewrite', structure: 'Restructure' };
+/** each quick action's icon and colour, along the logo's spectrum */
+const ACTION_LOOKS: Record<QuickAction, [icon: string, colour: string]> = {
+  polish: ['sparkle', LOGO[1]], rewrite: ['pencil', LOGO[4]], structure: ['list.bullet', 'var(--green)'], translate: ['globe', LOGO[5]]
+};
+const SUGGESTED: Record<QuickAction, string> = { polish: 'polish', rewrite: 'rewrite', structure: 'restructure', translate: 'translation' };
+
+/** the inputs the References tab can be tried with, as its empty chat offers them */
+const SAMPLES: [label: string, input: string | null][] = [
+  ['ISBN book', 'ISBN 978-0-262-04630-5'],
+  ['Formatted APA citation', 'Goodfellow, I., Bengio, Y., & Courville, A. (2016). Deep learning. MIT Press.'],
+  ['Hardware manual (@manual)', null],
+  ['Pasted BibTeX', '@inbook{Knuth1997,\n  author    = {Knuth, Donald E.},\n  title     = {Fundamental Algorithms},\n  booktitle = {The Art of Computer Programming},\n  chapter   = {2},\n  publisher = {Addison-Wesley},\n  year      = {1997}\n}']
+];
 
 const msg = (role: ChatMessage['role'], content: string, meta?: MessageMeta) => chatMessage(role, content, meta);
 const metaOf = (m: ChatMessage) => (m.meta || {}) as MessageMeta;
@@ -33,11 +56,13 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 function summariseReferences(results: ReferenceResult[], bibFile: string) {
   const count = (...statuses: ReferenceResult['status'][]) => results.filter((r) => statuses.includes(r.status)).length;
+  const drafts = count('draft');
   const added = count('added');
   const dup = count('duplicate');
   const choose = count('choose');
   const failed = count('not_found', 'error');
   return [
+    drafts && (drafts === 1 ? 'Check the entry, then add it.' : `Check the ${drafts} entries, then add them.`),
     added && `Added ${plural(added, 'reference')} to ${bibFile}.`,
     dup && `${plural(dup, 'reference')} ${dup === 1 ? 'is' : 'are'} already in the project.`,
     choose && 'Pick the right match below.',
@@ -52,8 +77,9 @@ const authorLine = (authors?: string[], year?: string, venue?: string) =>
 
 /**
  * Floating chat card at the bottom of the editor column. "Assistant" asks the main model about the open file (and
- * rewrites a selection for review); "References" turns DOIs, links, arXiv IDs or titles into .bib entries. Work on
- * the project's files is the agent workspace's.
+ * rewrites a selection for review); "References" turns DOIs, ISBNs, links, arXiv IDs, titles, formatted citations and
+ * pasted BibTeX or RIS into entries to check before they go in the .bib. Work on the project's files is the agent
+ * workspace's.
  */
 export default function Composer({
   open,
@@ -83,13 +109,22 @@ export default function Composer({
   const [newPersona, setNewPersona] = useState<string | undefined>();
   const providers = useProviders();
   const { preset } = useLivePreset(presetOf(providers, api.settings), api.settings.llmEndpoint);
-  const effortChoices = effortOptions(modelOf(preset, api.settings.llmModel));
+  // a chat not started yet keeps its model and effort here; a chat keeps its own, as a Spectrum agent thread does
+  const [newChoice, setNewChoice] = useState<TurnChoice>({});
   const { thread, threadRef, show, append, update } = useChatThread({
     projectId: api.projectId,
     notify: api.notify,
-    fresh: () => ({ mode, ...(newPersona && { persona: newPersona }) }),
+    fresh: () => ({ mode, ...(newPersona && { persona: newPersona }), ...newChoice }),
     onCreate: onChatIdChange
   });
+  const choice = turnChoice(preset, api.settings, thread ? { model: thread.model, effort: thread.effort } : newChoice);
+  const tuning: ConfigOption[] = choice.models.length ? [
+    { id: 'model', name: 'Model', category: 'model', currentValue: choice.model, options: choice.models.map(([value, name]) => ({ value, name })) },
+    ...(choice.efforts.length > 1 ? [{ id: 'effort', name: 'Thinking', category: 'thought_level', currentValue: choice.effort, options: choice.efforts.map(([value, name]) => ({ value, name })) }] : [])
+  ] : [];
+  const choose = (c: TurnChoice) => (thread ? update(thread, (chat) => ({ ...chat, ...c })) : setNewChoice((old) => ({ ...old, ...c })));
+  // the project's citation keys as the last look-up gave them, which a draft's key is checked against
+  const keysRef = useRef(new Set<string>());
   const [input, setInput] = useState('');
   // the history menu: every saved Ask and References chat, and the Edit chats from before 2.0
   const [history, setHistory] = useState(false);
@@ -100,8 +135,6 @@ export default function Composer({
   const [scope, setScope] = useState<TranslateScope>('selection');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const visionModeRef = useRef<VisionMode>('equation');
 
   const busy = !!thread && busyChats.includes(thread.id);
   const hasSelection = Boolean(api.selectionText);
@@ -169,22 +202,22 @@ export default function Composer({
     inputRef.current?.focus();
   };
 
-  const insertCite = async (key: string) => {
+  const insertCite = async (key: string, locator?: Locator | null) => {
     const a = latest.current;
     if (!isDocument(a.activePath)) {
       a.notify('Open a document to insert the citation.');
       return;
     }
-    a.insertAtCursor(await citationText(a, [key]), { afterSelection: true });
+    a.insertAtCursor(await citationText(a, [key], locator), { afterSelection: true });
   };
 
   const afterReferences = (results: ReferenceResult[], bibFile: string) => reloadBib(latest.current, results, bibFile);
 
-  /** Cites a single looked-up reference at the cursor, but only where the user has put it (and without taking focus from here). */
+  /** Cites a single reference the project has already at the cursor, but only where the user has put it (and without taking focus from here). */
   const autoCite = async (results: ReferenceResult[]) => {
     const [only] = results;
     const a = latest.current;
-    if (!a.settings.autoInsertCite || results.length !== 1 || !only.key || (only.status !== 'added' && only.status !== 'duplicate')) return;
+    if (!a.settings.autoInsertCite || results.length !== 1 || !only.key || only.status !== 'duplicate') return;
     const cite = await citationText(a, [only.key]);
     const line = isDocument(a.activePath) ? a.insertAtCursor(cite, { afterSelection: true, focus: false, placedOnly: true }) : null;
     a.notify(line ? `Inserted ${cite} in ${a.activePath.split('/').pop()}, line ${line}.` : `Click where ${cite} should go, then choose Insert citation.`);
@@ -197,18 +230,45 @@ export default function Composer({
     const base = append(threadRef.current, msg('user', text));
     markBusy(base.id, true);
     try {
+      // drafts: nothing is written until a card's Add
       const res = await resolveReferences({ projectId: api.projectId, input: text, llmConfig: api.llm.quick,
-        searchConfig: searchConfigFor(api.settings, api.llm.search) });
+        searchConfig: searchConfigFor(api.settings, api.llm.search), preview: true });
       if (!res.ok) throw new Error(res.error || 'The lookup failed.');
-      const references: ReferencesMeta = { results: res.results, bibFile: res.bibFile, bibIncluded: res.bibIncluded };
+      keysRef.current = new Set(res.keys || []);
+      const references: ReferencesMeta = { results: res.results, bibFile: res.bibFile, bibIncluded: res.bibIncluded, biblatex: res.biblatex, legacyUrls: res.legacyUrls };
       append(base, msg('assistant', summariseReferences(res.results, res.bibFile) || 'Nothing to add.', { references }));
-      await afterReferences(res.results, res.bibFile);
       await autoCite(res.results);
     } catch (err) {
       append(base, msg('assistant', `Couldn’t look that up: ${errorText(err)}`, { error: true }));
     } finally {
       markBusy(base.id, false);
     }
+  };
+
+  /** A blank draft to fill in (of type, for the manual sample) */
+  const newEntry = async (type?: string) => {
+    if (mode !== 'references') switchMode('references');
+    const base = append(threadRef.current?.mode === 'references' ? threadRef.current : null, msg('user', type ? `New @${type} entry` : 'New entry'));
+    markBusy(base.id, true);
+    try {
+      const res = await resolveReferences({ projectId: api.projectId, manual: true });
+      if (!res.ok) throw new Error(res.error || 'Couldn’t start an entry.');
+      keysRef.current = new Set(res.keys || []);
+      const results = type ? res.results.map((r) => ({ ...r, draft: { ...r.draft!, type } })) : res.results;
+      append(base, msg('assistant', 'Fill in the entry, then add it.', { references: { results, bibFile: res.bibFile, bibIncluded: res.bibIncluded, biblatex: res.biblatex, legacyUrls: res.legacyUrls } }));
+    } catch (err) {
+      append(base, msg('assistant', `Couldn’t start an entry: ${errorText(err)}`, { error: true }));
+    } finally {
+      markBusy(base.id, false);
+    }
+  };
+
+  /** One result of a References message replaced, as a look-up or an add gave it */
+  const replaceResult = (owner: ChatThread, index: number, resultIndex: number, next: ReferenceResult, extra: Partial<ReferencesMeta> = {}) => {
+    const message = owner.messages[index];
+    const refs = metaOf(message).references!;
+    const results = refs.results.map((r, i) => (i === resultIndex ? { ...next, input: r.input } : r));
+    updateMeta(owner, index, { ...metaOf(message), references: { ...refs, ...extra, results } });
   };
 
   const addCandidate = async (index: number, resultIndex: number, candidateId: string) => {
@@ -219,12 +279,32 @@ export default function Composer({
     markBusy(owner.id, true);
     try {
       const res = await addReference({ projectId: api.projectId, candidateId, bibFile: refs.bibFile,
-        searchConfig: searchConfigFor(api.settings, api.llm.search) });
-      if (!res.ok) throw new Error(res.error || 'The reference couldn’t be added.');
-      const results = refs.results.map((r, i) => (i === resultIndex ? { ...res.result, input: r.input } : r));
-      updateMeta(owner, index, { ...metaOf(message), references: { results, bibFile: res.bibFile, bibIncluded: res.bibIncluded } });
-      await afterReferences([res.result], res.bibFile);
+        searchConfig: searchConfigFor(api.settings, api.llm.search), preview: true });
+      if (!res.ok) throw new Error(res.error || 'The reference couldn’t be looked up.');
+      if (res.keys) keysRef.current = new Set(res.keys);
+      replaceResult(owner, index, resultIndex, res.result, { bibFile: res.bibFile, bibIncluded: res.bibIncluded, biblatex: res.biblatex, legacyUrls: res.legacyUrls });
       autoCite([res.result]);
+    } catch (err) {
+      latest.current.notify(errorText(err), 'error');
+    } finally {
+      markBusy(owner.id, false);
+    }
+  };
+
+  /** A checked draft written to the .bib, and cited at the cursor with its locator when insert says so */
+  const addDraft = async (index: number, resultIndex: number, draft: ReferenceDraft, insert: { locator: Locator | null } | null) => {
+    const owner = threadRef.current;
+    const message = owner?.messages[index];
+    const refs = message && metaOf(message).references;
+    if (!owner || !refs) return;
+    markBusy(owner.id, true);
+    try {
+      const res = await commitReference({ projectId: api.projectId, draft, bibFile: refs.bibFile, input: refs.results[resultIndex]?.input });
+      if (!res.ok) throw new Error(res.error || 'The reference couldn’t be added.');
+      replaceResult(owner, index, resultIndex, res.result, { bibFile: res.bibFile, bibIncluded: res.bibIncluded });
+      if (res.result.key) keysRef.current.add(res.result.key.toLowerCase());
+      await afterReferences([res.result], res.bibFile);
+      if (insert && res.result.key && (res.result.status === 'added' || res.result.status === 'duplicate')) await insertCite(res.result.key, insert.locator);
     } catch (err) {
       latest.current.notify(errorText(err), 'error');
     } finally {
@@ -287,11 +367,12 @@ export default function Composer({
         projectId: api.projectId,
         activePath,
         compileLog: api.compileLog,
-        llmConfig: api.llm.main,
+        // the chat's own model and effort, chosen in its message box
+        llmConfig: { ...api.llm.main, model: choice.model || api.llm.main.model },
         searchConfig: searchConfigFor(api.settings, api.llm.search),
         interaction: chat ? 'chat' : 'agent',
         history,
-        reasoningEffort: api.settings.reasoningEffort,
+        reasoningEffort: choice.effort,
         instructions: resolveInstructions(api.settings, personaId) || undefined
       });
       // the backend words AI failures as a reply; show them as errors, kept out of the history. A whole-project run
@@ -309,7 +390,7 @@ export default function Composer({
       changes = changes.filter((c) => c.original !== c.proposed);
       const said = assistantSaid(res, chat, changes.length > 0);
       const meta: MessageMeta = {
-        ...(changes.length && { changes: changes.map(({ filePath, proposed }) => ({ filePath, proposed })), quick: true }),
+        ...(changes.length && { changes: changes.map(({ filePath, proposed }) => ({ filePath, proposed })), quick: true, stat: changeStat(changes), ...(action && { action }) }),
         ...(!res.ok && { error: true }),
         ...(res.incomplete === 'cut' && { cut: true })
       };
@@ -322,35 +403,36 @@ export default function Composer({
     }
   };
 
-  const imageToLatex = async (file: File, visionMode: VisionMode) => {
-    const extra = input.trim();
-    const label = VISION_MODES.find(([v]) => v === visionMode)?.[1] || visionMode;
-    setInput('');
-    // a Typst document gets Typst
-    const typst = docKind(api.activePath) === 'typst';
-    const base = append(threadRef.current, msg('user', `Image → ${typst ? 'Typst' : 'LaTeX'} (${label}): ${file.name}${extra ? `\n\n${extra}` : ''}`));
-    markBusy(base.id, true);
-    try {
-      const res = await visionToLatex({ projectId: api.projectId, file, mode: visionMode, prompt: extra || (typst ? undefined : VISION_HINTS[visionMode]), llmConfig: api.llm.vision, kind: typst ? 'typst' : null });
-      if (!res.ok) throw new Error(res.error || 'The image couldn’t be read.');
-      const latex = (res.latex || '').trim();
-      append(base, msg('assistant', `\`\`\`${typst ? 'typst' : 'latex'}\n${latex}\n\`\`\``, { latex }));
-      if (res.assetPath) await latest.current.refreshTree();
-    } catch (err) {
-      append(base, msg('assistant', `Couldn’t convert the image: ${errorText(err)}`, { error: true }));
-    } finally {
-      markBusy(base.id, false);
-    }
-  };
-
-  const review = async (files: ProposedFile[]) => {
+  /** A suggestion's changes against the files as they are now, those that would still change something */
+  const openChangesOf = async (files: ProposedFile[]) => {
     const a = latest.current;
     const changes = await Promise.all(
-      files.map(async (f) => ({ filePath: f.filePath, original: await a.ensureFileContent(f.filePath).catch(() => ''), proposed: f.proposed, source: 'Assistant' }))
+      files.filter((f) => !f.status).map(async (f) => ({ filePath: f.filePath, original: await a.ensureFileContent(f.filePath).catch(() => ''), proposed: f.proposed, source: 'Assistant' }))
     );
     const open = changes.filter((c) => c.original !== c.proposed);
     if (!open.length) a.notify('These changes are already in your files.');
-    else a.proposeChanges(open, { open: true });
+    return open;
+  };
+
+  const review = async (files: ProposedFile[]) => {
+    const open = await openChangesOf(files);
+    if (open.length) latest.current.proposeChanges(open, { open: true });
+  };
+
+  /** Apply change on a suggestion's card: written after the "Before AI changes" checkpoint, as Review's Accept writes it */
+  const applySuggestion = async (index: number) => {
+    const owner = threadRef.current;
+    const message = owner?.messages[index];
+    const meta = message && metaOf(message);
+    if (!owner || !meta?.changes) return;
+    try {
+      const open = await openChangesOf(meta.changes);
+      const { applied } = open.length ? await latest.current.applyChanges(open) : { applied: [] };
+      const done = new Set(applied.map((c) => c.filePath));
+      if (done.size || !open.length) updateMeta(owner, index, { ...meta, changes: meta.changes.map((c) => (done.has(c.filePath) || !open.length ? { ...c, status: 'applied' as const } : c)) });
+    } catch (err) {
+      latest.current.notify(`Couldn’t apply the change: ${errorText(err)}`, 'error');
+    }
   };
 
   const send = (action?: QuickAction, language?: string) => {
@@ -364,63 +446,83 @@ export default function Composer({
   };
 
   const messages = thread?.messages || [];
-  const placeholder = mode === 'references' ? 'Paste a DOI, link, arXiv ID or title' : 'Ask anything';
+  const placeholder = mode === 'references' ? 'Paste a DOI, ISBN, link, arXiv ID, title, citation or BibTeX' : `Ask about ${api.activePath.split('/').pop() || 'your paper'}, or pick a quick action above`;
   // an Edit chat from before 2.0, whose suggested changes the agent workspace now looks after
   const editChat = mode === 'assistant' && isEditChat(messages);
+  const selectionLines = hasSelection ? api.selectionText.split('\n').length : 0;
+  const lastDraft = [...messages].reverse().flatMap((m) => metaOf(m).references?.results.filter((r) => r.status === 'draft') || [])[0];
+  const badge = mode === 'references'
+    ? lastDraft && sourceBadge(lastDraft)
+    : hasSelection ? { text: `${api.activePath.split('/').pop()} · ${plural(selectionLines, 'line')} selected`, tone: 'accent' } : null;
+  const cite = (key: string, locator: Locator | null) => citationText(latest.current, [key], locator);
 
   const renderReferences = (refs: ReferencesMeta, index: number) => {
     const cited = refs.results.some((r) => r.status === 'added' || r.status === 'duplicate');
     return (
       <div className="ref-cards">
-        {refs.results.map((r, ri) => (
-          <div key={ri} className={`ref-card ${r.status}`}>
-            {(r.status === 'added' || r.status === 'duplicate') && (
-              <>
-                <div className="ref-card-head">
-                  <span className={`badge ${r.status === 'added' ? 'success' : ''}`}>{r.status === 'added' ? 'Added' : 'Already there'}</span>
-                  <code className="ref-key">{r.key}</code>
-                </div>
-                {r.title && <div className="ref-title">{r.title}</div>}
-                {authorLine(r.authors, r.year) && <div className="ref-meta">{authorLine(r.authors, r.year)}</div>}
-                {r.status === 'duplicate' && (
-                  <div className="ref-meta">
-                    Already in {r.bibFile || refs.bibFile} as <code>{r.key}</code>
+        {refs.results.map((r, ri) =>
+          r.status === 'draft' ? (
+            <ReferenceDraftCard
+              key={`${index}-${ri}`}
+              result={r}
+              bibFile={refs.bibFile}
+              biblatex={!!refs.biblatex}
+              legacyUrls={!!refs.legacyUrls}
+              keys={keysRef.current}
+              busy={busy}
+              cite={cite}
+              onAdd={(draft, insert) => void addDraft(index, ri, draft, insert)}
+            />
+          ) : (
+            <div key={ri} className={`ref-card ${r.status}`}>
+              {(r.status === 'added' || r.status === 'duplicate') && (
+                <>
+                  <div className="ref-card-head">
+                    <span className={`badge ${r.status === 'added' ? 'success' : ''}`}>{r.status === 'added' ? 'Added' : 'Already there'}</span>
+                    <code className="ref-key">{r.key}</code>
                   </div>
-                )}
-                {r.bibtex && (
-                  <details className="ref-bibtex">
-                    <summary>BibTeX</summary>
-                    <pre>{r.bibtex}</pre>
-                  </details>
-                )}
-                {r.key && (
-                  <button className="btn small" onClick={() => insertCite(r.key!)}>
-                    <Icon name="text.insert" /> Insert citation
-                  </button>
-                )}
-              </>
-            )}
-            {r.status === 'choose' && (
-              <>
-                <div className="ref-meta">Several matches for “{r.input}”</div>
-                {(r.candidates || []).map((c) => (
-                  <div key={c.id} className="ref-candidate">
-                    <div className="grow">
-                      <div className="ref-title">{c.title}</div>
-                      <div className="ref-meta">{authorLine(c.authors, c.year, c.venue)}</div>
+                  {r.title && <div className="ref-title">{r.title}</div>}
+                  {authorLine(r.authors, r.year) && <div className="ref-meta">{authorLine(r.authors, r.year)}</div>}
+                  {r.status === 'duplicate' && (
+                    <div className="ref-meta">
+                      Already in {r.bibFile || refs.bibFile} as <code>{r.key}</code>
                     </div>
-                    <button className="btn small" disabled={busy} onClick={() => addCandidate(index, ri, c.id)}>Add</button>
-                  </div>
-                ))}
-              </>
-            )}
-            {(r.status === 'not_found' || r.status === 'error') && (
-              <div className="ref-meta">
-                <Icon name="exclamationmark.triangle" /> {r.message || `No match found for “${r.input}”.`}
-              </div>
-            )}
-          </div>
-        ))}
+                  )}
+                  {r.bibtex && (
+                    <details className="ref-bibtex">
+                      <summary>BibTeX</summary>
+                      <pre>{r.bibtex}</pre>
+                    </details>
+                  )}
+                  {r.key && (
+                    <button className="btn small outline" onClick={() => insertCite(r.key!)}>
+                      <Icon name="text.insert" /> Insert citation
+                    </button>
+                  )}
+                </>
+              )}
+              {r.status === 'choose' && (
+                <>
+                  <div className="ref-meta">Several matches for “{r.input}”</div>
+                  {(r.candidates || []).map((c) => (
+                    <div key={c.id} className="ref-candidate">
+                      <div className="grow">
+                        <div className="ref-title">{c.title}</div>
+                        <div className="ref-meta">{authorLine(c.authors, c.year, c.venue)}</div>
+                      </div>
+                      <button className="btn small outline" disabled={busy} onClick={() => addCandidate(index, ri, c.id)}>Choose</button>
+                    </div>
+                  ))}
+                </>
+              )}
+              {(r.status === 'not_found' || r.status === 'error') && (
+                <div className="ref-meta">
+                  <Icon name="exclamationmark.triangle" /> {r.message || `No match found for “${r.input}”.`}
+                </div>
+              )}
+            </div>
+          )
+        )}
         {cited && !refs.bibIncluded && (
           <div className="composer-hint">
             {docKind(api.mainFile) === 'markdown' ? (
@@ -435,6 +537,52 @@ export default function Composer({
     );
   };
 
+  /** A suggested edit, in the card a reference draft has: what changed and where, Apply, Review diff, and the agent */
+  const renderSuggestion = (meta: MessageMeta, content: string, index: number) => {
+    const files = meta.changes!;
+    const applied = files.every((f) => f.status);
+    const [icon, colour] = ACTION_LOOKS[meta.action || 'polish'];
+    const only = files.length === 1 ? files[0].filePath.split('/').pop() : '';
+    const where = only ? `${only}${meta.stat?.from ? `:${meta.stat.from}${meta.stat.to > meta.stat.from ? `–${meta.stat.to}` : ''}` : ''}` : plural(files.length, 'file');
+    return (
+      <div className="draft-card suggestion-card">
+        <div className="dc-bar">
+          <span className="dc-title">
+            <Icon name={icon} style={{ color: colour }} />
+            Suggested {meta.action ? SUGGESTED[meta.action] : 'changes'} · <code>{where}</code>
+          </span>
+          {applied ? <span className="badge success">Applied</span> : meta.stat && <span className="badge success">+{meta.stat.added} / −{meta.stat.removed} lines</span>}
+        </div>
+        {content && (
+          <div className="dc-body">
+            <Markdown>{content}</Markdown>
+          </div>
+        )}
+        <div className="dc-actions">
+          <button className="btn small outline" disabled={!thread} onClick={() => thread && onContinueInAgent(thread.id)}>
+            <Icon name="paperplane" style={{ color: LOGO[4] }} /> Continue in Spectrum agent
+          </button>
+          <div className="dc-buttons">
+            <button className="btn small outline" disabled={applied} onClick={() => review(files)}>Review diff</button>
+            <button className="btn small primary" disabled={applied || busy} onClick={() => void applySuggestion(index)}>
+              <Icon name="checkmark" /> Apply change
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const quickChip = (action: QuickAction, onClick?: () => void) => {
+    const [icon, colour] = ACTION_LOOKS[action];
+    const label = action === 'translate' ? 'Translate' : ACTION_VERBS[action];
+    return (
+      <button key={action} className="chip" disabled={busy || !api.activePath} onClick={onClick}>
+        <Icon name={icon} style={{ color: colour }} /> {label}
+      </button>
+    );
+  };
+
   return (
     <div className="composer-dock" hidden={!open}>
       <div className="composer">
@@ -446,7 +594,18 @@ export default function Composer({
               </button>
             ))}
           </div>
-          <span className="composer-title">{history ? 'History' : thread?.title}</span>
+          {badge && !history && <span className={`badge ${badge.tone} composer-badge`}>{badge.text}</span>}
+          <span className="composer-title">{history ? 'History' : badge ? '' : thread?.title}</span>
+          {mode === 'references' && !history && (
+            <>
+              <button className="btn small outline" disabled={busy} title="A blank entry to fill in yourself" onClick={() => void newEntry()}>
+                <Icon name="plus" /> New entry
+              </button>
+              <button className="btn small outline" title="Pick references from your Zotero library and cite them at the cursor" onClick={() => window.dispatchEvent(new Event(ZOTERO_CITE))}>
+                <Icon name="quote.opening" /> Zotero
+              </button>
+            </>
+          )}
           <button
             className={`icon-btn ${history ? 'active' : ''}`}
             title="History"
@@ -493,6 +652,51 @@ export default function Composer({
           </div>
         )}
 
+        {!history && mode === 'assistant' && (
+          <div className="composer-presets">
+            <span className="composer-presets-label">Quick actions:</span>
+            {(Object.keys(ACTION_VERBS) as (keyof typeof ACTION_VERBS)[]).map((action) => quickChip(action, () => send(action)))}
+            <MenuButton
+              label={
+                <>
+                  <Icon name={ACTION_LOOKS.translate[0]} style={{ color: ACTION_LOOKS.translate[1] }} /> Translate
+                </>
+              }
+              className="chip"
+              disabled={busy || !api.activePath}
+              items={[
+                ...LANGUAGES.map((language) => ({ label: language, onSelect: () => send('translate', language) })),
+                { separator: true },
+                { label: 'Scope', disabled: true },
+                { label: 'Selection', checked: translateScope === 'selection', disabled: !hasSelection, onSelect: () => setScope('selection') },
+                { label: 'Current file', checked: translateScope === 'file', onSelect: () => setScope('file') },
+                { label: 'Whole project', checked: translateScope === 'project', onSelect: () => setScope('project') }
+              ]}
+            />
+          </div>
+        )}
+        {!history && mode === 'references' && messages.length === 0 && (
+          <div className="composer-presets">
+            <span className="composer-presets-label">Try input:</span>
+            {SAMPLES.map(([label, sample]) => (
+              <button
+                key={label}
+                className={`chip ${sample !== null && input === sample ? 'on' : ''}`}
+                disabled={busy}
+                onClick={() => {
+                  if (sample === null) void newEntry('manual');
+                  else {
+                    setInput(sample);
+                    inputRef.current?.focus();
+                  }
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="composer-messages" ref={listRef} role="log" hidden={history}>
           {messages.length === 0 && (
             <div className="composer-welcome">
@@ -500,16 +704,16 @@ export default function Composer({
                 <>
                   <div className="composer-welcome-title">How can I help with your paper?</div>
                   <div>
-                    Ask a question about the open file. Select text first to polish, rewrite or translate it. For changes across the project, open the
-                    agent workspace. To add a citation, switch to References.
+                    Ask a question about the open file. A quick action works on the selection, or on the whole file when nothing is selected. For changes
+                    across the project, open the agent workspace. To add a citation, switch to References.
                   </div>
                 </>
               ) : (
                 <>
                   <div className="composer-welcome-title">Add a reference</div>
                   <div>
-                    Paste a DOI, a link, an arXiv ID or a paper title — one per line for several. Each is looked up online and added to your .bib
-                    with a key like Vaswani2017.
+                    Paste a DOI, an ISBN, a link, an arXiv ID, a title or a formatted citation, one per line for several, or BibTeX or RIS whole. Each is
+                    looked up and shown as an entry to check before it goes in your .bib, with a key like Vaswani2017.
                   </div>
                 </>
               )}
@@ -517,20 +721,17 @@ export default function Composer({
           )}
           {messages.map((m, i) => {
             const meta = metaOf(m);
+            const suggestion = m.role === 'assistant' && !!meta.changes?.length;
             return (
               <div key={i} className={`composer-msg ${m.role} ${meta.error ? 'error' : ''}`}>
-                {m.role === 'user' ? <div className="composer-bubble">{m.content}</div> : m.content && <Markdown>{m.content}</Markdown>}
+                {m.role === 'user' ? <div className="composer-bubble">{m.content}</div> : !suggestion && m.content && <Markdown>{m.content}</Markdown>}
                 {meta.references && renderReferences(meta.references, i)}
                 {meta.latex && (
-                  <button className="btn small" onClick={() => api.insertAtCursor(meta.latex!, { block: true })}>
+                  <button className="btn small outline" onClick={() => api.insertAtCursor(meta.latex!, { block: true })}>
                     <Icon name="text.insert" /> Insert at cursor
                   </button>
                 )}
-                {meta.changes && meta.changes.length > 0 && (
-                  <button className="btn small" onClick={() => review(meta.changes!)}>
-                    <Icon name="plus.forwardslash.minus" /> Review {plural(meta.changes.length, 'change')}
-                  </button>
-                )}
+                {suggestion && renderSuggestion(meta, m.content, i)}
               </div>
             );
           })}
@@ -557,124 +758,80 @@ export default function Composer({
           )}
         </div>
 
-        {mode === 'assistant' && hasSelection && (
-          <div className="composer-chips">
-            {(Object.keys(ACTION_VERBS) as (keyof typeof ACTION_VERBS)[]).map((action) => (
-              <button key={action} className="chip" disabled={busy} onClick={() => send(action)}>
-                {ACTION_VERBS[action]}
-              </button>
-            ))}
-            <MenuButton
-              label="Translate"
-              className="chip"
-              disabled={busy}
-              items={[
-                ...LANGUAGES.map((language) => ({ label: language, onSelect: () => send('translate', language) })),
-                { separator: true },
-                { label: 'Scope', disabled: true },
-                { label: 'Selection', checked: translateScope === 'selection', disabled: !hasSelection, onSelect: () => setScope('selection') },
-                { label: 'Current file', checked: translateScope === 'file', onSelect: () => setScope('file') },
-                { label: 'Whole project', checked: translateScope === 'project', onSelect: () => setScope('project') }
-              ]}
+        {mode === 'references' ? (
+          <div className="composer-resolve">
+            <textarea
+              ref={inputRef}
+              className="composer-input"
+              rows={2}
+              value={input}
+              placeholder={placeholder}
+              aria-label="References to look up"
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  send();
+                } else if (e.key === 'Escape') {
+                  onOpenChange(false);
+                }
+              }}
             />
+            <button className="btn primary composer-resolve-btn" disabled={busy || !input.trim()} onClick={() => send()}>
+              {busy ? <span className="spinner" /> : 'Resolve'}
+            </button>
           </div>
-        )}
-
-        <textarea
-          ref={inputRef}
-          className="composer-input"
-          rows={2}
-          value={input}
-          placeholder={placeholder}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send();
-            } else if (e.key === 'Escape') {
-              onOpenChange(false);
-            }
-          }}
-        />
-
-        <div className="composer-bar">
-          {mode === 'assistant' && (
-            <>
-              <MenuButton
-                icon="plus"
-                title="Attach"
-                className="icon-btn composer-attach"
-                disabled={busy}
-                items={VISION_MODES.map(([value, label, icon]) => ({
-                  label: `${label} from image…`,
-                  icon,
-                  onSelect: () => {
-                    visionModeRef.current = value;
-                    fileRef.current?.click();
-                  }
-                }))}
-              />
+        ) : (
+          <div className="composer-box">
+            <textarea
+              ref={inputRef}
+              className="composer-input"
+              rows={2}
+              value={input}
+              placeholder={placeholder}
+              aria-label="Message"
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  send();
+                } else if (e.key === 'Escape') {
+                  onOpenChange(false);
+                }
+              }}
+            />
+            {/* the first row wraps; the second never does, so Send is never pushed out */}
+            <div className="composer-context">
               {hasSelection && (
                 <button
-                  className={`chip ${useSelection ? 'active' : ''}`}
+                  className={`chip ${useSelection ? 'on' : ''}`}
                   title="Send the selected text with your message"
                   aria-pressed={useSelection}
                   onClick={() => setUseSelection((v) => !v)}
                 >
-                  <Icon name="text.cursor" /> Use selection
+                  <Icon name="text.cursor" /> Selection · {plural(selectionLines, 'line')}
                 </button>
               )}
               <PersonaPicker value={personaId} onChange={choosePersona} onManage={onManagePersonas} />
               {rulesOn && (
                 <button
-                  className="chip active"
+                  className="chip on"
                   title={`Every request here is given your ${INSTRUCTIONS_FILE} as your standing instructions for this project, with what Spectrum remembers for it. Click to open it.`}
-                  aria-label={INSTRUCTIONS_FILE}
                   onClick={() => void api.openFile(INSTRUCTIONS_FILE)}
                 >
-                  {/* its icon alone beside Use selection, so the bar keeps its room */}
-                  <Icon name="list.clipboard" />
-                  {!hasSelection && ` ${INSTRUCTIONS_FILE}`}
+                  <Icon name="list.clipboard" /> {INSTRUCTIONS_FILE}
                 </button>
               )}
-            </>
-          )}
-          {mode === 'references' && (
-            <button className="chip" title="Pick references from your Zotero library and cite them at the cursor" onClick={() => window.dispatchEvent(new Event(ZOTERO_CITE))}>
-              <Icon name="quote.opening" /> Cite from Zotero
-            </button>
-          )}
-          <span className="grow" />
-          {mode === 'assistant' && (
-            <>
-              <span id="composer-effort-label" hidden>
-                Reasoning effort
-              </span>
-              <Select
-                labelId="composer-effort-label"
-                className="composer-effort"
-                value={effortChoices.some(([value]) => value === api.settings.reasoningEffort) ? api.settings.reasoningEffort : 'default'}
-                options={effortChoices.map(([value, label]): [string, string] => [value, `Thinking: ${label}`])}
-                onChange={(value) => updateSettings({ reasoningEffort: value as typeof api.settings.reasoningEffort })}
-                title="How long the model may think before answering"
-              />
-            </>
-          )}
-          <button className="composer-send" title="Send (↵)" aria-label="Send" disabled={busy || !input.trim()} onClick={() => send()}>
-            {busy ? <span className="spinner" /> : <Icon name="arrow.up" />}
-          </button>
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = '';
-            if (file) imageToLatex(file, visionModeRef.current);
-          }}
-        />
+            </div>
+            <div className="composer-bar">
+              <span className="grow" />
+              <AgentTuning options={tuning} modes={null} disabled={busy} onChange={(id, value) => choose(id === 'model' ? { model: value } : { effort: value as TurnChoice['effort'] })} more={{ label: 'Models and prices…', onSelect: () => api.openSettings('models') }} />
+              <button className="composer-send" title="Send (↵)" aria-label="Send" disabled={busy || !input.trim()} onClick={() => send()}>
+                {busy ? <span className="spinner" /> : <Icon name="arrow.up" />}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

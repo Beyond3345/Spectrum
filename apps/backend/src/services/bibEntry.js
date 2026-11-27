@@ -100,7 +100,10 @@ export function formatEntry({ type, key, fields }, { biblatex = false, legacyUrl
     }
     if (!f.year && /^\d{4}/.test(f.date || '')) f.year = f.date.slice(0, 4);
     const notes = [f.version && `Version ${f.version}`, f.urldate && `Accessed ${f.urldate}`].filter(Boolean);
-    if (notes.length && !f.note) f.note = notes.join('. ');
+    if (notes.length && !f.note) {
+      f.note = notes.join('. ');
+      delete f.urldate;
+    }
     if (legacyUrls && (type === 'online' || type === 'software') && f.url) {
       f.howpublished ??= `\\url{${f.url}}`;
       delete f.url;
