@@ -1369,6 +1369,9 @@ const LINES: [TableLines, string][] = [
   ['none', 'None']
 ];
 
+/** how a column's cells line up in the grid, by its LaTeX letter */
+const alignOf = (letter: string) => ({ c: 'center', r: 'right', S: 'right' } as Record<string, 'center' | 'right'>)[letter] ?? 'left';
+
 const blankGrid = (rows: number, cols: number) => Array.from({ length: rows }, () => Array<string>(cols).fill(''));
 
 function InsertTable() {
@@ -1400,6 +1403,29 @@ function InsertTable() {
   /** threeparttable: notes under the table */
   const [withNotes, setWithNotes] = useState(false);
   const [notes, setNotes] = useState('');
+  /** a cell (or the buttons for it) has the focus: its lines and merges show under the grid */
+  const [editing, setEditing] = useState(false);
+  const editRef = useRef<HTMLDivElement>(null);
+  /**
+   * The focus left the grid: the buttons go once the click that moved it is over, so what was clicked below them doesn't
+   * move out from under the pointer, and not at all when the focus came back.
+   */
+  const leaveCell = () => {
+    const hide = () => window.setTimeout(() => !editRef.current?.contains(document.activeElement) && setEditing(false));
+    if (pressed.current) window.addEventListener('pointerup', hide, { once: true });
+    else hide();
+  };
+  const pressed = useRef(false);
+  useEffect(() => {
+    const down = () => (pressed.current = true);
+    const up = () => (pressed.current = false);
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointerup', up, true);
+    return () => {
+      window.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('pointerup', up, true);
+    };
+  }, []);
   const [busy, setBusy] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const focusAfter = useRef<[number, number] | null>(null);
@@ -1446,7 +1472,10 @@ function InsertTable() {
   const toggleShortRule = () =>
     setPartRules((prev) => (shortRule ? prev.filter((p) => p !== shortRule) : [...prev, { row: block.r + block.rows - 1, from: block.c, to: block.c + block.cols - 1 }]));
   const flip = (edge: string) => setToggled((prev) => (prev.includes(edge) ? prev.filter((e) => e !== edge) : [...prev, edge]));
-  const text = kind === 'typst' ? tableTypst(model) : kind === 'markdown' ? tableMarkdown(model) : tableLatex(model);
+  const written = kind === 'typst' ? tableTypst(model) : kind === 'markdown' ? tableMarkdown(model) : tableLatex(model);
+  // the source as typed over in Source, until the grid or an option writes it again
+  const [typed, setTyped] = useState<{ over: string; as: string } | null>(null);
+  const text = typed && typed.over === written ? typed.as : written;
   const docOpen = isDocument(api.activePath);
 
   const focusCell = (r: number, c: number) => gridRef.current?.querySelector<HTMLInputElement>(`[data-cell="${r}-${c}"]`)?.focus();
@@ -1553,32 +1582,47 @@ function InsertTable() {
           />
         </span>
       </div>
-      <div className="table-grid-scroll">
+      <div className="table-edit" ref={editRef} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && leaveCell()}>
+      <div
+        className="table-grid-scroll"
+        title={`Tab moves on, ${IS_WINDOWS ? 'Enter' : 'Return'} moves down. Paste rows from ${IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file into a cell.${kind === 'markdown' ? '' : ' Click between cells to add or remove a line.'}`}
+      >
         {/* cells sit at even grid lines, with a 10 px gap row or column around each for the lines */}
         <div
           className="table-grid"
           ref={gridRef}
           style={{ gridTemplateColumns: `10px repeat(${cols}, minmax(80px, 1fr) 10px)`, gridTemplateRows: `10px repeat(${cells.length}, 30px 10px)` }}
         >
-          {/* each column's L, C or R (X, S) at the end of its first cell: a click moves on to the next */}
+          {/* each column's L, C or R (X, S) just after the text of its first cell, which an unseen copy of that text in the
+              cell's place puts there; a click moves it on to the next */}
           {align.map((value, c) => {
             const choices = [...(tableEnv === 'tabular' ? ALIGN : ALIGN_X), ...(latex ? [NUMBERS] : [])];
             const at = Math.max(0, choices.findIndex(([v]) => v === value));
             const [, letter, name] = choices[at];
             const next = choices[(at + 1) % choices.length];
+            // under a merged first cell, the column keeps its letter at its own place
+            const merge = mergeAt(fitted, 0, c);
+            const own = !merge || merge.c === c;
             return (
-              <button
+              <div
                 key={`align-${c}`}
-                type="button"
-                className="table-align"
-                style={{ gridRow: 2, gridColumn: 2 * c + 2 }}
-                aria-label={`Column ${c + 1} alignment: ${name}`}
-                title={`${name}. Click for ${next[2]}`}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setChosen((prev) => Object.assign([...prev], { [c]: next[0] }))}
+                className={`input first table-head-mirror ${header ? 'head' : ''}`}
+                style={{ gridRow: 2, gridColumn: own ? `${2 * c + 2} / span ${2 * (merge?.cols ?? 1) - 1}` : 2 * c + 2, textAlign: own ? alignOf(value) : 'right' }}
               >
-                {letter}
-              </button>
+                <span className="mirror-text">
+                  <span className="mirror-copy">{own ? cells[0][c] : ''}</span>
+                  <button
+                    type="button"
+                    className="table-align"
+                    aria-label={`Column ${c + 1} alignment: ${name}`}
+                    title={`${name}. Click for ${next[2]}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setChosen((prev) => Object.assign([...prev], { [c]: next[0] }))}
+                  >
+                    {letter}
+                  </button>
+                </span>
+              </div>
             );
           })}
           {cells.map((row, r) =>
@@ -1593,13 +1637,16 @@ function InsertTable() {
                   style={{
                     gridRow: `${2 * r + 2} / span ${2 * (merge?.rows ?? 1) - 1}`,
                     gridColumn: `${2 * c + 2} / span ${2 * (merge?.cols ?? 1) - 1}`,
-                    textAlign: ({ c: 'center', r: 'right', S: 'right' } as Record<string, 'center' | 'right'>)[align[c]] ?? 'left'
+                    textAlign: alignOf(align[c])
                   }}
                   data-cell={`${r}-${c}`}
                   aria-label={`Row ${r + 1}, column ${c + 1}`}
                   value={cell}
                   onChange={(e) => setCell(r, c, e.target.value)}
-                  onFocus={() => setAt([r, c])}
+                  onFocus={() => {
+                    setAt([r, c]);
+                    setEditing(true);
+                  }}
                   onKeyDown={(e) => onCellKey(e, r, c)}
                   onPaste={(e) => onCellPaste(e, r, c)}
                 />
@@ -1646,60 +1693,70 @@ function InsertTable() {
             ))}
         </div>
       </div>
-      <div className="field-hint">
-        Tab moves on, {IS_WINDOWS ? 'Enter' : 'Return'} moves down. Paste rows from {IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file into a cell.{' '}
-        {kind === 'markdown' ? 'Markdown tables have no lines of their own.' : 'Click between cells to add or remove a line.'}
-      </div>
-      {kind !== 'markdown' && (
-        <div className="field">
-          <span className="field-label" id={`${id}-lines-at`}>
-            Lines at row {atRow + 1} and column {atCol + 1}
-          </span>
-          <div className="chip-row" role="group" aria-labelledby={`${id}-lines-at`}>
-            {(
-              [
-                [`Above row ${atRow + 1}`, 'h', atRow],
-                [`Below row ${atRow + 1}`, 'h', atRow + 1],
-                [`Before column ${atCol + 1}`, 'v', atCol],
-                [`After column ${atCol + 1}`, 'v', atCol + 1]
-              ] as const
-            ).map(([name, way, i], k) => (
+      {/* the focused cell's lines and merges, while a cell or these buttons have the focus */}
+      {editing && (
+        <div className="table-cell-tools">
+          <span className="table-cell-name">{merged ? `Merged at ${block.r + 1}, ${block.c + 1}` : `Cell ${atRow + 1}, ${atCol + 1}`}</span>
+          {kind !== 'markdown' && (
+            <span className="chip-row" role="group" aria-label={`Lines at row ${atRow + 1} and column ${atCol + 1}`}>
+              {(
+                [
+                  ['Above', `Line above row ${atRow + 1}`, 'h', atRow],
+                  ['Below', `Line below row ${atRow + 1}`, 'h', atRow + 1],
+                  ['Before', `Line before column ${atCol + 1}`, 'v', atCol],
+                  ['After', `Line after column ${atCol + 1}`, 'v', atCol + 1]
+                ] as const
+              ).map(([word, name, way, i], k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`chip ${rules[way][i] ? 'on' : ''}`}
+                  aria-label={`${name}${rules[way][i] === 2 ? ' (double)' : ''}`}
+                  title={name}
+                  aria-pressed={!!rules[way][i]}
+                  disabled={way === 'v' && lines === 'booktabs'}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => flip(edges[way][i])}
+                >
+                  {word}
+                  {rules[way][i] === 2 && ' (double)'}
+                </button>
+              ))}
+            </span>
+          )}
+          <span className="chip-row" role="group" aria-label={merged ? 'Merged cells' : `Cell at row ${atRow + 1}, column ${atCol + 1}`}>
+            <button type="button" className="chip" disabled={block.c + block.cols >= cols || kind === 'markdown'} onMouseDown={(e) => e.preventDefault()} onClick={() => mergeBy(0, 1)}>
+              Merge right
+            </button>
+            <button type="button" className="chip" disabled={block.r + block.rows >= cells.length || kind === 'markdown'} onMouseDown={(e) => e.preventDefault()} onClick={() => mergeBy(1, 0)}>
+              Merge down
+            </button>
+            <button
+              type="button"
+              className="chip"
+              disabled={!merged}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setMerges((prev) => prev.filter((g) => !(g.r === block.r && g.c === block.c)))}
+            >
+              Split
+            </button>
+            {kind !== 'markdown' && (
               <button
-                key={k}
                 type="button"
-                className={`chip ${rules[way][i] ? 'on' : ''}`}
-                aria-pressed={!!rules[way][i]}
-                disabled={way === 'v' && lines === 'booktabs'}
-                onClick={() => flip(edges[way][i])}
+                className={`chip ${shortRule ? 'on' : ''}`}
+                aria-pressed={!!shortRule}
+                disabled={block.r + block.rows >= cells.length}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={toggleShortRule}
+                title="A rule under just this cell’s columns"
               >
-                {name}
-                {rules[way][i] === 2 && ' (double)'}
+                Short rule
               </button>
-            ))}
-          </div>
+            )}
+          </span>
+          {kind === 'markdown' && <span className="field-hint">Markdown tables can’t merge cells.</span>}
         </div>
       )}
-      <div className="field">
-        <span className="field-label" id={`${id}-merge`}>
-          {merged ? `Merged cells at row ${block.r + 1}, column ${block.c + 1}` : `Cell at row ${atRow + 1}, column ${atCol + 1}`}
-        </span>
-        <div className="chip-row" role="group" aria-labelledby={`${id}-merge`}>
-          <button type="button" className="chip" disabled={block.c + block.cols >= cols || kind === 'markdown'} onClick={() => mergeBy(0, 1)}>
-            Merge right
-          </button>
-          <button type="button" className="chip" disabled={block.r + block.rows >= cells.length || kind === 'markdown'} onClick={() => mergeBy(1, 0)}>
-            Merge down
-          </button>
-          <button type="button" className="chip" disabled={!merged} onClick={() => setMerges((prev) => prev.filter((g) => !(g.r === block.r && g.c === block.c)))}>
-            Split
-          </button>
-          {kind !== 'markdown' && (
-            <button type="button" className={`chip ${shortRule ? 'on' : ''}`} aria-pressed={!!shortRule} disabled={block.r + block.rows >= cells.length} onClick={toggleShortRule}>
-              Short rule below
-            </button>
-          )}
-        </div>
-        {kind === 'markdown' && <div className="field-hint">Markdown tables can’t merge cells.</div>}
       </div>
       {/* style and switches, grouped */}
       <div className="float-options">
@@ -1772,23 +1829,32 @@ function InsertTable() {
         <Toggle label="Float, with a caption and label" checked={float} onChange={setFloat} />
         {float && latex && !long && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
         {float && kind === 'typst' && <TypstPlacementField value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
-      </div>
-      {float && (
-        <>
-          <div className="field">
-            <label htmlFor={`${id}-caption`}>Caption</label>
-            <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Caption, shown above the table" />
+        {float && (
+          <div className="option-row option-fields">
+            <label className="option-name" htmlFor={`${id}-caption`}>
+              Caption
+            </label>
+            <input id={`${id}-caption`} className="input" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Shown above the table" />
+            <label className="option-name" htmlFor={`${id}-label`}>
+              Label
+            </label>
+            <input id={`${id}-label`} className="input mono" value={label ?? tableTitle(caption, cells).label} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
           </div>
-          <div className="field">
-            <label htmlFor={`${id}-label`}>Label</label>
-            <input id={`${id}-label`} className="input" value={label ?? tableTitle(caption, cells).label} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
-          </div>
-        </>
-      )}
-      <div className="field">
-        <label htmlFor={`${id}-latex`}>Source</label>
-        <textarea id={`${id}-latex`} className="input mono table-latex" readOnly wrap="off" rows={Math.min(16, text.split('\n').length)} value={text} />
+        )}
       </div>
+      <details className="table-source">
+        <summary>Source</summary>
+        <textarea
+          aria-label="Source"
+          className="input mono table-latex"
+          wrap="off"
+          spellCheck={false}
+          rows={Math.min(16, text.split('\n').length)}
+          value={text}
+          onChange={(e) => setTyped({ over: written, as: e.target.value })}
+        />
+        {typed && typed.over === written && <div className="field-hint">Typed over: Insert table takes it as it is here, until a change to the grid or an option writes it again.</div>}
+      </details>
       {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
       <div className="table-footer">
         <span className="field-hint">
@@ -1816,6 +1882,12 @@ function TableHelp() {
     <details className="tool-help">
       <summary>What these options mean</summary>
       <dl>
+        <dt>The grid</dt>
+        <dd>
+          Tab moves to the next cell and {IS_WINDOWS ? 'Enter' : 'Return'} moves down. Rows copied from {IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file and pasted into a cell fill the
+          grid from there, as does Paste CSV. Click between two rows or two columns, or along an edge, to add or remove a line across the table; while a cell is being edited, the
+          buttons under the grid do the same for it and merge it with its neighbours.
+        </dd>
         <dt>tabular</dt>
         <dd>
           LaTeX’s own table. Each column is as wide as its widest cell, so long text runs off the page unless it is short. Works everywhere, with no package. Best for tables of short
