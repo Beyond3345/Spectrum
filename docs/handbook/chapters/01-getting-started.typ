@@ -10,7 +10,7 @@ Spectrum runs on macOS 13.5 or later on Apple silicon, and on Windows 10 or 11 o
 
 - Markdown needs pandoc, which #menu[Settings][Engines][Markdown] downloads on request (@sec-writing-engines),
 - the AI features need an API key from a model provider or an OpenAI-compatible server of your own (@ch-assistant),
-- the table to chart tool and DDGS web search need Python 3 with matplotlib and `ddgs` respectively and
+- DDGS web search needs Python 3 with `ddgs` and
 - converting a paper from its PDF needs an account with one of the PDF parsers that @ch-assistant lists.
 
 === macOS

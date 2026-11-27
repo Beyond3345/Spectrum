@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import os from 'os';
 import { searchArxiv, buildArxivBibtex } from './arxivService.js';
 import { runSpawn } from './compileService.js';
-import { resolvePythonExecutable } from './plotService.js';
+import { resolvePythonExecutable } from './python.js';
 import { baseKey, detectInput, issuedFromDate, parseName, recordFor, summaryOf, toBibtex, yearOf } from './referenceService.js';
 import { nativeWebSearch } from './llmService.js';
 import { extractJSON } from './transferAgent/utils.js';

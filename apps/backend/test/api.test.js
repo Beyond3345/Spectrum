@@ -84,7 +84,6 @@ function startMockLLM() {
           return reply({ error: { message: 'Unrecognized request argument supplied: reasoning_effort' } }, 400);
         }
         // a chart's code that, were it run, would leave a mark
-        if (payload.model === 'plotter') return reply({ role: 'assistant', content: `\`\`\`python\nopen(${JSON.stringify(path.join(tmp, 'plot-code-ran'))}, 'w').write('ran')\nplt.bar([1, 2], [3, 4])\n\`\`\`` });
         const toolResults = payload.messages.filter((m) => m.role === 'tool').length;
         if (payload.tools && toolResults === 0) {
           return reply({ role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: '{"path":"main.tex"}' } }] });
@@ -1079,50 +1078,9 @@ test('image → LaTeX never replaces a project image and only keeps figures', as
   const typstFigure = await visionLatex(p.id, 'figure', 'image.png', 'TYPST-FIGURE', 'mock', 'typst');
   assert.match(mockCalls[1].messages[1].content[0].text, new RegExp(`#figure\\(image.*"/${typstFigure.assetPath}"|"/${typstFigure.assetPath}".*#figure`));
   assert.match(mockCalls[1].messages[1].content[0].text, /alt: /);
+  // Table to chart is gone: charts are made with Plot in the diagram composer
+  assert.equal((await api('/api/plot/run', { method: 'POST', body: { projectId: p.id } })).status, 404);
 
-  const plot = (await api('/api/plot/from-table', { method: 'POST', body: { projectId: p.id, tableLatex: 'a & b' } })).json;
-  assert.equal(plot.ok, false);
-  assert.ok(!existsSync(path.join(p.path, 'assets', 'plots')));
-});
-
-test('Table to chart returns the model’s code to be shown, and runs nothing', async () => {
-  const p = await newProject('Chart');
-  const tableLatex = '\\begin{tabular}{lr}\nA & 3 \\\\\nB & 5 \\\\\n\\end{tabular}';
-  const res = (await api('/api/plot/from-table', { method: 'POST', body: { projectId: p.id, tableLatex, chartType: 'bar', llmConfig: llmConfig('plotter') } })).json;
-  assert.ok(res.ok, res.error);
-  assert.match(res.code, /^open\(.*\)\.write\('ran'\)\nplt\.bar/);
-  assert.ok(!existsSync(path.join(tmp, 'plot-code-ran')));
-  assert.ok(!existsSync(path.join(p.path, 'assets')));
-  // what went wrong goes back to the model with the code, for code that works
-  await api('/api/plot/from-table', { method: 'POST', body: { projectId: p.id, tableLatex, error: 'NameError: x', code: 'plt.bar(x)', llmConfig: llmConfig('plotter') } });
-  assert.match(mockCalls.at(-1).messages[1].content, /runtime_error:\nNameError: x\nprevious_code:\nplt\.bar\(x\)/);
-  assert.equal((await api('/api/plot/run', { method: 'POST', body: { projectId: p.id, tableLatex, code: '  ' } })).json.ok, false);
-});
-
-const plotSkip = !['darwin', 'win32'].includes(process.platform) ? 'macOS and Windows only'
-  : (() => {
-    try {
-      execFileSync(process.env.SPECTRUM_PYTHON || (process.env.CONDA_PREFIX ? path.join(process.env.CONDA_PREFIX, WINDOWS ? 'python.exe' : 'bin/python') : WINDOWS ? 'python' : 'python3'), ['-c', 'import matplotlib'], { stdio: 'ignore' });
-      return false;
-    } catch {
-      return 'no Python with matplotlib';
-    }
-  })();
-test('Run this code saves the chart in assets/plots, never over a file there', { skip: plotSkip }, async () => {
-  const p = await newProject('Chart run');
-  const tableLatex = '\\begin{tabular}{lr}\nA & 3 \\\\\nB & 5 \\\\\n\\end{tabular}';
-  await writeFile(p.id, 'assets/plots/scores.png', 'mine');
-  const run = (body) => api('/api/plot/run', { method: 'POST', body: { projectId: p.id, tableLatex, ...body } });
-  const res = (await run({ code: 'plt.bar([r[0] for r in rows], [float(r[1]) for r in rows])', filename: 'scores.png' })).json;
-  assert.ok(res.ok, res.error);
-  assert.equal(res.assetPath, 'assets/plots/scores-2.png');
-  assert.equal(await readFile(p.id, 'assets/plots/scores.png'), 'mine');
-  assert.equal((await fs.readFile(path.join(p.path, res.assetPath))).subarray(1, 4).toString(), 'PNG');
-  const pdf = (await run({ code: 'plt.bar([1], [1])', filename: 'scores.pdf' })).json;
-  assert.equal(pdf.assetPath, 'assets/plots/scores.pdf');
-  const failed = (await run({ code: 'plt.bar(nope)', filename: 'bad.png' })).json;
-  assert.match(failed.error, /^Line 1: NameError/);
-  assert.ok(!existsSync(path.join(p.path, 'assets/plots/bad.png')));
 });
 
 test('create and rename never replace another file, in any letter case', async () => {

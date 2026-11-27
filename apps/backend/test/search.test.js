@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { resolvePythonExecutable } from '../src/services/plotService.js';
+import { resolvePythonExecutable } from '../src/services/python.js';
 import { searchDdgs, searchOpenAlex, toResult, upgradeResult, webSearch } from '../src/services/searchService.js';
 
 // Every request goes to the first route whose pattern matches its URL; anything else is a 404.

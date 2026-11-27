@@ -20,7 +20,7 @@ Labels, titles and legends are LaTeX, so `$v_C(t)$` prints as maths. A `%` in th
 
 == Series <sec-plots-series>
 
-A series is one thing drawn on the axes, such as a curve, a set of points or a field. #ui[Add a series] adds a function series, and the bin beside each series removes it. The menu at the top of a series sets its kind, as shown in @fig-plots-kinds.
+A series is one thing drawn on the axes, such as a curve, a set of points or a field. #ui[Add a series] adds a function series, #ui[Import table…] adds series from a table (@sec-plots-import), and the bin beside each series removes it. The menu at the top of a series sets its kind, as shown in @fig-plots-kinds.
 
 #grid(
   columns: (1.15fr, 1fr),
@@ -86,6 +86,28 @@ The columns are named by the file's first line. A file whose first line is numbe
   [A data file series from a heat exchanger lab (left), and the plot of two such series with error bars and the legend below in a row (right).],
   columns: (1fr, 1.1fr),
 ) <fig-plots-data>
+
+=== Importing a table <sec-plots-import>
+
+#ui[Import table…], under #ui[Add a series], makes series from a table, so a table in the paper becomes a chart without typing its numbers again.
+
+#howto[plot a table from the document][
++ Click #ui[Import table…]
++ Choose the table under #ui[Table], or click #ui[CSV file…] to read a file from the computer
++ Check the first rows shown, and whether #ui[The first row names the columns]
++ Choose the column for $x$ under #ui[x from] and tick the columns under #ui[A series for each of]
++ Click #ui[Import]
+]
+
+The list holds every table in the project's LaTeX, Typst and Markdown documents: a `tabular`, `tabularx` or `longtable`, a Typst `#table` or a Markdown pipe table, each named by its file and its caption, or its first row when it has none. The document open in the editor comes first, marked #ui[(open)], and is read as it is there, with changes not yet saved. A CSV file is split by commas or tabs. Rules, merged cells, bold and maths are read through, so `$0.19$` and `\num{0.19}` are the number 0.19.
+
+Each column ticked becomes a series of typed points (@fig-plots-import), which can then be changed like any other. A cell that is not a number is left out. When the $x$ column holds words, such as the names of methods, the points go at 1, 2, 3 and the words become the ticks of the $x$ axis, and a single series is drawn as bars. The column names fill the axis titles and, for several series, the legend, where the titles were still the starting $x$ and $y$. Importing into a new plot replaces its first, untouched series. The plot keeps its own copy of the numbers, so a later change to the table does not reach it.
+
+#shots(
+  ("figures/10-plots/import-table.png", "figures/10-plots/import-table-preview.png"),
+  [#ui[Import a table] with a table from the open document, left, and the plot of its two columns of numbers against the methods, right.],
+  columns: (1fr, 1fr),
+) <fig-plots-import>
 
 === Parametric, polar and piecewise
 

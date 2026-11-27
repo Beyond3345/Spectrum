@@ -43,10 +43,6 @@ Applications opened from Finder do not receive the `PATH` that Terminal uses. Sp
 
 The spell checker is a compiled add-on and the grammar checker a WebAssembly module, both loaded by the backend when they are first needed. If one cannot load, the editor shows the reason once and carries on without it. The details are in the backend log, at `~/Library/Logs/com.beyond3345.spectrum/backend.log` in the app. Rebuilding with `npm run native:build` fixes a missing or damaged file in a copy built from source.
 
-### The table to chart tool fails
-
-The tool runs Python with matplotlib. Install it with `pip install matplotlib`, or set `SPECTRUM_PYTHON` to a Python that already has it.
-
 ## Acknowledgements and licence
 
 Spectrum is based on OpenPrism by OpenDCAI. Many ideas in Spectrum's later versions, such as the agent workspace, the preflight checks, Zotero and source control, were inspired by [Oleafly](https://github.com/Oleafly/Oleafly) by Prajwal Murthy and contributors, and the circuit drawing in the diagram composer by [CircuiTikZ-Designer](https://github.com/Circuit2TikZ/CircuiTikZ-Designer). Thank you to both teams for building them in the open. Oleafly is released under the GNU Affero General Public License and CircuiTikZ-Designer under the GNU General Public License, so Spectrum learns from their designs but contains none of their code. Spectrum uses CodeMirror, PDF.js, Fastify, LangGraph and Tauri, runs TexLab beside it as a separate program, checks spelling with Hunspell (through a binding of Spectrum's own), SCOWL and AussieDic and grammar with Harper, and bundles the JetBrains Mono, Fira Code, IBM Plex Mono and Source Code Pro fonts. The editor themes reuse the colours of the themes they are named after. Their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The interface icons are drawn from Apple's SF Symbols, which are licensed for use in applications on Apple platforms.

@@ -1895,8 +1895,8 @@ span.log-location {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 120px;
+  gap: 6px;
+  min-height: 96px;
   padding: 16px;
   border: 1.5px dashed var(--border-strong);
   border-radius: var(--radius-card);
@@ -1917,6 +1917,48 @@ span.log-location {
 
 .drop-zone > .sf {
   color: var(--text-tertiary);
+}
+
+.drop-note {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+/* the card title's control or count, at its end */
+.tool-card-title .tool-card-end {
+  margin-left: auto;
+  font-weight: 400;
+}
+
+/* a card's options grouped in an inset, a hairline between them */
+.float-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+}
+
+.float-options > * + .checkbox-row,
+.float-options > * + .field,
+.float-options > .checkbox-row + * {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* a word in running text that does something, as the chart pointer under Insert table */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
 }
 
 .drop-preview {
@@ -1940,18 +1982,6 @@ span.log-location {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
-}
-
-.plot-preview {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.plot-preview img {
-  border: 1px solid var(--border);
-  border-radius: 8px;
 }
 
 .figure-grid {
@@ -1995,11 +2025,36 @@ span.log-location {
   object-fit: contain;
 }
 
+/* the whole name, over as many lines as it takes */
 .figure-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-size: 11.5px;
+  line-height: 1.3;
+}
+
+/* a tile inserts; its corner button previews */
+.figure-tile-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.figure-tile-wrap > .figure-tile {
+  flex: 1;
+}
+
+.figure-tile-wrap > .icon-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+}
+
+.figure-tile-wrap:hover > .icon-btn,
+.figure-tile-wrap > .icon-btn:focus-visible {
+  opacity: 1;
 }
 
 .figure-large {
@@ -2126,12 +2181,26 @@ span.log-location {
   width: 100%;
 }
 
-.table-grid .popup-button {
-  width: 100%;
-  height: 28px;
-  padding: 0 8px;
-  font-size: 12px;
-  font-weight: 400;
+/* a column's L, C and R (X, S) over it */
+.table-align {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* in a narrow column the letters wrap rather than run into the next */
+.table-align .segmented {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: center;
+  border-radius: var(--radius-control);
+}
+
+.table-align .segmented.small .segment {
+  min-width: 20px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
 }
 
 .table-grid .input {
@@ -2233,7 +2302,6 @@ span.log-location {
 }
 
 .table-size {
-  margin-left: auto;
   color: var(--text-tertiary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -2792,32 +2860,6 @@ textarea.table-latex {
 .placement-toggles .segment:disabled {
   opacity: 0.35;
   cursor: default;
-}
-
-/* what each letter means, always shown */
-.placement-key {
-  display: grid;
-  gap: 2px;
-  margin: 2px 0 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--text-secondary);
-}
-
-.placement-key > div {
-  display: grid;
-  grid-template-columns: 18px 1fr;
-  gap: 6px;
-}
-
-.placement-key dt {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.placement-key dd {
-  margin: 0;
 }
 
 /* ─── Agent workspace (editor/agent), in the PDF's place ─── */

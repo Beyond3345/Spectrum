@@ -5,7 +5,7 @@ import { stat } from 'fs/promises';
 import { realpath } from 'fs/promises';
 import { DATA_DIR, PROJECTS_DIR } from '../config/constants.js';
 import { findExecutable, texPath } from '../services/compileService.js';
-import { resolvePythonExecutable } from '../services/plotService.js';
+import { resolvePythonExecutable } from '../services/python.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { cloudRootOf, readMirror } from '../services/mirrorService.js';
 import { safeJoin } from '../utils/pathUtils.js';
@@ -52,7 +52,7 @@ export function registerSystemRoutes(fastify) {
     return proxyView(await applyProxy());
   });
 
-  // What's installed on this machine, so the UI can explain a failing compile or plot.
+  // What's installed on this machine, so the UI can explain a failing compile or search.
   // texFolder: Settings › Engines › LaTeX's TeX folder, looked in first as a compile does
   // ?fresh=1 (Check again) runs every probe again
   fastify.get('/api/system/check', async (req) => {
@@ -68,7 +68,7 @@ export function registerSystemRoutes(fastify) {
     // Being on PATH isn't enough: TeX Live 2026's universal biber unpacks itself with an
     // lipo call that macOS 27 rejects, so actually run the tools that are known to break.
     const problems = {};
-    const [, , probe, ddgsProbe] = await Promise.all([
+    const [, , probe] = await Promise.all([
       ...['biber', 'tectonic'].map(async (name) => {
         if (!tools[name]) return;
         const run = await probed(tools[name], ['--version'], again);
@@ -76,11 +76,9 @@ export function registerSystemRoutes(fastify) {
         const detail = `${run.stderr || run.stdout || run.message || ''}`.trim().split(/\r?\n/)[0];
         problems[name] = `Installed but not working${detail ? `: ${detail.slice(0, 160)}` : ''}`;
       }),
-      probed(pythonFile, ['-c', 'import matplotlib'], again),
       // for the DDGS web search provider
       probed(pythonFile, ['-c', 'import ddgs'], again)
     ]);
-    const ddgs = !probe.missing && ddgsProbe.ok;
     return {
       ok: true,
       dataDir: DATA_DIR,
@@ -88,7 +86,7 @@ export function registerSystemRoutes(fastify) {
       tools,
       texReal,
       problems,
-      python: { path: python, found: !probe.missing, matplotlib: probe.ok, ddgs },
+      python: { path: python, found: !probe.missing, ddgs: probe.ok },
       platform: process.platform
     };
   });

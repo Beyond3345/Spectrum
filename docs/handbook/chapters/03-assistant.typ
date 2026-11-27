@@ -149,7 +149,7 @@ The switch at the top of the sheet, #ui[Source] and #ui[PDF before and after], s
 
 Before it writes the first change you accept, Spectrum saves a "Before AI changes" checkpoint. That one checkpoint covers every change you accept until the review is closed, so restoring it from #menu[Tools][Checkpoints] puts the project back as it was before the first of them (@ch-references). A file that a suggestion deletes is saved in a checkpoint of its own just before it goes. #menu[Settings][Checkpoints] can save a checkpoint before every accepted change instead. The same review is used by #ui[Fix with AI] in the Logs and Review tabs and by Quick switch, and the agents' review in the workspace works the same way (@sec-assistant-agent-review). A file that a suggestion would delete is marked #ui[Deleted] in the list. The tidying that follows a conversion to another format is still reviewed a file at a time.
 
-=== Image to LaTeX
+=== Image to LaTeX <sec-assistant-image>
 
 #ui[+] in the panel's bar turns a picture into LaTeX with the vision model. Its menu has five kinds of picture (@fig-assistant-image-menu), each of which asks for a different result,
 

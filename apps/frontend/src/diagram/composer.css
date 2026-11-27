@@ -619,6 +619,33 @@
   font-weight: 600;
 }
 
+/* Import table's sheet: the table it found, its first rows as they read */
+.plot-import {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plot-import-preview {
+  overflow-x: auto;
+}
+
+.plot-import-preview table {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plot-import-preview td {
+  padding: 3px 10px 3px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.plot-import-preview tr.head td {
+  font-weight: 600;
+}
+
 /* ─── Mermaid ─── */
 
 .mermaid-split {
@@ -775,6 +802,28 @@
 
 .chooser-card:disabled {
   opacity: 0.5;
+}
+
+/* the card's line drawing (thumbs.tsx): in the card's area colour in the Spectrum colour style */
+.chooser-thumb {
+  width: 64px;
+  height: 40px;
+  margin-bottom: 4px;
+  color: var(--text-tertiary);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chooser-thumb .fill {
+  fill: currentColor;
+  stroke: none;
+}
+
+:root[data-colour-style='spectrum'] .chooser-card[class*='area-'] .chooser-thumb {
+  color: var(--area);
 }
 
 .chooser-card-top {

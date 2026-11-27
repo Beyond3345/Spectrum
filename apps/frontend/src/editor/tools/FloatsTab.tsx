@@ -1,10 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
-import { blobUrl, getFile, getProjectSettings, getProjectTree, plotFromTable, runPlotCode, uploadFiles, visionToLatex, writeFile } from '../../api/client';
+import type { ClipboardEvent, DragEvent, KeyboardEvent, ReactNode } from 'react';
+import { blobUrl, getFile, getProjectSettings, getProjectTree, uploadFiles, writeFile } from '../../api/client';
 import Choice from '../../app/Segmented';
 import Icon from '../../app/Icon';
 import { effectiveCompile, loadSettings } from '../../app/settings';
-import Select from '../../app/Select';
 import Sheet from '../../app/Sheet';
 import { openDiagram } from '../../app/desktop';
 import { IS_WINDOWS } from '../../app/platform';
@@ -14,10 +13,8 @@ import type { Clash } from '../../diagram/sets';
 import type { DiagramLanguage } from '../../diagram/types';
 import { useEditor } from '../EditorContext';
 import type { EditorApi } from '../EditorContext';
-import { VISION_HINTS, VISION_MODES, docKind, errorText, figureSnippet, isDocument } from '../shared';
-import type { VisionMode } from '../shared';
-import { PLACEMENT_LETTERS, afterFloat, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, markdownTableRows, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge, imageOf } from '../floats';
-import { typstTableRows } from '../outlines';
+import { docKind, errorText, isDocument } from '../shared';
+import { PLACEMENT_LETTERS, blockAt, defaultAlign, diagramImageLatex, diagramLatex, extOf, figureKind, figureLabel, figureLatex, figureMarkdown, figureSetLabel, figureSetLatex, figureSetPackages, figureSetTypst, figureTypst, figureTypstInclude, fitMerges, fitPartRules, jpegOrientation, mergeAt, parseDelimited, pasteCells, placementOf, safeFileName, tableEdges, tableLatex, tableTitle, tableMarkdown, tablePackages, tableRules, tableTypst, typstPlacement, uniqueName, withMerge, imageOf } from '../floats';
 import type { FigureSet, FigureSize, TableEnv, TableLines, TableMerge, TableModel, TablePartRule } from '../floats';
 import { addLibraries, addPackages, addTypstSubfigure, changeBetween, loadedLibraries, projectPackages } from '../preamble';
 
@@ -30,14 +27,12 @@ export default function FloatsTab({ show }: { show: 'figure' | 'table' | 'diagra
       <div className="float-group" hidden={show !== 'figure'}>
         <InsertFigure />
         <ProjectFigures />
-        <ImageToLatex />
       </div>
       <div className="float-group" hidden={show !== 'diagram'}>
         <InsertDiagram />
       </div>
       <div className="float-group" hidden={show !== 'table'}>
         <InsertTable />
-        <TableToChart />
       </div>
     </div>
   );
@@ -108,24 +103,11 @@ function PlacementField({ value, onChange, span, onSpan, kind }: { value: string
           );
         })}
       </div>
-      <dl className="placement-key">
-        {PLACEMENT_LETTERS.map(([letter, , meaning]) => (
-          <div key={letter}>
-            <dt>{letter}</dt>
-            <dd>{meaning}</dd>
-          </div>
-        ))}
-      </dl>
-      <div className="field-hint">
-        With no letter chosen, LaTeX uses tbp. The letters allow places rather than order them, so [ht] means here or else the top of a page.
-      </div>
       <label className="checkbox-row">
-        <input type="checkbox" checked={span} onChange={(e) => onSpan(e.target.checked)} />
+        <input type="checkbox" role="switch" checked={span} onChange={(e) => onSpan(e.target.checked)} />
         <span>
-          Span both columns
-          <span className="field-hint">
-            For two-column papers: {kind}* runs across both columns and only goes at the top of a page or on a page of floats, so H, h and b don’t apply.
-          </span>
+          Span both columns ({kind}*)
+          <span className="field-hint">For two-column papers: at the top of a page or on a page of floats only.</span>
         </span>
       </label>
     </div>
@@ -153,13 +135,26 @@ function TypstPlacementField({ value, onChange, span, onSpan }: { value: string;
         onChange={onChange}
       />
       <label className="checkbox-row">
-        <input type="checkbox" checked={span} onChange={(e) => onSpan(e.target.checked)} />
+        <input type="checkbox" role="switch" checked={span} onChange={(e) => onSpan(e.target.checked)} />
         <span>
           Span both columns
-          <span className="field-hint">For two-column documents: scope: "parent" runs it across both columns, at the top or bottom of the page.</span>
+          <span className="field-hint">For two-column documents: scope: "parent", at the top or bottom of the page.</span>
         </span>
       </label>
     </>
+  );
+}
+
+/** A switch on a row of its own, with a short line under it. */
+function Toggle({ label, checked, disabled, onChange, children }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void; children?: ReactNode }) {
+  return (
+    <label className="checkbox-row">
+      <input type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <span>
+        {label}
+        {children && <span className="field-hint">{children}</span>}
+      </span>
+    </label>
   );
 }
 
@@ -639,21 +634,19 @@ function InsertFigure() {
     <section className="tool-card" data-card="figure" ref={cardRef} onPaste={onPaste}>
       <div className="tool-card-title">
         <Icon name="photo.badge.plus" /> Insert figure
+        {kind !== 'markdown' && (
+          <Choice
+            label="Layout"
+            className="tool-card-end"
+            value={prefs.layout}
+            options={LAYOUTS}
+            onChange={(next) => {
+              set({ layout: next });
+              setLabel(null);
+            }}
+          />
+        )}
       </div>
-      <div className="tool-card-desc">
-        Saves the image in figures/ and inserts it as a figure. PNG, JPEG, PDF and EPS go in as they are; HEIC photos are converted to JPEG, and GIF, WebP, BMP, TIFF and SVG to PNG.
-      </div>
-      {kind !== 'markdown' && (
-        <Segmented
-          label="Layout"
-          value={prefs.layout}
-          options={LAYOUTS}
-          onChange={(next) => {
-            set({ layout: next });
-            setLabel(null);
-          }}
-        />
-      )}
       {several && layout === 'grid' && (
         <NumberField id={`${id}-columns`} label="Columns" unit="images a row" value={prefs.columns} min={2} max={4} onChange={(columns) => set({ columns })} />
       )}
@@ -777,8 +770,9 @@ function InsertFigure() {
             <span className="spinner" aria-hidden="true" />
           ) : (
             <>
-              <Icon name="photo.badge.plus" size={several && first ? 20 : 28} />
-              <span>{several ? (first ? 'Add another image' : 'Click to choose or drag in images') : 'Click to choose or drag in an image'}</span>
+              <Icon name="photo.badge.plus" size={several && first ? 20 : 24} />
+              <span>{several ? (first ? 'Add another image' : 'Drop, paste or choose images') : 'Drop, paste or choose an image'}</span>
+              {!first && <span className="drop-note">{several ? (layout === 'grid' ? 'Grid' : 'Side by side') : 'Single figure'} · saved in figures/, HEIC, WebP, SVG and others converted</span>}
             </>
           )}
         </div>
@@ -855,6 +849,7 @@ function InsertFigure() {
               <div className="field-hint">Read aloud by screen readers. Download › PDF/UA-1 needs it on every image.</div>
             </div>
           )}
+          <div className="float-options">
           <Segmented label="Size by" value={prefs.sizeMode} options={SIZE_MODES} onChange={(sizeMode) => set({ sizeMode })} />
           {prefs.sizeMode === 'line' && (
             <>
@@ -889,7 +884,7 @@ function InsertFigure() {
           </div>
           {kind !== 'markdown' && (
             <label className="checkbox-row">
-              <input type="checkbox" checked={prefs.crop} onChange={(e) => set({ crop: e.target.checked })} />
+              <input type="checkbox" role="switch" checked={prefs.crop} onChange={(e) => set({ crop: e.target.checked })} />
               <span>
                 Crop edges
                 <span className="field-hint">{kind === 'typst' ? 'Typst can’t crop an image, so this is left out of Typst documents.' : `Trims the edges of ${several ? 'every image' : 'the image'} with trim and clip.`}</span>
@@ -916,6 +911,7 @@ function InsertFigure() {
             <PlacementField kind="figure" value={prefs.placement} onChange={(placement) => set({ placement })} span={prefs.span} onSpan={(span) => set({ span })} />
           )}
           {kind === 'typst' && <TypstPlacementField value={prefs.placement} onChange={(placement) => set({ placement })} span={prefs.span} onSpan={(span) => set({ span })} />}
+          </div>
           <button className="btn primary full" onClick={insert} disabled={!!busy || !docOpen}>
             {busy === 'inserting' ? <span className="spinner" /> : <Icon name="plus" />} Insert figure
           </button>
@@ -927,12 +923,30 @@ function InsertFigure() {
   );
 }
 
+/** The placement letters and what each allows, for the help under the figure and table cards. */
+function PlacementKey() {
+  return (
+    <>
+      {PLACEMENT_LETTERS.map(([letter, , meaning]) => (
+        <span key={letter}>
+          <code>{letter}</code>: {meaning}.{' '}
+        </span>
+      ))}
+      With no letter chosen, LaTeX uses tbp. The letters allow places rather than order them, so [ht] means here or else the top of a page.
+    </>
+  );
+}
+
 /** What each layout, size and package does, for the figure card. */
 function FigureHelp() {
   return (
     <details className="tool-help">
       <summary>What these options mean</summary>
       <dl>
+        <dt>Files</dt>
+        <dd>
+          The image is saved in figures/. PNG, JPEG, PDF and EPS go in as they are; HEIC photos are converted to JPEG, and GIF, WebP, BMP, TIFF and SVG to PNG, which LaTeX can read.
+        </dd>
         <dt>Single, side by side and grid</dt>
         <dd>
           Single puts one image in a figure. Side by side puts all the images in one row, sharing the line equally; a grid puts them in rows of the chosen number of columns, as a 2 × 2 square of
@@ -962,8 +976,8 @@ function FigureHelp() {
         </dd>
         <dt>Placement</dt>
         <dd>
-          Where LaTeX may put the figure. Exactly here (<code>[H]</code>) stops it floating and uses the <code>float</code> package, which is added. Across both columns uses{' '}
-          <code>figure*</code> in a two-column document.
+          Where LaTeX may put the figure. <PlacementKey /> Exactly here (<code>[H]</code>) stops it floating and uses the <code>float</code> package, which is added. Span both columns
+          uses <code>figure*</code> in a two-column document, which goes only at the top of a page or on a page of floats, so H, h and b don’t apply.
         </dd>
         <dt>graphicx</dt>
         <dd>The standard package for <code>\includegraphics</code>, added to every LaTeX document a figure goes into.</dd>
@@ -1267,14 +1281,15 @@ function InsertDiagram() {
 
 // ─── Insert table ───
 
-const ALIGN: [string, string][] = [
-  ['l', 'Left'],
-  ['c', 'Centre'],
-  ['r', 'Right']
+/** value, letter shown, name */
+const ALIGN: [string, string, string][] = [
+  ['l', 'L', 'Left'],
+  ['c', 'C', 'Centre'],
+  ['r', 'R', 'Right']
 ];
-const ALIGN_X: [string, string][] = [...ALIGN, ['X', 'Fill (X)']];
+const ALIGN_X: [string, string, string][] = [...ALIGN, ['X', 'X', 'Fill (X)']];
 /** siunitx's S column, for LaTeX only */
-const NUMBERS: [string, string] = ['S', 'Numbers (S)'];
+const NUMBERS: [string, string, string] = ['S', 'S', 'Numbers (S)'];
 
 const ENVS: [TableEnv, string, string?][] = [
   ['tabular', 'tabular'],
@@ -1430,6 +1445,9 @@ function InsertTable() {
     <section className="tool-card" data-card="table">
       <div className="tool-card-title">
         <Icon name="tablecells" /> Insert table
+        <span className="tool-card-end table-size">
+          {cells.length} × {cols}
+        </span>
       </div>
       <div className="table-grid-scroll">
         {/* cells sit at even grid lines, with a 10 px gap row or column around each for the lines */}
@@ -1439,14 +1457,11 @@ function InsertTable() {
           style={{ gridTemplateColumns: `10px repeat(${cols}, minmax(80px, 1fr) 10px)`, gridTemplateRows: `auto 10px repeat(${cells.length}, 30px 10px)` }}
         >
           {align.map((value, c) => (
-            <div key={`align-${c}`} style={{ gridRow: 1, gridColumn: 2 * c + 2 }}>
-              <span id={`${id}-align-${c}`} hidden>
-                Column {c + 1} alignment
-              </span>
-              <Select
-                labelId={`${id}-align-${c}`}
+            <div key={`align-${c}`} className="table-align" style={{ gridRow: 1, gridColumn: 2 * c + 2 }}>
+              <Choice
+                label={`Column ${c + 1} alignment`}
                 value={value}
-                options={[...(tableEnv === 'tabular' ? ALIGN : ALIGN_X), ...(latex ? [NUMBERS] : [])]}
+                options={[...(tableEnv === 'tabular' ? ALIGN : ALIGN_X), ...(latex ? [NUMBERS] : [])].map(([v, letter, name]) => [v, letter, name, name] as const)}
                 onChange={(next) => setChosen((prev) => Object.assign([...prev], { [c]: next }))}
               />
             </div>
@@ -1513,17 +1528,17 @@ function InsertTable() {
         </div>
       </div>
       <div className="table-grid-actions">
-        <button className="btn small" aria-label="Add a row" title="Add a row" onClick={addRow}>
+        <button className="btn small ghost" aria-label="Add a row" title="Add a row" onClick={addRow}>
           <Icon name="plus" /> Row
         </button>
-        <button className="btn small" aria-label="Remove the last row" title="Remove the last row" disabled={cells.length < 2} onClick={() => setCells((prev) => prev.slice(0, -1))}>
+        <button className="btn small ghost" aria-label="Remove the last row" title="Remove the last row" disabled={cells.length < 2} onClick={() => setCells((prev) => prev.slice(0, -1))}>
           <Icon name="minus" /> Row
         </button>
-        <button className="btn small" aria-label="Add a column" title="Add a column" onClick={() => setCells((prev) => prev.map((row) => [...row, '']))}>
+        <button className="btn small ghost" aria-label="Add a column" title="Add a column" onClick={() => setCells((prev) => prev.map((row) => [...row, '']))}>
           <Icon name="plus" /> Column
         </button>
         <button
-          className="btn small"
+          className="btn small ghost"
           aria-label="Remove the last column"
           title="Remove the last column"
           disabled={cols < 2}
@@ -1532,7 +1547,7 @@ function InsertTable() {
           <Icon name="minus" /> Column
         </button>
         <button
-          className="btn small"
+          className="btn small ghost"
           onClick={() => {
             setCells(blankGrid(3, 3));
             setChosen([]);
@@ -1546,64 +1561,39 @@ function InsertTable() {
         >
           Clear
         </button>
-        <span className="table-size">
-          {cells.length} × {cols}
-        </span>
       </div>
       <div className="field-hint">
-        Tab moves to the next cell and {IS_WINDOWS ? 'Enter' : 'Return'} moves down. Paste rows from {IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file to fill the grid.{' '}
-        {kind === 'markdown'
-          ? 'Markdown tables have no lines of their own: pandoc draws its usual rules when the document compiles.'
-          : 'Click between two rows or two columns, or along an edge, to add or remove a line across the table.'}
+        Tab moves on, {IS_WINDOWS ? 'Enter' : 'Return'} moves down. Paste rows from {IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file.{' '}
+        {kind === 'markdown' ? 'Markdown tables have no lines of their own.' : 'Click between cells to add or remove a line.'}
       </div>
       {kind !== 'markdown' && (
-        <>
-          <Segmented
-            label="Lines"
-            value={changed ? null : lines}
-            options={LINES}
-            onChange={(next) => {
-              setLines(next);
-              setToggled([]);
-            }}
-          />
-          {changed ? (
-            <div className="field-hint">Changed by hand from {LINES.find(([preset]) => preset === lines)?.[1]}. Choose a preset to start again.</div>
-          ) : (
-            lines === 'booktabs' && (
-              <div className="field-hint">
-                Booktabs rules are heavier at the top and bottom and take no vertical lines.{kind === 'typst' ? '' : ' Insert table adds the booktabs package.'}
-              </div>
-            )
-          )}
-          <div className="field">
-            <span className="field-label" id={`${id}-lines-at`}>
-              Lines at row {atRow + 1} and column {atCol + 1}
-            </span>
-            <div className="chip-row" role="group" aria-labelledby={`${id}-lines-at`}>
-              {(
-                [
-                  [`Above row ${atRow + 1}`, 'h', atRow],
-                  [`Below row ${atRow + 1}`, 'h', atRow + 1],
-                  [`Before column ${atCol + 1}`, 'v', atCol],
-                  [`After column ${atCol + 1}`, 'v', atCol + 1]
-                ] as const
-              ).map(([name, way, i], k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className={`chip ${rules[way][i] ? 'active' : ''}`}
-                  aria-pressed={!!rules[way][i]}
-                  disabled={way === 'v' && lines === 'booktabs'}
-                  onClick={() => flip(edges[way][i])}
-                >
-                  {name}
-                  {rules[way][i] === 2 && ' (double)'}
-                </button>
-              ))}
-            </div>
+        <div className="field">
+          <span className="field-label" id={`${id}-lines-at`}>
+            Lines at row {atRow + 1} and column {atCol + 1}
+          </span>
+          <div className="chip-row" role="group" aria-labelledby={`${id}-lines-at`}>
+            {(
+              [
+                [`Above row ${atRow + 1}`, 'h', atRow],
+                [`Below row ${atRow + 1}`, 'h', atRow + 1],
+                [`Before column ${atCol + 1}`, 'v', atCol],
+                [`After column ${atCol + 1}`, 'v', atCol + 1]
+              ] as const
+            ).map(([name, way, i], k) => (
+              <button
+                key={k}
+                type="button"
+                className={`chip ${rules[way][i] ? 'on' : ''}`}
+                aria-pressed={!!rules[way][i]}
+                disabled={way === 'v' && lines === 'booktabs'}
+                onClick={() => flip(edges[way][i])}
+              >
+                {name}
+                {rules[way][i] === 2 && ' (double)'}
+              </button>
+            ))}
           </div>
-        </>
+        </div>
       )}
       <div className="field">
         <span className="field-label" id={`${id}-merge`}>
@@ -1620,109 +1610,87 @@ function InsertTable() {
             Split
           </button>
           {kind !== 'markdown' && (
-            <button type="button" className={`chip ${shortRule ? 'active' : ''}`} aria-pressed={!!shortRule} disabled={block.r + block.rows >= cells.length} onClick={toggleShortRule}>
+            <button type="button" className={`chip ${shortRule ? 'on' : ''}`} aria-pressed={!!shortRule} disabled={block.r + block.rows >= cells.length} onClick={toggleShortRule}>
               Short rule below
             </button>
           )}
         </div>
-        <div className="field-hint">
-          {kind === 'markdown'
-            ? 'Markdown tables can’t merge cells.'
-            : latex
-              ? `Merged cells use \\multicolumn, and \\multirow down the rows, which adds the multirow package. A short rule runs under just this cell’s columns, as a ${lines === 'booktabs' ? '\\cmidrule' : '\\cline'}, for a heading over a group of columns.`
-              : 'Merged cells become table.cell with a colspan and rowspan. A short rule runs under just this cell’s columns, for a heading over a group of columns.'}
-        </div>
+        {kind === 'markdown' && <div className="field-hint">Markdown tables can’t merge cells.</div>}
       </div>
-      {latex && (
-        <>
-          <Segmented
-            label="Environment"
-            value={env}
-            options={ENVS}
-            onChange={(next) => {
-              setEnv(next);
-              setChosen((prev) => (next === 'tabular' ? [] : prev));
-            }}
-          />
-          {tableEnv !== 'tabular' && !align.includes('X') && <div className="field-hint">{tableEnv} needs an X column, so the last column that isn’t numbers fills the width.</div>}
-          {long && (
-            <div className="field-hint">
-              xltabular breaks across pages and repeats the header row at the top of each. It holds its own caption, so it doesn’t float, and it can’t span both columns or take notes.
-            </div>
-          )}
-          {align.includes('S') && (
-            <div className="field-hint">
-              Numbers (S) lines numbers up on their decimal point with siunitx, which is added. Type them without thousands separators: siunitx groups 7790 as 7,790 itself. Text in the column is kept as text.
-            </div>
-          )}
-        </>
-      )}
-      <label className="checkbox-row">
-        <input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} />
-        Header row
-      </label>
-      {kind !== 'markdown' && (
-        <label className="checkbox-row">
-          <input type="checkbox" checked={breaks} onChange={(e) => setBreaks(e.target.checked)} />
-          <span>
-            Line breaks in cells
-            <span className="field-hint">
-              Type \\ in a cell, or press Shift-{IS_WINDOWS ? 'Enter' : 'Return'}, to start a new line in it. {latex ? 'Uses the makecell package, which is added.' : 'Typst writes it as its line break, \\.'}
-            </span>
-          </span>
-        </label>
-      )}
-      {kind !== 'markdown' && (
-        <label className="checkbox-row">
-          <input type="checkbox" checked={withNotes} disabled={long} onChange={(e) => setWithNotes(e.target.checked)} />
-          <span>
-            Notes under the table
-            <span className="field-hint">
-              {long ? 'xltabular tables can’t take notes.' : latex ? 'Uses the threeparttable package, which is added, so the notes are as wide as the table.' : 'Set in smaller text under the table, inside its figure.'}
-            </span>
-          </span>
-        </label>
-      )}
-      {kind !== 'markdown' && withNotes && !long && (
-        <div className="field">
-          <label htmlFor={`${id}-notes`}>Notes</label>
-          <textarea
-            id={`${id}-notes`}
-            className="input"
-            rows={3}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder={'a: Measured at noon.\nSource: the site logger.'}
-          />
-          <div className="field-hint">One note a line. Start a line with a: to make it the note for \tnote{'{a}'} typed in a cell.</div>
-        </div>
-      )}
-      {latex && (
-        <label className="checkbox-row">
-          <input type="checkbox" checked={escape} onChange={(e) => setEscape(e.target.checked)} />
-          <span>
-            Escape special characters
-            <span className="field-hint">&amp; % # _ ~ ^ &lt; &gt; | and a price’s $ print as themselves outside maths, in cells and the caption. Commands like \textbf{'{…}'} and \ref{'{…}'} still work.</span>
-          </span>
-        </label>
-      )}
-      <label className="checkbox-row">
-        <input type="checkbox" checked={float} onChange={(e) => setFloat(e.target.checked)} />
-        <span>
-          Float
-          <span className="field-hint">
-            {kind === 'typst'
-              ? 'Wraps it in #figure with a caption and a label.'
-              : kind === 'markdown'
-                ? 'Adds the caption and label on a Table: line under it.'
-                : 'Wraps it in a table environment with a caption and a label.'}
-          </span>
-        </span>
-      </label>
+      {/* style and switches, grouped */}
+      <div className="float-options">
+        {kind !== 'markdown' && (
+          <>
+            <Segmented
+              label="Style"
+              value={changed ? null : lines}
+              options={LINES}
+              onChange={(next) => {
+                setLines(next);
+                setToggled([]);
+              }}
+            />
+            {changed ? (
+              <div className="field-hint">Changed by hand from {LINES.find(([preset]) => preset === lines)?.[1]}. Choose a style to start again.</div>
+            ) : (
+              lines === 'booktabs' && <div className="field-hint">Heavier rules at the top and bottom, no vertical lines.</div>
+            )}
+          </>
+        )}
+        {latex && (
+          <>
+            <Segmented
+              label="Environment"
+              value={env}
+              options={ENVS}
+              onChange={(next) => {
+                setEnv(next);
+                setChosen((prev) => (next === 'tabular' ? [] : prev));
+              }}
+            />
+            {tableEnv !== 'tabular' && !align.includes('X') && <div className="field-hint">{tableEnv} needs an X column, so the last column that isn’t numbers fills the width.</div>}
+            {long && <div className="field-hint">Breaks across pages, repeating the header row. It holds its own caption, so it doesn’t float, span both columns or take notes.</div>}
+            {align.includes('S') && <div className="field-hint">S lines numbers up on their decimal point (siunitx). Type them without thousands separators.</div>}
+          </>
+        )}
+        <Toggle label="Header row" checked={header} onChange={setHeader} />
+        {kind !== 'markdown' && (
+          <Toggle label="Line breaks in cells" checked={breaks} onChange={setBreaks}>
+            Type \\ or press Shift-{IS_WINDOWS ? 'Enter' : 'Return'} in a cell{latex ? ' (makecell)' : ''}.
+          </Toggle>
+        )}
+        {kind !== 'markdown' && (
+          <Toggle label={latex ? 'Table notes (threeparttable)' : 'Notes under the table'} checked={withNotes} disabled={long} onChange={setWithNotes}>
+            {long && 'xltabular tables can’t take notes.'}
+          </Toggle>
+        )}
+        {kind !== 'markdown' && withNotes && !long && (
+          <div className="field">
+            <label htmlFor={`${id}-notes`}>Notes</label>
+            <textarea
+              id={`${id}-notes`}
+              className="input"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={'a: Measured at noon.\nSource: the site logger.'}
+            />
+            <div className="field-hint">One a line. Start one with a: for the \tnote{'{a}'} in a cell.</div>
+          </div>
+        )}
+        {latex && (
+          <Toggle label="Escape special characters" checked={escape} onChange={setEscape}>
+            &amp; % # _ and the like print as themselves; commands still work.
+          </Toggle>
+        )}
+        <Toggle label="Float" checked={float} onChange={setFloat}>
+          {kind === 'typst' ? 'In a #figure with a caption and a label.' : kind === 'markdown' ? 'With a Table: caption line.' : 'In a table environment with a caption and a label.'}
+        </Toggle>
+        {float && latex && !long && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
+        {float && kind === 'typst' && <TypstPlacementField value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
+      </div>
       {float && (
         <>
-          {latex && !long && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
-          {kind === 'typst' && <TypstPlacementField value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
           <div className="field">
             <label htmlFor={`${id}-caption`}>Caption</label>
             <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Caption, shown above the table" />
@@ -1746,6 +1714,13 @@ function InsertTable() {
         </button>
       </div>
       {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
+      <div className="field-hint">
+        Need a chart?{' '}
+        <button type="button" className="link-button" onClick={() => openDiagram(api.projectId).catch((err) => api.notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error'))}>
+          Plot in the diagram composer
+        </button>{' '}
+        imports a table from the document.
+      </div>
       <TableHelp />
     </section>
   );
@@ -1809,343 +1784,13 @@ function TableHelp() {
         </dd>
         <dt>Float, placement and the float package</dt>
         <dd>
-          A float is a table LaTeX may move to where it fits, with a caption and a label to refer to it by. Exactly here (<code>[H]</code>) stops it moving and uses the{' '}
-          <code>float</code> package, which is added.
+          A float is a table LaTeX may move to where it fits, with a caption and a label to refer to it by. <PlacementKey /> Exactly here (<code>[H]</code>) stops it moving and uses
+          the <code>float</code> package, which is added. Span both columns uses <code>table*</code>, at the top of a page or on a page of floats only.
         </dd>
         <dt>Escape special characters</dt>
         <dd>Lets &amp; % # _ and the like print as themselves in cells. Turn it off to type LaTeX commands that use them.</dd>
       </dl>
     </details>
-  );
-}
-
-// ─── Image → LaTeX, or Typst in a Typst document ───
-
-function ImageToLatex() {
-  const api = useEditor();
-  const typst = docKind(api.activePath) === 'typst';
-  const [mode, setMode] = useState<VisionMode>('equation');
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState('');
-  const [prompt, setPrompt] = useState('');
-  const [result, setResult] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!file) {
-      setPreview('');
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  const take = (next: File | null | undefined) => {
-    if (!next || !next.type.startsWith('image/')) return;
-    setFile(next);
-    setResult('');
-  };
-
-  const onDrop = (e: DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    take(e.dataTransfer.files?.[0]);
-  };
-
-  const onPaste = (e: ClipboardEvent) => {
-    const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'));
-    if (!item) return;
-    e.preventDefault();
-    take(item.getAsFile());
-  };
-
-  const convert = async () => {
-    if (!file) return;
-    setBusy(true);
-    setResult('');
-    try {
-      const res = await visionToLatex({ projectId: api.projectId, file, mode, prompt: prompt.trim() || (typst ? undefined : VISION_HINTS[mode]), llmConfig: api.llm.vision, kind: docKind(api.activePath) });
-      if (!res.ok) throw new Error(res.error || 'The image couldn’t be read.');
-      setResult(res.latex || '');
-      if (res.assetPath) await api.refreshTree();
-    } catch (err) {
-      api.notify(`Couldn’t convert the image: ${errorText(err)}`, 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="tool-card" onPaste={onPaste}>
-      <div className="tool-card-title">
-        <Icon name="text.viewfinder" /> Image → {typst ? 'Typst' : 'LaTeX'}
-      </div>
-      <div className="field">
-        <label id="image-latex-mode">Convert to</label>
-        <Select
-          labelId="image-latex-mode"
-          value={mode}
-          options={VISION_MODES.map(([value, label]): [string, string] => [value, label])}
-          onChange={(value) => {
-            setMode(value as VisionMode);
-            setResult('');
-          }}
-        />
-      </div>
-      <div
-        className={`drop-zone ${dragging ? 'dragging' : ''} ${file ? 'has-file' : ''}`}
-        tabIndex={0}
-        role={file ? undefined : 'button'}
-        aria-label={file ? undefined : 'Choose an image'}
-        onClick={() => !file && inputRef.current?.click()}
-        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !file && inputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-      >
-        {file ? (
-          <div className="drop-preview">
-            {preview && <img src={preview} alt="" />}
-            <span className="drop-name">{file.name}</span>
-            <button
-              className="icon-btn"
-              title="Remove image"
-              aria-label="Remove image"
-              onClick={(e) => {
-                e.stopPropagation();
-                setFile(null);
-                setResult('');
-              }}
-            >
-              <Icon name="xmark.circle.fill" />
-            </button>
-          </div>
-        ) : (
-          <>
-            <Icon name="photo.badge.plus" size={28} />
-            <span>Click to choose, drag in or paste an image</span>
-          </>
-        )}
-        <input ref={inputRef} type="file" accept="image/*" hidden onChange={(e) => take(e.target.files?.[0])} />
-      </div>
-      <div className="field">
-        <label htmlFor="image-latex-prompt">Extra instructions (optional)</label>
-        <textarea
-          id="image-latex-prompt"
-          className="input"
-          rows={2}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder={typst ? 'e.g. only the table, no caption' : 'e.g. only the tabular, no caption'}
-        />
-      </div>
-      <div className="row">
-        <button className="btn primary" onClick={convert} disabled={busy || !file}>
-          {busy ? <span className="spinner" /> : <Icon name="text.viewfinder" />} Convert
-        </button>
-        <button className="btn" onClick={() => api.insertAtCursor(result, { block: true })} disabled={!result}>
-          Insert at cursor
-        </button>
-      </div>
-      {result && (
-        <div className="field">
-          <label htmlFor="image-latex-result">Result (editable)</label>
-          <textarea id="image-latex-result" className="input mono" rows={7} value={result} onChange={(e) => setResult(e.target.value)} />
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ─── Table → chart ───
-
-/** Cells as a LaTeX tabular, the form the plotting script and the model read. */
-const asTabular = (rows: string[][]) =>
-  `\\begin{tabular}{${'l'.repeat(Math.max(...rows.map((r) => r.length)))}}\n${rows.map((r) => r.map((c) => c.replace(/\\/g, '').replace(/[&%]/g, '\\$&')).join(' & ') + ' \\\\').join('\n')}\n\\end{tabular}`;
-
-function TableToChart() {
-  const api = useEditor();
-  const apiRef = useRef(api);
-  apiRef.current = api;
-  const [type, setType] = useState<'bar' | 'line' | 'heatmap'>('bar');
-  const [title, setTitle] = useState('');
-  const [filename, setFilename] = useState('');
-  const [prompt, setPrompt] = useState('');
-  const [autoInsert, setAutoInsert] = useState(true);
-  const [busy, setBusy] = useState<'' | 'write' | 'run'>('');
-  const [status, setStatus] = useState('');
-  // the model's code, the table it was written for, and the last run's error, for code that works
-  const [code, setCode] = useState('');
-  const [source, setSource] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [failed, setFailed] = useState('');
-  const [asset, setAsset] = useState<{ path: string; at: number } | null>(null);
-  // a Typst #table or a Markdown pipe table goes to the model and the plot as the tabular they read
-  const kind = docKind(api.activePath);
-  const typst = kind === 'typst';
-  const rows = typst ? typstTableRows(api.selectionText) : kind === 'markdown' ? markdownTableRows(api.selectionText) : null;
-  const table = rows ? asTabular(rows) : api.selectionText;
-  const hasTable = table.includes('\\begin{tabular') || table.includes('\\begin{table');
-
-  /** Asks the model for the code, which is shown and never run until Run this code. again: with the last run's error. */
-  const write = async (again = false) => {
-    const tableLatex = again ? source : table;
-    if (!again && !hasTable) {
-      setStatus(typst ? 'Select a Typst table (#table) in the editor first.' : kind === 'markdown' ? 'Select a Markdown table in the editor first.' : 'Select a LaTeX table (tabular) in the editor first.');
-      return;
-    }
-    setBusy('write');
-    setStatus('');
-    try {
-      const res = await plotFromTable({
-        projectId: api.projectId,
-        tableLatex,
-        chartType: type,
-        prompt: prompt.trim() || undefined,
-        ...(again && { error: failed, code }),
-        llmConfig: api.llm.main
-      });
-      if (!res.ok || !res.code) throw new Error(res.error || 'The model wrote no code.');
-      setCode(res.code);
-      setSource(tableLatex);
-      setEditing(false);
-      setFailed('');
-      setStatus('Read the code, then choose Run this code.');
-    } catch (err) {
-      setStatus(`Couldn’t write the code: ${errorText(err)}`);
-    } finally {
-      setBusy('');
-    }
-  };
-
-  /** The chart as a figure after the selected table, and after the float the table sits in, never inside it. */
-  const insertChart = async (path: string) => {
-    const kind = docKind(apiRef.current.activePath);
-    const label = figureLabel(path);
-    let added: { text: string; warn?: boolean } = { text: '' };
-    if (kind === 'latex') added = await ensurePackages(() => apiRef.current, ['graphicx']);
-    const figure =
-      kind === 'typst'
-        ? figureTypst({ path, width: 0.9, caption: 'Caption.', label })
-        : kind === 'markdown'
-          ? // a blank line first, so the caption line above doesn't take it into its paragraph
-            `\n${figureMarkdown({ path, width: 0.9, caption: 'Caption.', label })}`
-          : figureSnippet(path);
-    apiRef.current.insertAtCursor(figure, { block: true, at: (doc, from, to) => afterFloat(doc, from, to, kind) });
-    if (added.text) apiRef.current.notify(added.text, added.warn ? 'error' : 'success');
-  };
-
-  const run = async () => {
-    setBusy('run');
-    setStatus('');
-    try {
-      const res = await runPlotCode({ projectId: api.projectId, tableLatex: source, code, title: title.trim() || undefined, filename: filename.trim() || undefined });
-      if (!res.ok || !res.assetPath) {
-        setFailed(res.error || 'The chart couldn’t be made.');
-        return;
-      }
-      setFailed('');
-      setAsset({ path: res.assetPath, at: Date.now() });
-      setStatus(`Chart saved to ${res.assetPath}.`);
-      await api.refreshTree();
-      if (autoInsert) await insertChart(res.assetPath);
-    } catch (err) {
-      setFailed(errorText(err));
-    } finally {
-      setBusy('');
-    }
-  };
-
-  return (
-    <section className="tool-card">
-      <div className="tool-card-title">
-        <Icon name="chart.bar.xaxis" /> Table → chart
-      </div>
-      <div className="tool-card-desc">
-        The model writes matplotlib code to plot the table selected in the editor. Read it, then run it: it runs on its own, without your files or the network, and the image is saved in the project.
-      </div>
-      <div className="field">
-        <label id="plot-type">Chart type</label>
-        <Select
-          labelId="plot-type"
-          value={type}
-          options={[
-            ['bar', 'Bar'],
-            ['line', 'Line'],
-            ['heatmap', 'Heat map']
-          ]}
-          onChange={(value) => setType(value as typeof type)}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="plot-title">Title (optional)</label>
-        <input id="plot-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Chart title" />
-      </div>
-      <div className="field">
-        <label htmlFor="plot-filename">File name (optional)</label>
-        <input id="plot-filename" className="input" value={filename} onChange={(e) => setFilename(e.target.value)} placeholder="plot.png or plot.pdf" />
-      </div>
-      <div className="field">
-        <label htmlFor="plot-prompt">Extra instructions (optional)</label>
-        <textarea
-          id="plot-prompt"
-          className="input"
-          rows={2}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. highlight Method A, add a legend, label the y-axis Accuracy"
-        />
-      </div>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={autoInsert} onChange={(e) => setAutoInsert(e.target.checked)} />
-        Insert a figure after the table
-      </label>
-      <button className={`btn full${code ? '' : ' primary'}`} onClick={() => write()} disabled={!!busy}>
-        {busy === 'write' ? <span className="spinner" /> : <Icon name="chart.bar.xaxis" />} {code ? 'Write the code again' : 'Write the code'}
-      </button>
-      {!hasTable && !code && <div className="field-hint">Select a table in the editor to plot it.</div>}
-      {code && (
-        <div className="field">
-          <div className="row spread">
-            <label htmlFor="plot-code">Code to run</label>
-            <button className="btn small ghost" onClick={() => setEditing(!editing)} aria-pressed={editing}>
-              {editing ? 'Done' : 'Edit'}
-            </button>
-          </div>
-          <textarea id="plot-code" className="input mono" rows={10} value={code} readOnly={!editing} spellCheck={false} wrap="off" onChange={(e) => setCode(e.target.value)} />
-          <button className="btn primary full" onClick={run} disabled={!!busy || !code.trim()}>
-            {busy === 'run' ? <span className="spinner" /> : <Icon name="play.fill" />} Run this code
-          </button>
-        </div>
-      )}
-      {failed && (
-        <div className="field">
-          <div className="field-hint error" role="alert">
-            {failed}
-          </div>
-          <button className="btn small" onClick={() => write(true)} disabled={!!busy}>
-            Write it again with this error
-          </button>
-        </div>
-      )}
-      <div className="field-hint" role="status">
-        {status}
-      </div>
-      {asset && (
-        <div className="plot-preview">
-          <img src={blobUrl(api.projectId, asset.path, asset.at)} alt={asset.path} />
-          <button className="btn small" onClick={() => void insertChart(asset.path)}>
-            Insert figure
-          </button>
-        </div>
-      )}
-    </section>
   );
 }
 
@@ -2158,17 +1803,24 @@ function ProjectFigures() {
   return (
     <section className="tool-card">
       <div className="tool-card-title">
-        <Icon name="photo.on.rectangle" /> Project figures
+        <Icon name="photo.on.rectangle" /> Project figures{api.figureFiles.length ? ` (${api.figureFiles.length})` : ''}
+        {api.figureFiles.length > 0 && <span className="tool-card-end field-hint">Click to insert</span>}
       </div>
       {!api.figureFiles.length && <div className="field-hint">No images in this project yet.</div>}
       <div className="figure-grid">
         {api.figureFiles.map((path) => (
-          <button key={path} className="figure-tile" title={path} onClick={() => setOpen(path)}>
-            <span className="figure-thumb">
-              {IMAGE_EXTS.test(path) ? <img src={blobUrl(api.projectId, path)} alt="" loading="lazy" /> : <Icon name="doc.richtext" size={28} />}
-            </span>
-            <span className="figure-name">{path.split('/').pop()}</span>
-          </button>
+          <div key={path} className="figure-tile-wrap">
+            {/* into Insert figure, for its caption, width and placement */}
+            <button className="figure-tile" title={`Insert ${path}`} onClick={() => showFigure(path)}>
+              <span className="figure-thumb">
+                {IMAGE_EXTS.test(path) ? <img src={blobUrl(api.projectId, path)} alt="" loading="lazy" /> : <Icon name="doc.richtext" size={28} />}
+              </span>
+              <span className="figure-name">{path.split('/').pop()}</span>
+            </button>
+            <button className="icon-btn small" title="Preview" aria-label={`Preview ${path}`} onClick={() => setOpen(path)}>
+              <Icon name="eye" />
+            </button>
+          </div>
         ))}
       </div>
       {open && (
