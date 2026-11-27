@@ -2,6 +2,53 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.8.0 (28 November 2026)
+
+### Added
+
+- Settings › Providers: connect each provider once, with Test, Edit and Disconnect, and a custom endpoint
+- Settings › Models: each provider's models with context and price, a switch to keep a model out of the model menus, and the default roles in one card
+- Line marks for agents, providers and models, with Settings › Appearance › Logos to show full logos instead
+- A search box in Settings that finds a section by its name or by a setting in it
+- References: paste an ISBN, a formatted APA, IEEE, Chicago or MLA citation, or whole BibTeX or RIS, as well as DOIs, links, arXiv ids and titles
+- References: books are found on Open Library and Google Books as well as Crossref, and a book found by its title can be cited in any of its editions
+- References: each reference is a card to check before it is added, with its entry type, fields, key and the entry as it will be written, and a new entry can be made by hand
+- References: Biber entry types (@online, @software, @manual, @inbook, @report, @thesis), written for classic BibTeX where the project uses it
+- Citations can point to a page, pages, a chapter or a section, in LaTeX, Typst and Markdown
+- Plot in the diagram composer imports a table from the document or a CSV file
+- Structures: a beam can be drawn bent, as a parabola or an S-bend, with a Bent beam tool, a handle and a slider for its sag, and its straight axis dashed with the sag marked
+- The diagram chooser's cards each show a small line drawing
+- Review: Typst documents get References and assets (references, labels, bibliography and images)
+- The Spectrum agent's row under the message box shows its turns with their steps and time, its tokens with the cache's share and cost, and how full the model's context is
+
+### Changed
+
+- The agents' model and effort are a menu in the message box beside Send, as the new design draws it: the models with keys 1 to 9, the effort as a side menu of coloured levels with the recommended one marked, and the session's switches, Plan before editing among them for the Spectrum agent
+- The message box in two rows, what goes with the message above and the picture button, the model and Send below, in both agent tabs and the Assistant
+- Assistant: quick actions always at the top, the model and effort menu in the message box (kept for each chat), and suggested changes with Apply, Review diff and Continue in Spectrum agent
+- Review: a panel for each check, with its icon, what it checks, its status, its own Run and its results, and Run all and Reset for all of them; only the checks that read the PDF compile first
+- Review: References exist is now Verify citations; Anonymous review is the Privacy panel's Double-blind review switch; bookmarks, small text and skipped headings moved into Submission readiness; Accessibility's PDF tag and alt text checks are optional, off by default
+- Settings in five groups and grouped cards; System is now System & Network, Search is Search & Web, Template transfer is Document parsers; the diagram composer's settings in grouped cards too
+- A model in use can't be switched off in Settings › Models, and Disconnect waits while a model runs on the provider; a thread whose model was switched off keeps it and asks, instead of going to the main model
+- The Figures and Tables panels follow the new design: one grouped box of options, project figures as tiles, the Table builder with Paste CSV, the cell's line and merge buttons while a cell is edited, and Source folded away and editable
+- The project switcher marks each project TeX, Typ or MD, with the folder's name as a heading and no All projects
+- Research folds its sources into Sources and its years, preprints and AI sorting into Filters, with the workflows in one card
+- To-dos' starter groups show the colour each will take; find in the PDF is a slimmer bar; the Tools tabs take their colours in the Spectrum style
+- The see-through window's glass reaches the agents' menus, the palette, the / menu and the Assistant, with a solid fallback under Reduce transparency
+- The window's header keeps one height whether the sidebar shows or not, and menus match the new design's corners
+- Local Ollama models are never given a cloud price
+
+### Removed
+
+- Table to chart: charts are made with Plot in the diagram composer, which imports the table
+- Image to LaTeX
+
+### Fixed
+
+- A local agent's change of model or effort mid-session shows at once and sticks, even when the agent does not repeat its menus
+- Review: a PDF that can't be read says why instead of "Compile first", and a busy compile no longer stops the checks that do not need it
+- Template transfer and Models no longer share a colour in the Settings list
+
 ## 2.7.0 (27 November 2026)
 
 ### Added
