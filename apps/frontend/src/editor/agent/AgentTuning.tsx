@@ -28,6 +28,9 @@ export function effortLevels(o: ConfigOption): { levels: Choice[]; current: stri
 }
 
 /** The logo's six colours, red to purple: the effort levels take them in order, the lowest red, the highest purple */
+/** The logo's six stripe colours, red to purple (tokens.css --logo-spectrum), which the Assistant's quick actions take */
+export const LOGO = ['#f05747', '#f1a33c', '#f8d84a', '#6cdb6c', '#3b82f7', '#b260eb'];
+
 /** The effort levels' colours, as the plan has them (tokens.css --eff-*): off grey, low blue, medium green, high amber, extra red, max purple */
 const EFFORT = ['off', 'low', 'med', 'high', 'xhigh', 'max'] as const;
 const effortKey = (c: Choice): (typeof EFFORT)[number] | null => {
