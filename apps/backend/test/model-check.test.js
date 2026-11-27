@@ -195,7 +195,7 @@ test('a name that does not resolve, and a refused connection, each say so and ar
   try {
     const name = await check('custom', 'https://api.spectrum-test.invalid/v1');
     assert.deepEqual([name.ok, name.kind], [false, 'name']);
-    assert.equal(name.message, 'The name api.spectrum-test.invalid couldn’t be found. Check the endpoint in Settings › Models, and your internet or VPN connection.');
+    assert.equal(name.message, 'The name api.spectrum-test.invalid couldn’t be found. Check the endpoint in Settings › Providers, and your internet or VPN connection.');
     const chat = await chatCompletion({ apiKey: GOOD, endpoint: 'https://api.spectrum-test.invalid/v1', model: 'm', messages: [{ role: 'user', content: 'Hi' }], retries: 0 });
     assert.match(chat.error, /^The name api\.spectrum-test\.invalid couldn’t be found\./);
   } finally {
@@ -207,7 +207,7 @@ test('a name that does not resolve, and a refused connection, each say so and ar
   const port = closed.address().port;
   await new Promise((resolve) => closed.close(resolve));
   const refused = await check('custom', `http://127.0.0.1:${port}/v1`, '');
-  assert.deepEqual([refused.kind, refused.message], ['refused', `127.0.0.1:${port} refused the connection. Check the endpoint in Settings › Models, and that the server is running.`]);
+  assert.deepEqual([refused.kind, refused.message], ['refused', `127.0.0.1:${port} refused the connection. Check the endpoint in Settings › Providers, and that the server is running.`]);
   assert.equal(seen.length, 0);
 });
 

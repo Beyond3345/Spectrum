@@ -1,4 +1,4 @@
-// Test connection in Settings › Models: asks the provider for its model list with the key as typed, and never for a
+// Test connection in Settings › Providers: asks the provider for its model list with the key as typed, and never for a
 // chat or a completion, so the test costs nothing. Model-list requests checked against each provider's API docs in
 // November 2026: OpenAI, Anthropic, Gemini (OpenAI-compatible), DeepSeek, Moonshot and Meta list at …/models and check
 // the key there. OpenRouter and Ollama Cloud list in public, so the key is checked at their free key and balance
@@ -56,7 +56,7 @@ export async function testConnection({ provider: id, endpoint, apiKey }) {
   try {
     parsed = new URL(url);
   } catch {
-    return { ok: false, kind: 'endpoint', message: 'The endpoint isn’t a web address. Check it in Settings › Models.' };
+    return { ok: false, kind: 'endpoint', message: 'The endpoint isn’t a web address. Check it in Settings › Providers.' };
   }
   const p = providerFor(url, preset?.id);
   const api = p?.api || (/\/messages$/i.test(url) ? 'anthropic' : /\/responses$/i.test(url) ? 'responses' : 'chat');

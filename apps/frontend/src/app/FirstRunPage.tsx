@@ -74,7 +74,7 @@ export default function FirstRunPage({ settings, projects, onSettings, onTemplat
                 : 'The assistant, agents and AI autocomplete need a model: an API key, or a model running on this computer. Everything else works without one.'
             }
           >
-            <button className="btn" onClick={() => onSettings('models')}>Settings › Models</button>
+            <button className="btn" onClick={() => onSettings('providers')}>Settings › Providers</button>
           </Step>
 
           <Step

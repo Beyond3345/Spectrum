@@ -212,7 +212,7 @@ function ProviderModels({
                       {m.label}
                       {use && <span className="badge accent">{use[0].toUpperCase() + use.slice(1)}</span>}
                     </span>
-                    <span className="field-hint">{m.known ? [m.note, !m.vision && 'text only'].filter(Boolean).join(', ') : 'Listed by the provider'}</span>
+                    <span className="field-hint">{m.known ? [m.note, !m.vision && !/text only/i.test(m.note) && 'text only'].filter(Boolean).join(', ') : 'Listed by the provider'}</span>
                   </span>
                 </label>
                 <button

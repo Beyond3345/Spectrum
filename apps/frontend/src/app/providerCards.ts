@@ -59,8 +59,9 @@ export function connections(settings: AppSettings, providers: ProviderPreset[]):
   return list;
 }
 
-/** Whether a connection can answer: a key, or a server on plain http that takes none (as shared.tsx modelSetUp). */
-export const ready = (conn: Pick<Connection, 'key' | 'endpoint' | 'preset'>) => Boolean(conn.key) || Boolean(conn.preset?.local) || /^http:\/\//i.test(conn.endpoint);
+/** Whether a connection can answer: a key, or a server on plain http that takes none (as shared.tsx modelSetUp), and for a server of the user's own an address. */
+export const ready = (conn: Pick<Connection, 'key' | 'endpoint' | 'preset'>) =>
+  Boolean(conn.preset?.local) || /^http:\/\//i.test(conn.endpoint) || (Boolean(conn.key) && Boolean(conn.preset || conn.endpoint));
 
 /** A connection's name: its provider's, with the region or, for another server, the host. */
 export function connectionName(conn: Connection) {

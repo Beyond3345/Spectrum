@@ -42,6 +42,6 @@ eq(parserWarning(with_({}), MINERU), 'Needs your MinerU token above, or one in t
 eq(parserWarning(with_({ parser: 'mathpix', parserSaved: { mathpix: { endpoint: '', key: 'k' } } }), MATHPIX), 'Needs your Mathpix app ID and app key above.', 'Mathpix needs both');
 eq(parserWarning(mathpix, MATHPIX), '', 'Mathpix with both');
 eq(parserWarning(with_({ parser: 'docling' }), DOCLING), '', 'Docling may need no key');
-eq(parserWarning(with_({ parser: 'custom', parserProtocol: 'docling' }), DOCLING), 'Needs the parser’s address in Settings › Template transfer.', 'Other needs an address');
+eq(parserWarning(with_({ parser: 'custom', parserProtocol: 'docling' }), DOCLING), 'Needs the parser’s address in Settings › Document parsers.', 'Other needs an address');
 
 console.log('parsers.check: ok');

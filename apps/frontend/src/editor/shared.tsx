@@ -258,8 +258,8 @@ export async function patchesToChanges(api: Pick<EditorApi, 'ensureFileContent'>
  */
 export const modelSetUp = (llm: { apiKey?: string; endpoint?: string }) => Boolean(llm.apiKey) || /^http:\/\//i.test(llm.endpoint || '');
 
-/** Fix with AI's tooltip: with no model set up it opens Settings › Models instead */
-export const fixTitle = (api: Pick<EditorApi, 'llm'>) => (modelSetUp(api.llm.main) ? undefined : 'No AI model is set up yet: opens Settings › Models');
+/** Fix with AI's tooltip: with no model set up it opens Settings › Providers instead */
+export const fixTitle = (api: Pick<EditorApi, 'llm'>) => (modelSetUp(api.llm.main) ? undefined : 'No AI model is set up yet: opens Settings › Providers');
 
 /** What Fix with AI says of the compile its run ended with: whether the fix builds, or where it still fails. */
 export const buildLine = (build?: { ok: boolean; errors: string[] }) => (!build ? '' : build.ok ? 'Builds.' : `Still fails at ${build.errors[0] || 'the compile'}`);
@@ -271,7 +271,7 @@ export const buildLine = (build?: { ok: boolean; errors: string[] }) => (!build 
  */
 export async function fixWithAI(api: EditorApi, { task, prompt, selection = '', file, label, withLog = true }: { task: string; prompt: string; selection?: string; file?: string; label: string; withLog?: boolean }) {
   if (!modelSetUp(api.llm.main)) {
-    api.openSettings('models');
+    api.openSettings('providers');
     return '';
   }
   try {

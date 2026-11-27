@@ -247,7 +247,7 @@ export function registerTransferRoutes(fastify) {
     return { ok: true };
   });
 
-  // the parser presets for Settings → Template transfer, without the request-building parts
+  // the parser presets for Settings → Document parsers, without the request-building parts
   fastify.get('/api/transfer/parsers', async () => ({
     parsers: PARSERS.map(({ parse: _parse, maxMB: _maxMB, ...preset }) => preset)
   }));

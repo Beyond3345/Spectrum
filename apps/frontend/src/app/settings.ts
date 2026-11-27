@@ -86,13 +86,13 @@ export type AppSettings = {
   editorThemeDark: string;
   /** colours changed from the chosen theme, per mode */
   editorColours: { light: EditorColours; dark: EditorColours };
-  /** preset id from Settings → Template transfer */
+  /** preset id from Settings → Document parsers */
   parser: string;
   /** each parser's endpoint ('' = the preset's own) and key, kept when switching between them */
   parserSaved: Record<string, { endpoint: string; key: string; appId?: string }>;
   /** the API a custom parser speaks (a preset id) */
   parserProtocol: string;
-  /** preset id from Settings → Models, 'custom', or '' to work it out from the endpoint */
+  /** preset id from Settings → Providers, 'custom', or '' to work it out from the endpoint */
   llmProvider: string;
   /** each provider's key, endpoint and model, kept when switching between them */
   providerSaved: Record<string, { key: string; endpoint: string; model: string }>;

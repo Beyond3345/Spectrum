@@ -15,7 +15,7 @@ export function registerLLMRoutes(fastify) {
     return result;
   });
 
-  // the presets for Settings → Models, without the request-building parts
+  // the presets for Settings → Providers and Models, without the request-building parts
   fastify.get('/api/llm/providers', async () => ({
     providers: PROVIDERS.map(({ hosts, fields: _fields, api: _api, ...preset }) => ({ ...preset, hosts: hosts.map((re) => re.source) }))
   }));

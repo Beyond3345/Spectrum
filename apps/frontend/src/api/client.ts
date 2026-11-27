@@ -1989,7 +1989,7 @@ export function transferSubmitImages(jobId: string, images: PageImage[]) {
   return request<{ ok: boolean }>('/api/transfer/submit-images', json('POST', { jobId, images }));
 }
 
-/** A PDF parser from Settings → Template transfer. */
+/** A PDF parser from Settings → Document parsers. */
 export interface ParserPreset {
   id: string;
   name: string;

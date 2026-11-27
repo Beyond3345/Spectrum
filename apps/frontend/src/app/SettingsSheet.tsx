@@ -270,6 +270,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
               onKeyDown={(e) => e.key === 'Enter' && found.size && !found.has(section) && go([...found.keys()][0])}
             />
           </label>
+          <div className="settings-nav-list">
           {SECTION_GROUPS.map(([heading, sections]) => {
             const rows = sections.filter(([value]) => found.has(value));
             return rows.length ? (
@@ -290,6 +291,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
             ) : null;
           })}
           {!found.size && <div className="field-hint settings-nav-none" role="status">No setting matches.</div>}
+          </div>
         </nav>
 
         <div className="settings-pane">

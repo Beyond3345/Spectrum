@@ -30,7 +30,7 @@ eq(inlineImage('/api/projects/import-arxiv-sse?arxivIdOrUrl=2401.00001'), false,
 eq(inlineImage('data:text/html,<script>1</script>'), false, 'a data: page');
 eq(inlineImage(undefined), false, 'no address');
 
-// ─── Fix with AI before a model is set up: Settings › Models, and no request ───
+// ─── Fix with AI before a model is set up: Settings › Providers, and no request ───
 
 eq(modelSetUp({ endpoint: 'https://api.openai.com/v1/chat/completions' }), false, 'no key, a hosted model');
 eq(modelSetUp({ endpoint: 'https://api.openai.com/v1/chat/completions', apiKey: 'k' }), true, 'a key');
@@ -38,7 +38,7 @@ eq(modelSetUp({ endpoint: 'http://127.0.0.1:11434/v1/chat/completions' }), true,
 const opened: unknown[] = [];
 const noModel = { llm: { main: { endpoint: 'https://api.openai.com/v1' } }, openSettings: (s?: string) => opened.push(s), notify: () => opened.push('toast') } as unknown as EditorApi;
 eq(await fixWithAI(noModel, { task: 'debug_compile', prompt: 'x', label: 'Fix with AI' }), '', 'nothing is asked');
-eq(opened, ['models'], 'Settings opens at Models');
+eq(opened, ['providers'], 'Settings opens at Providers');
 
 // ─── Fix with AI ends with a compile, and says how it went ───
 

@@ -1719,12 +1719,22 @@ button.chip.active:hover {
   height: min(580px, calc(100vh - 140px));
 }
 
+/* the search stays at the top; the list of panes scrolls under it */
 .settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 12px 10px;
+  min-height: 0;
+  padding: 12px 0 0;
   border-right: 1px solid var(--border);
+}
+
+.settings-nav-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  padding: 0 10px 12px;
   overflow-y: auto;
 }
 
@@ -1851,7 +1861,7 @@ button.chip.active:hover {
 .settings-search {
   width: auto;
   flex: none;
-  margin: 0 0 10px;
+  margin: 0 10px 10px;
 }
 
 .settings-nav .nav-row > span:last-child {
@@ -2564,10 +2574,13 @@ textarea.skill-file-text {
   }
 
   .settings-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .settings-nav-list {
+    flex-direction: row;
+    flex-wrap: wrap;
   }
 
   .settings-nav .nav-row {

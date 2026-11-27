@@ -48,7 +48,7 @@ export function resolveLLMConfig(llmConfig) {
 export const badKey = (key) => /[^\x21-\x7e]/.test(key);
 export const BAD_KEY = 'The API key has a character that can’t be sent. Paste it again.';
 
-export const NO_API_KEY = 'No AI model is set up yet. Add an endpoint, model and API key in Settings › Models.';
+export const NO_API_KEY = 'No AI model is set up yet. Connect a provider in Settings › Providers.';
 
 /** A resolved config that can't work without a key. Local servers such as Ollama speak plain http and take none. */
 export const missingKey = (config) => !config.apiKey && !/^http:\/\//i.test(config.endpoint);
@@ -177,8 +177,8 @@ const about = (ms) => (ms < 90000 ? `${Math.ceil(ms / 1000)} seconds` : `${Math.
 
 /** A provider's non-2xx answer as one plain sentence, never the raw body. */
 export function providerError(status, text) {
-  if (status === 401 || status === 403) return 'The API key was rejected. Check it in Settings › Models.';
-  if (status === 404) return 'The endpoint or model wasn’t found. Check Settings › Models.';
+  if (status === 401 || status === 403) return 'The API key was rejected. Check it in Settings › Providers.';
+  if (status === 404) return 'The endpoint or model wasn’t found. Check the endpoint in Settings › Providers and the model in Settings › Models.';
   // a 429 is also how providers say the account has run out, which waiting never mends
   if (status === 429) return spentQuota(text) ? 'The provider says this account has no quota or credit left. Check your plan and billing with the provider.' : 'The provider is limiting requests. Try again shortly.';
   let detail = '';
@@ -204,14 +204,14 @@ export function unreachable(err, host) {
   const errors = [err?.cause, ...(err?.cause?.errors || []), err].filter(Boolean);
   const code = String(errors.map((e) => e.code).find(Boolean) || '');
   const kinds = [
-    ['name', /^(ENOTFOUND|EAI_AGAIN|EAI_NONAME|EAI_FAIL)$/, `The name ${host} couldn’t be found. Check the endpoint in Settings › Models, and your internet or VPN connection.`],
-    ['refused', /^ECONNREFUSED$/, `${host} refused the connection. Check the endpoint in Settings › Models, and that the server is running.`],
+    ['name', /^(ENOTFOUND|EAI_AGAIN|EAI_NONAME|EAI_FAIL)$/, `The name ${host} couldn’t be found. Check the endpoint in Settings › Providers, and your internet or VPN connection.`],
+    ['refused', /^ECONNREFUSED$/, `${host} refused the connection. Check the endpoint in Settings › Providers, and that the server is running.`],
     ['reset', /^(ECONNRESET|EPIPE|ECONNABORTED|UND_ERR_SOCKET|UND_ERR_CLOSED)$/, `The connection to ${host} was dropped before it answered, which a VPN or an unsteady network can do. Try again.`],
     ['timeout', /^(ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT)$/, `Connecting to ${host} timed out. Check your internet or VPN connection, then try again.`],
     ['network', /^(EHOSTUNREACH|ENETUNREACH|ENETDOWN)$/, `This computer has no route to ${host}. Check your internet or VPN connection.`],
     ['certificate', /CERT|SSL|TLS|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER/, `The secure connection to ${host} failed because its certificate couldn’t be trusted (${code}). Check the endpoint; a VPN or proxy that inspects traffic can also cause this.`]
   ];
-  const other = `Couldn’t reach ${host}. Check the endpoint in Settings › Models.`;
+  const other = `Couldn’t reach ${host}. Check the endpoint in Settings › Providers.`;
   // fetch never opens a port the web keeps closed (such as 9 or 25)
   if (err?.cause?.message === 'bad port') return { kind: 'port', code: '', text: other };
   const [kind, , text] = kinds.find(([, re]) => re.test(code)) || ['other', null, other];

@@ -33,7 +33,7 @@ function ProviderCard({
   onDisconnect: () => void;
 }) {
   const { preset } = conn;
-  const name = preset?.name || 'Other (OpenAI-compatible)';
+  const name = preset?.name || 'Custom endpoint';
   const id = `provider-${conn.at.replace(/\W/g, '-')}`;
   const test = useConnectionTest(conn.id, conn.endpoint, conn.key);
   // the address as typed, kept on leaving the field or Return: a half-typed one never moves the card or its key

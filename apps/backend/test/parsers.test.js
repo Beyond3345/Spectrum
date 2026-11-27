@@ -305,9 +305,9 @@ test('the parser, its address and its key are checked before a transfer starts',
   assert.throws(() => resolveParserConfig({ id: 'custom', protocol: 'nope', endpoint: base }), { message: 'Unknown parser: nope.' });
   assert.throws(() => resolveParserConfig({ id: 'docling', endpoint: 'file:///etc/passwd' }), { message: 'The address for Docling must start with http:// or https://.' });
   assert.throws(() => resolveParserConfig({ id: 'mistral', endpoint: 'not a url', key: 'k' }), /must start with http/);
-  assert.throws(() => resolveParserConfig({ id: 'mathpix', key: 'k' }), { message: 'Add your Mathpix app ID and app key in Settings › Template transfer first.' });
-  assert.throws(() => resolveParserConfig({ id: 'paddleocr' }), { message: 'Add your PaddleOCR-VL access token in Settings › Template transfer first.' });
-  assert.throws(() => resolveParserConfig({ id: 'custom', protocol: 'docling' }), { message: 'Add the parser’s address in Settings › Template transfer first.' });
+  assert.throws(() => resolveParserConfig({ id: 'mathpix', key: 'k' }), { message: 'Add your Mathpix app ID and app key in Settings › Document parsers first.' });
+  assert.throws(() => resolveParserConfig({ id: 'paddleocr' }), { message: 'Add your PaddleOCR-VL access token in Settings › Document parsers first.' });
+  assert.throws(() => resolveParserConfig({ id: 'custom', protocol: 'docling' }), { message: 'Add the parser’s address in Settings › Document parsers first.' });
   // self-hosted servers may need no key
   assert.equal(resolveParserConfig({ id: 'docling' }).endpoint, 'http://localhost:5001');
   assert.deepEqual(resolveParserConfig({ id: 'custom', protocol: 'mistral', endpoint: 'http://gpu.local:8000/v1/' }), {

@@ -289,7 +289,7 @@ export default function TransferPanel({
     running || mode === 'quick' || mode === 'agent'
       ? ''
       : !llmConfigFor(settings, 'main').apiKey && !/^http:\/\//i.test(settings.llmEndpoint)
-        ?'Needs an API key for the main model in Settings › Models, or in the .env file.'
+        ?'Needs an API key for the main model’s provider in Settings › Providers, or in the .env file.'
         : mode === 'pdf'
           ? parserWarning(settings, parserPreset(parsers, settings))
           : '';
@@ -428,7 +428,7 @@ export default function TransferPanel({
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /**
- * The PDF parser and its key: the whole picker in Settings → Template transfer, and `inline` in this
+ * The PDF parser and its key: the whole picker in Settings → Document parsers, and `inline` in this
  * panel just the parser and its key fields. Each parser keeps its own endpoint and key.
  */
 export function ParserFields({ inline = false }: { inline?: boolean }) {

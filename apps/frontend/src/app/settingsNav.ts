@@ -92,28 +92,34 @@ export const SECTION_LABELS: Record<Section, string[]> = {
   system: ['Network', 'Proxy', 'Tools', 'Folders', 'App data', 'About', 'Licences', 'Version', 'Show the setup page again', 'Tell me when a newer Spectrum is out', 'Updates'],
   editor: [
     'Insert \\cite at the cursor after adding a reference', 'Typing', 'Continue lists', 'Close maths delimiters', 'Show the maths at the cursor', 'To-dos', 'New to-dos go',
-    'Jump between source and PDF', 'Double-click jumps between the source and the PDF', 'SyncTeX', 'Highlight colour', 'Highlight stays for', 'The PDF follows the file you open',
-    'Font', 'Size', 'Keys', 'Vim', 'Emacs', 'Editor theme', 'Colours'
+    'Jump between source and PDF', 'Double-click jumps between the source and the PDF', 'SyncTeX', 'Highlight colour', 'Highlight lasts', 'PDF follows the open file',
+    'Font', 'Font size', 'Keys', 'Editing keys', 'Vim', 'Emacs', 'Light theme', 'Dark theme', 'Colours'
   ],
   engines: [
-    'Open Logs when a compile fails', 'Underline overfull and underfull boxes', 'LaTeX', 'Typst', 'Markdown', 'Default compiler', 'Tectonic', 'pdfLaTeX', 'XeLaTeX', 'LuaLaTeX', 'Latexmk',
-    'Bibliography', 'BibTeX', 'Biber', 'Auto compile', 'Compile errors', 'Draft mode', 'Check syntax before compiling', 'Show live output while compiling', 'TeX installation', 'TeX folder', 'xjyutping',
-    'Typst version', 'Tinymist', 'Pandoc'
+    'Open Logs when a compile fails', 'Underline overfull and underfull boxes', 'LaTeX', 'Typst', 'Markdown', 'Compiler', 'Auto compile', 'Compile error handling', 'Bibliography tool', 'BibTeX', 'Biber',
+    'Fast draft mode', 'Precompile the preamble', 'Syntax check before compiling', 'Show live output while compiling', 'Tectonic', 'pdfLaTeX', 'XeLaTeX', 'LuaLaTeX', 'Latexmk', 'TeX installation',
+    'TeX folder', 'xjyutping folder', 'Typst version', 'Tinymist', 'Pandoc'
   ],
-  language: ['Languages', 'Add a language', 'Spelling', 'Check spelling as you type', 'Grammar', 'Harper', 'LanguageTool', 'Style suggestions', 'Serial comma', 'Oxford comma', 'Your dictionary'],
-  snippets: ['Snippets', 'Trigger', 'New snippet', 'Restore the starters'],
-  composer: ['Canvas', 'Grid', 'Dark canvas', 'Minimap', 'Tool keys', 'New drawings', 'Symbol sets', 'Moments', 'Mohr’s circle', 'Vector notation', 'siunitx', 'Force diagrams', 'University styles'],
+  language: ['Languages', 'Add a language', 'Spelling', 'Check spelling as you type', 'Grammar', 'English grammar', 'Harper', 'Include style suggestions', 'Serial (Oxford) comma', 'LanguageTool', 'Your dictionary'],
+  snippets: ['Create snippet', 'Trigger', 'Reset to defaults'],
+  composer: [
+    'Canvas', 'Background', 'Grid', 'Dark canvas', 'Minimap', 'Tool keys', 'New drawings', 'Symbols from other packages', 'Bending moment diagrams', 'Mohr’s circle shear axis', 'Vector names', 'Structure diagrams',
+    'Axial force diagram', 'Shear force diagram', 'Write units with siunitx', 'University styles'
+  ],
   projects: ['Open Spectrum on', 'Project switcher opens at', 'Default folder for new projects', 'Opening files', 'Default app', 'Your other computers', 'Use the same settings on each computer', 'This computer’s name'],
-  checkpoints: ['Save a checkpoint after each successful compile', 'Checkpoint before AI changes', 'Tell me when a checkpoint can’t be saved', 'Clearing out'],
-  github: ['Account', 'Sign in', 'Token', 'Your settings on GitHub', 'Settings repository', 'Sync'],
+  checkpoints: ['Save a checkpoint when a compile succeeds', 'Warn me when a checkpoint fails to save', 'Save a checkpoint before every change I apply', 'Clearing out', 'Delete automatic checkpoints'],
+  github: ['Account', 'Sign in with GitHub', 'Token', 'Your settings on GitHub', 'Keep my settings in a private repository', 'Sync'],
   providers: ['Connected', 'Available', 'API key', 'Endpoint', 'Region', 'Test connection', 'Connect', 'Disconnect', 'Custom endpoint', 'OpenAI-compatible', 'Ollama', 'OpenRouter', 'Keychain'],
-  models: ['Main model', 'Quick model', 'Vision model', 'Reasoning effort', 'Models in the menus', 'Prices', 'Currency', 'Context', 'models.dev', 'Fill in prices from models.dev'],
-  agents: ['Local agents', 'Claude Code', 'Codex', 'Automations', 'Compile after an agent’s changes', 'Offer Fix with AI', 'MCP servers', 'Sandbox', 'Network access'],
-  personas: ['Personas', 'Default instructions', 'New persona', 'Restore the starters'],
-  skills: ['Skills', 'Import a skill', 'New skill', 'Share skills with other agents', 'This project', 'All projects'],
-  search: ['Default search', 'Search connections', 'OpenAlex', 'Semantic Scholar', 'SerpApi', 'Google Scholar', 'Exa', 'Tavily', 'Brave Search', 'DDGS', 'Research sources', 'NCBI API key', 'PubMed', 'Unpaywall email', 'Search model', 'Web search'],
-  zotero: ['Zotero on this computer', 'Connect', 'Project collections', 'Citing', 'Offer the Zotero library while citing'],
-  transfer: ['PDF parser', 'Parser', 'MinerU', 'OCR', 'Change template', 'Template transfer', 'API key', 'Endpoint']
+  models: ['Default models', 'Main model', 'Quick model', 'Vision model', 'Reasoning effort', 'Models in the menus', 'Prices', 'Your price for', 'Currency', 'Context', 'Fill in prices from models.dev'],
+  agents: ['Local agents', 'Claude Code', 'Codex', 'MCP servers', 'Automations', 'Compile after applying changes', 'Offer a fix when that compile fails', 'Sandbox', 'Network access'],
+  personas: ['Default instructions', 'Create persona', 'Reset to defaults'],
+  skills: ['Create skill', 'Add folder', 'Share skills with other agents on this computer', 'This project', 'All projects'],
+  search: [
+    'Default search', 'Search connections', 'Model’s built-in web search', 'OpenAlex', 'Semantic Scholar', 'SerpApi', 'Google Scholar', 'Exa', 'Tavily', 'Brave Search', 'DDGS', 'Research sources', 'OpenAlex email',
+    'NCBI API key', 'PubMed', 'Unpaywall email', 'Search model'
+  ],
+  zotero: ['Zotero on this computer', 'Better BibTeX', 'Project collections', 'Citing', 'Suggest items from your Zotero library in \\cite completion'],
+  transfer: ['PDF parser', 'Parser', 'MinerU', 'OCR', 'Change template', 'Template transfer', 'Token', 'Endpoint']
 };
 
 const fold = (text: string) => text.toLowerCase().replace(/[’']/g, '');
