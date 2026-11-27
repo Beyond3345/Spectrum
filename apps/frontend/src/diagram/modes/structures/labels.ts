@@ -3,6 +3,7 @@
 // that touches one moves to the nearest place around the point it labels that touches none, so the canvas and the
 // export (which draw the same scene) both show it clear. A label already clear stays where it was.
 import { unitsAsText } from '../../units';
+import { cubicPoints } from './model';
 import type { Pt } from './model';
 import { SYMBOLS } from './symbols';
 
@@ -88,7 +89,7 @@ export function shapesOf(items: { item: ShapeItem; shift: Pt }[]): Shape[] {
   const out: Shape[] = [];
   for (const { item, shift } of items) {
     const move = (p: Pt) => ({ x: p.x + shift.x, y: p.y + shift.y });
-    if (item.t === 'line') out.push(shapeOf(item.pts.map(move), !!item.closed, !!item.fill));
+    if (item.t === 'line') out.push(shapeOf((item.controls ? cubicPoints(item.pts[0], ...item.controls, item.pts[1]) : item.pts).map(move), !!item.closed, !!item.fill));
     else if (item.t === 'arc') {
       const steps = 12;
       out.push(shapeOf(Array.from({ length: steps + 1 }, (_, i) => {
@@ -107,7 +108,7 @@ export function shapesOf(items: { item: ShapeItem; shift: Pt }[]): Shape[] {
 }
 
 export type ShapeItem =
-  | { t: 'line'; pts: Pt[]; closed?: boolean; fill?: string }
+  | { t: 'line'; pts: Pt[]; closed?: boolean; fill?: string; controls?: [Pt, Pt] }
   | { t: 'arc'; c: Pt; r: number; from: number; to: number }
   | { t: 'pic'; name: string; at: Pt; rotate: number }
   | { t: 'dot'; at: Pt; r: number };

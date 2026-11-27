@@ -19,6 +19,7 @@
 .st-dimension { stroke-width: max(0.8px, calc(0.3 * var(--st-pt, 0px))); stroke: var(--ckt-muted); }
 .st-cut { stroke-width: max(1.8px, calc(0.8 * var(--st-pt, 0px))); stroke-dasharray: 7 5; }
 .st-faint { stroke: var(--ckt-muted); stroke-dasharray: 3 3; }
+.st-chord { stroke: var(--ckt-muted); stroke-dasharray: 5 4; }
 .st-axis { stroke-width: max(1px, calc(0.4 * var(--st-pt, 0px))); }
 
 .st-fill-load { fill: color-mix(in srgb, var(--ckt-ink) 7%, transparent); }

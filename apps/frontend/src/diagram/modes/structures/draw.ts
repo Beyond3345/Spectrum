@@ -5,7 +5,7 @@ import { unitWriter } from '../../units';
 import { anchorFor, overlap, placeLabels, shapesOf, textBox } from './labels';
 import type { Anchor, Box } from './labels';
 import { SUPPORT_DEPTH } from './symbols';
-import { UNITS, frameOf, loadDirection, memberName, members, nodeMap, placeAt, supports } from './model';
+import { UNITS, bendControls, bendOf, bendPeak, cubicPoints, forward, frameOf, loadDirection, memberName, members, nodeMap, placeAt, pointAlong, supports } from './model';
 import type { Cut, Load, Look, Member, Pt, StructureModel, Support, Thickness, Units } from './model';
 import { isColour } from '../shared';
 import { asThickness } from '../vectors/code';
@@ -14,7 +14,7 @@ import type { Piece, Solution } from './solve';
 import { readLooks } from './looks';
 import type { DiagramLooks } from '../../types';
 
-export { anchorFor };
+export { anchorFor, forward };
 export type { Anchor };
 
 // ─── style ───
@@ -83,14 +83,15 @@ export function readStyle(raw: Record<string, unknown>): StructStyle {
 
 // ─── the display list ───
 
-export type Ink = 'member' | 'bar' | 'zero' | 'line' | 'load' | 'reaction' | 'force' | 'dimension' | 'cut' | 'faint' | 'axis';
+export type Ink = 'member' | 'bar' | 'zero' | 'line' | 'load' | 'reaction' | 'force' | 'dimension' | 'cut' | 'faint' | 'axis' | 'chord';
 export type Fill = 'shear' | 'moment' | 'axial' | 'load';
 
 /** A part's own colour and thickness on what it draws (code.ts writes them after the ink's, so they win). */
 type Own = { colour?: string; width?: Thickness };
 
 export type Item =
-  | ({ t: 'line'; pts: Pt[]; ink: Ink; closed?: boolean; fill?: Fill; arrow?: '->' | '<->'; id?: string } & Own)
+  /** a polyline, or with `controls` a cubic Bézier from its first point to its second (a bent member) */
+  | ({ t: 'line'; pts: Pt[]; ink: Ink; closed?: boolean; fill?: Fill; arrow?: '->' | '<->'; id?: string; controls?: [Pt, Pt] } & Own)
   /** an arc with an arrowhead at its `to` end; angles in degrees */
   | ({ t: 'arc'; c: Pt; r: number; from: number; to: number; ink: Ink; id?: string } & Own)
   | { t: 'pic'; name: string; at: Pt; rotate: number; id?: string; faint?: boolean; colour?: string }
@@ -136,9 +137,6 @@ export function formatValue(value: number, figures: number) {
   return String(Number(value.toPrecision(figures)));
 }
 
-/** A member's own way along: left to right, or up when it's vertical. Its x is measured from that end and its moment read that way round. */
-export const forward = (u: Pt) => u.x > 1e-9 || (Math.abs(u.x) <= 1e-9 && u.y > 0);
-
 /** The structure's extent in drawing units. */
 function boundsOf(model: StructureModel) {
   const points = [...model.nodes, ...model.parts.flatMap((p) => (p.kind === 'cut' ? [p.p, p.q] : p.kind === 'label' || p.kind === 'axes' ? [p.at] : []))];
@@ -162,7 +160,7 @@ export function extentOf(items: Item[]) {
     ys.push(p.y - pad, p.y + pad);
   };
   for (const item of items) {
-    if (item.t === 'line') item.pts.forEach((p) => take(p));
+    if (item.t === 'line') (item.controls ? cubicPoints(item.pts[0], ...item.controls, item.pts[1]) : item.pts).forEach((p) => take(p));
     else if (item.t === 'arc') take(item.c, item.r);
     else if (item.t === 'pic') take(item.at, SUPPORT_DEPTH);
     else if (item.t === 'dot') take(item.at, item.r);
@@ -214,6 +212,21 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
 
   // ─── the structure itself ───
 
+  /** a bent member's straight axis, faint and dashed, and its sag marked across to the curve where it's furthest */
+  const axisItems = (m: Member, f: ReturnType<typeof frameOf>, bend: NonNullable<Member['bend']>): Item[] => {
+    const out: Item[] = [{ t: 'line', pts: [P(f.a), P(f.b)], ink: 'chord' }];
+    const label = bend.label ?? '$\\delta$';
+    if (!label) return out;
+    const s = bendPeak(bend) * f.length;
+    const [from, to] = [P(add(f.a, times(f.u, s))), P(pointAlong(model, m, s, f))];
+    // too short for two arrowheads, a plain line
+    out.push({ t: 'line', pts: [from, to], ink: 'dimension', ...(Math.abs(bend.sag) * scale >= 0.4 && { arrow: '<->' as const }), id: m.id });
+    const d = times(f.u, forward(f.u) ? 1 : -1);
+    const mid = times(add(from, to), 0.5);
+    out.push({ t: 'text', at: add(mid, times(d, 0.06)), tex: label, anchor: anchorFor(d), id: m.id, around: mid });
+    return out;
+  };
+
   /** members, each between lo and hi along it when clipped */
   const memberItems = (keep: (m: Member) => [number, number] | null, zero?: Set<string>): Item[] => {
     const out: Item[] = [];
@@ -221,8 +234,19 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       const range = keep(m);
       if (!range) continue;
       const f = frameOf(model, m);
-      const ends = range.map((s) => P(add(f.a, times(f.u, Math.min(s, f.length)))));
-      out.push({ t: 'line', pts: ends, ink: zero?.has(m.id) ? 'zero' : m.bar ? 'bar' : 'member', id: m.id, ...own(m) });
+      const ink: Ink = zero?.has(m.id) ? 'zero' : m.bar ? 'bar' : 'member';
+      const bend = bendOf(m);
+      if (!bend) {
+        const ends = range.map((s) => P(add(f.a, times(f.u, Math.min(s, f.length)))));
+        out.push({ t: 'line', pts: ends, ink, id: m.id, ...own(m) });
+        continue;
+      }
+      const whole = range[0] <= 0 && range[1] >= f.length;
+      if (whole && bend.ghost) out.push(...axisItems(m, f, bend));
+      // whole, the curve as TikZ draws it; cut by a section, the part kept as points along it
+      const [lo, hi] = [Math.max(0, range[0]), Math.min(f.length, range[1])];
+      if (whole) out.push({ t: 'line', pts: [P(f.a), P(f.b)], controls: bendControls({ ...f, a: P(f.a), b: P(f.b) }, { ...bend, sag: bend.sag * scale }), ink, id: m.id, ...own(m) });
+      else out.push({ t: 'line', pts: Array.from({ length: 25 }, (_, i) => P(pointAlong(model, m, lo + ((hi - lo) * i) / 24, f))), ink, id: m.id, ...own(m) });
     }
     // hinges, released ends and truss joints, over the members
     for (const m of all) {
@@ -231,7 +255,8 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
       const f = frameOf(model, m);
       m.release?.forEach((released, end) => {
         const at = end ? f.length : 0;
-        if (released && !nodes.get(end ? m.b : m.a)?.hinge && range[0] <= at && at <= range[1]) out.push({ t: 'dot', at: add(P(end ? f.b : f.a), times(f.u, end ? -0.15 : 0.15)), r: 0.06, open: true });
+        const near = bendOf(m) ? P(pointAlong(model, m, end ? f.length - 0.15 / scale : 0.15 / scale, f)) : add(P(end ? f.b : f.a), times(f.u, end ? -0.15 : 0.15));
+        if (released && !nodes.get(end ? m.b : m.a)?.hinge && range[0] <= at && at <= range[1]) out.push({ t: 'dot', at: near, r: 0.06, open: true });
       });
     }
     const shown = new Set(all.filter((m) => keep(m)).flatMap((m) => {
@@ -318,7 +343,8 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         // a vertical load per horizontal length is drawn on plan, as snow on a roof is: a level band over the member's
         // highest point, its arrows short and alike, so a steep rafter's low end doesn't read as a larger load
         const flat = p.projected && Math.abs(d.x) < 1e-9 && Math.abs(f.u.y) > 1e-9;
-        const onMember = (s: number, side: number) => add(P(add(f.a, times(f.u, s))), times(d, -GAP * side));
+        const bent = !!bendOf(m);
+        const onMember = (s: number, side: number) => add(P(bent ? pointAlong(model, m, s, f) : add(f.a, times(f.u, s))), times(d, -GAP * side));
         const level = (side: number) => (-d.y * side > 0 ? Math.max : Math.min)(onMember(from, side).y, onMember(to, side).y);
         const base = (s: number, side = sideAt(s)) => (flat ? { x: onMember(s, side).x, y: level(side) } : onMember(s, side));
         const top = (s: number, side = sideAt(s)) => add(base(s, side), times(d, -side * rise(s)));
@@ -330,7 +356,9 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
         for (const [a, b] of spans) {
           const side = sideAt((a + b) / 2);
           // the band takes the load's colour, its arrows its thickness too
-        out.push({ t: 'line', pts: [base(a, side), base(b, side), top(b, side), top(a, side)], ink: 'line', closed: true, fill: 'load', id: p.id, ...own(p, false) });
+          // along a bent member, the band follows its curve
+          const run = bent ? Array.from({ length: 17 }, (_, i) => a + ((b - a) * i) / 16) : [a, b];
+          out.push({ t: 'line', pts: [...run.map((s) => base(s, side)), ...[...run].reverse().map((s) => top(s, side))], ink: 'line', closed: true, fill: 'load', id: p.id, ...own(p, false) });
         }
         for (const s of stops) if (Math.abs(w(s)) > 1e-9 * wMax) out.push({ t: 'line', pts: [top(s), base(s)], ink: 'load', arrow: '->', id: p.id, ...own(p) });
         const unitTex = `${F}/${L}`;
@@ -668,7 +696,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     all.map((m) => {
       const f = frameOf(model, m);
       const { plot } = sideOf(m);
-      const mid = P(add(f.a, times(f.u, f.length / 2)));
+      const mid = P(pointAlong(model, m, f.length / 2, f));
       return { t: 'text', at: add(mid, times(plot, 0.1)), tex: forceText(axialOf(m)), anchor: anchorFor(plot), id: m.id, around: mid } as Item;
     });
 
@@ -778,7 +806,7 @@ export function buildScene(model: StructureModel, solution: Solution, style: Str
     for (const x of crossed) {
       const m = x.member;
       const f = frameOf(model, m);
-      const point = P(add(f.a, times(f.u, x.s)));
+      const point = P(pointAlong(model, m, x.s, f));
       const out = x.keepsA ? f.u : times(f.u, -1);
       const { N, V, M } = forcesAt(solution, m.id, x.s);
       const name = memberName(model, m);

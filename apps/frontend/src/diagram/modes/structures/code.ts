@@ -24,7 +24,8 @@ const INKS: Record<Ink, string> = {
   dimension: 'line width=0.3pt',
   cut: 'line width=0.8pt, dashed',
   faint: 'line width=0.4pt, black!35',
-  axis: 'line width=0.4pt'
+  axis: 'line width=0.4pt',
+  chord: 'line width=0.4pt, black!35, dashed'
 };
 
 /** a fill's options: a force diagram's from the style, its opacity written only when it's less than 1 */
@@ -48,8 +49,10 @@ const bracket = (options: (string | false | undefined)[]) => {
 
 function itemTikz(item: Item): string {
   switch (item.t) {
-    case 'line':
-      return `\\draw${bracket([`struct ${item.ink}`, item.fill && `struct ${item.fill} fill`, item.arrow, ...ownOptions(item)])} ${item.pts.map(at).join(' -- ')}${item.closed ? ' -- cycle' : ''};`;
+    case 'line': {
+      const path = item.controls ? `${at(item.pts[0])} .. controls ${at(item.controls[0])} and ${at(item.controls[1])} .. ${at(item.pts[1])}` : `${item.pts.map(at).join(' -- ')}${item.closed ? ' -- cycle' : ''}`;
+      return `\\draw${bracket([`struct ${item.ink}`, item.fill && `struct ${item.fill} fill`, item.arrow, ...ownOptions(item)])} ${path};`;
+    }
     case 'arc': {
       const t = (item.from * Math.PI) / 180;
       const start = { x: item.c.x + item.r * Math.cos(t), y: item.c.y + item.r * Math.sin(t) };
