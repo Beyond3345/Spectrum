@@ -1,4 +1,4 @@
-// Tools › Review's “References exist” and the agents' check_references: each entry of the project's bibliography
+// Tools › Review's “Verify citations” and the agents' check_references: each entry of the project's bibliography
 // looked up in the source its identifier names (Crossref or doi.org for a DOI, arXiv for an arXiv id, OpenAlex for a
 // title alone) and compared with it by code, field by field, with retractions read from Crossref's updates (Retraction
 // Watch's among them) and OpenAlex's flag. No model is used. Each row carries what was read and where, so the user can

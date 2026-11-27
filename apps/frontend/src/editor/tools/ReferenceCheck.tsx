@@ -14,7 +14,7 @@ const Out = ({ href, children }: { href: string; children: ReactNode }) => (
 );
 
 /**
- * Review’s References exist: each entry the check could not find as it is, with the evidence: the record it read
+ * Review’s Verify citations: each entry the check could not find as it is, with the evidence: the record it read
  * and where, the fields that differ side by side, and the retraction notice. The found ones are a count to open.
  */
 export default function ReferenceCheckRows({

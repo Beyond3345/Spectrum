@@ -62,6 +62,7 @@ const BIB = `@article{smith20,
 `;
 
 const calls = [];
+const urls = [];
 // what the scripted model answers next; "hold" waits until the request is closed
 let answer = '';
 let closed = null;
@@ -73,6 +74,7 @@ before(async () => {
     req.on('data', (c) => (body += c));
     req.on('end', () => {
       calls.push(JSON.parse(body));
+      urls.push(req.url);
       if (answer === 'hold') {
         res.on('close', () => closed?.());
         return;
@@ -328,6 +330,20 @@ test('a .pgf figure the document \\inputs isn’t sent, so it can’t push the r
   const user = calls[0].messages[1].content;
   assert.match(user, /The gain falls off/);
   assert.doesNotMatch(user, /pgfpathlineto|=== figures/);
+});
+
+// the request's format and effort follow the endpoint, as every other model call's do: Settings keeps no provider id
+// for the main model, so there is none to send, and chatCompletion finds the preset from the endpoint's host
+test('the AI review speaks the format its endpoint names, as the other model calls do', async () => {
+  const p = await project('Messages review', { 'main.tex': MAIN, 'sections/intro.tex': INTRO });
+  answer = '';
+  calls.length = 0;
+  urls.length = 0;
+  await app.inject({ url: '/api/review', method: 'POST', payload: { projectId: p.id, doc: 'main.tex', llmConfig: { endpoint: `${base}/messages`, apiKey: 'test', model: 'reviewer' }, reasoningEffort: 'high' } });
+  assert.equal(urls[0], '/v1/messages');
+  assert.ok(calls[0].max_tokens, 'a Messages API request');
+  assert.ok(!calls[0].messages.some((m) => m.role === 'system'), 'the system prompt goes in its own field');
+  assert.deepEqual(calls[0].output_config, { effort: 'high' });
 });
 
 test('closing the request stops the model call', async () => {

@@ -1,4 +1,4 @@
-// Review’s References exist in words. Run: bundle with esbuild (see .claude/stages/RULES.md) and run with node.
+// Review’s Verify citations in words. Run: bundle with esbuild (see .claude/stages/RULES.md) and run with node.
 import type { ReferenceCheckRow } from '../../api/client';
 import { checkCounts, checkHead, checkReport, dateWords, existRead } from './referenceWords';
 

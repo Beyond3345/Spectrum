@@ -187,14 +187,16 @@ none(hidden, 'privacy', /\\author|\\thanks/);
 // Accessibility
 has(found, 'accessibility', 'warning', /^The PDF has no title/);
 has(found, 'accessibility', 'warning', /^The PDF doesn’t say what language/);
-has(found, 'accessibility', 'warning', /^The PDF isn’t tagged/);
-has(found, 'accessibility', 'warning', /^5% of the text is smaller than 6pt \(page 3\)$/, 'p3');
-has(found, 'accessibility', 'warning', /^The PDF has no bookmarks/);
 has(found, 'accessibility', 'warning', /^Page 4 has no text a screen reader can read$/, 'p4');
-has(found, 'accessibility', 'info', /^The image “Plot” has no alt text$/, 'main.tex:22');
-none(found, 'accessibility', /figures\/chart/);
-has(found, 'accessibility', 'warning', /^“Details” jumps from a section to a subsubsection$/, 'sections/method.tex:2');
 has(found, 'accessibility', 'info', /^The link text “here” doesn’t say where it goes$/, 'main.tex:31');
+// the tags and every image's alt text are optional, off unless asked for: standard templates fail them all
+none(found, 'accessibility', /isn’t tagged|alt text/);
+const tagged = runPreflight(input({ files: FILES, bib: BIB, pdfFacts: FACTS, anonymous: true, accessibilityTags: true }));
+has(tagged, 'accessibility', 'warning', /^The PDF isn’t tagged/);
+has(tagged, 'accessibility', 'info', /^The image “Plot” has no alt text$/, 'main.tex:22');
+none(tagged, 'accessibility', /figures\/chart/);
+has(runPreflight(input({ files: FILES, pdfFacts: { ...FACTS, tagged: true, figuresWithoutAlt: 2 }, accessibilityTags: true })), 'accessibility', 'warning', /^2 figures in the PDF’s tags have no alternative text$/);
+none(runPreflight(input({ files: FILES, pdfFacts: { ...FACTS, tagged: true, figuresWithoutAlt: 2 } })), 'accessibility', /alternative text/);
 
 // Submission readiness
 has(found, 'submission', 'info', /^The PDF is version 2\.0/);
@@ -208,6 +210,13 @@ has(found, 'submission', 'error', /^The image “\/Users\/me\/Desktop\/logo\.png
 has(found, 'submission', 'warning', /^scan\.tif is a \.tif image, which pdfLaTeX can’t include/, 'main.tex:30');
 has(found, 'submission', 'info', /^The document has no keywords$/);
 none(found, 'submission', /no abstract/);
+// bookmarks, small text and heading levels moved here from Accessibility
+has(found, 'submission', 'warning', /^5% of the text is smaller than 6pt \(page 3\)$/, 'p3');
+has(found, 'submission', 'warning', /^The PDF has no bookmarks/);
+has(found, 'submission', 'warning', /^“Details” jumps from a section to a subsubsection$/, 'sections/method.tex:2');
+none(found, 'accessibility', /smaller than 6pt|bookmarks|jumps from/);
+// the source half needs no PDF
+has(runPreflight(input({ files: FILES, bib: BIB })), 'submission', 'warning', /^“Details” jumps from a section to a subsubsection$/, 'sections/method.tex:2');
 
 // Compile and layout, from the PDF alone
 has(found, 'compile', 'warning', /^Page 2 is US Letter \(612 × 792 pt\), unlike the rest, which are A4 \(595 × 842 pt\)$/, 'p2');
@@ -405,7 +414,45 @@ eq(
   'Markdown references and assets'
 );
 none(runPreflight(input({ doc: 'report.md', files: [{ path: 'report.md', text: '---\nnocite: |\n  @*\n---\nText [@smith20].\n' }], bib: [mdBib('smith20', 1), mdBib('other', 3)] })), 'references', /never cited/);
-has(runPreflight(input({ doc: 'main.typ', files: [{ path: 'main.typ', text: '= A' }] })), 'references', 'info', /don’t apply to Typst documents/);
+// a Typst document's References and assets: @refs and #ref/#cite with no label and no entry, labels twice, images
+// missing (from the file's folder, or the project's with a leading /), the .bib or Hayagriva .yml its #bibliography
+// names and entries never cited; not what is in comments, raw text, maths or an e-mail address
+const TYP_MAIN = [
+  '#set page(paper: "a4")',
+  '= Intro <sec:intro>',
+  'See @sec:intro, @fig:plot and @ghost. As @knuth84 and #cite(<lamport94>) show, and #ref(<sec:gone>).',
+  '#figure(image("figures/plot.png"), caption: [A plot]) <fig:plot>',
+  '#image("figures/gone.png")',
+  '#include "chapters/one.typ"',
+  '// @commented and #image("nowhere.png")',
+  '`@raw` and $x<y>z$ and ada@example.org, #link("https://example.org/@someone")',
+  '#bibliography(("refs.bib", "more.yml"))'
+].join('\n');
+const typBib: BibRecord[] = [
+  { file: 'refs.bib', line: 1, key: 'knuth84', type: 'article', fields: ['author', 'title', 'journal', 'year'] },
+  { file: 'refs.bib', line: 9, key: 'unused', type: 'misc', fields: ['title'] },
+  { file: 'other.bib', line: 1, key: 'ghost', type: 'misc', fields: ['title'] }
+];
+const typFiles = [
+  { path: 'main.typ', text: TYP_MAIN },
+  { path: 'chapters/one.typ', text: '== One <sec:intro>\n#image("/figures/plot.png") and #image("../figures/Plot.png")\n' },
+  { path: 'more.yml', text: 'lamport94:\n  type: book\n  title: LaTeX\n' },
+  { path: 'refs.bib', text: '' },
+  { path: 'figures/plot.png' }
+];
+eq(
+  brief(runPreflight(input({ doc: 'main.typ', files: typFiles, bib: typBib })), 'references'),
+  [
+    ['error', 'Can’t find the image “figures/gone.png”', 'main.typ:5'],
+    ['error', 'The image “../figures/Plot.png” is figures/plot.png in the project, which differs in letter case', 'chapters/one.typ:2'],
+    ['warning', 'Nothing has the label “ghost”, and no bibliography entry has it as its key', 'main.typ:3'],
+    ['warning', 'Nothing has the label “sec:gone”, and no bibliography entry has it as its key', 'main.typ:3'],
+    ['warning', 'The label “sec:intro” is used 2 times (first at main.typ:2), so references go to the last one', 'chapters/one.typ:1'],
+    ['info', '1 entry in refs.bib is never cited: unused', 'refs.bib:9']
+  ],
+  'Typst references and assets'
+);
+none(runPreflight(input({ doc: 'main.typ', files: [{ path: 'main.typ', text: 'See @a.\n#bibliography("refs.bib", full: true)' }, { path: 'refs.bib', text: '' }], bib: [mdBib('a', 1), mdBib('b', 3)] })), 'references', /never cited/);
 
 eq(['main.typ', 'notes.markdown', 'refs.bib', 'style.sty', 'figures/a.png'].map(isSource), [true, true, true, true, false], 'the source, which Review reads first and watches for edits');
 
@@ -428,12 +475,18 @@ eq(
   {
     compile: 'Compile first.',
     accessibility: 'Compile first: most of these checks read the PDF.',
-    submission: 'Compile first: the PDF’s version, fonts and encryption need a PDF.',
+    submission: 'Compile first: the PDF’s version, fonts, encryption, bookmarks and small text need a PDF.',
     privacy: 'Compile first: the PDF’s Author field needs a PDF.'
   },
   'gaps'
 );
 eq(preflightGaps({ log: 'x', failed: true, pdfFacts: null, anonymous: false }).compile, 'The last compile made no PDF: the page checks need a PDF.', 'a failed compile');
 eq(preflightGaps({ log: 'x', failed: false, pdfFacts: FACTS, anonymous: true }), {}, 'no gaps');
+// a PDF that was there but couldn't be read says why, not "Compile first"
+eq(
+  preflightGaps({ log: 'x', failed: false, pdfFacts: null, anonymous: false, pdfError: 'Invalid PDF structure.' }).accessibility,
+  'The PDF couldn’t be read (Invalid PDF structure): most of these checks read the PDF.',
+  'a PDF that couldn’t be read'
+);
 
 console.log('preflight.check: ok');

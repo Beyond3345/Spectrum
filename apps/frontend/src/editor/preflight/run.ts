@@ -62,6 +62,8 @@ export type PreflightInput = {
   diagnostics?: Record<string, Diagnostic[]>;
   /** Anonymous review: what names the authors counts too */
   anonymous: boolean;
+  /** Accessibility's optional checks: a tagged PDF, alt text in its tags and alt= on every image (off: standard templates fail them all) */
+  accessibilityTags?: boolean;
 };
 
 const RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -176,16 +178,22 @@ const PAPER: [string, number, number][] = [
 /** A PDF pdf.js couldn't open for its password: nothing but that it's encrypted was read from it. */
 const unreadable = (pdf: PdfFacts) => pdf.encrypted && !pdf.pages.length;
 
-/** What a group can't check without the PDF or the log: "Compile first", and why. */
-export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pdfFacts' | 'anonymous'>): Partial<Record<PreflightGroup, string>> {
+/** The groups with checks that read the PDF (the compile's, its log too); the others read the source alone. */
+export const needsPdf = (group: PreflightGroup, anonymous: boolean) => group === 'compile' || group === 'accessibility' || group === 'submission' || (group === 'privacy' && anonymous);
+
+/**
+ * What a group can't check without the PDF or the log: "Compile first", and why. pdfError: the PDF was there but
+ * couldn't be read, which is said rather than taken for no PDF.
+ */
+export function preflightGaps(input: Pick<PreflightInput, 'log' | 'failed' | 'pdfFacts' | 'anonymous'> & { pdfError?: string }): Partial<Record<PreflightGroup, string>> {
   const gaps: Partial<Record<PreflightGroup, string>> = {};
   // a failed compile's PDF, if there is one, is an older one's
-  const first = input.failed ? 'The last compile made no PDF' : 'Compile first';
+  const first = input.failed ? 'The last compile made no PDF' : input.pdfError ? `The PDF couldn’t be read (${input.pdfError.slice(0, 160).replace(/\.$/, '')})` : 'Compile first';
   if (!input.log) gaps.compile = 'Compile first.';
   else if (!input.pdfFacts) gaps.compile = `${first}: the page checks need a PDF.`;
   if (!input.pdfFacts) {
     gaps.accessibility = `${first}: most of these checks read the PDF.`;
-    gaps.submission = `${first}: the PDF’s version, fonts and encryption need a PDF.`;
+    gaps.submission = `${first}: the PDF’s version, fonts, encryption, bookmarks and small text need a PDF.`;
     if (input.anonymous) gaps.privacy = `${first}: the PDF’s Author field needs a PDF.`;
   } else if (unreadable(input.pdfFacts)) gaps.accessibility = 'The PDF is password-protected, so its accessibility couldn’t be read.';
   return gaps;
@@ -493,8 +501,55 @@ export function runPreflight(input: PreflightInput): Finding[] {
       if (m[1] && !hit.path) add({ group, severity: 'error', message: hit.folded ? `The image ${quoted(target)} is ${hit.folded} in the project, which differs in letter case` : `Can’t find the image ${quoted(target)}`, file: doc, line });
       else if (!m[1] && !hit.path) add({ group, severity: 'warning', message: hit.folded ? `The link to ${quoted(target)} goes to ${hit.folded}, which differs in letter case` : `The link to ${quoted(target)} goes to no file in the project`, file: doc, line, fixable: true });
     }
-  } else {
-    add({ group: 'references', severity: 'info', message: 'The source checks read LaTeX and Markdown, so they don’t apply to Typst documents.' });
+  } else if (/\.typ$/i.test(doc)) {
+    // Typst: @key and #ref(<key>) name a <label> of the document or an entry of its #bibliography; #image reads a file
+    const group = 'references';
+    const typLabels = new Map<string, Place[]>();
+    const typRefs: (Place & { key: string; at: number })[] = [];
+    const bibFiles = new Set<string>();
+    let citesAll = false;
+    /** A path as Typst finds it: from the file that names it, or from the project folder with a leading / */
+    const typFile = (from: string, name: string) => lookup([name.startsWith('/') ? normalise(name) : normalise(folderOf(from) + name)]);
+    for (const { path, text } of sources) {
+      // comments, raw text and maths blanked to spaces, strings kept (they hold the paths), lines where they are
+      const code = text.replace(/("(?:[^"\\\n]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\/|(`{3,})[\s\S]*?\2|`[^`\n]*`|\$(?:[^$\\]|\\.)*\$/g, (m, str) => (str ? m : m.replace(/[^\n]/g, ' ')));
+      const lineOf = lineFinder(code);
+      // the <key> of ref() and cite() is no label
+      const rest = code.replace(/\b(?:ref|cite)\(\s*<([\w:.-]+)>/g, (m, key: string, at: number) => {
+        typRefs.push({ key, file: path, line: lineOf(at), at });
+        return m.replace(/[^\n]/g, ' ');
+      });
+      for (const m of rest.matchAll(/(?<![\w@.\/])@([A-Za-z_][\w:.-]*?)(?=[.:]?(?:[^\w:.-]|$))/g)) typRefs.push({ key: m[1], file: path, line: lineOf(m.index!), at: m.index! });
+      const label = (key: string, at: number) => typLabels.set(key, [...(typLabels.get(key) ?? []), { file: path, line: lineOf(at) }]);
+      for (const m of rest.matchAll(/<([A-Za-z_][\w:.-]*)>/g)) label(m[1], m.index!);
+      for (const m of rest.matchAll(/\blabel\(\s*"([^"]+)"\s*\)/g)) label(m[1], m.index!);
+      for (const m of rest.matchAll(/\bbibliography\(\s*(\([^)]*\)|"[^"]*")([^)]*)/g)) {
+        for (const name of m[1].matchAll(/"([^"]+)"/g)) {
+          const hit = typFile(path, name[1]);
+          if (hit.path) bibFiles.add(hit.path);
+        }
+        if (/\bfull\s*:\s*true/.test(m[2])) citesAll = true;
+      }
+      for (const m of rest.matchAll(/\bimage\(\s*"([^"]+)"/g)) {
+        const hit = typFile(path, m[1]);
+        if (!hit.path) add({ group, severity: 'error', message: hit.folded ? `The image ${quoted(m[1])} is ${hit.folded} in the project, which differs in letter case` : `Can’t find the image ${quoted(m[1])}`, file: path, line: lineOf(m.index!) });
+      }
+    }
+    const entries = input.bib?.filter((e) => bibFiles.has(e.file)) ?? [];
+    // a Hayagriva .yml bibliography's keys are its top-level ones
+    const yamlKeys = [...bibFiles].filter((f) => /\.ya?ml$/i.test(f)).flatMap((f) => [...(texts.get(f) ?? '').matchAll(/^([A-Za-z0-9_][\w:.-]*):[ \t]*(?:#.*)?$/gm)].map((m) => m[1]));
+    const keys = new Set([...entries.map((e) => e.key), ...yamlKeys]);
+    const seen = new Set<string>();
+    // in reading order: a file's ref() and cite() were taken out before its @refs
+    typRefs.sort((a, b) => (a.file === b.file ? a.at - b.at : 0));
+    for (const r of typRefs)
+      if (!typLabels.has(r.key) && !keys.has(r.key) && !seen.has(r.key)) {
+        seen.add(r.key);
+        add({ group, severity: 'warning', message: `Nothing has the label ${quoted(r.key)}, and no bibliography entry has it as its key`, file: r.file, line: r.line, fixable: true });
+      }
+    for (const [key, places] of typLabels)
+      if (places.length > 1) add({ group, severity: 'warning', message: `The label ${quoted(key)} is used ${places.length} times (first at ${places[0].file}:${places[0].line}), so references go to the last one`, ...places[1], fixable: true });
+    entryChecks(entries, typRefs.filter((r) => !typLabels.has(r.key)), citesAll);
   }
 
   // ─── Privacy and blind review ───
@@ -551,27 +606,14 @@ export function runPreflight(input: PreflightInput): Finding[] {
     if (pdf && !unreadable(pdf)) {
       if (!pdf.title.trim()) add({ group, severity: 'warning', message: 'The PDF has no title in its properties, so readers and screen readers show its file name', fixable: true });
       if (!pdf.lang.trim()) add({ group, severity: 'warning', message: 'The PDF doesn’t say what language it’s in, so a screen reader may read it in the wrong one', fixable: true });
-      if (!pdf.tagged) add({ group, severity: 'warning', message: 'The PDF isn’t tagged, so screen readers can’t follow its headings, lists and figures', fixable: true });
-      else if (pdf.figuresWithoutAlt) add({ group, severity: 'warning', message: `${plural(pdf.figuresWithoutAlt, 'figure')} in the PDF’s tags ${pdf.figuresWithoutAlt === 1 ? 'has' : 'have'} no alternative text`, fixable: true });
-      const chars = pdf.pages.reduce((n, p) => n + p.chars, 0);
-      const small = pdf.pages.reduce((n, p) => n + p.smallChars, 0);
-      if (chars && small / chars > 0.02) {
-        const pages = pdf.pages.flatMap((p, i) => (p.smallChars ? [i + 1] : []));
-        add({ group, severity: 'warning', message: `${Math.round((small / chars) * 100)}% of the text is smaller than 6pt (${pages.length === 1 ? 'page' : 'pages'} ${pageList(pages.slice(0, 12))}${pages.length > 12 ? ' and more' : ''})`, page: pages[0] });
-      }
-      if (!pdf.outline && insights.headings.length >= 2) add({ group, severity: 'warning', message: 'The PDF has no bookmarks, so readers can’t jump between its sections', fixable: true });
+      if (input.accessibilityTags && !pdf.tagged) add({ group, severity: 'warning', message: 'The PDF isn’t tagged, so screen readers can’t follow its headings, lists and figures', fixable: true });
+      else if (input.accessibilityTags && pdf.figuresWithoutAlt) add({ group, severity: 'warning', message: `${plural(pdf.figuresWithoutAlt, 'figure')} in the PDF’s tags ${pdf.figuresWithoutAlt === 1 ? 'has' : 'have'} no alternative text`, fixable: true });
       const blank = pdf.pages.flatMap((p, i) => (p.chars ? [] : [i + 1]));
       if (blank.length)
         add({ group, severity: 'warning', message: `${blank.length === 1 ? 'Page' : 'Pages'} ${pageList(blank)} ${blank.length === 1 ? 'has' : 'have'} no text a screen reader can read`, page: blank[0] });
     }
-    for (const image of images)
+    for (const image of input.accessibilityTags ? images : [])
       if (!/(?:^|,)\s*alt\s*=/.test(image.options)) add({ group, severity: 'info', message: `The image ${quoted(image.name, 50)} has no alt text`, file: image.file, line: image.line, fixable: true });
-    const headings = insights.headings.filter((h) => h.level !== undefined);
-    for (let i = 1; i < headings.length; i += 1) {
-      const [before, now] = [headings[i - 1].level!, headings[i].level!];
-      if (now > before + 1)
-        add({ group, severity: 'warning', message: `${quoted(headings[i].text, 50)} jumps from a ${LEVELS[before]} to a ${LEVELS[now]}`, file: headings[i].file, line: headings[i].line, fixable: true });
-    }
     for (const { path, text } of sources) {
       const code = codeOf(text);
       const lineOf = lineFinder(code);
@@ -590,6 +632,22 @@ export function runPreflight(input: PreflightInput): Finding[] {
       for (const name of new Set(pdf.fonts?.filter((f) => !f.embedded).map((f) => font(f.name)))) add({ group, severity: 'error', message: `The font ${name} isn’t embedded in the PDF` });
       for (const name of new Set(pdf.fonts?.filter((f) => f.type3).map((f) => font(f.name))))
         add({ group, severity: 'warning', message: `The font ${name} is a Type 3 font, often a bitmap, which some venues (such as IEEE) refuse` });
+      // bookmarks and small text, which venues and screen readers both want (a locked PDF has neither read)
+      if (!unreadable(pdf)) {
+        const chars = pdf.pages.reduce((n, p) => n + p.chars, 0);
+        const small = pdf.pages.reduce((n, p) => n + p.smallChars, 0);
+        if (chars && small / chars > 0.02) {
+          const pages = pdf.pages.flatMap((p, i) => (p.smallChars ? [i + 1] : []));
+          add({ group, severity: 'warning', message: `${Math.round((small / chars) * 100)}% of the text is smaller than 6pt (${pages.length === 1 ? 'page' : 'pages'} ${pageList(pages.slice(0, 12))}${pages.length > 12 ? ' and more' : ''})`, page: pages[0] });
+        }
+        if (!pdf.outline && insights.headings.length >= 2) add({ group, severity: 'warning', message: 'The PDF has no bookmarks, so readers can’t jump between its sections', fixable: true });
+      }
+    }
+    const headings = insights.headings.filter((h) => h.level !== undefined);
+    for (let i = 1; i < headings.length; i += 1) {
+      const [before, now] = [headings[i - 1].level!, headings[i].level!];
+      if (now > before + 1)
+        add({ group, severity: 'warning', message: `${quoted(headings[i].text, 50)} jumps from a ${LEVELS[before]} to a ${LEVELS[now]}`, file: headings[i].file, line: headings[i].line, fixable: true });
     }
     const used = new Set<string>();
     for (const inc of included) {
