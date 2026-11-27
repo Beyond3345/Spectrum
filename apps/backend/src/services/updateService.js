@@ -2,7 +2,7 @@
 // "latest" link, which answers with a redirect to the newest release's tag; nothing about the user, the computer or a
 // project goes with it, and the answer is kept for a day, so the address is asked at most once a day however often
 // the projects page opens or Spectrum starts. Only asked when the projects page asks, which it does only while
-// Settings › System › "Tell me when a newer Spectrum is out" is on.
+// Settings › System & Network › "Tell me when a newer Spectrum is out" is on.
 import path from 'path';
 import { APP_VERSION, DATA_DIR } from '../config/constants.js';
 import { readJson, writeJsonAtomic } from '../utils/fsUtils.js';

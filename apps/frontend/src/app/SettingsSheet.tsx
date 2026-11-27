@@ -261,7 +261,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
             <Icon name="magnifyingglass" />
             <input
               aria-label="Search settings"
-              placeholder="Search"
+              placeholder="Search settings"
               value={query}
               spellCheck={false}
               onChange={(e) => setQuery(e.target.value)}

@@ -51,7 +51,7 @@ The first time Spectrum starts on a computer, it opens on a setup page that fill
 - a model for the AI features, which are optional, and
 - a first project, started from a template (@sec-start-templates) or from a folder that already holds the files.
 
-Each step is marked #ui[Set up] once it is done, and its buttons open the place to do it: #menu[Settings][Engines], #menu[Settings][Providers], the template gallery or #ui[Open a folder]. #ui[Skip] or #ui[Continue] goes on to the projects page, as does making or opening the first project from the page. After that the page does not open by itself again on that computer, and nothing asks afterwards for a step left undone. Quitting Spectrum while the page is open leaves it to open again on the next start. A second computer shows it once too, while a computer that already used an earlier Spectrum, with projects or saved settings, never does. #ui[Show the setup page again] in #menu[Settings][System] brings it back. The rest is set in the Settings window (@sec-start-settings), and a short pass through it before the first project is still worthwhile.
+Each step is marked #ui[Set up] once it is done, and its buttons open the place to do it: #menu[Settings][Engines], #menu[Settings][Providers], the template gallery or #ui[Open a folder]. #ui[Skip] or #ui[Continue] goes on to the projects page, as does making or opening the first project from the page. After that the page does not open by itself again on that computer, and nothing asks afterwards for a step left undone. Quitting Spectrum while the page is open leaves it to open again on the next start. A second computer shows it once too, while a computer that already used an earlier Spectrum, with projects or saved settings, never does. #ui[Show the setup page again] in #menu[Settings][System & Network] brings it back. The rest is set in the Settings window (@sec-start-settings), and a short pass through it before the first project is still worthwhile.
 
 #shot("figures/01-getting-started/get-started.png", [The setup page on the first start. TeX Live 2026 was found, so its step is set up, while no model is set up and there is no project yet.], width: 80%) <fig-start-get-started>
 
@@ -59,7 +59,7 @@ Each step is marked #ui[Set up] once it is done, and its buttons open the place 
 + Open Settings with #key("⌘", ",")
 + Connect a provider under #ui[Providers] with its API key, if the AI features will be used
 + Choose the theme under #ui[Appearance] and the default compiler under #ui[Engines]
-+ Check the #ui[System] section to confirm which TeX tools Spectrum can find
++ Check the #ui[System & Network] section to confirm which TeX tools Spectrum can find
 + Set up the local agents you use, such as OpenCode or Codex, under #ui[Agents]
 ]
 
@@ -208,7 +208,7 @@ The copy is kept until #ui[Done], so #ui[Continue editing] in the menu picks up 
 
 == The Settings window <sec-start-settings>
 
-The Settings window holds every preference of the application. It opens with #key("⌘", ","), with #ui[Settings] at the foot of the sidebar on the projects page or in the editor, and in places from the feature it concerns, such as the gear button in the diagram composer. Its sections are grouped under five headings, which are General, Writing & Editor, Workspace & Sync, AI & Agents and Research & Import, and each section is described in the chapter given in @tab-start-settings. The #ui[Search] box above the list finds a section by its name or by a setting in it. Typing "proxy", for example, leaves only #ui[System] in the list, with the setting that matched under its name, and #key("Enter") opens the first section found. Within a section, the settings that belong together are drawn as one card under their heading.
+The Settings window holds every preference of the application. It opens with #key("⌘", ","), with #ui[Settings] at the foot of the sidebar on the projects page or in the editor, and in places from the feature it concerns, such as the gear button in the diagram composer. Its sections are grouped under five headings, which are General, Writing & Editor, Workspace & Sync, AI & Agents and Research & Import, and each section is described in the chapter given in @tab-start-settings. The #ui[Search] box above the list finds a section by its name or by a setting in it. Typing "proxy", for example, leaves only #ui[System & Network] in the list, with the setting that matched under its name, and #key("Enter") opens the first section found. Within a section, the settings that belong together are drawn as one card under their heading.
 
 #figure(
   table(
@@ -217,7 +217,7 @@ The Settings window holds every preference of the application. It opens with #ke
     table.header([Section], [What it holds], [Where]),
     [Appearance], [the theme, colour style, accent colour, window and PDF page colours], [@sec-start-appearance],
     [Shortcuts], [every keyboard shortcut, each of which can be changed], [@sec-writing-shortcuts],
-    [System], [the network proxy, the TeX tools Spectrum found, its folders and the licences], [@sec-start-setup],
+    [System & Network], [the network proxy, the TeX tools Spectrum found, its folders and the licences], [@sec-start-setup],
     [Editor], [jumps between the source and the PDF, the editor's font and colour themes], [@sec-start-appearance],
     [Engines], [the default compile settings and the LaTeX, Typst and Markdown engines], [@sec-writing-engines],
     [Spelling & grammar], [the languages, dictionaries and grammar checkers], [@sec-writing-checks],
@@ -229,7 +229,7 @@ The Settings window holds every preference of the application. It opens with #ke
     [Providers], [the model providers that are connected, with their keys], [@sec-assistant-models],
     [Models], [the main, quick and vision models, the models in the menus and the prices], [@sec-assistant-models],
     [Agents, Personas, Skills], [the local agents, the personas and the skills], [@ch-assistant],
-    [Search], [web search and the sources Research uses], [@ch-assistant],
+    [Search & Web], [web search and the sources Research uses], [@ch-assistant],
     [Zotero], [the connection to Zotero], [@ch-references],
     [Document parsers], [the PDF parsers for Change template], [@ch-assistant],
   ),

@@ -2171,11 +2171,11 @@ export interface LocalAgent {
  * added) or 'any' public HTTPS host; enforced: whether this computer can hold an agent to a list (a Mac can); sure:
  * whether the agent's own documentation says enough to expect it to work held to its list; loopback: for an agent that
  * starts its own server on a port of this computer it picks, what that server is and the user's switch for it; proxy: the
- * proxy the agent goes through, through Spectrum's gate (Settings › System), as shown
+ * proxy the agent goes through, through Spectrum's gate (Settings › System & Network), as shown
  */
 export interface AgentNetwork { mode: 'hosts' | 'any'; provider: string[]; tools: string[]; hosts: string[]; enforced: boolean; sure: boolean; loopback?: { server: string; on: boolean }; proxy?: { text: string; from: string } }
 /**
- * The proxy Spectrum goes through (Settings › System › Network): the one in use (text, its name and password masked,
+ * The proxy Spectrum goes through (Settings › System & Network › Network): the one in use (text, its name and password masked,
  * and where it came from), and the one typed there, masked; supported: false on Windows, where Spectrum connects as before.
  */
 export interface ProxyState { supported: boolean; proxy: { text: string; from: string; source: 'typed' | 'system' | 'shell' } | null; typed: string }

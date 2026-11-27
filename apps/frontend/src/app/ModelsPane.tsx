@@ -18,11 +18,13 @@ type Picked = { main: string; id: string };
 
 const sign = (currency?: Currency) => CURRENCIES.find(([code]) => code === (currency || 'USD'))![1];
 
-/** A model's price as a few characters, the user's own before models.dev's: “US$0.27 / US$1.10”, input then output per million tokens. */
+/** A model's price as a few characters, the user's own before models.dev's: “US$0.27/US$1.10”, input then output per million tokens. */
 export function priceText(own: Price | undefined, auto: Price | undefined) {
   const price = own ?? auto;
   if (price?.input === undefined || price.output === undefined) return '';
-  return `${sign(price.currency)}${price.input} / ${sign(price.currency)}${price.output}`;
+  // cents to two places, as a price list writes them; a whole number or a finer price as it is
+  const n = (v: number) => (v % 1 && Number(v.toFixed(2)) === v ? v.toFixed(2) : String(v));
+  return `${sign(price.currency).trim()}${n(price.input)}/${sign(price.currency).trim()}${n(price.output)}`;
 }
 
 /**
@@ -56,78 +58,74 @@ function ModelPrices({
   const symbol = sign(price.currency);
   const set = (patch: Partial<Price>) => update({ modelPrices: cleanPrices({ ...settings.modelPrices, [model]: { ...price, ...patch } }) });
   return (
-    <>
-      <div className="field">
-        <label id="settings-modelPrice">Your price for</label>
-        <div className="row">
-          <Select
-            className="grow"
-            labelId="settings-modelPrice"
-            value={model}
-            options={[...models].map(([id, label]): [string, string] => [id, `${label}${id === settings.llmModel ? ' (main model)' : settings.modelPrices[id] ? ' (priced)' : ''}`])}
-            onChange={(id) => setPicked({ main: settings.llmModel, id })}
-          />
-          <Select
-            labelId="settings-modelPrice settings-priceCurrency"
-            value={price.currency || 'USD'}
-            options={CURRENCIES.map(([code, sign, name]): [string, string] => [code, `${name} (${sign.trim()})`])}
-            onChange={(currency) => set({ currency: currency as Currency })}
-          />
-          <span id="settings-priceCurrency" className="sr-only">Currency</span>
-        </div>
-        <div className="row">
-          {PRICE_FIELDS.map((k) => (
-            <input
-              key={k}
-              className="input grow"
-              type="number"
-              min={0}
-              step="any"
-              aria-label={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}, ${symbol.trim()} per million tokens`}
-              placeholder={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}${fromAuto?.[k] !== undefined && !price.currency ? ` (${fromAuto[k]})` : ''}`}
-              value={price[k] ?? ''}
-              onChange={(e) => set({ [k]: e.target.value.trim() === '' ? undefined : Number(e.target.value) })}
+    <div className="inset-card">
+      <div className="inset-more">
+        <div className="field">
+          <label id="settings-modelPrice">Your price for</label>
+          <div className="row">
+            <Select
+              className="grow"
+              labelId="settings-modelPrice"
+              value={model}
+              options={[...models].map(([id, label]): [string, string] => [id, `${label}${id === settings.llmModel ? ' (main model)' : settings.modelPrices[id] ? ' (priced)' : ''}`])}
+              onChange={(id) => setPicked({ main: settings.llmModel, id })}
             />
-          ))}
-        </div>
-        <div className="row">
-          <input
-            className="input grow"
-            aria-label="Another model to price, by its name"
-            placeholder="Another model, such as a local agent’s: its name"
-            value={named}
-            onChange={(e) => setNamed(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && named.trim()) { setNamed(named.trim()); setPicked({ main: settings.llmModel, id: named.trim() }); }
-            }}
-          />
-          <button className="btn small" disabled={!named.trim()} onClick={() => { setNamed(named.trim()); setPicked({ main: settings.llmModel, id: named.trim() }); }}>
-            Price it
-          </button>
-        </div>
-        <div className="field-hint">
-          Input, cached input and output, per million tokens, in your provider’s currency. Both agent tabs show an estimate of the cost from them, in that currency; Spectrum converts no currencies. A price you leave empty comes from models.dev, in US dollars, shown in the empty field. With OpenRouter, or an agent that reports its own cost, that figure is shown instead.
+            <Select
+              labelId="settings-modelPrice settings-priceCurrency"
+              value={price.currency || 'USD'}
+              options={CURRENCIES.map(([code, sign, name]): [string, string] => [code, `${name} (${sign.trim()})`])}
+              onChange={(currency) => set({ currency: currency as Currency })}
+            />
+            <span id="settings-priceCurrency" className="sr-only">Currency</span>
+          </div>
+          <div className="row">
+            {PRICE_FIELDS.map((k) => (
+              <input
+                key={k}
+                className="input grow"
+                type="number"
+                min={0}
+                step="any"
+                aria-label={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}, ${symbol.trim()} per million tokens`}
+                placeholder={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}${fromAuto?.[k] !== undefined && !price.currency ? ` (${fromAuto[k]})` : ''}`}
+                value={price[k] ?? ''}
+                onChange={(e) => set({ [k]: e.target.value.trim() === '' ? undefined : Number(e.target.value) })}
+              />
+            ))}
+          </div>
+          <div className="row">
+            <input
+              className="input grow"
+              aria-label="Another model to price, by its name"
+              placeholder="Another model, such as a local agent’s: its name"
+              value={named}
+              onChange={(e) => setNamed(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && named.trim()) { setNamed(named.trim()); setPicked({ main: settings.llmModel, id: named.trim() }); }
+              }}
+            />
+            <button className="btn small outline" disabled={!named.trim()} onClick={() => { setNamed(named.trim()); setPicked({ main: settings.llmModel, id: named.trim() }); }}>
+              Price it
+            </button>
+          </div>
+          <div className="field-hint">
+            Input, cached input and output, per million tokens, in your provider’s currency. Both agent tabs show an estimate of the cost from them, in that currency; Spectrum converts no currencies. A price you leave empty comes from models.dev, in US dollars, shown in the empty field. With OpenRouter, or an agent that reports its own cost, that figure is shown instead.
+          </div>
         </div>
       </div>
-      <label className="checkbox-row">
-        <input type="checkbox" role="switch" checked={settings.autoPrices} onChange={(e) => update({ autoPrices: e.target.checked })} />
-        <span>
-          Fill in prices from models.dev
-          {settings.autoPrices && (
-            <span className="field-hint">
-              Spectrum takes models.dev’s public price list every six hours, through your proxy, and sends it nothing.{' '}
-              {auto.syncedAt ? `Last taken ${new Date(auto.syncedAt).toLocaleString('en-AU')}.` : 'Not taken yet.'}
-              {auto.error && ` The last try failed: ${auto.error}.`}
-            </span>
-          )}
-        </span>
-      </label>
-      {settings.autoPrices && (
-        <div>
-          <button className="btn small" onClick={() => void auto.refresh()}>Update now</button>
+      <div className="inset-row">
+        <div className="inset-info">
+          <div className="inset-name" id="settings-autoPrices">Fill in prices from models.dev</div>
+          <div className="inset-sub">
+            Spectrum takes models.dev’s public price list every six hours, through your proxy, and sends it nothing.
+            {settings.autoPrices && ` ${auto.syncedAt ? `Last taken ${new Date(auto.syncedAt).toLocaleString('en-AU')}.` : 'Not taken yet.'}`}
+            {settings.autoPrices && auto.error && ` The last try failed: ${auto.error}.`}
+          </div>
         </div>
-      )}
-    </>
+        {settings.autoPrices && <button className="btn small ghost" onClick={() => void auto.refresh()}>Update now</button>}
+        <input type="checkbox" role="switch" aria-labelledby="settings-autoPrices" checked={settings.autoPrices} onChange={(e) => update({ autoPrices: e.target.checked })} />
+      </div>
+    </div>
   );
 }
 
@@ -172,25 +170,23 @@ function ProviderModels({
   const id = `models-${conn.at.replace(/\W/g, '-')}`;
   const shown = open || words.length > 0;
   return (
-    <div className={`skill-card model-group ${shown ? 'open' : ''}`}>
-      <div className="model-group-head">
-        <button className="model-group-toggle" aria-expanded={shown} aria-controls={shown ? id : undefined} onClick={onToggle}>
-          <Icon name={shown ? 'chevron.down' : 'chevron.right'} />
+    <div className="acc-group">
+      <div className="acc-row">
+        <button className={`acc-head ${shown ? 'open' : ''}`} aria-expanded={shown} aria-controls={shown ? id : undefined} onClick={onToggle}>
+          <Icon name="chevron.right" className="acc-chev" />
           <ProviderMark id={conn.id} />
-          <span className="agent-card-title">
-            <span className="skill-name">{name}</span>
-          </span>
-          <span className="field-hint">{rows.length ? `${on} of ${rows.length} in the menus` : 'No list'}</span>
+          <span className="acc-name">{name}</span>
+          <span className="acc-meta">{rows.length ? `${on} of ${rows.length} enabled` : 'No list'}</span>
         </button>
-        {live.preset?.live && <button className="btn small" aria-label={`Refresh ${name}’s models`} onClick={live.refresh}>Refresh</button>}
+        {live.preset?.live && <button className="btn small ghost" aria-label={`Refresh ${name}’s models`} onClick={live.refresh}>Refresh</button>}
       </div>
       {shown && (
-        <div id={id} className="model-rows">
-          {live.error && <div className="field-hint error">{live.error}</div>}
+        <div id={id} className="inset-card">
+          {live.error && <div className="inset-more field-hint error">{live.error}</div>}
           {!rows.length && !live.error && (
-            <div className="field-hint">
+            <div className="inset-more field-hint">
               {ready(conn)
-                ? 'Spectrum has no list of this server’s models. Test connection in Settings › Providers asks the server for one; until then, choose Other… above and type the model’s name.'
+                ? 'Spectrum has no list of this server’s models. Test in Settings › Providers asks the server for one; until then, choose Other… under Default roles and type the model’s name.'
                 : 'Add its key in Settings › Providers first.'}
             </div>
           )}
@@ -199,32 +195,31 @@ function ProviderModels({
             const meta = [contextText((auto[normalizeModelId(m.id)] as (AutoPrice & { context?: number }) | undefined)?.context), priceText(own, autoPrice(auto, m.id))].filter(Boolean);
             const use = inUse.get(m.id);
             return (
-              <div className="model-row" key={m.id}>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    checked={!!use || !isHidden(settings, conn.id, m.id)}
-                    disabled={!!use}
-                    title={use ? `In use as the ${use}` : undefined}
-                    onChange={(e) => update(hiddenPatch(settings, conn.id, m.id, !e.target.checked))}
-                  />
-                  <span>
-                    <span>
-                      {m.label}
-                      {use && <span className="badge accent">{use[0].toUpperCase() + use.slice(1)}</span>}
-                    </span>
-                    <span className="field-hint">{m.known ? [m.note, !m.vision && !/text only/i.test(m.note) && 'text only'].filter(Boolean).join(', ') : 'Listed by the provider'}</span>
-                  </span>
-                </label>
+              <div className="inset-row" key={m.id}>
+                <div className="inset-info">
+                  <div className="inset-name">
+                    {m.label}
+                    {use && <span className="badge accent" title={`The ${use} model`}>{use[0].toUpperCase() + use.slice(1)}</span>}
+                  </div>
+                  <div className="inset-sub">{m.known ? [m.note, !m.vision && !/text only/i.test(m.note) && 'text only'].filter(Boolean).join(', ') : 'Listed by the provider'}</div>
+                </div>
                 <button
-                  className="btn small ghost model-meta"
-                  title={own ? 'Your price, input / output per million tokens. Click to change it.' : meta.length ? 'Context and models.dev’s price, input / output per million tokens. Click to set your own.' : 'Set your own price'}
+                  className="model-meta-pill"
+                  title={own ? 'Your price, input/output per million tokens. Click to change it.' : meta.length ? 'Context and models.dev’s price, input/output per million tokens. Click to set your own.' : 'Set your own price'}
                   aria-label={`Price for ${m.label}${meta.length ? `: ${meta.join(', ')}` : ''}`}
                   onClick={() => onPrice(m.id)}
                 >
                   {meta.join(' · ') || 'Set a price'}
                 </button>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label={`${m.label} in the model menus`}
+                  checked={!!use || !isHidden(settings, conn.id, m.id)}
+                  disabled={!!use}
+                  title={use ? `In use as the ${use} model` : undefined}
+                  onChange={(e) => update(hiddenPatch(settings, conn.id, m.id, !e.target.checked))}
+                />
               </div>
             );
           })}
@@ -235,8 +230,8 @@ function ProviderModels({
 }
 
 const ROLE_TEXT: Record<ModelRole, [name: string, use: string]> = {
-  quick: ['Quick model', 'Used for autocomplete and for splitting pasted references. Listed models think as little as they allow, so it stays quick; other servers use their own default.'],
-  vision: ['Vision model', 'Used for image → LaTeX and the layout check in template transfer, with the model’s recommended effort.']
+  quick: ['Quick (autocomplete & references)', 'Listed models think as little as they allow, so it stays quick.'],
+  vision: ['Vision (images & layout check)', 'For image → LaTeX and the layout check in template transfer.']
 };
 
 /**
@@ -286,7 +281,9 @@ export default function ModelsPane({
           `${i}|${m.id}`,
           <>
             <ProviderMark id={conn.id} />
-            {`${multi ? `${connectionName(conn)} · ` : ''}${m.label}${m.id === recommended ? ' (recommended)' : ''}`}
+            {/* the provider's name in the menu; its mark alone on the button */}
+            {multi && <span className="role-provider">{connectionName(conn)} · </span>}
+            {`${m.label}${m.id === recommended ? ' (recommended)' : ''}`}
           </>
         ]);
     });
@@ -313,49 +310,48 @@ export default function ModelsPane({
     const picked = modelOf(presetOf(at.conn), at.model);
     const blindMain = role === 'vision' && same && !at.model && mainModel && !mainModel.vision;
     return (
-      <div className="field">
-        <label id={`settings-${role}ModelPick`}>{name}</label>
-        <Select
-          labelId={`settings-${role}ModelPick`}
-          value={typed ? 'other' : value}
-          options={[['same', 'Same as main model'], ...options, ['other', 'Other…']]}
-          onChange={(next) => {
-            setOtherModel((was) => ({ ...was, [role]: next === 'other' }));
-            if (next === 'other') return update({ [f.model]: '' });
-            if (next === 'same') return update(roleModelPatch(settings, providers, role, null, ''));
-            const [conn, id] = split(next);
-            update(roleModelPatch(settings, providers, role, conn, id));
-          }}
-        />
-        {typed && (
-          <input
-            className="input"
-            aria-label={`${name} name${multi ? `, on ${connectionName(at.conn)}` : ''}`}
-            value={at.model}
-            placeholder={same ? settings.llmModel || 'Same as main model' : 'Model name'}
-            spellCheck={false}
-            autoCorrect="off"
-            autoCapitalize="off"
-            autoComplete="off"
-            onChange={(e) => update({ [f.model]: e.target.value })}
-          />
-        )}
-        <div className={`field-hint ${blindMain ? 'error' : ''}`}>
-          {blindMain
-            ? 'The main model reads text only, so choose a model that reads images.'
-            : [
-                typed
+      <div className="inset-item">
+        <div className="inset-row">
+          <div className="inset-info">
+            <div className="inset-name" id={`settings-${role}ModelPick`}>{name}</div>
+            <div className={`inset-sub ${blindMain ? 'error' : ''}`}>
+              {blindMain
+                ? 'The main model reads text only, so choose a model that reads images.'
+                : typed
                   ? `Type the model’s name exactly as ${multi ? connectionName(at.conn) : 'the provider'} lists it.`
-                  : picked?.note
-                    ? `${picked.note}.`
-                    : at.model && !picked
-                      ? 'Listed by the provider. Spectrum has no notes on this model.'
-                      : '',
-                use
-              ]
-                .filter(Boolean)
-                .join(' ')}
+                  : at.model && !picked
+                    ? 'Listed by the provider. Spectrum has no notes on this model.'
+                    : use}
+            </div>
+          </div>
+          <Select
+            labelId={`settings-${role}ModelPick`}
+            value={typed ? 'other' : value}
+            options={[['same', 'Same as main'], ...options, ['other', 'Other…']]}
+            onChange={(next) => {
+              setOtherModel((was) => ({ ...was, [role]: next === 'other' }));
+              if (next === 'other') return update({ [f.model]: '' });
+              if (next === 'same') return update(roleModelPatch(settings, providers, role, null, ''));
+              const [conn, id] = split(next);
+              update(roleModelPatch(settings, providers, role, conn, id));
+            }}
+          />
         </div>
+        {typed && (
+          <div className="inset-more">
+            <input
+              className="input"
+              aria-label={`${name} model name${multi ? `, on ${connectionName(at.conn)}` : ''}`}
+              value={at.model}
+              placeholder={same ? settings.llmModel || 'Same as main model' : 'Model name'}
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              autoComplete="off"
+              onChange={(e) => update({ [f.model]: e.target.value })}
+            />
+          </div>
+        )}
       </div>
     );
   };
@@ -365,9 +361,9 @@ export default function ModelsPane({
     const used = new Map<string, string>();
     for (const role of ['vision', 'quick'] as const) {
       const at = roleAt(settings, conns, role);
-      if (at.conn === conn && at.model) used.set(at.model, `${role} model`);
+      if (at.conn === conn && at.model) used.set(at.model, role);
     }
-    if (conn === main && settings.llmModel) used.set(settings.llmModel, 'main model');
+    if (conn === main && settings.llmModel) used.set(settings.llmModel, 'main');
     return used;
   };
   const known = conns.flatMap((conn) => rowsOf(conn).map((m): [string, string] => [m.id, m.label]));
@@ -375,70 +371,20 @@ export default function ModelsPane({
 
   return (
     <>
+      <div className="pane-head">
+        <h3 className="pane-title">Models</h3>
+        <span className="pane-note">{settings.autoPrices ? <>Prices &amp; context synced via <strong>models.dev</strong></> : 'Prices from models.dev are off'}</span>
+      </div>
       {!ready(main) && (
         <div className="field-hint section-hint error">
           {connectionName(main)} has no key yet, so the AI features can’t answer. <button className="link-button" onClick={() => onSection('providers')}>Add it in Settings › Providers</button>.
         </div>
       )}
-      <h3 className="form-section-title">Default models</h3>
-      <div className="field-hint section-hint">
-        Chosen from the models of the providers connected in <button className="link-button" onClick={() => onSection('providers')}>Settings › Providers</button>.
-      </div>
-      <div className="field">
-        <label id="settings-llmModelPick">Main model</label>
-        <Select labelId="settings-llmModelPick" value={typedMain ? 'other' : mainValue} options={[...mainChoices, ['other', 'Other…']]} onChange={chooseMain} />
-        {typedMain && (
-          <>
-            <input
-              className="input"
-              aria-label={`Main model name${multi ? `, on ${connectionName(main)}` : ''}`}
-              list="settings-llmModel-list"
-              value={settings.llmModel}
-              placeholder={mainPreset?.recommended.main || 'Model name'}
-              spellCheck={false}
-              autoCorrect="off"
-              autoCapitalize="off"
-              autoComplete="off"
-              onChange={(e) => update({ llmModel: e.target.value })}
-            />
-            <datalist id="settings-llmModel-list">{rowsOf(main).filter((m) => !m.known).map((m) => <option key={m.id} value={m.id} />)}</datalist>
-          </>
-        )}
-        <div className="field-hint">
-          {[
-            typedMain
-              ? `Type the model’s name exactly as ${multi ? connectionName(main) : 'the provider'} lists it.`
-              : !mainModel
-                ? 'Listed by the provider. Spectrum has no notes on this model.'
-                : [mainModel.note && `${mainModel.note}.`, !mainModel.vision && (imagesGoElsewhere ? 'Reads text only, so images go to the vision model.' : 'Reads text only, so set a vision model below for images.')].filter(Boolean).join(' '),
-            'The assistant and the Spectrum agent use it.'
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        </div>
-      </div>
-      <div className="field">
-        <label id="settings-reasoningEffort">Reasoning effort</label>
-        <Select
-          labelId="settings-reasoningEffort"
-          value={effortChoices.some(([value]) => value === settings.reasoningEffort) ? settings.reasoningEffort : 'default'}
-          options={effortChoices}
-          onChange={(value) => update({ reasoningEffort: value as AppSettings['reasoningEffort'] })}
-        />
-        <div className="field-hint">How long the main model may think before answering. Higher levels are slower and cost more.</div>
-      </div>
-      {roleField('quick')}
-      {roleField('vision')}
-
-      <h3 className="form-section-title">Models in the menus</h3>
-      <div className="field-hint section-hint">
-        A model switched off leaves the model menus: the Spectrum agent’s and the ones above. Beside each is its context and its price for input and output, per million tokens, from models.dev unless you have typed your own.
-      </div>
       <label className="search-field model-search">
         <Icon name="magnifyingglass" />
         <input
           aria-label="Search models"
-          placeholder="Search models"
+          placeholder="Search models across connected providers…"
           value={query}
           spellCheck={false}
           onChange={(e) => setQuery(e.target.value)}
@@ -450,7 +396,7 @@ export default function ModelsPane({
           </button>
         )}
       </label>
-      <div className="provider-list">
+      <div className="acc-list">
         {conns.map((conn) => (
           <ProviderModels
             key={conn.at}
@@ -471,8 +417,61 @@ export default function ModelsPane({
         ))}
         {!any && <div className="field-hint">No model matches “{query.trim()}”.</div>}
       </div>
+      <div className="field-hint section-hint">
+        A model switched off leaves the model menus: the Spectrum agent’s and the ones below. Beside each is its context and its price for input and output, per million tokens; click it to set your own.
+      </div>
 
-      <h3 ref={prices} className="form-section-title">Prices</h3>
+      <h4 className="pane-label">Default roles (pick from enabled models)</h4>
+      <div className="inset-card">
+        <div className="inset-item">
+          <div className="inset-row">
+            <div className="inset-info">
+              <div className="inset-name" id="settings-llmModelPick">Main &amp; Spectrum agent</div>
+              <div className="inset-sub">
+                {typedMain
+                  ? `Type the model’s name exactly as ${multi ? connectionName(main) : 'the provider'} lists it.`
+                  : !mainModel
+                    ? 'Listed by the provider. Spectrum has no notes on this model.'
+                    : [mainModel.note && `${mainModel.note}.`, !mainModel.vision && (imagesGoElsewhere ? 'Reads text only, so images go to the vision model.' : 'Reads text only, so set a vision model below for images.')].filter(Boolean).join(' ')}
+              </div>
+            </div>
+            <Select labelId="settings-llmModelPick" value={typedMain ? 'other' : mainValue} options={[...mainChoices, ['other', 'Other…']]} onChange={chooseMain} />
+          </div>
+          {typedMain && (
+            <div className="inset-more">
+              <input
+                className="input"
+                aria-label={`Main model name${multi ? `, on ${connectionName(main)}` : ''}`}
+                list="settings-llmModel-list"
+                value={settings.llmModel}
+                placeholder={mainPreset?.recommended.main || 'Model name'}
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
+                autoComplete="off"
+                onChange={(e) => update({ llmModel: e.target.value })}
+              />
+              <datalist id="settings-llmModel-list">{rowsOf(main).filter((m) => !m.known).map((m) => <option key={m.id} value={m.id} />)}</datalist>
+            </div>
+          )}
+        </div>
+        <div className="inset-row">
+          <div className="inset-info">
+            <div className="inset-name" id="settings-reasoningEffort">Reasoning effort</div>
+            <div className="inset-sub">How long the main model may think before answering. Higher levels are slower and cost more.</div>
+          </div>
+          <Select
+            labelId="settings-reasoningEffort"
+            value={effortChoices.some(([value]) => value === settings.reasoningEffort) ? settings.reasoningEffort : 'default'}
+            options={effortChoices}
+            onChange={(value) => update({ reasoningEffort: value as AppSettings['reasoningEffort'] })}
+          />
+        </div>
+        {roleField('quick')}
+        {roleField('vision')}
+      </div>
+
+      <h4 ref={prices} className="pane-label">Your prices</h4>
       <ModelPrices settings={settings} update={update} known={known} picked={picked} setPicked={setPicked} />
     </>
   );

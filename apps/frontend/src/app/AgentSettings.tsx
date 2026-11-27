@@ -606,7 +606,7 @@ function AgentCard({
                       {a.network.proxy
                         ? `${a.name} goes through Spectrum’s gate to the proxy ${a.network.proxy.text} (${a.network.proxy.from.toLowerCase()}), and never reaches this computer itself.`
                         : 'No proxy: it connects directly.'}{' '}
-                      The proxy is set in Settings › System › Network.
+                      The proxy is set in Settings › System & Network › Network.
                     </div>
                   )}
                   <div className="field-hint">

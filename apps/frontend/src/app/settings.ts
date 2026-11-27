@@ -167,7 +167,7 @@ export type AppSettings = {
   searchProviderKeys: Partial<Record<SearchProvider, string>>;
   searchConnections: SearchProvider[];
   serpEngine: 'google' | 'google_scholar' | 'baidu';
-  /** Research's sources (Settings › Search), on this computer only; its OpenAlex and Semantic Scholar keys are the connections' */
+  /** Research's sources (Settings › Search & Web), on this computer only; its OpenAlex and Semantic Scholar keys are the connections' */
   openalexEmail: string;
   ncbiKey: string;
   unpaywallEmail: string;

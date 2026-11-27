@@ -534,7 +534,7 @@ Antigravity and OpenCode 2 each start a server of their own on a port of this co
 
 === Behind a proxy <sec-assistant-proxy>
 
-Some networks reach the internet only through a proxy, such as a company's or one that a VPN or proxy app runs on this computer. On a Mac, Spectrum finds the proxy in this order: the one typed under #ui[Network] in #menu[Settings][System], then the proxy that this Mac's network settings name for HTTPS or SOCKS, then the proxy variables of your login shell, such as `HTTPS_PROXY`, which an app started from the Finder does not otherwise have. The same part says which proxy is in use and where it came from, and each agent's card repeats it under #ui[Network]. A name and password in a proxy's address are never shown, and a proxy found from an automatic configuration file is not used, so type such a proxy in yourself.
+Some networks reach the internet only through a proxy, such as a company's or one that a VPN or proxy app runs on this computer. On a Mac, Spectrum finds the proxy in this order: the one typed under #ui[Network] in #menu[Settings][System & Network], then the proxy that this Mac's network settings name for HTTPS or SOCKS, then the proxy variables of your login shell, such as `HTTPS_PROXY`, which an app started from the Finder does not otherwise have. The same part says which proxy is in use and where it came from, and each agent's card repeats it under #ui[Network]. A name and password in a proxy's address are never shown, and a proxy found from an automatic configuration file is not used, so type such a proxy in yourself.
 
 With a proxy, everything Spectrum reaches on the internet goes through it: the models of the Assistant and the Spectrum agent, Research and reference look-ups, PDF downloads, engine and adapter downloads, a compile's packages and the local agents and MCP servers. Connections to this computer, such as to Ollama, TexLab or Zotero, never do. An agent or a confined compile cannot reach the proxy itself, since isolation never opens this computer to them, so they go to Spectrum's own gate, which passes their connections on through the proxy. An agent on #ui[Listed hosts only] keeps its list, and an agent on #ui[Any host] still reaches only HTTPS on port 443. With no proxy found, Spectrum connects as before. On Windows, Spectrum does not use a proxy of its own yet.
 
@@ -619,17 +619,17 @@ Verify claims keeps what it found as evidence in #ui[Claims checked], which appe
 
 #shot("figures/03-assistant/research-claims.png", [#ui[Claims checked] after Verify claims, with the problems first. The Unsupported claim was checked against an abstract only, and the Supported one has its quote from page 2 of the paper.], width: 30%) <fig-assistant-claims>
 
-#menu[Settings][Search] holds the keys and emails Research uses under #ui[Research sources]: the OpenAlex and Semantic Scholar keys, an email for OpenAlex, an NCBI key for PubMed and the email Unpaywall asks for with #ui[Get PDF]. Each source works without them, and they stay on this computer.
+#menu[Settings][Search & Web] holds the keys and emails Research uses under #ui[Research sources]: the OpenAlex and Semantic Scholar keys, an email for OpenAlex, an NCBI key for PubMed and the email Unpaywall asks for with #ui[Get PDF]. Each source works without them, and they stay on this computer.
 
 == Web search <sec-assistant-search>
 
-Web search is used by Research's Web source, by the References chat when a link or title needs more details and by #ui[Find citations for selection]. The assistant's chat can also search the general web. #menu[Settings][Search] sets it up (@fig-assistant-settings-search), in three parts,
+Web search is used by Research's Web source, by the References chat when a link or title needs more details and by #ui[Find citations for selection]. The assistant's chat can also search the general web. #menu[Settings][Search & Web] sets it up (@fig-assistant-settings-search), in three parts,
 
 - #ui[Default search], the connection tried first,
 - #ui[Search connections], the connections that may be used, each with its own switch and key and
 - #ui[Search model], an optional endpoint, model and key used only for web search, which is the main model when left blank.
 
-#shot("figures/03-assistant/settings-search.png", [#menu[Settings][Search]. The model's built-in web search is the default, and the other connections are tried in order when it fails.], width: 65%) <fig-assistant-settings-search>
+#shot("figures/03-assistant/settings-search.png", [#menu[Settings][Search & Web]. The model's built-in web search is the default, and the other connections are tried in order when it fails.], width: 65%) <fig-assistant-settings-search>
 
 The default is tried first, then each other connection that is switched on, in the order shown, when a request fails or returns no usable results. Each fallback uses that connection's own account and allowance.
 
@@ -647,10 +647,10 @@ The default is tried first, then each other connection that is switched on, in t
     [Brave Search], [The web, with the same sites boosted], [a Brave Search key],
     [DDGS], [Google, Bing, Brave, DuckDuckGo, Mojeek and Yahoo at once], [Python 3.10 and `ddgs`],
   ),
-  caption: [The search connections in #menu[Settings][Search].],
+  caption: [The search connections in #menu[Settings][Search & Web].],
 ) <tab-assistant-search>
 
-#menu[Settings][System] shows whether Python and `ddgs` are found for DDGS, which is installed with `python3 -m pip install ddgs`.
+#menu[Settings][System & Network] shows whether Python and `ddgs` are found for DDGS, which is installed with `python3 -m pip install ddgs`.
 
 == Template transfer <sec-assistant-transfer>
 

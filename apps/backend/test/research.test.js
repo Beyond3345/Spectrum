@@ -414,7 +414,7 @@ test('Open note makes research/notes/<key>.md once; Get PDF saves an open-access
   res = await api(`${url}/pdf`, 'POST', { resultId: sorting.id });
   assert.equal(res.status, 404);
   // the app's error handler sends this message as error; Fastify's own, here, as message
-  assert.match(res.json.message, /Add your email in Settings › Search/);
+  assert.match(res.json.message, /Add your email in Settings › Search & Web/);
   res = await api(`${url}/pdf`, 'POST', { resultId: sorting.id, email: 'me@example.com' });
   assert.equal(res.json.path, 'research/papers/Turing2019Sorting.pdf', JSON.stringify(res.json));
   assert.match(calls.find((c) => c.url.includes('unpaywall')).url, /email=me%40example\.com/);

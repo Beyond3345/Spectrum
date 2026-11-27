@@ -28,7 +28,7 @@ export const SECTION_GROUPS: [string, [Section, string, string][]][] = [
   ['General', [
     ['appearance', 'Appearance', 'circle.lefthalf.filled'],
     ['shortcuts', 'Shortcuts', 'keyboard'],
-    ['system', 'System', 'stethoscope']
+    ['system', 'System & Network', 'stethoscope']
   ]],
   ['Writing & Editor', [
     ['editor', 'Editor', 'text.cursor'],
@@ -43,14 +43,14 @@ export const SECTION_GROUPS: [string, [Section, string, string][]][] = [
     ['github', 'GitHub', 'arrow.triangle.branch']
   ]],
   ['AI & Agents', [
-    ['providers', 'Providers', 'key'],
-    ['models', 'Models', 'sparkles'],
+    ['providers', 'Providers', 'cpu'],
+    ['models', 'Models', 'sparkle'],
     ['agents', 'Agents', 'terminal'],
-    ['personas', 'Personas', 'brain.head.profile'],
+    ['personas', 'Personas', 'person'],
     ['skills', 'Skills', 'graduationcap']
   ]],
   ['Research & Import', [
-    ['search', 'Search', 'magnifyingglass'],
+    ['search', 'Search & Web', 'magnifyingglass'],
     ['zotero', 'Zotero', 'books.vertical'],
     ['transfer', 'Document parsers', 'text.viewfinder']
   ]]
@@ -70,8 +70,8 @@ export const SECTION_HUES: Record<Section, IconColour> = {
   projects: 'cyan',
   checkpoints: 'brown',
   github: 'github',
-  providers: 'green',
-  models: 'purple',
+  providers: 'purple',
+  models: 'indigo',
   agents: 'teal',
   personas: 'pink',
   skills: 'orange',
