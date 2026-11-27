@@ -617,7 +617,7 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
           : { text: counts.join(' · ') || 'Passed', tone: toneOf({ warning: aiRows.filter((f) => f.severity !== 'note').length }) };
     return panelCard(info, status, body, {
       extra: extra || undefined,
-      blocked: aiReady ? undefined : 'Set up a model in Settings › Models first.'
+      blocked: aiReady ? undefined : 'Set up a model in Settings › Providers first.'
     });
   };
 
