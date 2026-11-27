@@ -448,7 +448,9 @@ export default function ReviewTab({ doc, active }: { doc: string; active: boolea
         ))}
       </div>
     );
-    return panelCard(group, desc, result ? [...counted(errors, 'error'), ...counted(warnings, 'warning'), ...counted(infos, 'note')] : null, body, { options, extra: (group === 'accessibility' && result?.pages) || fixable.length > 1 ? extra : undefined });
+    // a group with nothing found and something it couldn't check isn't "No problems"
+    const counts = result ? [...counted(errors, 'error'), ...counted(warnings, 'warning'), ...counted(infos, 'note')] : null;
+    return panelCard(group, desc, counts && !counts.length && result?.gap ? ['Not checked'] : counts, body, { options, extra: (group === 'accessibility' && result?.pages) || fixable.length > 1 ? extra : undefined });
   };
 
   const existCard = (desc: string) => {
