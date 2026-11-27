@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ProviderPreset } from '../api/client';
+import BrandMark, { providerBrand } from './BrandMark';
 import { confirmDialog } from './Dialogs';
 import Icon from './Icon';
-import ProviderMark from './ProviderMark';
 import Select from './Select';
 import { testSays, useConnectionTest } from './connectionTest';
 import { isKeyRef, keyFailure, selectSavedKey } from './keys';
@@ -67,7 +67,7 @@ function ProviderRow({
   return (
     <div className="inset-item" role="group" aria-labelledby={`${id}-name`}>
       <div className="inset-row">
-        <ProviderMark id={conn.id} />
+        <BrandMark brand={providerBrand(conn.id)} tile />
         <div className="inset-info">
           <div className="inset-name">
             <span id={`${id}-name`}>{connectionName(conn) === hostOf(conn.endpoint) ? name : connectionName(conn)}</span>
@@ -260,7 +260,7 @@ export default function ProvidersPane({ onSection }: { onSection: (section: Sect
           <div className="inset-card">
             {available.map((p) => (
               <div className="inset-row" key={p.id}>
-                <ProviderMark id={p.id} />
+                <BrandMark brand={providerBrand(p.id)} tile />
                 <div className="inset-info">
                   <div className="inset-name">
                     {p.name}

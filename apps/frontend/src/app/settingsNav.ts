@@ -87,7 +87,7 @@ export const SECTION_HUES: Record<Section, IconColour> = {
  * collect the labels from the panes themselves (each field registering its label), when the list drifts.
  */
 export const SECTION_LABELS: Record<Section, string[]> = {
-  appearance: ['Theme', 'Light', 'Dark', 'Colour style', 'Accent colour', 'See-through window', 'Liquid Glass', 'Clarity', 'PDF pages'],
+  appearance: ['Theme', 'Light', 'Dark', 'Colour style', 'Logos', 'Line marks', 'Full logos', 'Accent colour', 'See-through window', 'Liquid Glass', 'Clarity', 'PDF pages'],
   shortcuts: ['Keyboard shortcuts', 'Editing', 'Selection', 'Folding', 'PDF', 'App', 'Fixed', 'Restore all defaults'],
   system: ['Network', 'Proxy', 'Tools', 'Folders', 'App data', 'About', 'Licences', 'Version', 'Show the setup page again', 'Tell me when a newer Spectrum is out', 'Updates'],
   editor: [

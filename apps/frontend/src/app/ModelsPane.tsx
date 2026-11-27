@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { AutoPrice, ProviderPreset } from '../api/client';
+import BrandMark, { modelBrand, providerBrand } from './BrandMark';
 import Icon from './Icon';
-import ProviderMark from './ProviderMark';
 import Select from './Select';
 import { autoPrice, normalizeModelId, useAutoPrices } from './autoPrices';
 import { useConnectionTest } from './connectionTest';
@@ -174,7 +174,7 @@ function ProviderModels({
       <div className="acc-row">
         <button className={`acc-head ${shown ? 'open' : ''}`} aria-expanded={shown} aria-controls={shown ? id : undefined} onClick={onToggle}>
           <Icon name="chevron.right" className="acc-chev" />
-          <ProviderMark id={conn.id} />
+          <BrandMark brand={providerBrand(conn.id)} tile />
           <span className="acc-name">{name}</span>
           {/* said on the heading too, so it shows while the section is folded */}
           <span className={`acc-meta ${live.error ? 'error' : ''}`}>{live.error ? 'Can’t be reached' : rows.length ? `${on} of ${rows.length} enabled` : 'No list'}</span>
@@ -197,6 +197,8 @@ function ProviderModels({
             const use = inUse.get(m.id);
             return (
               <div className="inset-row" key={m.id}>
+                {/* the model's family, which under OpenRouter or Ollama is not its provider's */}
+                <BrandMark brand={modelBrand(m.id) || providerBrand(conn.id)} tile />
                 <div className="inset-info">
                   <div className="inset-name">
                     {m.label}
@@ -281,7 +283,7 @@ export default function ModelsPane({
         .map((m): [string, ReactNode] => [
           `${i}|${m.id}`,
           <>
-            <ProviderMark id={conn.id} />
+            <BrandMark brand={providerBrand(conn.id)} tile />
             {/* the provider's name and “recommended” in the menu; on the button the mark and the model alone */}
             {multi && <span className="role-extra">{connectionName(conn)} · </span>}
             {m.label}

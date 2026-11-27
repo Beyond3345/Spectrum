@@ -68,6 +68,8 @@ export type AppSettings = {
   accent: Accent;
   /** Spectrum colours each area of the app from palette.json (appearance.ts); Simple is the plain look before 2.5 */
   colourStyle: 'spectrum' | 'simple';
+  /** the marks of agents, providers and models (BrandMark.tsx): one set of line marks, or each brand's own logo where Spectrum ships one */
+  logos: 'line' | 'full';
   /** '#rrggbb' for the Custom accent */
   accentCustom: string;
   /** see-through window (Liquid Glass on macOS 26 and later, vibrancy before) */
@@ -253,6 +255,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   accent: 'system',
   colourStyle: 'spectrum',
+  logos: 'line',
   accentCustom: '#0a84ff',
   glass: false,
   glassClarity: 50,
@@ -569,6 +572,7 @@ function parse(raw: string | null): AppSettings {
     if (merged.englishGrammar !== 'languagetool') merged.englishGrammar = 'harper';
     if (!ACCENTS.includes(merged.accent)) merged.accent = 'system';
     if (merged.colourStyle !== 'simple') merged.colourStyle = 'spectrum';
+    if (merged.logos !== 'full') merged.logos = 'line';
     if (typeof merged.accentCustom !== 'string' || !HEX.test(merged.accentCustom)) merged.accentCustom = DEFAULT_SETTINGS.accentCustom;
     merged.glass = merged.glass === true;
     if (!Number.isFinite(merged.glassClarity)) merged.glassClarity = DEFAULT_SETTINGS.glassClarity;
@@ -711,7 +715,7 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
  * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, or this switch.
  */
 const SHARED_KEYS = [
-  'theme', 'accent', 'colourStyle', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize', 'editorKeymap',
+  'theme', 'accent', 'colourStyle', 'logos', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize', 'editorKeymap',
   'autoInsertCite', 'continueLists', 'todoPlacement', 'closeMaths', 'mathPreview', 'snippets', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
   'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear', 'composerVectorNotation',
   'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery', 'composerDark', 'composerMinimap'

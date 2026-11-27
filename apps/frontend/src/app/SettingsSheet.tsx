@@ -338,6 +338,17 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
               </div>
               <div className="field-hint">Spectrum gives each icon its own colour, so each one stands out from its neighbours. Simple keeps to grey and your accent colour.</div>
 
+              <h3 id="settings-logos" className="form-section-title">Logos</h3>
+              <div>
+                <Segmented
+                  labelledBy="settings-logos"
+                  value={settings.logos}
+                  options={[['line', 'Line marks'], ['full', 'Full logos']]}
+                  onChange={(logos) => update({ logos })}
+                />
+              </div>
+              <div className="field-hint">Line marks draw every agent, provider and model in one plain style. Full logos shows each brand’s own logo where Spectrum has one, and its line mark otherwise.</div>
+
               <h3 id="settings-accent" className="form-section-title">Accent colour</h3>
               <div className="row">
                 <div className="accent-picker" role="radiogroup" aria-labelledby="settings-accent" onKeyDown={radioKeys}>

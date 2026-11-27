@@ -1969,9 +1969,26 @@ button.chip.active:hover {
   text-decoration: underline;
 }
 
-/* the mark before a provider's name: on a white tile in both modes, as the agents' logos are, since some marks are
-   drawn in one dark ink */
-span.provider-mark {
+/* A brand's mark (BrandMark.tsx), the same for an agent, a provider and a model: a line mark drawn in strokes in the
+   colour of the text, or the brand's own logo. In Settings' rows and menus it sits on a small tile; an agent's icon
+   (.agent-icon) is its tile already. A line mark's tile takes the surface's colour; a logo's stays white in both
+   modes, since some logos are drawn in one dark ink. */
+.brand-line,
+.brand-full {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.brand-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+span.brand-tile {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -1980,18 +1997,22 @@ span.provider-mark {
   height: 24px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: #fff;
-  color: #1d1d1f;
+  background: var(--bg-elevated);
+  color: var(--text);
   vertical-align: middle;
 }
 
-.provider-mark > :is(img, svg, .sf) {
-  width: 16px;
-  height: 16px;
+span.brand-tile:has(> .brand-full) {
+  background: #fff;
+}
+
+.agent-icon:not(.missing, .agent-add):has(> .brand-line) {
+  background: var(--bg-elevated);
+  color: var(--text);
 }
 
 /* in a model menu and on its button, before the provider's name */
-:is(.menu-label, .popup-label) > .provider-mark {
+:is(.menu-label, .popup-label) > .brand-tile {
   width: 20px;
   height: 20px;
   margin: -2px 7px -2px 0;
@@ -2007,14 +2028,14 @@ span.provider-mark {
   margin-left: -9px;
 }
 
-.inset-row > .popup-button .provider-mark {
+.inset-row > .popup-button .brand-tile {
   width: 18px;
   height: 18px;
   margin-left: -4px;
   border-radius: 9px;
 }
 
-.inset-row > .popup-button .provider-mark > :is(img, svg, .sf) {
+.inset-row > .popup-button .brand-tile > :is(.brand-line, .brand-full) {
   width: 12px;
   height: 12px;
 }
