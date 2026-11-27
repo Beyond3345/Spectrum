@@ -229,6 +229,12 @@
   font-size: 12px;
 }
 
+/* the notice that a chat's model is switched off, above the message box and in line with it */
+.composer > .composer-hint {
+  flex: none;
+  margin: 4px 14px 4px;
+}
+
 .composer-chips {
   flex: none;
   display: flex;

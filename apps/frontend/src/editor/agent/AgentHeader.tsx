@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AgentTuning from './AgentTuning';
 import type { ConfigOption } from './AgentTuning';
-import { presetOf, useLivePreset, useProviders } from '../../app/settings';
+import { loadSettings, presetOf, updateSettings, useLivePreset, useProviders } from '../../app/settings';
+import { hiddenPatch } from '../../app/providerCards';
 import { useEditor } from '../EditorContext';
-import { turnChoice } from './usage';
+import { offNotice, turnChoice } from './usage';
 import type { StatChip, TurnChoice } from './usage';
 import Icon from '../../app/Icon';
 
@@ -96,7 +97,31 @@ export function StatsRow({ chips }: { chips: StatChip[] }) {
  * The Spectrum agent's model and effort for the thread, at the right of its header row. Both tabs' figures
  * are in the StatsRow under the message box; a local agent's model is in AgentTuning, in the box.
  */
-export default function AgentHeader({ choice, onChoose, onManage, plan }: { choice: Choice; onChoose(choice: TurnChoice): void; onManage(): void; plan?: { on: boolean; toggle(): void } }) {
+/**
+ * The notice above a message box while the thread's or chat's model is switched off in Settings › Models (offNotice):
+ * the same words and the same two actions in the Spectrum agent's tab and the assistant panel. Nothing while the
+ * choice can be sent. onChoose opens the box's model menu.
+ */
+export function ModelOffNotice({ choice, onChoose }: { choice: Choice; onChoose(): void }) {
+  const providers = useProviders();
+  const notice = offNotice(choice);
+  if (!notice) return null;
+  return (
+    <div className="composer-hint row" role="status">
+      <span className="grow">{notice} Nothing is sent until you choose another model or turn it back on.</span>
+      <button className="btn small" onClick={onChoose}>
+        Choose another model
+      </button>
+      {/* a thread's model is always one of the main provider's */}
+      <button className="btn small" onClick={() => updateSettings(hiddenPatch(loadSettings(), presetOf(providers, loadSettings())?.id || 'custom', choice.model, false))}>
+        Turn it back on
+      </button>
+    </div>
+  );
+}
+
+/** opened: a count that opens the menu each time it goes up (AgentTuning) */
+export default function AgentHeader({ choice, onChoose, onManage, plan, opened }: { choice: Choice; onChoose(choice: TurnChoice): void; onManage(): void; plan?: { on: boolean; toggle(): void }; opened?: number }) {
   // “Recommended (High)” is a badge on High in the menu (effortLevels), not a second High
   const options: ConfigOption[] = [
     { id: 'model', name: 'Model', category: 'model', currentValue: choice.model, options: choice.models.map(([value, name]) => ({ value, name })) },
@@ -109,6 +134,7 @@ export default function AgentHeader({ choice, onChoose, onManage, plan }: { choi
       onChange={(id, value) => onChoose(id === 'model' ? { model: value } : { effort: value as TurnChoice['effort'] })}
       more={{ label: 'Manage models…', onSelect: onManage }}
       toggles={plan ? [{ label: 'Plan before editing', on: plan.on, onToggle: plan.toggle }] : []}
+      opened={opened}
     />
   );
 }

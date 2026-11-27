@@ -16,7 +16,8 @@ import { PersonaPicker } from './agent/parts';
 import { INSTRUCTIONS_FILE } from './agent/instructions';
 import AgentTuning, { LOGO } from './agent/AgentTuning';
 import type { ConfigOption } from './agent/AgentTuning';
-import { turnChoice } from './agent/usage';
+import { holdsSend, turnChoice } from './agent/usage';
+import { ModelOffNotice } from './agent/AgentHeader';
 import type { TurnChoice } from './agent/usage';
 import ChatsList from './ChatsList';
 import ReferenceDraftCard, { sourceBadge } from './ReferenceDraftCard';
@@ -121,6 +122,10 @@ export default function Composer({
     ...(choice.efforts.length > 1 ? [{ id: 'effort', name: 'Thinking', category: 'thought_level', currentValue: choice.effort, options: choice.efforts.map(([value, name]) => ({ value, name })) }] : [])
   ] : [];
   const choose = (c: TurnChoice) => (thread ? update(thread, (chat) => ({ ...chat, ...c })) : setNewChoice((old) => ({ ...old, ...c })));
+  // the chat's model switched off in Settings › Models: it keeps the model, a notice says so, and sending waits until
+  // another is chosen or it is switched back on, as in the Spectrum agent's tab
+  const held = holdsSend(choice, mode);
+  const [menuOpened, setMenuOpened] = useState(0);
   // the project's citation keys as the last look-up gave them, which a draft's key is checked against
   const keysRef = useRef(new Set<string>());
   const [input, setInput] = useState('');
@@ -319,6 +324,8 @@ export default function Composer({
   };
 
   const sendAssistant = async (text: string, action?: QuickAction, language = 'English') => {
+    // what was typed stays in the box
+    if (held) return;
     // snapshot: the editor keeps changing while the model works
     const { activePath, editorValue, selectionRange } = api;
     const selection = useSelection ? api.selectionText : '';
@@ -777,6 +784,8 @@ export default function Composer({
             </button>
           </div>
         ) : (
+          <>
+          <ModelOffNotice choice={choice} onChoose={() => setMenuOpened((n) => n + 1)} />
           <div className="composer-box">
             <textarea
               ref={inputRef}
@@ -820,12 +829,13 @@ export default function Composer({
             </div>
             <div className="composer-bar">
               <span className="grow" />
-              <AgentTuning options={tuning} modes={null} disabled={busy} onChange={(id, value) => choose(id === 'model' ? { model: value } : { effort: value as TurnChoice['effort'] })} more={{ label: 'Manage models…', onSelect: () => api.openSettings('models') }} />
-              <button className="composer-send" title="Send (↵)" aria-label="Send" disabled={busy || !input.trim()} onClick={() => send()}>
+              <AgentTuning options={tuning} modes={null} disabled={busy} opened={menuOpened} onChange={(id, value) => choose(id === 'model' ? { model: value } : { effort: value as TurnChoice['effort'] })} more={{ label: 'Manage models…', onSelect: () => api.openSettings('models') }} />
+              <button className="composer-send" title="Send (↵)" aria-label="Send" disabled={busy || !input.trim() || held} onClick={() => send()}>
                 {busy ? <span className="spinner" /> : <Icon name="arrow.up" />}
               </button>
             </div>
           </div>
+          </>
         )}
       </div>
     </div>

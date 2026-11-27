@@ -47,10 +47,12 @@ type Sub = { option: ConfigOption; top: number };
  * Antigravity have: the models (keys 1 to 9), the effort in a side menu of levels coloured along the logo's spectrum,
  * and every other setting as a side menu or, with two choices that are on and off, a switch.
  */
-export default function AgentTuning({ options, modes, disabled, onChange, more, toggles = [] }: {
+export default function AgentTuning({ options, modes, disabled, onChange, more, toggles = [], opened = 0 }: {
   options: ConfigOption[];
   modes: Modes | null;
   disabled?: boolean;
+  /** a count that opens the menu each time it goes up, for a button elsewhere (a notice's Choose another model) */
+  opened?: number;
   onChange: (id: string, value: string) => void;
   /** a row after the effort, such as Manage models… */
   more?: { label: string; onSelect: () => void };
@@ -80,6 +82,9 @@ export default function AgentTuning({ options, modes, disabled, onChange, more, 
   const label = [nameOf(model), nameOf(effort)].filter(Boolean).join(' · ') || rest.map(nameOf).filter(Boolean).join(' · ') || 'Settings';
 
   const close = () => { setOpen(false); setSub(null); trigger.current?.focus(); };
+  useEffect(() => {
+    if (opened && !disabled) (setView('main'), setQuery(''), setOpen(true));
+  }, [opened]);
   const allModels = model ? choicesOf(model) : [];
   // with many, the chosen one and the first others, and the rest behind More models…
   const short = allModels.length > 9 ? [...allModels.filter((c) => c.value === model!.currentValue), ...allModels.filter((c) => c.value !== model!.currentValue).slice(0, 7)] : allModels;
