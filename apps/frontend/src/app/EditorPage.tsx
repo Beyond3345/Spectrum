@@ -374,7 +374,6 @@ function Editor({ projectId }: { projectId: string }) {
     () => ({
       main: llmConfigFor(settings, 'main'),
       search: llmConfigFor(settings, 'search'),
-      vision: llmConfigFor(settings, 'vision'),
       quick: llmConfigFor(settings, 'quick')
     }),
     [settings]

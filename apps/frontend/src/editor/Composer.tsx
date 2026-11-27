@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { docLanguage, translatePrompt } from '../../../backend/src/utils/docLanguage.js';
-import { addReference, commitReference, getAgentInstructions, getChat, resolveReferences, runAgent, visionToLatex } from '../api/client';
+import { addReference, commitReference, getAgentInstructions, getChat, resolveReferences, runAgent } from '../api/client';
 import type { ChatMessage, ChatMode, ChatThread, ReferenceDraft, ReferenceResult } from '../api/client';
 import Icon from '../app/Icon';
 import { MenuButton } from '../app/Menu';
 import { presetOf, searchConfigFor, useLivePreset, useProviders } from '../app/settings';
 import { useEditor } from './EditorContext';
 import type { PendingChange } from './EditorContext';
-import { Markdown, VISION_HINTS, VISION_MODES, bibIncludeLine, changeStat, citationText, docKind, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
-import type { ChangeStat, Locator, VisionMode } from './shared';
+import { Markdown, bibIncludeLine, changeStat, citationText, docKind, errorText, isDocument, patchesToChanges, reloadBib } from './shared';
+import type { ChangeStat, Locator } from './shared';
 import { ZOTERO_CITE } from './zotero';
 import { assistantSaid, chatMessage, isEditChat, useChatThread } from './chatThread';
 import { resolveInstructions } from './personas';
@@ -29,8 +29,6 @@ type ReferencesMeta = { results: ReferenceResult[]; bibFile: string; bibIncluded
 /** what we keep in ChatMessage.meta */
 type MessageMeta = {
   changes?: ProposedFile[]; quick?: boolean; action?: QuickAction; stat?: ChangeStat; references?: ReferencesMeta;
-  /** an Image → LaTeX answer, offered for the cursor */
-  latex?: string;
   error?: boolean; /** the answer stopped at the model's output limit */ cut?: boolean
 };
 
@@ -135,8 +133,6 @@ export default function Composer({
   const [scope, setScope] = useState<TranslateScope>('selection');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const visionModeRef = useRef<VisionMode>('equation');
 
   const busy = !!thread && busyChats.includes(thread.id);
   const hasSelection = Boolean(api.selectionText);
@@ -273,7 +269,7 @@ export default function Composer({
     updateMeta(owner, index, { ...metaOf(message), references: { ...refs, ...extra, results } });
   };
 
-  const addCandidate = async (index: number, resultIndex: number, candidateId: string) => {
+  const addCandidate = async (index: number, resultIndex: number, candidateId: string, work?: string) => {
     const owner = threadRef.current;
     const message = owner?.messages[index];
     const refs = message && metaOf(message).references;
@@ -284,7 +280,7 @@ export default function Composer({
         searchConfig: searchConfigFor(api.settings, api.llm.search), preview: true });
       if (!res.ok) throw new Error(res.error || 'The reference couldn’t be looked up.');
       if (res.keys) keysRef.current = new Set(res.keys);
-      replaceResult(owner, index, resultIndex, res.result, { bibFile: res.bibFile, bibIncluded: res.bibIncluded, biblatex: res.biblatex, legacyUrls: res.legacyUrls });
+      replaceResult(owner, index, resultIndex, { ...res.result, ...(work && !res.result.work && res.result.status === 'draft' && { work }) }, { bibFile: res.bibFile, bibIncluded: res.bibIncluded, biblatex: res.biblatex, legacyUrls: res.legacyUrls });
       autoCite([res.result]);
     } catch (err) {
       latest.current.notify(errorText(err), 'error');
@@ -407,27 +403,6 @@ export default function Composer({
     }
   };
 
-  const imageToLatex = async (file: File, visionMode: VisionMode) => {
-    const extra = input.trim();
-    const label = VISION_MODES.find(([v]) => v === visionMode)?.[1] || visionMode;
-    setInput('');
-    // a Typst document gets Typst
-    const typst = docKind(api.activePath) === 'typst';
-    const base = append(threadRef.current, msg('user', `Image → ${typst ? 'Typst' : 'LaTeX'} (${label}): ${file.name}${extra ? `\n\n${extra}` : ''}`));
-    markBusy(base.id, true);
-    try {
-      const res = await visionToLatex({ projectId: api.projectId, file, mode: visionMode, prompt: extra || (typst ? undefined : VISION_HINTS[visionMode]), llmConfig: api.llm.vision, kind: typst ? 'typst' : null });
-      if (!res.ok) throw new Error(res.error || 'The image couldn’t be read.');
-      const latex = (res.latex || '').trim();
-      append(base, msg('assistant', `\`\`\`${typst ? 'typst' : 'latex'}\n${latex}\n\`\`\``, { latex }));
-      if (res.assetPath) await latest.current.refreshTree();
-    } catch (err) {
-      append(base, msg('assistant', `Couldn’t convert the image: ${errorText(err)}`, { error: true }));
-    } finally {
-      markBusy(base.id, false);
-    }
-  };
-
   /** A suggestion's changes against the files as they are now, those that would still change something */
   const openChangesOf = async (files: ProposedFile[]) => {
     const a = latest.current;
@@ -535,7 +510,7 @@ export default function Composer({
                         <div className="ref-title">{c.title}</div>
                         <div className="ref-meta">{authorLine(c.authors, c.year, c.venue)}</div>
                       </div>
-                      <button className="btn small outline" disabled={busy} onClick={() => addCandidate(index, ri, c.id)}>Choose</button>
+                      <button className="btn small outline" disabled={busy} onClick={() => addCandidate(index, ri, c.id, c.work)}>Choose</button>
                     </div>
                   ))}
                 </>
@@ -751,11 +726,6 @@ export default function Composer({
               <div key={i} className={`composer-msg ${m.role} ${meta.error ? 'error' : ''}`}>
                 {m.role === 'user' ? <div className="composer-bubble">{m.content}</div> : !suggestion && m.content && <Markdown>{m.content}</Markdown>}
                 {meta.references && renderReferences(meta.references, i)}
-                {meta.latex && (
-                  <button className="btn small outline" onClick={() => api.insertAtCursor(meta.latex!, { block: true })}>
-                    <Icon name="text.insert" /> Insert at cursor
-                  </button>
-                )}
                 {suggestion && renderSuggestion(meta, m.content, i)}
               </div>
             );
@@ -849,37 +819,12 @@ export default function Composer({
               )}
             </div>
             <div className="composer-bar">
-              <MenuButton
-                icon="photo"
-                title="Image to LaTeX"
-                className="btn small outline composer-attach"
-                disabled={busy}
-                items={VISION_MODES.map(([value, label, icon]) => ({
-                  label: `${label} from image…`,
-                  icon,
-                  onSelect: () => {
-                    visionModeRef.current = value;
-                    fileRef.current?.click();
-                  }
-                }))}
-              />
               <span className="grow" />
               <AgentTuning options={tuning} modes={null} disabled={busy} onChange={(id, value) => choose(id === 'model' ? { model: value } : { effort: value as TurnChoice['effort'] })} more={{ label: 'Manage models…', onSelect: () => api.openSettings('models') }} />
               <button className="composer-send" title="Send (↵)" aria-label="Send" disabled={busy || !input.trim()} onClick={() => send()}>
                 {busy ? <span className="spinner" /> : <Icon name="arrow.up" />}
               </button>
             </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) imageToLatex(file, visionModeRef.current);
-              }}
-            />
           </div>
         )}
       </div>

@@ -16,7 +16,7 @@ The AI features are set up in two sections of Settings. #menu[Settings][Provider
 
 - the main model, for the assistant, the Spectrum agent, Review's AI review and template transfer,
 - the quick model, for AI autocomplete and for splitting pasted references into separate items and
-- the vision model, for image to LaTeX and the layout check in template transfer.
+- the vision model, for the layout check in template transfer.
 
 === Connecting a provider
 
@@ -102,7 +102,7 @@ When the project has an `AGENTS.md` that you have approved (@sec-assistant-instr
 
 A provider that is busy does not end a request. When it answers that it is overloaded or limiting requests, Spectrum waits and sends the request again, twice at most. It waits for as long as the provider asks, up to 20 seconds, or else for one second and then three. A rejected key, a wrong address and an account with no credit left are not sent again, since waiting does not mend them, and the message says which it was. A connection that drops before the provider answers, as one through a VPN sometimes does, is tried again in the same way. If it still fails, the message names the cause, such as a server name that was not found, a connection that was refused, dropped or timed out, or a certificate that could not be trusted. When an answer stops at the model's output limit, the panel says "The answer was cut off by the model's output limit." under it, and #ui[Continue] asks the model to go on from where it stopped.
 
-#shot("figures/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The quick actions are along the top, and the message box at the foot holds the persona, the picture button, the model and effort menu and #ui[Send].], width: 85%) <fig-assistant-empty>
+#shot("figures/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The quick actions are along the top, and the message box at the foot holds the persona, the model and effort menu and #ui[Send].], width: 85%) <fig-assistant-empty>
 
 The message box has two rows under the text. The first holds the context of the request and wraps when the panel is narrow,
 
@@ -110,7 +110,7 @@ The message box has two rows under the text. The first holds the context of the 
 - the persona picker, which shows #ui[Default instructions] until a persona is chosen (@sec-assistant-personas) and
 - #ui[AGENTS.md] while the project's `AGENTS.md` is in use.
 
-The second row holds the picture button, which opens the image to LaTeX menu described below, the model and effort menu and #ui[Send]. This row never wraps, so #ui[Send] stays in reach however narrow the panel is.
+The second row holds the model and effort menu and #ui[Send]. This row never wraps, so #ui[Send] stays in reach however narrow the panel is.
 
 The model and effort menu is the one the Spectrum agent's tab has (@fig-assistant-thinking). It lists the models of the provider in #menu[Settings][Models], with the keys 1 to 9 choosing one, and under #ui[Effort] only the levels the chosen model accepts, coloured from red for the lowest to purple for the highest. #ui[Manage models…] opens Settings. A new chat starts with the model and effort from #menu[Settings][Models], and each chat keeps its own choice, which applies from its next request.
 
@@ -167,20 +167,6 @@ The switch at the top of the sheet, #ui[Source] and #ui[PDF before and after], s
 #shot("figures/03-assistant/review-pdf.png", [#ui[PDF before and after] for the same three changes: the report as it is on the left, and as it would be on the right.]) <fig-assistant-review-pdf>
 
 Before it writes the first change you accept, Spectrum saves a "Before AI changes" checkpoint. That one checkpoint covers every change you accept until the review is closed, so restoring it from #menu[Tools][Checkpoints] puts the project back as it was before the first of them (@ch-references). A file that a suggestion deletes is saved in a checkpoint of its own just before it goes. #menu[Settings][Checkpoints] can save a checkpoint before every accepted change instead. The same review is used by #ui[Fix with AI] in the Logs and Review tabs and by Quick switch, and the agents' review in the workspace works the same way (@sec-assistant-agent-review). A file that a suggestion would delete is marked #ui[Deleted] in the list. The tidying that follows a conversion to another format is still reviewed a file at a time.
-
-=== Image to LaTeX <sec-assistant-image>
-
-The picture button at the foot of the message box turns a picture into LaTeX with the vision model. Its menu has five kinds of picture (@fig-assistant-image-menu), each of which asks for a different result,
-
-- #ui[Equation from image…], an equation environment,
-- #ui[Table from image…], a `tabular` or `table`,
-- #ui[Figure with caption from image…], a figure with the picture saved into the project,
-- #ui[Algorithm from image…], an `algorithm` environment and
-- #ui[Text only from image…], the text read from the picture.
-
-#shot("figures/03-assistant/image-menu.png", [The image menu under the picture button.], width: 40%) <fig-assistant-image-menu>
-
-After choosing a picture, the reply shows the LaTeX in a code block with #ui[Insert at cursor], which puts it into the open file as a block. In a Typst document each kind asks for Typst instead: maths between `$`, a `#table`, a `#figure` with alt text, an algorithm as a numbered list in a figure and text with Typst's marks escaped. Anything typed in the message box before choosing the picture is sent with it as an extra instruction.
 
 === AI autocomplete
 

@@ -1623,25 +1623,6 @@ export function testModelConnection(provider: string, endpoint: string, apiKey: 
   return request<ConnectionTest>('/api/llm/test', json('POST', { provider, endpoint, apiKey }));
 }
 
-export async function visionToLatex(payload: {
-  projectId: string;
-  file: File;
-  mode: 'equation' | 'table' | 'figure' | 'algorithm' | 'ocr';
-  prompt?: string;
-  llmConfig?: Partial<LLMConfig>;
-  /** the document's language: Typst gets Typst, anything else LaTeX */
-  kind?: string | null;
-}) {
-  const form = new FormData();
-  form.append('projectId', payload.projectId);
-  form.append('mode', payload.mode);
-  if (payload.kind) form.append('kind', payload.kind);
-  if (payload.prompt) form.append('prompt', payload.prompt);
-  if (payload.llmConfig) form.append('llmConfig', JSON.stringify(payload.llmConfig));
-  form.append('image', payload.file);
-  return request<{ ok: boolean; latex?: string; assetPath?: string; error?: string }>('/api/vision/latex', { method: 'POST', body: form });
-}
-
 // ─── Research ───
 
 export type ResearchSource = 'openalex' | 'semanticscholar' | 'arxiv' | 'crossref' | 'pubmed' | 'web' | 'zotero' | 'bib';
@@ -1812,8 +1793,10 @@ export function suggestCitations(payload: { text: string; maxResults?: number; l
 // ─── References chat (DOI / URL / arXiv / title → BibTeX) ───
 
 export interface ReferenceCandidate {
-  /** pass back to addReference: a DOI, an arXiv id or a URL */
+  /** pass back to addReference: a DOI, an arXiv id, a URL or "ISBN …" */
   id: string;
+  /** a book's Open Library work, whose editions the card offers */
+  work?: string;
   title: string;
   authors: string[];
   year?: string;
@@ -1836,6 +1819,8 @@ export interface ReferenceResult {
   draft?: ReferenceDraft;
   source?: string;
   verified?: false;
+  /** a book's Open Library work, whose editions the draft card offers */
+  work?: string;
   key?: string;
   bibtex?: string;
   bibFile?: string;
@@ -1862,6 +1847,11 @@ export function addReference(payload: { projectId: string; candidateId: string; 
     '/api/references/add',
     json('POST', payload)
   );
+}
+
+/** A book's editions, newest first (Open Library's, then Google Books' where they differ) */
+export function bookEditions(payload: { work: string; title?: string; author?: string }) {
+  return request<{ ok: boolean; editions: import('../../../backend/src/services/bibEntry.js').Edition[]; error?: string }>('/api/references/editions', json('POST', payload));
 }
 
 /** A checked draft written to the .bib: 'added', or 'duplicate' when the .bib has the work */

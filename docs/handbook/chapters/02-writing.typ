@@ -291,7 +291,7 @@ The figure card takes an image that is dropped on its drop zone or on the editor
 
 #shots(("figures/02-writing/floats-figure.png", "figures/02-writing/floats-table.png"), [The figure card with an image chosen, left, and the table card with a filled grid, right. Booktabs draws the heavier rules at the top and bottom of the table.]) <fig-writing-figure>
 
-At the foot of the card, #ui[Project figures] shows the images already in the project as tiles with their whole names. A click on one puts it in the figure card, ready for its caption and #ui[Insert figure], and the eye in its corner shows it larger. To turn a picture of an equation or a table into LaTeX or Typst, use #ui[+] in the assistant panel's bar (@sec-assistant-image).
+At the foot of the card, #ui[Project figures] shows the images already in the project as tiles with their whole names. A click on one puts it in the figure card, ready for its caption and #ui[Insert figure], and the eye in its corner shows it larger.
 
 === Tables
 

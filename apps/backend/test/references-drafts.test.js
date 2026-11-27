@@ -15,9 +15,9 @@ after(() => rmSync(data, { recursive: true, force: true }));
 
 const {
   isbnOf, classifyLine, splitInput, parseFormatted, parseRis, splitAuthors, editionOf, recordToDraft,
-  resolveReferences, addReference, commitReference, newEntry
+  resolveReferences, addReference, commitReference, newEntry, bookEditions
 } = await import('../src/services/referenceService.js');
-const { ENTRY_TYPES, formatEntry, draftProblems, hasProblems, texValue, bracesBalanced, suggestKey, fieldsShown } = await import('../src/services/bibEntry.js');
+const { ENTRY_TYPES, applyEdition, editionLabel, formatEntry, draftProblems, hasProblems, texValue, bracesBalanced, suggestKey, fieldsShown } = await import('../src/services/bibEntry.js');
 const { register } = await import('../src/services/projectService.js');
 const { default: Fastify } = await import('fastify');
 const { registerReferenceRoutes } = await import('../src/routes/references.js');
@@ -229,9 +229,24 @@ before(async () => {
     if (url.pathname === '/ol/search.json') {
       const q = url.searchParams.get('q');
       return send(200, { docs: /algorithms/i.test(q) ? [
-        { title: 'Introduction to Algorithms', author_name: ['Thomas H. Cormen'], first_publish_year: 1990, publisher: ['MIT Press'], isbn: ['9780262046305'] },
+        { key: '/works/OL1W', title: 'Introduction to Algorithms', author_name: ['Thomas H. Cormen'], first_publish_year: 1990, publisher: ['MIT Press'], isbn: ['9780262046305'], edition_count: 3 },
         { title: 'Introduction to Algorithms', author_name: ['Thomas H. Cormen'], first_publish_year: 2009, publisher: ['MIT Press'], isbn: ['9780262033848'] }
       ] : [] });
+    }
+    if (url.pathname === '/ol/works/OL1W/editions.json') {
+      return send(200, { entries: [
+        { publishers: ['MIT Press'], publish_date: '2009', isbn_13: ['9780262033848'], edition_name: '3rd ed.', physical_format: 'Hardcover', publish_places: ['Cambridge, Mass.'] },
+        { publishers: ['MIT Press'], publish_date: 'April 5, 2022', isbn_13: ['9780262046305'], edition_name: 'Fourth edition', physical_format: 'Hardcover', publish_places: ['Cambridge, MA'] },
+        { publishers: ['McGraw-Hill'], publish_date: '1990', isbn_10: ['0070131430'], physical_format: 'Paperback' },
+        { publishers: ['Nobody'], publish_date: '2001' }
+      ] });
+    }
+    if (url.pathname === '/gb/volumes' && /^intitle:/.test(url.searchParams.get('q'))) {
+      return send(200, { items: [
+        { volumeInfo: { title: 'Introduction to Algorithms', publisher: 'MIT Press', publishedDate: '2022-04-05', industryIdentifiers: [{ identifier: '9780262046305' }] } },
+        { volumeInfo: { title: 'Introduction to Algorithms', subtitle: 'Second edition', publisher: 'MIT Press', publishedDate: '2001', industryIdentifiers: [{ identifier: '0262032937' }] } },
+        { volumeInfo: { title: 'Algorithms Unlocked', publisher: 'MIT Press', publishedDate: '2013', industryIdentifiers: [{ identifier: '9780262518802' }] } }
+      ] });
     }
     if (url.pathname === '/gb/volumes') {
       const q = url.searchParams.get('q');
@@ -315,7 +330,7 @@ test('a book title finds books to choose from, each fetched again by its ISBN', 
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const [r] = (await resolveReferences({ projectRoot: root, input: 'Introduction to Algorithms', preview: true })).results;
   assert.equal(r.status, 'choose');
-  assert.deepEqual(r.candidates.map((c) => [c.id, c.venue]), [['ISBN 9780262046305', 'MIT Press'], ['ISBN 9780262033848', 'MIT Press']]);
+  assert.deepEqual(r.candidates.map((c) => [c.id, c.venue, c.work]), [['ISBN 9780262046305', 'MIT Press', 'OL1W'], ['ISBN 9780262033848', 'MIT Press', undefined]]);
   const picked = await addReference({ projectRoot: root, candidateId: r.candidates[0].id, preview: true });
   assert.deepEqual([picked.result.status, picked.result.draft.type, picked.result.draft.fields.edition], ['draft', 'book', '4']);
   assert.equal(existsSync(path.join(root, 'refs.bib')), false);
@@ -377,4 +392,39 @@ test('the routes: preview, a blank entry and the commit, which refuses what it c
   const added = (await post('/api/references/commit', { projectId, draft: preview.results[0].draft })).json();
   assert.deepEqual([added.ok, added.result.status, added.result.key], [true, 'added', 'Cormen2022']);
   assert.match(readFileSync(path.join(root, 'references.bib'), 'utf8'), /^@book\{Cormen2022,\n {2}author {4}= /);
+});
+
+test('a book’s editions: Open Library’s newest first, then Google Books’ where they differ, and one fills the draft', async (t) => {
+  const { editions } = await bookEditions({ work: 'OL1W', title: 'Introduction to Algorithms', author: 'Cormen' });
+  assert.deepEqual(editions.map((e) => [e.year, e.edition, e.publisher, e.isbn, e.format, e.source]), [
+    ['2022', '4', 'MIT Press', '9780262046305', 'Hardcover', 'Open Library'],
+    ['2009', '3', 'MIT Press', '9780262033848', 'Hardcover', 'Open Library'],
+    ['2001', '2', 'MIT Press', '9780262032933', '', 'Google Books'],
+    ['1990', '', 'McGraw-Hill', '9780070131439', 'Paperback', 'Open Library']
+  ], 'no ISBN, no row; Google Books’ copy of the 2022 edition and another title are left out');
+  assert.equal(editions[1].place, 'Cambridge, Mass.');
+  await assert.rejects(bookEditions({ work: '../etc' }), (err) => err.statusCode === 400);
+  assert.equal(editionLabel(editions[0]), '2022 · 4th ed. · MIT Press · Hardcover · 9780262046305');
+  assert.equal(editionLabel({ ...editions[0], edition: '22' }).split(' · ')[1], '22nd ed.');
+  assert.equal(editionLabel({ ...editions[0], edition: '13' }).split(' · ')[1], '13th ed.');
+  // choosing the 2009 edition in the card
+  const draft = { type: 'book', key: 'Cormen2022', fields: { author: 'Cormen, Thomas H.', title: 'Introduction to Algorithms', edition: '4', year: '2022', publisher: 'MIT Press', address: 'Cambridge, MA', isbn: '9780262046305' } };
+  const third = applyEdition(draft, editions[1]);
+  assert.deepEqual([third.key, third.fields.year, third.fields.edition, third.fields.isbn, third.fields.address], ['Cormen2009', '2009', '3', '9780262033848', 'Cambridge, Mass.']);
+  const first = applyEdition({ ...draft, key: 'MyKey' }, editions[3]);
+  assert.deepEqual([first.key, first.fields.edition, first.fields.address, first.fields.publisher], ['MyKey', undefined, undefined, 'McGraw-Hill'], 'a key typed by hand stays; what this edition lacks is cleared');
+  // the route
+  const app = Fastify();
+  registerReferenceRoutes(app);
+  t.after(() => app.close());
+  const post = (payload) => app.inject({ url: '/api/references/editions', method: 'POST', payload });
+  assert.equal((await post({ work: 'nope' })).statusCode, 400);
+  assert.equal((await post({ work: 'OL1W', title: 'Introduction to Algorithms' })).json().editions.length, 4);
+});
+
+test('a book picked from a title search keeps its work, so the card can offer its editions', async (t) => {
+  const root = await tempProject({ 'main.tex': BIBTEX_MAIN });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const [r] = (await resolveReferences({ projectRoot: root, input: 'Introduction to Algorithms Cormen 1990', preview: true })).results;
+  assert.deepEqual([r.status, r.work, r.draft.fields.isbn], ['draft', 'OL1W', '9780262046305']);
 });

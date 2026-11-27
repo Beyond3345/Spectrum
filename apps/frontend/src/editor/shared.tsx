@@ -183,23 +183,6 @@ export const LANGUAGES_CHANGED = 'spectrum-languages-changed';
 /** Fired after a pull from GitHub changed files in .spectrum, so the to-dos, PDF notes and Research reload. */
 export const PROJECT_DATA_CHANGED = 'spectrum-project-data-changed';
 
-export type VisionMode = 'equation' | 'table' | 'figure' | 'algorithm' | 'ocr';
-
-export const VISION_MODES: [VisionMode, string, string][] = [
-  ['equation', 'Equation', 'function'],
-  ['table', 'Table', 'tablecells'],
-  ['figure', 'Figure with caption', 'photo'],
-  ['algorithm', 'Algorithm', 'list.number'],
-  ['ocr', 'Text only', 'text.viewfinder']
-];
-
-/** Default extra instructions per image type (sent when the user gives none). */
-export const VISION_HINTS: Partial<Record<VisionMode, string>> = {
-  equation: 'Only output the equation environment, without a document wrapper.',
-  table: 'Only output the LaTeX table (tabular or table), without a document wrapper.',
-  algorithm: 'Only output the algorithm/algorithmic environment, without a document wrapper.'
-};
-
 // ─── LLM output parsing ───
 
 /** Escapes raw control characters inside JSON strings (models often emit literal newlines). */

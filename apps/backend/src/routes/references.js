@@ -1,5 +1,5 @@
 import { getProjectRoot } from '../services/projectService.js';
-import { resolveReferences, addReference, commitReference, newEntry } from '../services/referenceService.js';
+import { resolveReferences, addReference, bookEditions, commitReference, newEntry } from '../services/referenceService.js';
 import { checkNote, checkReferences } from '../services/referenceCheck.js';
 
 const MAX_INPUT_CHARS = 50_000;
@@ -54,6 +54,17 @@ export function registerReferenceRoutes(fastify) {
       return reply.code(400).send({ ok: false, error: 'Choose a reference to add.' });
     }
     return withProject(req, reply, (projectRoot) => addReference({ projectRoot, candidateId, bibFile, searchConfig, preview: preview === true }));
+  });
+
+  // a book's editions, for the References card's Edition menu (no project needed)
+  fastify.post('/api/references/editions', async (req, reply) => {
+    const { work, title, author } = req.body || {};
+    if (typeof work !== 'string' || !/^OL\d+W$/.test(work)) return reply.code(400).send({ ok: false, error: 'That isn’t an Open Library work.' });
+    try {
+      return { ok: true, ...(await bookEditions({ work, title: typeof title === 'string' ? title.slice(0, 500) : '', author: typeof author === 'string' ? author.slice(0, 200) : '' })) };
+    } catch (err) {
+      return reply.code(err.statusCode || 502).send({ ok: false, error: err.message || 'The editions couldn’t be looked up.' });
+    }
   });
 
   // a draft the user checked in the References card: written to the .bib, a duplicate reported

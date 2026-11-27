@@ -1045,42 +1045,10 @@ test('sends reasoning_effort and retries without it when the model rejects it', 
 
 // ─── Fixes: data safety ───
 
-const visionLatex = (projectId, mode, name, contents, model = 'mock', kind = '') => {
-  const form = new FormData();
-  form.append('projectId', projectId);
-  form.append('mode', mode);
-  if (kind) form.append('kind', kind);
-  if (model) form.append('llmConfig', JSON.stringify(llmConfig(model)));
-  form.append('image', new Blob([contents]), name);
-  return fetch(`${base}/api/vision/latex`, { method: 'POST', body: form }).then((r) => r.json());
-};
-
-test('image → LaTeX never replaces a project image and only keeps figures', async () => {
-  const p = await newProject('Paste');
-  const first = await visionLatex(p.id, 'figure', 'image.png', 'FIRST-FIGURE');
-  const second = await visionLatex(p.id, 'figure', 'image.png', 'SECOND-FIGURE');
-  assert.deepEqual([first.assetPath, second.assetPath], ['assets/image.png', 'assets/image-2.png']);
-  assert.equal(await fs.readFile(path.join(p.path, 'assets/image.png'), 'utf8'), 'FIRST-FIGURE');
-  assert.equal(await fs.readFile(path.join(p.path, 'assets/image-2.png'), 'utf8'), 'SECOND-FIGURE');
-
-  const equation = await visionLatex(p.id, 'equation', 'image.png', 'EQUATION');
-  assert.ok(equation.ok);
-  assert.equal(equation.assetPath, undefined);
-  const noKey = await visionLatex(p.id, 'figure', 'other.png', 'X', '');
-  assert.equal(noKey.ok, false);
-  assert.deepEqual((await fs.readdir(path.join(p.path, 'assets'))).sort(), ['image-2.png', 'image.png']);
-
-  // a Typst document is given Typst, never LaTeX
-  mockCalls.length = 0;
-  assert.ok((await visionLatex(p.id, 'equation', 'image.png', 'EQUATION', 'mock', 'typst')).ok);
-  assert.match(mockCalls[0].messages[0].content, /^You are a Typst conversion engine/);
-  assert.match(mockCalls[0].messages[1].content[0].text, /Typst maths/);
-  const typstFigure = await visionLatex(p.id, 'figure', 'image.png', 'TYPST-FIGURE', 'mock', 'typst');
-  assert.match(mockCalls[1].messages[1].content[0].text, new RegExp(`#figure\\(image.*"/${typstFigure.assetPath}"|"/${typstFigure.assetPath}".*#figure`));
-  assert.match(mockCalls[1].messages[1].content[0].text, /alt: /);
-  // Table to chart is gone: charts are made with Plot in the diagram composer
+test('Table to chart and Image to LaTeX are gone: charts are made with Plot in the diagram composer', async () => {
+  const p = await newProject('Gone');
   assert.equal((await api('/api/plot/run', { method: 'POST', body: { projectId: p.id } })).status, 404);
-
+  assert.equal((await api('/api/vision/latex', { method: 'POST', body: { projectId: p.id } })).status, 404);
 });
 
 test('create and rename never replace another file, in any letter case', async () => {

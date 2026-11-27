@@ -30,6 +30,10 @@ DOIs, ISBNs, titles and formatted references go one per line for several, while 
 + a formatted reference is read into its fields and then checked on Crossref and, for a book, in the book search. When no source has it, the entry is kept as it was read and its badge says #ui[Not found online · kept as pasted] and
 + pasted BibTeX and RIS are taken as they are, without a look-up.
 
+A book found by its title can be cited in any of its editions. Its card then has an #ui[Edition] menu (@fig-references-edition) that lists the editions Open Library knows, newest first, with their year, edition, publisher, format and ISBN, followed by those Google Books has that Open Library does not. Choosing one puts its year, publisher, place, ISBN and edition in the card, and the key follows the year while it is still the one Spectrum gave. An ISBN pasted on its own already names one edition, so its card has no menu.
+
+#shot("figures/04-references/references-edition.png", [The #ui[Edition] menu of a book found by its title, its editions newest first.], width: 85%) <fig-references-edition>
+
 Every look-up goes through Spectrum's own connection, so it uses the proxy in #menu[Settings][System] when one is set.
 
 #shot("figures/04-references/references-chat.png", [The assistant panel in #ui[References] mode with an empty chat. #ui[Zotero] in its header is described in @sec-references-zotero.], width: 85%) <fig-references-chat>
