@@ -533,6 +533,8 @@
   padding: 0 3px 0 10px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-control);
+  /* an inset field, as the starter card below is */
+  background: color-mix(in srgb, var(--text) 3%, transparent);
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
@@ -817,6 +819,25 @@
 .todo-new-group .chip .sf {
   width: 10px;
   height: 10px;
+}
+
+/* each starter group's chip with the colour it will have (todos.ts STARTER_HUES) */
+.todo-new-group .chip .todo-dot {
+  width: 7px;
+  height: 7px;
+  margin: 0;
+}
+
+/* the starter groups, with the empty text when nothing is listed, in a quiet inset card */
+.todo-new-group.card {
+  padding: 8px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+
+.todo-new-group.card .todo-empty {
+  padding: 2px 6px 4px;
 }
 
 .todo-clear.btn {

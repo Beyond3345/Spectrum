@@ -5,7 +5,7 @@ import { isSource } from './shared';
 import { contrast, mixHex } from '../app/appearance';
 import { EDITOR_THEMES } from './editorThemes';
 import { AUTO_HUES, MAX_RANGE_TEXT, NEAR, PICKER_HUES, TODO_HUES, WASH, dropGroup, dropIndex, findRange, groupHues, hueCss, hueDistance, hueOf, isRange, newOrder, orderOf, washLab, placeAt, placeOf, quoteOf, rangeLabel, rangeLink, todoHues } from './todos';
-import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, emptyText, findKey, findLine, groupName, groupNamed, groupOf, moveGroup, newGroup, orderedGroups, scanTodos, snippetOf, sortTodos, todoCounts, todoMatches, withNote } from './todos';
+import { MAX_GROUP_NAME, MAX_NOTE, STARTER_GROUPS, STARTER_HUES, emptyText, findKey, findLine, groupName, groupNamed, groupOf, moveGroup, newGroup, orderedGroups, scanTodos, snippetOf, sortTodos, todoCounts, todoMatches, withNote } from './todos';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -221,6 +221,14 @@ eq(label(ticked.get('o')), 'Red', 'an open one is coloured before an older ticke
 eq([...todoHues(loose(4), gs)], [...todoHues(loose(4), gs)], 'the same each time');
 eq(newGroup({}, 'References', [0]).hue !== 0 && hueDistance(newGroup({}, 'References', [0]).hue!, 0) >= NEAR, true, 'a new group steers clear of the to-dos in no group');
 eq(newGroup({}, 'References', []).hue !== BLUE, true, 'and is never blue');
+// each starter group in its own colour, which its chip shows, while nothing in use is near it
+eq(STARTER_GROUPS.map((name) => TODO_HUES[newGroup({}, name).hue!].label), ['Red', 'Amber', 'Green', 'Cyan'], 'the starters’ colours');
+eq(Object.values(STARTER_HUES).every((h) => PICKER_HUES.includes(h)), true, 'each one a group can have, never blue');
+const allFour = STARTER_GROUPS.reduce<Record<string, ReturnType<typeof newGroup>>>((made, name) => ({ ...made, [name]: newGroup(made, name) }), {});
+eq(STARTER_GROUPS.map((name) => allFour[name].hue), Object.values(STARTER_HUES), 'all four made one after another keep their colours');
+const redGroup = { r: { name: 'Ideas', order: 1, hue: STARTER_HUES.Checking } };
+eq(newGroup(redGroup, 'Checking').hue !== STARTER_HUES.Checking, true, 'a starter whose colour a group has takes another');
+eq(newGroup({}, 'Spelling', [STARTER_HUES.Spelling]).hue !== STARTER_HUES.Spelling, true, 'and so does one whose colour a to-do in no group has');
 eq(PICKER_HUES.every((h) => newGroup({ x: { name: 'X', order: 1, hue: h } }, 'Y').hue !== BLUE), true, 'never blue whatever the others');
 
 // readable: every editor theme's text on each highlight keeps 60% of its contrast or more, 4.5:1 where it had 7:1, and

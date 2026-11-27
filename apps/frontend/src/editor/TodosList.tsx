@@ -522,6 +522,10 @@ export default function TodosList({
   // the starter groups not made yet: offered until a group of the user's own is made, then while naming one
   const starters = STARTER_GROUPS.filter((name) => !groupNamed(groups, name));
   const offer = naming === '' || ordered.every((g) => STARTER_GROUPS.includes(g.name));
+  const empty = !shownMine.length && !shownSource.length && mine ? emptyText({ total: counts.all, show, search: filter.trim() }) : '';
+  // with nothing listed, the empty text goes in the card with the starter groups
+  const starterCard = !needle && !!mine && offer && starters.length > 0;
+  const emptyInCard = !!empty && starterCard && !shownGroups.length && !ungrouped.length;
 
   return (
     <div className="todos">
@@ -581,9 +585,7 @@ export default function TodosList({
       </div>
 
       <div className="todo-items" ref={list}>
-        {!shownMine.length && !shownSource.length && mine && (
-          <div className="sidebar-hint todo-empty">{emptyText({ total: counts.all, show, search: filter.trim() })}</div>
-        )}
+        {empty && !emptyInCard && <div className="sidebar-hint todo-empty">{empty}</div>}
 
         {(ungrouped.length > 0 || (drag && groupOf(mine?.find((t) => t.id === drag.id) ?? {}, groups))) && (
           <div role="list" aria-label={ordered.length ? 'To-dos in no group' : 'Your to-dos'} className={`todo-list ${dropClass('')}`} data-drop="">
@@ -642,7 +644,8 @@ export default function TodosList({
         )}
 
         {!needle && mine && (
-          <div className="todo-new-group">
+          <div className={`todo-new-group ${starterCard ? 'card' : ''}`}>
+            {emptyInCard && <div className="sidebar-hint todo-empty">{empty}</div>}
             {naming === '' ? (
               <GroupNameField name="" label="New group" onDone={(name) => (name === null ? (setNaming(null), true) : nameGroup(name).then((ok) => (ok && setNaming(null), ok)))} />
             ) : (
@@ -655,7 +658,8 @@ export default function TodosList({
               <div className="chip-row" role="group" aria-label="Suggested groups">
                 {starters.map((name) => (
                   <button key={name} type="button" className="chip" title={`Make a group called ${name}`} onMouseDown={(e) => e.preventDefault()} onClick={() => void nameGroup(name).then((ok) => ok && setNaming(null))}>
-                    <Icon name="plus" />
+                    {/* the colour it will have */}
+                    <span className={`todo-dot todo-hue-${newGroup(groups, name, looseHues(mine || [], groups)).hue}`} aria-hidden="true" />
                     {name}
                   </button>
                 ))}
