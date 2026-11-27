@@ -3353,7 +3353,6 @@ function Editor({ projectId }: { projectId: string }) {
   const projectItems: MenuItems = [
     // the Home folder the project is in, opened on Home
     homeFolder && { label: `Back to ${homeFolder.name}`, icon: 'arrow.uturn.backward', onSelect: () => leave('/projects', () => openProjectsOn('home', homeFolder.id)) },
-    { label: 'All projects', icon: 'square.grid.2x2', onSelect: () => leave('/projects', () => openProjectsOn('all')) },
     { label: 'Home', icon: 'house', onSelect: () => leave('/projects', () => openProjectsOn('home')) },
     // a working copy has its own Save as new template… above the editor
     !draft && { label: 'Save as template…', icon: 'square.and.arrow.down', onSelect: openSaveTemplate },

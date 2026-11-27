@@ -79,6 +79,18 @@
   }
 }
 
+/* the Spectrum style: each kind in its colour (ProjectSwitcher.tsx), so a folder of mixed kinds reads at a glance */
+:root[data-colour-style='spectrum'] .kind-logo:is([class*='area-'], [class*='hue-']) {
+  color: var(--area);
+}
+
+/* the folder's name over its projects, as a section heading */
+.switcher-heading {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .sidebar-tabs {
   flex: none;
   display: flex;
