@@ -529,12 +529,11 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 30px;
-  padding: 0 3px 0 10px;
+  height: 32px;
+  padding: 0 4px 0 11px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-control);
-  /* an inset field, as the starter card below is */
-  background: color-mix(in srgb, var(--text) 3%, transparent);
+  border-radius: 10px;
+  background: var(--bg-panel);
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
@@ -821,23 +820,56 @@
   height: 10px;
 }
 
-/* each starter group's chip with the colour it will have (todos.ts STARTER_HUES) */
+/* the starter groups, with the empty text when nothing is listed, in a card: each chip with the colour it will have
+   (todos.ts STARTER_HUES) */
+.todo-starters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: stretch;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-panel);
+}
+
+.todo-starters-text {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.todo-starters-title {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.todo-new-group .todo-starters .chip-row {
+  gap: 6px;
+  padding: 0;
+}
+
+.todo-new-group .todo-starters .chip {
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.todo-new-group .todo-starters .chip:hover {
+  background: var(--bg-hover);
+}
+
 .todo-new-group .chip .todo-dot {
   width: 7px;
   height: 7px;
   margin: 0;
-}
-
-/* the starter groups, with the empty text when nothing is listed, in a quiet inset card */
-.todo-new-group.card {
-  padding: 8px 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--text) 3%, transparent);
-}
-
-.todo-new-group.card .todo-empty {
-  padding: 2px 6px 4px;
 }
 
 .todo-clear.btn {

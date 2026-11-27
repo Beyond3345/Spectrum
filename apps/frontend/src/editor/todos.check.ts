@@ -115,7 +115,7 @@ const order = sortTodos([
 ]).map((t) => t.id);
 eq(order, ['old', 'new', 'done-old'], 'open first, oldest first');
 
-eq(emptyText({ total: 0, show: 'open', search: '' }).startsWith('Nothing to do yet.'), true, 'empty: the first hint');
+eq(emptyText({ total: 0, show: 'open', search: '' }).startsWith('Type a task above'), true, 'empty: the first hint');
 eq(emptyText({ total: 3, show: 'open', search: 'zz' }), 'No to-dos match “zz”.', 'empty: a search');
 eq(emptyText({ total: 3, show: 'open', search: '' }), 'All done. Ticked ones are under Done.', 'empty: nothing open');
 eq(emptyText({ total: 3, show: 'done', search: '' }), 'Nothing ticked off yet.', 'empty: nothing done');

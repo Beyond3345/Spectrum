@@ -206,7 +206,7 @@ export function dropIndex(ids: string[], over: string | null, after: boolean) {
 
 /** What the tab says when it shows nothing: a first hint, a search that found nothing, or the filter's own. */
 export function emptyText({ total, show, search }: { total: number; show: 'open' | 'done' | 'all'; search: string }) {
-  if (!total) return 'Nothing to do yet. Type one above, or right-click a line in the editor or a page of the PDF to add one that links to it.';
+  if (!total) return 'Type a task above, or right-click any line in the editor or a PDF page to link a to-do.';
   if (search) return `No to-dos match “${search}”.`;
   // with to-dos and no search, only Open or Done can be empty
   return show === 'done' ? 'Nothing ticked off yet.' : 'All done. Ticked ones are under Done.';

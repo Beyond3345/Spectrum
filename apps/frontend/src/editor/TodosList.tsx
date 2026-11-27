@@ -523,7 +523,7 @@ export default function TodosList({
   const starters = STARTER_GROUPS.filter((name) => !groupNamed(groups, name));
   const offer = naming === '' || ordered.every((g) => STARTER_GROUPS.includes(g.name));
   const empty = !shownMine.length && !shownSource.length && mine ? emptyText({ total: counts.all, show, search: filter.trim() }) : '';
-  // with nothing listed, the empty text goes in the card with the starter groups
+  // with nothing listed, the empty text goes in the card of starter groups
   const starterCard = !needle && !!mine && offer && starters.length > 0;
   const emptyInCard = !!empty && starterCard && !shownGroups.length && !ungrouped.length;
 
@@ -540,7 +540,7 @@ export default function TodosList({
           <input
             ref={field}
             value={draft}
-            placeholder={target ? `Add a to-do to ${groups[target].name}` : 'Add a to-do'}
+            placeholder={target ? `Add a to-do to ${groups[target].name}…` : 'Add a to-do…'}
             aria-label={target ? `Add a to-do to ${groups[target].name}` : 'Add a to-do'}
             maxLength={2000}
             onChange={(e) => setDraft(e.target.value)}
@@ -644,8 +644,22 @@ export default function TodosList({
         )}
 
         {!needle && mine && (
-          <div className={`todo-new-group ${starterCard ? 'card' : ''}`}>
-            {emptyInCard && <div className="sidebar-hint todo-empty">{empty}</div>}
+          <div className="todo-new-group">
+            {starterCard && (
+              <div className="todo-starters">
+                {emptyInCard && <div className="todo-starters-text">{empty}</div>}
+                <div className="todo-starters-title">Starter groups</div>
+                <div className="chip-row" role="group" aria-label="Starter groups">
+                  {starters.map((name) => (
+                    <button key={name} type="button" className="chip" title={`Make a group called ${name}`} onMouseDown={(e) => e.preventDefault()} onClick={() => void nameGroup(name).then((ok) => ok && setNaming(null))}>
+                      {/* the colour it will have */}
+                      <span className={`todo-dot todo-hue-${newGroup(groups, name, looseHues(mine || [], groups)).hue}`} aria-hidden="true" />
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {naming === '' ? (
               <GroupNameField name="" label="New group" onDone={(name) => (name === null ? (setNaming(null), true) : nameGroup(name).then((ok) => (ok && setNaming(null), ok)))} />
             ) : (
@@ -653,17 +667,6 @@ export default function TodosList({
                 <Icon name="folder.badge.plus" />
                 New group
               </button>
-            )}
-            {offer && starters.length > 0 && (
-              <div className="chip-row" role="group" aria-label="Suggested groups">
-                {starters.map((name) => (
-                  <button key={name} type="button" className="chip" title={`Make a group called ${name}`} onMouseDown={(e) => e.preventDefault()} onClick={() => void nameGroup(name).then((ok) => ok && setNaming(null))}>
-                    {/* the colour it will have */}
-                    <span className={`todo-dot todo-hue-${newGroup(groups, name, looseHues(mine || [], groups)).hue}`} aria-hidden="true" />
-                    {name}
-                  </button>
-                ))}
-              </div>
             )}
           </div>
         )}
