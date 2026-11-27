@@ -804,11 +804,17 @@
   opacity: 0.5;
 }
 
-/* the card's line drawing (thumbs.tsx): in the card's area colour in the Spectrum colour style */
+/* the card's line drawing (thumbs.tsx), in a well as the plan's tiles have it: in the card's area colour in the
+   Spectrum colour style */
 .chooser-thumb {
-  width: 64px;
-  height: 40px;
-  margin-bottom: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 58px;
+  margin-bottom: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-app);
   color: var(--text-tertiary);
   fill: none;
   stroke: currentColor;
