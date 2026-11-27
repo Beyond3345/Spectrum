@@ -20,7 +20,7 @@ The AI features are set up in two sections of Settings. #menu[Settings][Provider
 
 === Connecting a provider
 
-#menu[Settings][Providers] is divided into two lists (@fig-assistant-settings-providers). #ui[Connected providers] has a row for each provider that is set up, with its mark and name, the models that run on it, the number of its models that are enabled and the state of its key. #ui[Available providers] lists the others, each with a #ui[Connect] button, and #ui[Custom endpoint] at the top right adds a server of your own.
+#menu[Settings][Providers] is divided into two lists (@fig-assistant-settings-providers). #ui[Connected providers] has a row for each provider that is set up, with its mark and name, the models that run on it, the number of its models that are enabled and the state of its key. #ui[Available providers] lists the others, each with a #ui[Connect] button, and #ui[Custom endpoint] at the top right adds a server of your own. The marks are line marks unless #menu[Settings][Appearance] is set to #ui[Full logos] (@sec-start-appearance).
 
 #shot("figures/03-assistant/settings-providers.png", [#menu[Settings][Providers]. DeepSeek runs the main and quick models and Anthropic Claude the vision model, while OpenAI and Ollama are connected for later. The other providers wait under #ui[Available providers].], width: 70%) <fig-assistant-settings-providers>
 
@@ -458,7 +458,7 @@ External agents, also called local agents, are coding agents installed on your c
 
 #menu[Settings][Agents] lists every supported agent as a card, grouped as #ui[Finish setting up], #ui[Not installed] and #ui[Planned] (@fig-assistant-settings-agents). Each card has a status chip, such as #ui[Sign-in needed] or #ui[Adapter needed], and one sentence saying what to do next. #ui[Check again] looks for the programs again after you install one.
 
-#shot("figures/03-assistant/settings-agents.png", [#menu[Settings][Agents]. OpenCode and DeepSeek Harness were found but need a sign-in, while Codex, Claude Agent and ZCode need their ACP adapter.], width: 70%) <fig-assistant-settings-agents>
+#shot("figures/03-assistant/settings-agents.png", [#menu[Settings][Agents], with each agent's line mark. OpenCode, Antigravity and DeepSeek Harness were found but need a sign-in, while Codex, Claude Agent and ZCode need their ACP adapter.], width: 70%) <fig-assistant-settings-agents>
 
 Opening a card shows its set-up (@fig-assistant-agent-card), in the following parts,
 

@@ -256,11 +256,12 @@ Settings are saved as they are changed, so there is no Save button. A few sectio
 
 - the theme, which is System, Light or Dark. System follows the macOS appearance and switches with it,
 - the colour style, which is Spectrum or Simple and is described below,
+- the logos, which are #ui[Line marks] or #ui[Full logos]. A mark stands before the name of each local agent, model provider and model, in the agent workspace and in #menu[Settings][Agents], #menu[Settings][Providers] and #menu[Settings][Models]. With Line marks, which is the default, every one is a plain drawing in the colour of the text, so the whole application reads as one set. With Full logos, each brand shows its own logo where Spectrum has one, and its line mark otherwise,
 - the accent colour, which can follow macOS or be Spectrum, Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite or any other colour chosen with the colour well at the end of the row. Spectrum, drawn as a wheel of the colours below, runs the #ui[Compile] button and progress bars through every colour and is blue everywhere else, since an orange accent would read as a warning,
 - on macOS, a see-through window, which uses Liquid Glass on macOS 26 and later and a frosted blur on earlier versions, with a Clarity slider from Frosted to Clear that sets how much of the desktop shows through while the editor and the PDF stay readable and
 - the colour of the PDF's pages, one for light mode (White, Cream, Sepia or Grey) and one for dark mode (Dark, Black, Dimmed or White). Dark and Black turn the ink light, while Dimmed keeps the page's own colours a little darker. The PDF's #dots menu changes the colour for the mode that is showing.
 
-#shot("figures/01-getting-started/settings-appearance.png", [The Appearance section of Settings, with the theme, the colour style, the accent colour and the colour of the PDF's pages. The see-through window appears here on macOS.], width: 72%) <fig-start-appearance>
+#shot("figures/01-getting-started/settings-appearance.png", [The Appearance section of Settings, with the theme, the colour style, the logos and the accent colour. The colour of the PDF's pages is further down, and the see-through window appears here on macOS.], width: 72%) <fig-start-appearance>
 
 === Colour style
 
