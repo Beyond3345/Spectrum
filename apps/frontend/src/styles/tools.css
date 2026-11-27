@@ -946,6 +946,40 @@ button.todo-dot:focus-visible {
   font-size: 11.5px;
 }
 
+/* Sources · n and Filters under the question: each opens its list (the sources a checklist menu, the filters a
+   popover with its fields) */
+.research-chips .research-chip {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.research-chip .btn-chevron {
+  width: 9px;
+  height: 9px;
+  margin-left: 1px;
+}
+
+.research-chip.open {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.research-chip.warn {
+  border-color: color-mix(in srgb, var(--red) 55%, transparent);
+  color: var(--red);
+}
+
+.research-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  width: 240px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+}
+
 .research-filters {
   display: flex;
   align-items: center;
@@ -954,39 +988,58 @@ button.todo-dot:focus-visible {
 }
 
 .research-filters .input.number {
-  width: 54px;
+  flex: 1;
+  min-width: 0;
   height: 26px;
   font-size: 12.5px;
 }
 
-.research-filters .checkbox-row {
-  margin-left: auto;
-}
-
+/* Search and Deep research, side by side at the same width */
 .research-buttons {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
 
 .research-buttons .btn {
-  flex: 1;
   justify-content: center;
+  min-width: 0;
 }
 
-.research-card {
+/* Find citations, Draft related work and Verify claims: one inset card of rows, each with its chevron */
+.research-workflows {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+
+.research-workflows > * + * {
+  border-top: 1px solid var(--border);
 }
 
 .research-card-title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
+  text-align: left;
   list-style: none;
+  cursor: default;
+}
+
+.research-card-title:hover {
+  background: var(--bg-hover);
 }
 
 .research-card-title::-webkit-details-marker {
@@ -997,8 +1050,16 @@ button.todo-dot:focus-visible {
   color: var(--text-secondary);
 }
 
+/* the Spectrum style: each row's icon, and Deep research's sparkles, in their own colour */
+:root[data-colour-style='spectrum'] .research .sf[class*='hue-'] {
+  color: var(--area);
+}
+
 .research-card-title .disclosure {
+  width: 10px;
+  height: 10px;
   margin-left: auto;
+  color: var(--text-tertiary);
 }
 
 .research-card[open] .research-card-title .disclosure {

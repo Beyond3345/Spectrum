@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { addResearchResults, deleteResearch, getResearch, listResearch, researchNote, researchPdf, searchResearch, updateResearch } from '../../api/client';
 import type { ResearchChange, ResearchResult, ResearchSession, ResearchSource, ResearchSummary } from '../../api/client';
 import { confirmDialog } from '../../app/Dialogs';
@@ -12,7 +14,7 @@ import { PROJECT_DATA_CHANGED, citationText, errorText, formatDate, isDocument, 
 import CitationAssistant, { bibWritten } from './CitationAssistant';
 import ClaimsLedger from './ClaimsLedger';
 import type { TodosState } from '../TodosList';
-import { DEFAULT_SOURCES, SOURCES, badges, counts, filtersLine, keptToAdd, linkOf, metaLine, runLine, searched, shown, yearOf } from './results';
+import { DEFAULT_SOURCES, SOURCES, badges, counts, filterWords, filtersLabel, filtersLine, keptToAdd, linkOf, metaLine, runLine, searched, shown, sourcesLabel, yearOf } from './results';
 import type { Show } from './results';
 
 export type ResearchTask = Omit<TaskRequest, 'n'>;
@@ -86,6 +88,8 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
   const [status, setStatus] = useState('');
   // a change's answer only shows while no later one was sent
   const changes = useRef(0);
+  // the filters' popover is outside the form, so its year boxes name it: Return in them searches, as it did
+  const formId = useId();
 
   const refresh = () =>
     listResearch(projectId).then(
@@ -277,6 +281,7 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
   return (
     <div className="research">
       <form
+        id={formId}
         className="research-form"
         onSubmit={(e) => {
           e.preventDefault();
@@ -298,32 +303,40 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
             }
           }}
         />
-        <div className="chip-row" role="group" aria-label="Sources">
-          {SOURCES.map(([id, label]) => (
-            <button key={id} type="button" className={`chip ${sources.includes(id) ? 'on' : ''}`} aria-pressed={sources.includes(id)} onClick={() => toggleSource(id)}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="research-filters">
-          <input className="input number" inputMode="numeric" maxLength={4} placeholder="From" aria-label="From year" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} />
-          <span aria-hidden="true">–</span>
-          <input className="input number" inputMode="numeric" maxLength={4} placeholder="To" aria-label="To year" value={yearTo} onChange={(e) => setYearTo(e.target.value)} />
-          <label className="checkbox-row">
-            <input type="checkbox" checked={preprints} onChange={(e) => setPreprints(e.target.checked)} /> Preprints
-          </label>
-        </div>
-        <label className="checkbox-row" title="One AI call adds why each result matters, keep or drop and a theme">
-          <input
-            type="checkbox"
-            checked={triage}
-            onChange={(e) => {
-              setTriage(e.target.checked);
-              write('spectrum-research-triage', e.target.checked ? '1' : '0');
-            }}
+        <div className="chip-row research-chips">
+          {/* a checklist that stays open while the sources are ticked */}
+          <MenuButton
+            className={`chip research-chip ${sources.length ? '' : 'warn'}`}
+            label={
+              <>
+                <Icon name="books.vertical" /> {sourcesLabel(sources)}
+              </>
+            }
+            title={SOURCES.filter(([id]) => sources.includes(id)).map(([, label]) => label).join(', ') || 'Choose the sources to search'}
+            items={[{ label: 'Search in', heading: true }, ...SOURCES.map(([id, label]) => ({ label, checked: sources.includes(id), keepOpen: true, onSelect: () => toggleSource(id) }))]}
           />
-          Sort the results with AI
-        </label>
+          <FiltersChip words={filterWords({ ...years, preprints, triage })} invalid={!!badYears}>
+            <div className="research-filters">
+              <input form={formId} className="input number" inputMode="numeric" maxLength={4} placeholder="From" aria-label="From year" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} />
+              <span aria-hidden="true">–</span>
+              <input form={formId} className="input number" inputMode="numeric" maxLength={4} placeholder="To" aria-label="To year" value={yearTo} onChange={(e) => setYearTo(e.target.value)} />
+            </div>
+            <label className="checkbox-row">
+              <input type="checkbox" checked={preprints} onChange={(e) => setPreprints(e.target.checked)} /> Preprints
+            </label>
+            <label className="checkbox-row" title="One AI call adds why each result matters, keep or drop and a theme">
+              <input
+                type="checkbox"
+                checked={triage}
+                onChange={(e) => {
+                  setTriage(e.target.checked);
+                  write('spectrum-research-triage', e.target.checked ? '1' : '0');
+                }}
+              />
+              Sort the results with AI
+            </label>
+          </FiltersChip>
+        </div>
         {badYears && <div className="field-hint error">Type each year in full, the first no later than the second.</div>}
         <div className="research-buttons">
           <button type="submit" className="btn small primary" disabled={!!busy || !question.trim() || !sources.length || !!badYears}>
@@ -336,7 +349,7 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
             disabled={!!busy || !question.trim() || !sources.length || !!badYears}
             onClick={() => void deep()}
           >
-            <Icon name="sparkles" /> Deep research
+            <Icon name="sparkles" className="hue-purple" /> Deep research
           </button>
         </div>
         <div className="field-hint" role="status">
@@ -416,7 +429,17 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
         </div>
       ) : (
         <>
-          <CitationAssistant />
+          <div className="research-workflows" role="group" aria-label="Workflows">
+            <CitationAssistant />
+            <button className="research-card-title" onClick={() => task(relatedWork(null))}>
+              <Icon name="text.book.closed" className="hue-indigo" /> Draft related work
+              <Icon name="chevron.right" className="disclosure" />
+            </button>
+            <button className="research-card-title" onClick={() => task(verifyClaims(null))}>
+              <Icon name="checkmark.seal" className="hue-green" /> Verify claims
+              <Icon name="chevron.right" className="disclosure" />
+            </button>
+          </div>
           <ClaimsLedger todos={todos} />
           {listed.length > 0 && (
             <div className="todo-group" role="list" aria-label="Sessions">
@@ -452,17 +475,67 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
           {sessions && !listed.length && (
             <div className="sidebar-hint todo-empty">{needle ? 'No matching sessions' : 'Each question you search is kept here as a session, with its results and your decisions.'}</div>
           )}
-          <div className="research-buttons">
-            <button className="btn small" onClick={() => task(relatedWork(null))}>
-              <Icon name="text.book.closed" /> Draft related work
-            </button>
-            <button className="btn small" onClick={() => task(verifyClaims(null))}>
-              <Icon name="checkmark.seal" /> Verify claims
-            </button>
-          </div>
         </>
       )}
     </div>
+  );
+}
+
+/** The Filters chip and its popover under it: the years, preprints and AI sorting, set in place. */
+function FiltersChip({ words, invalid, children }: { words: string[]; invalid: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !button.current) return setAt(null);
+    const r = button.current.getBoundingClientRect();
+    setAt({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 248)) });
+  }, [open]);
+  useEffect(() => {
+    if (at) pop.current?.querySelector('input')?.focus();
+  }, [!!at]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: Event) => {
+      if (!pop.current?.contains(e.target as Node) && !button.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setOpen(false);
+      button.current?.focus();
+    };
+    document.addEventListener('mousedown', outside, true);
+    document.addEventListener('keydown', key, true);
+    return () => {
+      document.removeEventListener('mousedown', outside, true);
+      document.removeEventListener('keydown', key, true);
+    };
+  }, [open]);
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        className={`chip research-chip ${words.length ? 'on' : ''} ${invalid ? 'warn' : ''} ${open ? 'open' : ''}`}
+        title={words.join(', ') || 'Years, preprints and AI sorting'}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Icon name="slider.horizontal.3" /> {filtersLabel(words)}
+        <Icon name="chevron.down" className="btn-chevron" />
+      </button>
+      {open &&
+        at &&
+        createPortal(
+          <div ref={pop} className="menu research-pop" role="dialog" aria-label="Filters" style={{ top: at.top, left: at.left }}>
+            {children}
+          </div>,
+          document.body
+        )}
+    </>
   );
 }
 
