@@ -43,6 +43,17 @@ const savedSources = (): ResearchSource[] => {
     return DEFAULT_SOURCES;
   }
 };
+// each source's colour in the Spectrum style: its dot in the list under Sources
+const SOURCE_HUES: Record<ResearchSource, string> = {
+  openalex: 'hue-blue',
+  semanticscholar: 'area-structures',
+  arxiv: 'area-projects',
+  crossref: 'hue-orange',
+  pubmed: 'hue-green',
+  web: 'area-plots',
+  zotero: 'hue-zotero',
+  bib: 'hue-gray'
+};
 const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
 // the agent tasks: prompts for the workspace, each with a skill (and a persona for the review)
@@ -90,6 +101,7 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
   const changes = useRef(0);
   // the filters' popover is outside the form, so its year boxes name it: Return in them searches, as it did
   const formId = useId();
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   const refresh = () =>
     listResearch(projectId).then(
@@ -304,17 +316,16 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
           }}
         />
         <div className="chip-row research-chips">
-          {/* a checklist that stays open while the sources are ticked */}
-          <MenuButton
-            className={`chip research-chip ${sources.length ? '' : 'warn'}`}
-            label={
-              <>
-                <Icon name="books.vertical" /> {sourcesLabel(sources)}
-              </>
-            }
+          <button
+            type="button"
+            className={`chip research-chip sources ${sources.length ? '' : 'warn'} ${sourcesOpen ? 'open' : ''}`}
             title={SOURCES.filter(([id]) => sources.includes(id)).map(([, label]) => label).join(', ') || 'Choose the sources to search'}
-            items={[{ label: 'Search in', heading: true }, ...SOURCES.map(([id, label]) => ({ label, checked: sources.includes(id), keepOpen: true, onSelect: () => toggleSource(id) }))]}
-          />
+            aria-expanded={sourcesOpen}
+            aria-controls={`${formId}-sources`}
+            onClick={() => setSourcesOpen((v) => !v)}
+          >
+            <Icon name="books.vertical" className="hue-blue" /> {sourcesLabel(sources)} <Icon name="chevron.down" className="btn-chevron" />
+          </button>
           <FiltersChip words={filterWords({ ...years, preprints, triage })} invalid={!!badYears}>
             <div className="research-filters">
               <input form={formId} className="input number" inputMode="numeric" maxLength={4} placeholder="From" aria-label="From year" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} />
@@ -337,6 +348,16 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
             </label>
           </FiltersChip>
         </div>
+        {sourcesOpen && (
+          <div id={`${formId}-sources`} className="chip-row research-sources" role="group" aria-label="Sources">
+            {SOURCES.map(([id, label]) => (
+              <button key={id} type="button" className={`chip ${SOURCE_HUES[id]} ${sources.includes(id) ? 'on' : ''}`} aria-pressed={sources.includes(id)} onClick={() => toggleSource(id)}>
+                <span className="source-dot" aria-hidden="true" />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         {badYears && <div className="field-hint error">Type each year in full, the first no later than the second.</div>}
         <div className="research-buttons">
           <button type="submit" className="btn small primary" disabled={!!busy || !question.trim() || !sources.length || !!badYears}>
@@ -349,7 +370,7 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
             disabled={!!busy || !question.trim() || !sources.length || !!badYears}
             onClick={() => void deep()}
           >
-            <Icon name="sparkles" className="hue-purple" /> Deep research
+            <Icon name="sparkle" className="hue-purple" /> Deep research
           </button>
         </div>
         <div className="field-hint" role="status">
@@ -429,10 +450,13 @@ export default function ResearchPanel({ filter, onAgentTask, todos }: { filter: 
         </div>
       ) : (
         <>
+          <div className="research-section-title" aria-hidden="true">
+            Workflows
+          </div>
           <div className="research-workflows" role="group" aria-label="Workflows">
             <CitationAssistant />
             <button className="research-card-title" onClick={() => task(relatedWork(null))}>
-              <Icon name="text.book.closed" className="hue-indigo" /> Draft related work
+              <Icon name="book.closed" className="hue-blue" /> Draft related work
               <Icon name="chevron.right" className="disclosure" />
             </button>
             <button className="research-card-title" onClick={() => task(verifyClaims(null))}>
@@ -525,7 +549,6 @@ function FiltersChip({ words, invalid, children }: { words: string[]; invalid: b
         onClick={() => setOpen((v) => !v)}
       >
         <Icon name="slider.horizontal.3" /> {filtersLabel(words)}
-        <Icon name="chevron.down" className="btn-chevron" />
       </button>
       {open &&
         at &&
