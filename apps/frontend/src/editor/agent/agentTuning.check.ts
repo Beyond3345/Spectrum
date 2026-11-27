@@ -1,6 +1,6 @@
 // Self-check for the model and effort menu's logic. Run:
 // npx esbuild apps/frontend/src/editor/agent/agentTuning.check.ts --bundle --platform=node --format=esm --loader:.svg=text --loader:.css=empty --outfile=<scratch>/t.mjs && node <scratch>/t.mjs
-import { LOGO, effortLevels, wavelength } from './AgentTuning';
+import { effortColour, effortLevels } from './AgentTuning';
 
 const eq = (actual: unknown, expected: unknown, what: string) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -20,7 +20,10 @@ eq(r.levels.map((c) => c.name), ['Recommended (Medium)', 'Low'], 'kept where not
 r = effortLevels({ id: 'reasoning_effort', name: 'Effort', currentValue: 'medium', options: [{ value: 'low', name: 'Low' }, { value: 'medium', name: 'Medium' }] });
 eq([r.levels.length, r.current], [2, 'medium'], 'plain levels');
 
-// the levels run red to purple along the logo
-eq([wavelength(0, 4), wavelength(3, 4), wavelength(0, 1)], [LOGO[0], LOGO[5], LOGO[0]], 'lowest red, highest purple');
+// each level takes its colour by its name, as the plan has them; an unnamed one by its place, low to max
+const lv = (name: string, value = name.toLowerCase()) => ({ value, name });
+eq(['Off', 'Low', 'Medium', 'High', 'Extra', 'Max'].map((n, i) => effortColour(lv(n), i, 6)), ['var(--eff-off)', 'var(--eff-low)', 'var(--eff-med)', 'var(--eff-high)', 'var(--eff-xhigh)', 'var(--eff-max)'], 'by name');
+eq(effortColour(lv('Extra high', 'xhigh'), 0, 3), 'var(--eff-xhigh)', 'extra high is extra, not high');
+eq([effortColour(lv('Quick', 'q'), 0, 2), effortColour(lv('Deep', 'd'), 1, 2)], ['var(--eff-low)', 'var(--eff-max)'], 'unnamed levels by place');
 
 console.log('agentTuning.check: ok');

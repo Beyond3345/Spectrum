@@ -17,6 +17,13 @@
      Settings is set inline on <html> by appearance.ts, and the tokens below follow it */
   /* the logo's six stripes, red to purple (AgentTuning.tsx LOGO): the effort levels, the effort menu's hairline and the context bar */
   --logo-spectrum: linear-gradient(90deg, #f05747, #f1a33c, #f8d84a, #6cdb6c, #3b82f7, #b260eb);
+  /* the effort levels' colours (AgentTuning.tsx effortColour), as the UI plan has them */
+  --eff-off: #8e8e93;
+  --eff-low: #3b82f7;
+  --eff-med: #279442;
+  --eff-high: #f1a33c;
+  --eff-xhigh: #f05747;
+  --eff-max: #b260eb;
 
   --accent: #0a84ff;
   --accent-text: #ffffff;

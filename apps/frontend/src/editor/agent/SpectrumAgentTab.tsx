@@ -730,6 +730,7 @@ export default function SpectrumAgentTab({
               choice={turn.current}
               onChoose={(c) => (thread ? update(thread, (chat) => ({ ...chat, ...c })) : setNewChoice((old) => ({ ...old, ...c })))}
               onManage={() => onOpenSettings('models')}
+              plan={{ on: planOn, toggle: () => setPlanOn((on) => !on) }}
             />
           }
           below={<StatsRow chips={spectrumStats(thread?.messages || [], here ? live.usage : null, turn.current.model, withAutoPrices(api.settings.modelPrices, auto.prices), { contextSize: (m) => autoContext(auto.prices, m), ownPrice: (m) => !!api.settings.modelPrices[m], autoError: api.settings.autoPrices ? auto.error : undefined })} />}

@@ -28,8 +28,14 @@ export function effortLevels(o: ConfigOption): { levels: Choice[]; current: stri
 }
 
 /** The logo's six colours, red to purple: the effort levels take them in order, the lowest red, the highest purple */
-export const LOGO = ['#f05747', '#f1a33c', '#f8d84a', '#6cdb6c', '#3b82f7', '#b260eb'];
-export const wavelength = (i: number, n: number) => LOGO[n <= 1 ? 0 : Math.round((i / (n - 1)) * (LOGO.length - 1))];
+/** The effort levels' colours, as the plan has them (tokens.css --eff-*): off grey, low blue, medium green, high amber, extra red, max purple */
+const EFFORT = ['off', 'low', 'med', 'high', 'xhigh', 'max'] as const;
+const effortKey = (c: Choice): (typeof EFFORT)[number] | null => {
+  const word = `${c.value} ${c.name}`.toLowerCase();
+  return /\b(none|off|minimal)\b/.test(word) ? 'off' : /\b(xhigh|extra|very high)\b/.test(word) ? 'xhigh' : /\bmax/.test(word) ? 'max' : /\bhigh\b/.test(word) ? 'high' : /\bmedium\b|\bmed\b/.test(word) ? 'med' : /\blow\b/.test(word) ? 'low' : null;
+};
+/** A level's colour by its name, else by its place among the levels from low to max */
+export const effortColour = (c: Choice, i: number, n: number) => `var(--eff-${effortKey(c) ?? EFFORT[n <= 1 ? 3 : 1 + Math.round((i / (n - 1)) * 4)]})`;
 
 type Sub = { option: ConfigOption; top: number };
 
@@ -38,7 +44,16 @@ type Sub = { option: ConfigOption; top: number };
  * Antigravity have: the models (keys 1 to 9), the effort in a side menu of levels coloured along the logo's spectrum,
  * and every other setting as a side menu or, with two choices that are on and off, a switch.
  */
-export default function AgentTuning({ options, modes, disabled, onChange, more }: { options: ConfigOption[]; modes: Modes | null; disabled?: boolean; onChange: (id: string, value: string) => void; more?: { label: string; onSelect: () => void } }) {
+export default function AgentTuning({ options, modes, disabled, onChange, more, toggles = [] }: {
+  options: ConfigOption[];
+  modes: Modes | null;
+  disabled?: boolean;
+  onChange: (id: string, value: string) => void;
+  /** a row after the effort, such as Manage models… */
+  more?: { label: string; onSelect: () => void };
+  /** switches of the tab's own under Session, such as Plan before editing */
+  toggles?: { label: string; on: boolean; onToggle: () => void }[];
+}) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'main' | 'models'>('main');
   const [query, setQuery] = useState('');
@@ -138,6 +153,37 @@ export default function AgentTuning({ options, modes, disabled, onChange, more }
     }
   };
 
+  // a row that opens a side menu: the effort with its colour, or another setting with its value
+  const subRow = (o: ConfigOption) => {
+    const levels = o === effort ? effortLevels(o) : null;
+    const at = levels ? levels.levels.findIndex((c) => c.value === levels.current) : -1;
+    return (
+      <button
+        key={o.id}
+        type="button"
+        role="menuitem"
+        aria-haspopup="menu"
+        aria-expanded={sub?.option.id === o.id}
+        data-sub={o.id}
+        className={`tuning-row ${sub?.option.id === o.id ? 'open' : ''}`}
+        title={o.description}
+        onClick={(e) => openSub(o, e.currentTarget)}
+        onMouseEnter={(e) => openSub(o, e.currentTarget)}
+      >
+        <span className="tuning-row-name">{o === effort ? 'Effort' : o.name}</span>
+        {levels && at >= 0 && <span className="tuning-dot-sm" aria-hidden style={{ background: effortColour(levels.levels[at], at, levels.levels.length) }} />}
+        <span className="tuning-row-value">{nameOf(o)}</span>
+        <Icon name="chevron.right" className="tuning-chevron-r" />
+      </button>
+    );
+  };
+  const switchRow = (key: string, label: string, on: boolean, toggle: () => void, title?: string) => (
+    <button key={key} type="button" role="menuitemcheckbox" aria-checked={on} className="tuning-row" title={title} onClick={toggle} onMouseEnter={() => setSub(null)}>
+      <span className="tuning-row-name">{label}</span>
+      <span className={`tuning-switch ${on ? 'on' : ''}`} aria-hidden />
+    </button>
+  );
+
   const subLevels = sub ? (sub.option === effort ? effortLevels(sub.option) : { levels: choicesOf(sub.option), current: sub.option.currentValue }) : null;
 
   return (
@@ -152,7 +198,11 @@ export default function AgentTuning({ options, modes, disabled, onChange, more }
         title="Model and settings"
         onClick={() => { setView('main'); setQuery(''); setSub(null); setOpen((v) => !v); }}
       >
-        {effort && <span className="tuning-dot-sm" aria-hidden style={{ background: wavelength(effortLevels(effort).levels.findIndex((c) => c.value === effortLevels(effort).current), effortLevels(effort).levels.length) }} />}
+        {effort && (() => {
+          const { levels, current } = effortLevels(effort);
+          const at = levels.findIndex((c) => c.value === current);
+          return at >= 0 && <span className="tuning-dot-sm" aria-hidden style={{ background: effortColour(levels[at], at, levels.length) }} />;
+        })()}
         <span className="tuning-label">{label}</span>
         <Icon name="chevron.down" className="tuning-chevron" />
       </button>
@@ -183,7 +233,7 @@ export default function AgentTuning({ options, modes, disabled, onChange, more }
                   {short.map((c, i) => (
                     <button key={c.value} type="button" role="menuitemradio" aria-checked={c.value === model.currentValue} className="tuning-row" title={c.description} onClick={() => pick(model.id, c.value)} onMouseEnter={() => setSub(null)}>
                       <span className="tuning-row-name">{c.name}</span>
-                      {c.value === model.currentValue ? <Icon name="checkmark" className="tuning-check" /> : <kbd className="tuning-key">{i + 1}</kbd>}
+                      {c.value === model.currentValue ? <Icon name="checkmark" className="tuning-check" /> : <span className="tuning-meta">{i + 1}</span>}
                     </button>
                   ))}
                   {allModels.length > short.length && (
@@ -194,47 +244,29 @@ export default function AgentTuning({ options, modes, disabled, onChange, more }
                   )}
                 </>
               )}
-              {(effort || rest.length > 0) && <div className="tuning-sep" role="separator" />}
-              {[effort, ...rest].filter((o): o is ConfigOption => !!o).map((o) => {
-                const choices = choicesOf(o);
-                const toggle = choices.length === 2 && choices.some((c) => ON.test(c.name)) && choices.some((c) => OFF.test(c.name));
-                if (toggle) {
-                  const on = ON.test(choices.find((c) => c.value === o.currentValue)?.name || '');
-                  const to = choices.find((c) => (on ? OFF : ON).test(c.name))!;
-                  return (
-                    <button key={o.id} type="button" role="menuitemcheckbox" aria-checked={on} className="tuning-row" title={o.description} onClick={() => onChange(o.id, to.value)} onMouseEnter={() => setSub(null)}>
-                      <span className="tuning-row-name">{o.name}</span>
-                      <span className={`tuning-switch ${on ? 'on' : ''}`} aria-hidden />
-                    </button>
-                  );
-                }
-                return (
-                  <button
-                    key={o.id}
-                    type="button"
-                    role="menuitem"
-                    aria-haspopup="menu"
-                    aria-expanded={sub?.option.id === o.id}
-                    data-sub={o.id}
-                    className={`tuning-row ${sub?.option.id === o.id ? 'open' : ''}`}
-                    title={o.description}
-                    onClick={(e) => openSub(o, e.currentTarget)}
-                    onMouseEnter={(e) => openSub(o, e.currentTarget)}
-                  >
-                    <span className="tuning-row-name">{o === effort ? 'Effort' : o.name}</span>
-                    <span className="tuning-row-value">{nameOf(o)}</span>
-                    <Icon name="chevron.right" className="tuning-check" />
-                  </button>
-                );
-              })}
+              {(effort || more) && <div className="tuning-sep" role="separator" />}
+              {effort && subRow(effort)}
               {more && (
+                <button type="button" role="menuitem" className="tuning-row" onClick={() => { close(); more.onSelect(); }} onMouseEnter={() => setSub(null)}>
+                  <span className="tuning-row-name">{more.label}</span>
+                  <Icon name="chevron.right" className="tuning-chevron-r" />
+                </button>
+              )}
+              {(rest.length > 0 || toggles.length > 0) && (
                 <>
                   <div className="tuning-sep" role="separator" />
-                  <button type="button" role="menuitem" className="tuning-row" onClick={() => { close(); more.onSelect(); }} onMouseEnter={() => setSub(null)}>
-                    <span className="tuning-row-name">{more.label}</span>
-                  </button>
+                  <div className="tuning-heading">Session</div>
                 </>
               )}
+              {rest.map((o) => {
+                const choices = choicesOf(o);
+                const toggle = choices.length === 2 && choices.some((c) => ON.test(c.name)) && choices.some((c) => OFF.test(c.name));
+                if (!toggle) return subRow(o);
+                const on = ON.test(choices.find((c) => c.value === o.currentValue)?.name || '');
+                const to = choices.find((c) => (on ? OFF : ON).test(c.name))!;
+                return switchRow(o.id, o.name, on, () => onChange(o.id, to.value), o.description);
+              })}
+              {toggles.map((t) => switchRow(t.label, t.label, t.on, t.onToggle))}
             </>
           )}
         </div>,
@@ -268,18 +300,20 @@ type SideProps = { anchor: DOMRect; top: number; effort: boolean; name: string; 
 const SideMenu = forwardRef<HTMLDivElement, SideProps>(function SideMenu({ anchor, top, effort, name, levels, current, onKeyDown, onPick }, ref) {
   const width = 240;
   const left = anchor.right + 4 + width < window.innerWidth - 8 ? anchor.right + 4 : Math.max(8, anchor.left - 4 - width);
-  const height = 44 + levels.length * 34 + (effort ? 48 : 0);
+  const height = 44 + levels.length * 34 + (effort ? 62 : 0);
   return (
     <div ref={ref} className={`tuning-pop tuning-side ${effort ? 'effort' : ''}`} role="menu" aria-label={name} style={{ left, top: Math.max(8, Math.min(top - 6, window.innerHeight - height - 8)), width }} onKeyDown={onKeyDown}>
       {effort && <p className="tuning-hint">Higher effort means deeper reasoning, but takes longer and uses more tokens.</p>}
+      {effort && <div className="tuning-spectrum" aria-hidden />}
       {levels.map((c, i) => (
         <button key={c.value} type="button" role="menuitemradio" aria-checked={c.value === current} className="tuning-row" title={c.description} onClick={() => onPick(c.value)}>
-          {effort && <span className="tuning-dot-sm" aria-hidden style={{ background: wavelength(i, levels.length) }} />}
+          {effort && <span className="tuning-dot-sm" aria-hidden style={{ background: effortColour(c, i, levels.length) }} />}
           <span className="tuning-row-name">
             {c.name}
-            {c.recommended && <span className="tuning-badge">Recommended</span>}
-            {effort && i === levels.length - 1 && levels.length > 2 && <span className="tuning-warn">High usage</span>}
           </span>
+          {effort && effortKey(c) === 'off' && <span className="tuning-meta">Fastest</span>}
+          {c.recommended && <span className="tuning-pill">Recommended</span>}
+          {effort && i === levels.length - 1 && levels.length > 2 && <span className="tuning-pill warn"><Icon name="exclamationmark.triangle" /> High usage</span>}
           {c.value === current && <Icon name="checkmark" className="tuning-check" />}
         </button>
       ))}

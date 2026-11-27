@@ -219,7 +219,7 @@ export function localStats(events: AgentEvent[], price?: Price): StatChip[] {
   if (tasks) {
     chips.push({
       key: 'session',
-      text: [`${tasks} ${tasks === 1 ? 'task' : 'tasks'} ${steps} ${steps === 1 ? 'step' : 'steps'}`, ...(busy ? [duration(busy)] : [])],
+      text: [`${tasks} ${tasks === 1 ? 'task' : 'tasks'}`, `${steps} ${steps === 1 ? 'step' : 'steps'}`, ...(busy ? [duration(busy)] : [])],
       title: 'Session statistics',
       rows: [['Tasks', String(tasks)], ['Steps (tool calls)', String(steps)], ...(busy ? [['Time working', duration(busy)], ['Average per task', duration(busy / tasks)]] as [string, string][] : [])]
     });
@@ -235,7 +235,7 @@ export function localStats(events: AgentEvent[], price?: Price): StatChip[] {
     const hit = cacheHit(sum.input, sum.cachedRead);
     chips.push({
       key: 'tokens',
-      text: [`${tokens(sum.total)} tok`, ...(sum.cachedRead ? [`Cache hit ${Math.round(hit * 100)}%`] : []), ...(cost ? [money(cost.amount, cost.currency)] : estimate ? [`est. ${money(estimate.amount, estimate.currency)}`] : [])],
+      text: [`${tokens(sum.total)} tok`, ...(sum.cachedRead ? [`Cache ${Math.round(hit * 100)}%`] : []), ...(cost ? [money(cost.amount, cost.currency)] : estimate ? [`est. ${money(estimate.amount, estimate.currency)}`] : [])],
       title: 'Token usage',
       total: `${whole(sum.total)} tok`,
       rows: [
@@ -291,7 +291,7 @@ export function spectrumStats(
   return [
     {
       key: 'session',
-      text: [`${turns.length} ${turns.length === 1 ? 'turn' : 'turns'}${steps ? ` ${steps} ${steps === 1 ? 'step' : 'steps'}` : ''}`, ...(busy ? [duration(busy)] : [])],
+      text: [`${turns.length} ${turns.length === 1 ? 'turn' : 'turns'}`, ...(steps ? [`${steps} ${steps === 1 ? 'step' : 'steps'}`] : []), ...(busy ? [duration(busy)] : [])],
       title: 'Thread statistics',
       rows: [
         ['Turns', String(turns.length)],
@@ -302,7 +302,7 @@ export function spectrumStats(
     },
     {
       key: 'tokens',
-      text: [`${tokens(total)} tok`, ...(hit >= 0.005 ? [`Cache hit ${Math.round(hit * 100)}%`] : []), ...(sums || []).map((c) => `${c.reported ? '' : 'est. '}${money(c.cost, c.currency)}`)],
+      text: [`${tokens(total)} tok`, ...(hit >= 0.005 ? [`Cache ${Math.round(hit * 100)}%`] : []), ...(sums || []).map((c) => `${c.reported ? '' : 'est. '}${money(c.cost, c.currency)}`)],
       title: 'Token usage',
       total: `${whole(total)} tok`,
       rows: [

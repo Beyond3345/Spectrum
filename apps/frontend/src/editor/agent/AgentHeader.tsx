@@ -24,7 +24,7 @@ export function useTurnChoice(choice: TurnChoice) {
   return ref;
 }
 
-const ICONS: Record<StatChip['key'], string> = { session: 'gauge.with.dots.needle.50percent', tokens: 'chart.bar', context: '' };
+const ICONS: Record<StatChip['key'], string> = { session: 'gauge.with.dots.needle.50percent', tokens: 'custom.database', context: '' };
 
 function Ring({ full }: { full: number }) {
   return <span className={`stat-ring${full >= 0.8 ? ' full' : ''}`} aria-hidden style={{ ['--f' as string]: full }} />;
@@ -96,7 +96,7 @@ export function StatsRow({ chips }: { chips: StatChip[] }) {
  * The Spectrum agent's model and effort for the thread, at the right of its header row. Both tabs' figures
  * are in the StatsRow under the message box; a local agent's model is in AgentTuning, in the box.
  */
-export default function AgentHeader({ choice, onChoose, onManage }: { choice: Choice; onChoose(choice: TurnChoice): void; onManage(): void }) {
+export default function AgentHeader({ choice, onChoose, onManage, plan }: { choice: Choice; onChoose(choice: TurnChoice): void; onManage(): void; plan?: { on: boolean; toggle(): void } }) {
   // “Recommended (High)” is a badge on High in the menu (effortLevels), not a second High
   const options: ConfigOption[] = [
     { id: 'model', name: 'Model', category: 'model', currentValue: choice.model, options: choice.models.map(([value, name]) => ({ value, name })) },
@@ -107,7 +107,8 @@ export default function AgentHeader({ choice, onChoose, onManage }: { choice: Ch
       options={choice.models.length ? options : []}
       modes={null}
       onChange={(id, value) => onChoose(id === 'model' ? { model: value } : { effort: value as TurnChoice['effort'] })}
-      more={{ label: 'Models and prices…', onSelect: onManage }}
+      more={{ label: 'Manage models…', onSelect: onManage }}
+      toggles={plan ? [{ label: 'Plan before editing', on: plan.on, onToggle: plan.toggle }] : []}
     />
   );
 }

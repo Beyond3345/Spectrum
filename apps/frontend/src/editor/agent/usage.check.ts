@@ -119,12 +119,12 @@ eq(c.models[0], ['typed', 'typed'], 'a typed model listed first');
     e(4, 'usage', { turn: { inputTokens: 1000, cachedReadTokens: 800, outputTokens: 200 }, context: { used: 70000, size: 1000000 } }, '2026-11-27T00:00:03Z'),
     e(5, 'complete', {}, '2026-11-27T00:01:05Z')
   ]);
-  eq(chips.map((c) => [c.key, c.text]), [['session', ['1 task 1 step', '1m05s']], ['tokens', ['2k tok', 'Cache hit 80%']], ['context', ['7%']]], 'the stats row');
+  eq(chips.map((c) => [c.key, c.text]), [['session', ['1 task', '1 step', '1m05s']], ['tokens', ['2k tok', 'Cache 80%']], ['context', ['7%']]], 'the stats row');
   eq(chips[2].total, '70k / 1M', 'the context popover’s headline');
   eq(localStats([]), [], 'nothing before a task');
   // no reported cost: an estimate at the model's price, the user's before models.dev's
   const priced = localStats([e(1, 'user', {}, ''), e(2, 'usage', { turn: { inputTokens: 1_000_000, cachedReadTokens: 500_000, outputTokens: 100_000 } }, '')], { input: 3, cached: 0.3, output: 15 });
-  eq(priced[1].text, ['1.6M tok', 'Cache hit 50%', 'est. US$3.15'], 'estimated at the model’s price');
+  eq(priced[1].text, ['1.6M tok', 'Cache 50%', 'est. US$3.15'], 'estimated at the model’s price');
   const prices = withAutoPrices({ mine: { input: 1, output: 2 } }, { 'claude-sonnet-4-5': { input: 3, output: 15, cacheRead: 0.3 } });
   eq([prices.mine, prices['anthropic/claude-sonnet-4-5'], prices.unknown], [{ input: 1, output: 2 }, { input: 3, output: 15, cached: 0.3 }, undefined], 'the user’s price, else models.dev’s by its plain name');
 }
@@ -139,7 +139,7 @@ eq(c.models[0], ['typed', 'typed'], 'a typed model listed first');
     withAutoPrices({}, { 'deepseek-flash': { input: 0.15, output: 0.6, cacheRead: 0.003, context: 128000 } }),
     { contextSize: () => 128000, ownPrice: () => false }
   );
-  eq(chips.map((c) => [c.key, c.text]), [['session', ['2 turns 4 steps', '10s']], ['tokens', ['5.3k tok', 'Cache hit 20%', 'est. under US$0.01']], ['context', ['4%']]], 'turns, steps, time, tokens, cost and context');
+  eq(chips.map((c) => [c.key, c.text]), [['session', ['2 turns', '4 steps', '10s']], ['tokens', ['5.3k tok', 'Cache 20%', 'est. under US$0.01']], ['context', ['4%']]], 'turns, steps, time, tokens, cost and context');
   eq(chips[1].note?.startsWith('Estimated at models.dev’s prices'), true, 'the price is models.dev’s');
   eq(spectrumStats([reply({ usage: { input: 10, output: 1, model: 'x' } })], null, 'x', {}, { autoError: 'offline' })[1].note?.includes('could not be loaded (offline)'), true, 'a list that did not load says so');
 }
