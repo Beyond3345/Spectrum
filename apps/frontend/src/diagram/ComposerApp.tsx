@@ -31,6 +31,7 @@ import { pngToPdf } from './modes/mermaid/pdf';
 import { SETS, clashesWith, documentLoads, setLoads } from './sets';
 import { CATEGORIES, MODE_FACTS, STANDARD, STARTERS, search, sectionsFor, starterFor, usedNow } from './starters';
 import type { CategoryId, Section, Starter, StarterMode } from './starters';
+import { StarterThumb } from './thumbs';
 import type { Area } from '../app/appearance';
 import type { DiagramFile, DiagramLanguage, DiagramMode } from './types';
 import './composer.css';
@@ -244,6 +245,7 @@ function Chooser({ projectId, lang }: { projectId: string; lang?: DiagramLanguag
         onClick={() => choose({ starter })}
         onDoubleClick={() => create({ starter })}
       >
+        <StarterThumb starter={starter} />
         <span className="chooser-card-top">
           <span className="chooser-card-title">{starter.title}</span>
           <span className="chip">{LANGUAGE_BADGE[languageOf(starter)]}</span>

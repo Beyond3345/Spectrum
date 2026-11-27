@@ -804,6 +804,28 @@
   opacity: 0.5;
 }
 
+/* the card's line drawing (thumbs.tsx): in the card's area colour in the Spectrum colour style */
+.chooser-thumb {
+  width: 64px;
+  height: 40px;
+  margin-bottom: 4px;
+  color: var(--text-tertiary);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chooser-thumb .fill {
+  fill: currentColor;
+  stroke: none;
+}
+
+:root[data-colour-style='spectrum'] .chooser-card[class*='area-'] .chooser-thumb {
+  color: var(--area);
+}
+
 .chooser-card-top {
   display: flex;
   align-items: center;
