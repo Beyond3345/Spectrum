@@ -1,5 +1,5 @@
 import { getProjectRoot } from '../services/projectService.js';
-import { resolveReferences, addReference } from '../services/referenceService.js';
+import { resolveReferences, addReference, commitReference, newEntry } from '../services/referenceService.js';
 import { checkNote, checkReferences } from '../services/referenceCheck.js';
 
 const MAX_INPUT_CHARS = 50_000;
@@ -35,22 +35,34 @@ export function registerReferenceRoutes(fastify) {
     });
   });
 
+  // preview: drafts for the References card, nothing written; manual: a blank draft
   fastify.post('/api/references/resolve', async (req, reply) => {
-    const { input, bibFile, llmConfig, searchConfig } = req.body || {};
+    const { input, bibFile, llmConfig, searchConfig, preview, manual } = req.body || {};
+    if (manual === true) return withProject(req, reply, (projectRoot) => newEntry({ projectRoot, bibFile }));
     if (typeof input !== 'string' || !input.trim()) {
       return reply.code(400).send({ ok: false, error: 'Paste a DOI, link, arXiv ID or title.' });
     }
     if (input.length > MAX_INPUT_CHARS) {
       return reply.code(400).send({ ok: false, error: 'That’s too much text. Paste fewer references at a time.' });
     }
-    return withProject(req, reply, (projectRoot) => resolveReferences({ projectRoot, input, bibFile, llmConfig, searchConfig }));
+    return withProject(req, reply, (projectRoot) => resolveReferences({ projectRoot, input, bibFile, llmConfig, searchConfig, preview: preview === true }));
   });
 
   fastify.post('/api/references/add', async (req, reply) => {
-    const { candidateId, bibFile, searchConfig } = req.body || {};
+    const { candidateId, bibFile, searchConfig, preview } = req.body || {};
     if (typeof candidateId !== 'string' || !candidateId.trim()) {
       return reply.code(400).send({ ok: false, error: 'Choose a reference to add.' });
     }
-    return withProject(req, reply, (projectRoot) => addReference({ projectRoot, candidateId, bibFile, searchConfig }));
+    return withProject(req, reply, (projectRoot) => addReference({ projectRoot, candidateId, bibFile, searchConfig, preview: preview === true }));
+  });
+
+  // a draft the user checked in the References card: written to the .bib, a duplicate reported
+  fastify.post('/api/references/commit', async (req, reply) => {
+    const { draft, bibFile, input } = req.body || {};
+    if (!draft || typeof draft !== 'object' || typeof draft.type !== 'string' || typeof (draft.key ?? '') !== 'string'
+      || !draft.fields || typeof draft.fields !== 'object' || Array.isArray(draft.fields) || Object.keys(draft.fields).length > 80) {
+      return reply.code(400).send({ ok: false, error: 'That entry can’t be read.' });
+    }
+    return withProject(req, reply, (projectRoot) => commitReference({ projectRoot, draft: { type: draft.type, key: draft.key || '', fields: draft.fields }, bibFile, input: typeof input === 'string' ? input.slice(0, 500) : '' }));
   });
 }

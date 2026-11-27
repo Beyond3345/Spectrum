@@ -77,7 +77,7 @@ The model settings can also be given in a `.env` file in Spectrum's data folder,
 The assistant is a panel that floats at the bottom of the editor. It is opened with the sparkle button in the editor's toolbar (@fig-assistant-top-bar) or with #key("⌘", "L"), and closed the same way or with #key("Esc"). The panel has two modes, chosen at its top left,
 
 - #ui[Assistant], which answers questions about the open file and rewrites a selection and
-- #ui[References], which turns DOIs, links, arXiv IDs and titles into `.bib` entries (@ch-references).
+- #ui[References], which turns DOIs, ISBNs, links, arXiv IDs, titles, formatted references and pasted BibTeX or RIS into `.bib` entries to check before they are added (@ch-references).
 
 #shot("figures/03-assistant/top-bar-buttons.png", [The right of the editor's toolbar: Assistant, Check grammar, Document insights, Tools and Agent.], width: 45%) <fig-assistant-top-bar>
 
@@ -91,25 +91,29 @@ When the project has an `AGENTS.md` that you have approved (@sec-assistant-instr
 
 A provider that is busy does not end a request. When it answers that it is overloaded or limiting requests, Spectrum waits and sends the request again, twice at most. It waits for as long as the provider asks, up to 20 seconds, or else for one second and then three. A rejected key, a wrong address and an account with no credit left are not sent again, since waiting does not mend them, and the message says which it was. A connection that drops before the provider answers, as one through a VPN sometimes does, is tried again in the same way. If it still fails, the message names the cause, such as a server name that was not found, a connection that was refused, dropped or timed out, or a certificate that could not be trusted. When an answer stops at the model's output limit, the panel says "The answer was cut off by the model's output limit." under it, and #ui[Continue] asks the model to go on from where it stopped.
 
-#shot("figures/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The bar at the bottom holds the image menu (+), the persona and the reasoning effort.], width: 85%) <fig-assistant-empty>
+#shot("figures/03-assistant/assistant-empty.png", [The assistant panel in #ui[Assistant] mode. The quick actions are along the top, and the message box at the foot holds the persona, the picture button, the model and effort menu and #ui[Send].], width: 85%) <fig-assistant-empty>
 
-The bar under the message box holds three controls,
+The message box has two rows under the text. The first holds the context of the request and wraps when the panel is narrow,
 
-- #ui[+], which opens the image to LaTeX menu described below,
+- #ui[Selection], shown while text is selected, with the number of lines (@sec-assistant-selection),
 - the persona picker, which shows #ui[Default instructions] until a persona is chosen (@sec-assistant-personas) and
-- #ui[Thinking], which sets the reasoning effort for the assistant and is the same setting as in #menu[Settings][Models] (@fig-assistant-thinking).
+- #ui[AGENTS.md] while the project's `AGENTS.md` is in use.
 
-#shot("figures/03-assistant/thinking-menu.png", [The #ui[Thinking] menu. Only the levels the chosen model accepts are listed.], width: 40%) <fig-assistant-thinking>
+The second row holds the picture button, which opens the image to LaTeX menu described below, the model and effort menu and #ui[Send]. This row never wraps, so #ui[Send] stays in reach however narrow the panel is.
+
+The model and effort menu is the one the Spectrum agent's tab has (@fig-assistant-thinking). It lists the models of the provider in #menu[Settings][Models], with the keys 1 to 9 choosing one, and under #ui[Effort] only the levels the chosen model accepts, coloured from red for the lowest to purple for the highest. #ui[Models and prices…] opens Settings. A new chat starts with the model and effort from #menu[Settings][Models], and each chat keeps its own choice, which applies from its next request.
+
+#shot("figures/03-assistant/thinking-menu.png", [The model and effort menu, with #ui[Effort] open. Only the levels the chosen model accepts are listed.], width: 60%) <fig-assistant-thinking>
 
 The header of the panel has #ui[History], #ui[New chat] and #ui[Close]. Each conversation is saved with the project in its `.spectrum/chats` folder and named after its first message. #ui[History] lists the saved Assistant and References chats, with the Edit chats from before 2.0, and has a search and #ui[Delete] (@fig-assistant-history). An Edit chat from before 2.0 opens with #ui[Continue there], which carries it on in the agent workspace.
 
 #shot("figures/03-assistant/assistant-history.png", [#ui[History] in the panel's header, with a search across the project's saved chats.], width: 85%) <fig-assistant-history>
 
-=== Polishing, rewriting and translating a selection
+=== Polishing, rewriting and translating a selection <sec-assistant-selection>
 
-Selecting text in the editor adds a row of actions to the panel and a #ui[Use selection] chip to its bar, as in @fig-assistant-selection. #ui[Use selection] decides whether the selected text goes with a typed question, and is on by default.
+The row of #ui[Quick actions] at the top of the panel works on the selection, or on the whole open file when nothing is selected. Selecting text in the editor also names the file and the number of lines selected in the panel's header and adds a #ui[Selection] chip to the message box, as in @fig-assistant-selection. #ui[Selection] decides whether the selected text goes with a typed question, and is on by default.
 
-#shot("figures/03-assistant/assistant-selection.png", [A paragraph selected in the editor. The panel offers #ui[Polish], #ui[Rewrite], #ui[Restructure] and #ui[Translate], and #ui[Use selection] sends the selection with a question.], width: 85%) <fig-assistant-selection>
+#shot("figures/03-assistant/assistant-selection.png", [A paragraph selected in the editor. The panel offers #ui[Polish], #ui[Rewrite], #ui[Restructure] and #ui[Translate], and #ui[Selection] sends the selection with a question.], width: 85%) <fig-assistant-selection>
 
 The actions are,
 
@@ -124,9 +128,13 @@ Anything typed in the box before pressing an action goes with it as a note, for 
 
 === Reviewing suggested changes <sec-assistant-changes>
 
-The assistant never writes into a file by itself. An action that changes text comes back as #ui[Review 1 change] (@fig-assistant-reply), and the editor shows a banner, "Suggested changes to 1 file", with #ui[Discard] and #ui[Review]. The change speaks for itself, so a message comes with it only when the model has something you must know, such as a part it could not do, or when your `AGENTS.md` asks for one.
+The assistant never writes into a file by itself. An action that changes text comes back as a card, such as #ui[Suggested polish], with the file and the lines it changes and how many lines it adds and removes (@fig-assistant-reply), and the editor shows a banner, "Suggested changes to 1 file", with #ui[Discard] and #ui[Review]. The change speaks for itself, so a message comes with it only when the model has something you must know, such as a part it could not do, or when your `AGENTS.md` asks for one. The card has three buttons,
 
-#shot("figures/03-assistant/assistant-reply-changes.png", [A reply to #ui[Polish] with its change waiting to be reviewed. The model had nothing more to say, so there is no message.], width: 85%) <fig-assistant-reply>
+- #ui[Apply change], which writes the change after a "Before AI changes" checkpoint, as #ui[Accept] in a review does, and then marks the card #ui[Applied],
+- #ui[Review diff], which opens #ui[Review changes] as described below and
+- #ui[Continue in Spectrum agent], which carries the chat on in the agent workspace, with the change waiting there for review (@sec-assistant-workspace).
+
+#shot("figures/03-assistant/assistant-reply-changes.png", [A reply to #ui[Polish], with the model's note and the change waiting to be applied or reviewed.], width: 85%) <fig-assistant-reply>
 
 #ui[Review] opens #ui[Review changes], a side-by-side comparison of each file with your text on the left and the suggestion on the right (@fig-assistant-review-changes). Changed words are marked inside each changed line, and unchanged stretches are folded away as "16 unchanged lines", while #ui[Show whole file] unfolds them.
 
@@ -151,7 +159,7 @@ Before it writes the first change you accept, Spectrum saves a "Before AI change
 
 === Image to LaTeX <sec-assistant-image>
 
-#ui[+] in the panel's bar turns a picture into LaTeX with the vision model. Its menu has five kinds of picture (@fig-assistant-image-menu), each of which asks for a different result,
+The picture button at the foot of the message box turns a picture into LaTeX with the vision model. Its menu has five kinds of picture (@fig-assistant-image-menu), each of which asks for a different result,
 
 - #ui[Equation from image…], an equation environment,
 - #ui[Table from image…], a `tabular` or `table`,
@@ -159,7 +167,7 @@ Before it writes the first change you accept, Spectrum saves a "Before AI change
 - #ui[Algorithm from image…], an `algorithm` environment and
 - #ui[Text only from image…], the text read from the picture.
 
-#shot("figures/03-assistant/image-menu.png", [The image menu under #ui[+].], width: 40%) <fig-assistant-image-menu>
+#shot("figures/03-assistant/image-menu.png", [The image menu under the picture button.], width: 40%) <fig-assistant-image-menu>
 
 After choosing a picture, the reply shows the LaTeX in a code block with #ui[Insert at cursor], which puts it into the open file as a block. In a Typst document each kind asks for Typst instead: maths between `$`, a `#table`, a `#figure` with alt text, an algorithm as a numbered list in a figure and text with Typst's marks escaped. Anything typed in the message box before choosing the picture is sent with it as an extra instruction.
 
@@ -269,7 +277,7 @@ A picture can go with a message too, such as a sketch of a figure or a photo of 
 
 #shot("figures/03-assistant/agent-send-page.png", [#ui[Send page to agent] on the results table of a paper. The page is a chip with its small copy, and the message names the line the table comes from.], width: 60%) <fig-assistant-send-page>
 
-In the Spectrum agent's tab, the menu at the right of the header chooses the model and the thinking for the thread (@fig-assistant-model-menu). It lists the models of the provider in #menu[Settings][Models], and under #ui[Thinking] only the levels the chosen model accepts, while #ui[Models and prices…] opens Settings. A new thread starts with the model and effort from Settings, and each thread keeps its own choice, which applies from its next request. If the provider in Settings changes, a thread goes back to the model in Settings.
+In the Spectrum agent's tab, the menu in the message box, beside #ui[Send], chooses the model and the effort for the thread (@fig-assistant-model-menu), as it does in the assistant panel. It lists the models of the provider in #menu[Settings][Models], and under #ui[Effort] only the levels the chosen model accepts, while #ui[Models and prices…] opens Settings. A new thread starts with the model and effort from Settings, and each thread keeps its own choice, which applies from its next request. If the provider in Settings changes, a thread goes back to the model in Settings.
 
 #shot("figures/03-assistant/agent-model-menu.png", [The model and thinking menu of a Spectrum agent thread, with the Anthropic Claude preset.], width: 35%) <fig-assistant-model-menu>
 

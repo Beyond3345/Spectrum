@@ -1821,9 +1821,21 @@ export interface ReferenceCandidate {
   doi?: string;
 }
 
+/** An entry the References card edits before it is written (backend services/bibEntry.js) */
+export interface ReferenceDraft {
+  type: string;
+  /** '' for the key suggestKey gives */
+  key: string;
+  fields: Record<string, string>;
+}
+
 export interface ReferenceResult {
   input: string;
-  status: 'added' | 'duplicate' | 'choose' | 'not_found' | 'error';
+  status: 'added' | 'duplicate' | 'choose' | 'not_found' | 'error' | 'draft';
+  /** a draft's entry, and where it was found ('manual' for a blank one); verified false: no source had it */
+  draft?: ReferenceDraft;
+  source?: string;
+  verified?: false;
   key?: string;
   bibtex?: string;
   bibFile?: string;
@@ -1835,18 +1847,26 @@ export interface ReferenceResult {
   message?: string;
 }
 
-export function resolveReferences(payload: { projectId: string; input: string; bibFile?: string; llmConfig?: Partial<LLMConfig>; searchConfig?: SearchConfig }) {
-  return request<{ ok: boolean; results: ReferenceResult[]; bibFile: string; bibIncluded: boolean; error?: string }>(
+/** preview: drafts, nothing written, with how the .bib is written and its keys; manual: a blank draft */
+export type ReferencesPreview = { biblatex?: boolean; legacyUrls?: boolean; keys?: string[] };
+
+export function resolveReferences(payload: { projectId: string; input?: string; bibFile?: string; llmConfig?: Partial<LLMConfig>; searchConfig?: SearchConfig; preview?: boolean; manual?: boolean }) {
+  return request<{ ok: boolean; results: ReferenceResult[]; bibFile: string; bibIncluded: boolean; error?: string } & ReferencesPreview>(
     '/api/references/resolve',
     json('POST', payload)
   );
 }
 
-export function addReference(payload: { projectId: string; candidateId: string; bibFile?: string; searchConfig?: SearchConfig }) {
-  return request<{ ok: boolean; result: ReferenceResult; bibFile: string; bibIncluded: boolean; error?: string }>(
+export function addReference(payload: { projectId: string; candidateId: string; bibFile?: string; searchConfig?: SearchConfig; preview?: boolean }) {
+  return request<{ ok: boolean; result: ReferenceResult; bibFile: string; bibIncluded: boolean; error?: string } & ReferencesPreview>(
     '/api/references/add',
     json('POST', payload)
   );
+}
+
+/** A checked draft written to the .bib: 'added', or 'duplicate' when the .bib has the work */
+export function commitReference(payload: { projectId: string; draft: ReferenceDraft; bibFile?: string; input?: string }) {
+  return request<{ ok: boolean; result: ReferenceResult; bibFile: string; bibIncluded: boolean; error?: string }>('/api/references/commit', json('POST', payload));
 }
 
 /** A .bib entry against the record its DOI, arXiv id or title finds (Review’s Verify citations), and where it was read. */

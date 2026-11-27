@@ -274,19 +274,6 @@
   padding: 4px 10px 10px;
 }
 
-.composer .composer-effort {
-  height: 30px;
-  min-width: 0;
-  border-color: transparent;
-  color: var(--text-secondary);
-  font-size: 12.5px;
-}
-
-.composer .composer-effort.open {
-  box-shadow: none;
-  background: var(--bg-hover);
-}
-
 .composer-send {
   display: inline-flex;
   align-items: center;
@@ -325,9 +312,11 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-sm);
 }
 
 .ref-card-head {
@@ -424,6 +413,357 @@
   width: 100%;
   padding-top: 6px;
   border-top: 1px solid var(--border);
+}
+
+/* The card's strip of quick actions (Assistant) or inputs to try (References) */
+.composer-presets {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 16px;
+  border-block: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.composer-presets-label {
+  margin-right: 4px;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.composer-presets .chip,
+.composer-context .chip {
+  background: var(--bg-elevated);
+}
+
+.composer-presets button.chip:hover:not(:disabled),
+.composer-context button.chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.composer .chip.on,
+.composer button.chip.on:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.composer-badge {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* a narrow card keeps the icons of its head's buttons */
+@container (max-width: 640px) {
+  .composer-head .btn .btn-label {
+    display: none;
+  }
+}
+
+/* and a very narrow one drops the badge, so Close stays */
+@container (max-width: 460px) {
+  .composer-badge {
+    display: none;
+  }
+}
+
+/* References: the box and Resolve */
+.composer-resolve {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 16px 14px;
+}
+
+.composer-resolve .composer-input {
+  flex: 1;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 11px;
+  background: var(--bg-panel);
+  font-size: 13px;
+}
+
+.composer-resolve .composer-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.composer-resolve-btn {
+  height: 44px;
+  border-radius: 11px;
+}
+
+/* Assistant: the message box, its context chips (they wrap) and its action row (it never does, so Send stays) */
+.composer-box {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  margin: 4px 14px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.composer-box .composer-input {
+  padding: 10px 14px 4px;
+}
+
+.composer-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 12px 8px;
+}
+
+.composer-context:empty {
+  display: none;
+}
+
+.composer-box .composer-bar {
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 7px 10px 9px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-app);
+}
+
+.composer-box .tuning-button {
+  flex: 0 1 auto;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-panel);
+}
+
+.composer-box .composer-attach {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-color: var(--border-strong);
+  background: var(--bg-panel);
+}
+
+.composer-box .composer-send {
+  width: 28px;
+  height: 28px;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.composer-box .composer-send .sf {
+  width: 13px;
+  height: 13px;
+}
+
+/* A reference draft and a suggested edit share one card */
+.draft-card {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.dc-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-app);
+}
+
+.dc-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dc-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.dc-title .sf {
+  width: 13px;
+  height: 13px;
+}
+
+.dc-type-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.dc-type {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font: 500 11.5px/1 var(--font-mono);
+}
+
+.dc-type:hover {
+  color: var(--text);
+}
+
+.dc-type.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.dc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding: 14px;
+}
+
+@container (max-width: 560px) {
+  .dc-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.dc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dc-field.full {
+  grid-column: 1 / -1;
+}
+
+.dc-field > span {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.dc-field input,
+.loc-value {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-app);
+  color: var(--text);
+  font: 12.5px/1 var(--font-ui);
+  outline: none;
+}
+
+.dc-field input:focus,
+.loc-value:focus {
+  border-color: var(--accent);
+  background: var(--bg-panel);
+}
+
+.dc-field .dc-problem {
+  color: var(--red-text);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.loc-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-app);
+}
+
+.composer .loc-kind {
+  height: 26px;
+  min-width: 0;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.loc-value {
+  width: 96px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.loc-preview {
+  margin-left: auto;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font: 600 12px/1 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.bib-preview {
+  margin: 0;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font: 11.5px/1.55 var(--font-mono);
+  overflow-x: auto;
+}
+
+.dc-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.dc-target {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.dc-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.dc-body {
+  padding: 12px 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.suggestion-card .dc-bar + .dc-actions {
+  border-top: 0;
 }
 
 /* --------------------------------------------------------------------------

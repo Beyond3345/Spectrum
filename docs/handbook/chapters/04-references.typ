@@ -12,26 +12,43 @@ Spectrum keeps references in an ordinary `.bib` file in the project, `references
 
 === Adding references with the References chat
 
-The References chat is the assistant panel (#key("⌘", "L")) in its #ui[References] mode (@fig-references-chat). A DOI, a link, an arXiv ID or a paper title pasted into it, one per line for several, is looked up online and written to the project's `.bib`. The look-up is done in the following order,
+The References chat is the assistant panel (#key("⌘", "L")) in its #ui[References] mode (@fig-references-chat). What is pasted into it is looked up online and comes back as an entry to check, and nothing is written to the project's `.bib` until you add it. The chat takes,
+
+- a DOI, an arXiv ID or a link,
+- an ISBN, ISBN-10 or ISBN-13 with or without its hyphens, whose check digit must be right,
+- the title of a book or a paper,
+- a reference formatted in APA, IEEE, Chicago or MLA style and
+- BibTeX entries or RIS records, pasted whole.
+
+DOIs, ISBNs, titles and formatted references go one per line for several, while BibTeX and RIS are read entry by entry and never line by line. While the chat is empty, #ui[Try input] offers an example of each kind, and #ui[New entry] in the header starts a blank entry to fill in by hand. #ui[Resolve], or #key("Enter"), looks up what is in the box in the following order,
 
 + a DOI is resolved through doi.org, which covers Crossref and DataCite DOIs, with the Crossref API as a fallback,
 + an arXiv ID uses the arXiv API, and the published DOI is used instead when the paper has one,
-+ any other link is read for the publisher's metadata, with the search connections tried when a page is blocked or has no authors or date and
-+ a title is searched on Crossref, and when no single result clearly matches, the closest candidates are shown with #ui[Add] to choose from.
++ any other link is read for the publisher's metadata, with the search connections tried when a page is blocked or has no authors or date,
++ an ISBN is looked up in Open Library, with Google Books and then Crossref filling in what the first one found lacks,
++ a title is searched on Crossref, and also on Open Library and Google Books when Crossref has no work of that title. When no single result clearly matches, the closest candidates are shown with #ui[Choose],
++ a formatted reference is read into its fields and then checked on Crossref and, for a book, in the book search. When no source has it, the entry is kept as it was read and its badge says #ui[Not found online · kept as pasted] and
++ pasted BibTeX and RIS are taken as they are, without a look-up.
 
-#shot("figures/04-references/references-chat.png", [The assistant panel in #ui[References] mode. #ui[Cite from Zotero] in its bar is described in @sec-references-zotero.], width: 85%) <fig-references-chat>
+Every look-up goes through Spectrum's own connection, so it uses the proxy in #menu[Settings][System] when one is set.
 
-The citation key is the first author's surname followed by the year, such as `Vaswani2017`. Accents are removed and name particles are joined, so "van der Waals" becomes `VanderWaals`, and a key already used for another paper gets a letter (`Smith2020a`). A paper whose DOI or arXiv ID is already in a `.bib` of the project is reported as #ui[Already there] with its existing key and is not added again. Unknown dates and authors are left empty rather than guessed.
+#shot("figures/04-references/references-chat.png", [The assistant panel in #ui[References] mode with an empty chat. #ui[Zotero] in its header is described in @sec-references-zotero.], width: 85%) <fig-references-chat>
 
-Each result is a card with its status, key, title, authors and year, the BibTeX that was written (folded under #ui[BibTeX]) and #ui[Insert citation] (@fig-references-card). When the `.bib` is not yet loaded by the main file, the card says so and gives the line to add, which is `#bibliography("refs.bib")` in Typst and `\bibliography{references}` in LaTeX. A Markdown document whose front matter names no `bibliography` is given every `.bib` in the project, so it needs no line, while one that names a list is asked to add the file to that list, since a second `bibliography:` line is an error.
+The citation key is the first author's surname followed by the year, such as `Vaswani2017`, or the organisation's name for a manual with no author. Accents are removed and name particles are joined, so "van der Waals" becomes `VanderWaals`, and a key already used for another work gets a letter (`Smith2020a`). A pasted BibTeX entry keeps its own key. A paper whose DOI or arXiv ID is already in a `.bib` of the project, or a book whose ISBN is, is reported as #ui[Already there] with its existing key and is not offered again. Unknown dates and authors are left empty rather than guessed.
 
-#shot("figures/04-references/references-card.png", [A reference added in a Typst project, shown again from the chat's history. The hint at the foot gives the Typst line that loads `refs.bib`.], width: 85%) <fig-references-card>
+Each entry comes back as a card to check before it is added (@fig-references-card). The badge in the panel's header says where it was found. The row of entry types at the top of the card, `@article`, `@inproceedings`, `@book`, `@inbook`, `@incollection`, `@manual`, `@software`, `@online`, `@report`, `@thesis` and `@misc`, decides which fields the card shows. For example, a book shows its edition, publisher, place and ISBN, a part of a book its chapter and pages, a manual its organisation and version and a web page its date and the date it was accessed. The key, the authors, separated by "and", and every other field can be changed in place, and a field the type does not list stays shown while it holds something. The fields hold TeX as a `.bib` file does, and a bare `&`, `%`, `#` or `_` is escaped when the entry is written. #ui[Cite locator] under the fields adds a page, pages, a chapter or a section to the citation and shows the citation as it will be inserted. Below it is the entry exactly as it will be written, with the `.bib` it goes to.
 
-With #ui[Insert `\cite` at the cursor after adding a reference] on, in #menu[Settings][Editor], a single reference that the chat adds or finds is cited at the cursor straight away. This only happens where you had placed the cursor in a document, and otherwise the chat says where to click.
+#shot("figures/04-references/references-card.png", [The card for an ISBN found on Open Library, as `@book` in a project that uses biblatex, with pages 42 to 45 as its locator.], width: 85%) <fig-references-card>
+
+How an entry is written depends on the project. A LaTeX project that loads biblatex, and a Typst or Markdown project, get Biber's entry types and field names, such as `@online`, `@software`, `@thesis` with its `type`, `journaltitle`, `location` and `date`. A LaTeX project that uses classic BibTeX gets `@misc` for a web page or software, `@techreport` for a report, `@phdthesis` or `@mastersthesis` for a thesis, and the version and the access date in `note`, since BibTeX has no field for them. The card says which of the two it writes, #ui[Biber mode] or #ui[BibTeX mode].
+
+#ui[Add to .bib only] writes the entry, and #ui[Add & insert citation] also cites it at the cursor with its locator. The entry is checked once more as it is written, so a work that is already in a `.bib` of the project is reported as #ui[Already there], and a key that another entry has taken in the meantime is given a letter. An added reference then shows as a card with its status, key, title, authors and year, the BibTeX that was written, folded under #ui[BibTeX], and #ui[Insert citation]. When the `.bib` is not yet loaded by the main file, the card says so and gives the line to add, which is `#bibliography("refs.bib")` in Typst and `\bibliography{references}` in LaTeX. A Markdown document whose front matter names no `bibliography` is given every `.bib` in the project, so it needs no line, while one that names a list is asked to add the file to that list, since a second `bibliography:` line is an error.
+
+With #ui[Insert `\cite` at the cursor after adding a reference] on, in #menu[Settings][Editor], a single reference that #ui[Add to .bib only] adds, or that the chat finds already there, is cited at the cursor straight away. This only happens where you had placed the cursor in a document, and otherwise the chat says where to click.
 
 === Citing
 
-A citation is written in the form the document needs. In a LaTeX document Spectrum reads the main file and uses `\parencite` when it loads biblatex, `\citep` when it loads natbib and `\cite` otherwise. A Typst document gets `@key`, and a Markdown document `[@key]`.
+A citation is written in the form the document needs. In a LaTeX document Spectrum reads the main file and uses `\parencite` when it loads biblatex, `\citep` when it loads natbib and `\cite` otherwise. A Typst document gets `@key`, and a Markdown document `[@key]`. A citation inserted with a locator from the References card carries it in the form of the document's language: a postnote in LaTeX, such as `\parencite[pp.~42--45]{Cormen2022}` or `\cite[\S~3.2]{Knuth1997}`, a supplement in Typst, such as `#cite(<Cormen2022>, supplement: [pp. 42–45])`, and pandoc's locator in Markdown, such as `[@Cormen2022, pp. 42-45]`, which the citation style then words.
 
 The LaTeX and Typst templates cite in APA 7th edition, and so does a Markdown document. Since pandoc formats a Markdown document's citations itself, Spectrum gives it the APA 7 style of the Citation Style Language project, a separate file under the Creative Commons Attribution-ShareAlike 3.0 licence, which #menu[Settings][System][Licences] shows. A document that needs another style names its own style file in the front matter, such as `csl: ieee.csl`, and that file is used instead.
 

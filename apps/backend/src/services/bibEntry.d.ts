@@ -1,0 +1,13 @@
+export type Draft = { type: string; key: string; fields: Record<string, string> };
+export type DraftProblems = { key?: string; type?: string; fields: Record<string, string> };
+export const ENTRY_TYPES: { id: string; label: string; fields: string[] }[];
+export const FIELD_LABELS: Record<string, string>;
+export const FIELD_HINTS: Record<string, string>;
+export const VALID_KEY: RegExp;
+export function fieldsShown(type: string, fields?: Record<string, string>): string[];
+export function texValue(name: string, value: string): string;
+export function bracesBalanced(value: string): boolean;
+export function formatEntry(draft: Draft, options?: { biblatex?: boolean; legacyUrls?: boolean }): string;
+export function suggestKey(fields?: Record<string, string>): string;
+export function draftProblems(draft?: Partial<Draft>, taken?: Set<string>): DraftProblems;
+export function hasProblems(problems: DraftProblems): boolean;
