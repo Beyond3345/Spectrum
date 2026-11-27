@@ -78,6 +78,12 @@ function loadsOf(text: string) {
       const changed = drawn.filter((line, i) => line !== before[i]);
       eq(changed.every((line) => line.trimStart().startsWith('\\node')), true, `${path}: only \\node lines change`);
       eq((await readDiagramFile(await diagramFileText(diagram, generated))).diagram?.version, 1, `${path}: still version 1`);
+      // its member bent: version 5, drawn as a curve
+      const parts = (diagram.model as { parts: { kind: string }[] }).parts;
+      const bent = { ...diagram, model: { ...(diagram.model as object), parts: parts.map((p) => (p.kind === 'member' ? { ...p, bend: { sag: -0.5 } } : p)) } };
+      const curved = codeOf(bent, '');
+      eq((await readDiagramFile(await diagramFileText(bent, curved))).diagram?.version, 5, `${path}: bent, version 5`);
+      eq(curved.body.split('\n').some((line) => line.includes(' .. controls ')), true, `${path}: bent, drawn as a curve`);
     } else if (path === 'figures/plot-1.tex') {
       // a series without a legend no longer takes an empty row: its \addlegendentry lines become one \legend
       const legendOut = (t: string) => t.split('\n').filter((line) => !/^\\(?:addlegendentry|legend)\{/.test(line)).join('\n');

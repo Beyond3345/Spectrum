@@ -14,8 +14,8 @@ import DiagramFields from './DiagramFields';
 import { VIEWS, formatValue, readStyle } from './draw';
 import type { StructStyle } from './draw';
 import { changedLooks } from './looks';
-import { UNITS, asStructure, convertUnits, fitLoads, frameOf, memberName, mirror, nodesOf, removeIds, restyleIds, takesColour, takesWidth, turn } from './model';
-import type { AngleArc, Cut, Dimension, Dist, Force, Look, Member, Moment, Note, Part, SNode, StructureModel, Support, SupportType, Units } from './model';
+import { UNITS, asStructure, bendOf, convertUnits, fitLoads, frameOf, memberName, mirror, nodesOf, removeIds, restyleIds, takesColour, takesWidth, turn } from './model';
+import type { AngleArc, Bend, Cut, Dimension, Dist, Force, Look, Member, Moment, Note, Part, SNode, StructureModel, Support, SupportType, Units } from './model';
 import { solve } from './solve';
 import { getShown, useShown } from './store';
 import { symbolSvg } from './symbols';
@@ -23,7 +23,7 @@ import { symbolSvg } from './symbols';
 // ─── rail ───
 
 const GROUPS: [string, [string, string][]][] = [
-  ['Members', [['beam', 'Beam or frame member'], ['bar', 'Truss bar']]],
+  ['Members', [['beam', 'Beam or frame member'], ['bent', 'Bent beam'], ['bar', 'Truss bar']]],
   ['Joints', [['joint', 'Joint'], ['hinge', 'Internal hinge'], ['shear', 'Internal shear release'], ['release', 'Released member end']]],
   ['Supports', [['support:pin', 'Pin'], ['support:roller', 'Roller'], ['support:fixed', 'Fixed'], ['support:guided', 'Guided (slider)'], ['support:spring', 'Spring'], ['support:rotspring', 'Rotational spring']]],
   ['Loads', [['force', 'Point force'], ['moment-ccw', 'Moment, anticlockwise'], ['moment-cw', 'Moment, clockwise'], ['udl', 'Uniform load'], ['linear', 'Linearly varying load']]],
@@ -35,6 +35,7 @@ const KEYS: Record<string, ToolKey> = { beam: 'diagramMember', bar: 'diagramTrus
 
 const HINTS: Record<string, string> = {
   beam: 'drag from one point to another, or click both; ending on a member splits it',
+  bent: 'drag from one point to another; drag the handle in its middle to change the sag',
   bar: 'drag from one joint to another; truss bars carry force along their length only',
   joint: 'click a member to split it, or anywhere for a free joint',
   hinge: 'click a joint, or a member to add one there',
@@ -66,6 +67,7 @@ function Thumb({ tool }: { tool: string }) {
       </g>
     );
   } else if (tool === 'beam') body = line('M4,14 L28,14', 'st-thumb-heavy');
+  else if (tool === 'bent') body = <>{line('M4,10 L28,10', 'st-thumb-dash')}{line('M4,10 Q16,26 28,10', 'st-thumb-heavy')}</>;
   else if (tool === 'bar') body = <>{line('M4,22 L16,6 L28,22 Z')}<circle cx={4} cy={22} r={1.8} className="st-thumb-joint" /><circle cx={16} cy={6} r={1.8} className="st-thumb-joint" /><circle cx={28} cy={22} r={1.8} className="st-thumb-joint" /></>;
   else if (tool === 'joint') body = <>{line('M4,14 L28,14', 'st-thumb-heavy')}<circle cx={16} cy={14} r={2.5} className="st-thumb-dot" /></>;
   else if (tool === 'release') body = <>{line('M4,14 L28,14', 'st-thumb-heavy')}<circle cx={24} cy={14} r={2.2} className="st-thumb-joint" /></>;
@@ -224,6 +226,51 @@ function DirectionFields({ load, onMember, update }: { load: Force | Dist; onMem
   );
 }
 
+const SHAPES = [
+  ['straight', 'Straight'],
+  ['parabola', 'Parabola'],
+  ['sbend', 'S-bend']
+] as const;
+
+/** A beam's shape, its sag and its dashed axis with the sag marked (the canvas's handle drags the sag too). */
+function BendFields({ member, length, unit, onChange }: { member: Member; length: number; unit: string; onChange(bend: Bend | undefined): void }) {
+  const bend = bendOf(member);
+  const shape = !bend ? 'straight' : bend.shape === 'sbend' ? 'sbend' : 'parabola';
+  const set = (patch: Partial<Bend>) => onChange({ sag: bend?.sag ?? -Number((length / 10).toPrecision(2)), ...bend, ...patch });
+  return (
+    <>
+      <Field label="Shape">
+        {(id) => (
+          <Segmented
+            labelledBy={`${id}-label`}
+            value={shape}
+            options={SHAPES}
+            // from straight, a sag of a tenth of the span, down
+            onChange={(next) => (next === 'straight' ? onChange(undefined) : set({ shape: next === 'sbend' ? 'sbend' : undefined }))}
+          />
+        )}
+      </Field>
+      {bend && (
+        <>
+          <Field label="Sag δ" hint={bend.shape === 'sbend' ? 'The largest offset, near each end, to opposite sides. Positive is up, or left on an upright member.' : 'At mid-span. Positive is up, or left on an upright member.'}>
+            {(id) => <NumberInput id={id} value={bend.sag} unit={unit} onChange={(sag) => sag && set({ sag })} />}
+          </Field>
+          <label className="checkbox-row">
+            <input type="checkbox" role="switch" checked={!!bend.ghost} onChange={(e) => set({ ghost: e.target.checked || undefined })} />
+            <span>Dashed straight axis, with the sag marked</span>
+          </label>
+          {bend.ghost && (
+            <Field label="Sag label" hint="LaTeX, such as $\delta$ or $v_{\max}$; empty leaves the mark out.">
+              {(id) => <input id={id} className="input mono" value={bend.label ?? '$\\delta$'} onChange={(e) => set({ label: e.target.value === '$\\delta$' ? undefined : e.target.value })} spellCheck={false} />}
+            </Field>
+          )}
+          <div className="field-hint">The reactions and diagrams take it as straight between its joints.</div>
+        </>
+      )}
+    </>
+  );
+}
+
 function LabelField({ value, onChange }: { value?: string; onChange(v: string | undefined): void }) {
   return (
     <Field label="Label" hint="Shown instead of the value: LaTeX, as in the document, such as $P$ or $w_0$.">
@@ -376,7 +423,7 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
                     ['beam', 'Beam or frame member'],
                     ['bar', 'Truss bar']
                   ]}
-                  onChange={(value) => set({ bar: value === 'bar' || undefined, release: undefined })}
+                  onChange={(value) => set({ bar: value === 'bar' || undefined, release: undefined, ...(value === 'bar' && { bend: undefined }) })}
                 />
               )}
             </Field>
@@ -396,6 +443,7 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
                   <span>Released at {model.nodes.find((n) => n.id === (end ? part.b : part.a))?.name ?? (end ? 'its end' : 'its start')}</span>
                 </label>
               ))}
+            {!part.bar && <BendFields member={part} length={lengthOf(part.id)} unit={units.length} onChange={(bend) => set({ bend })} />}
             <More key={part.id} summary={part.bar ? 'Stiffness, EA' : 'Stiffness, EI and EA'} open={part.EI !== undefined || part.EA !== undefined}>
               {!part.bar && (
                 <Field label="EI" hint="An indeterminate structure needs only the members’ ratios; a settlement and the deflections use the value.">

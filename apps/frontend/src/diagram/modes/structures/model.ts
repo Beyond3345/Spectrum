@@ -50,6 +50,23 @@ export interface Member extends Look {
   /** relative bending and axial stiffness, 1 when left out */
   EI?: number;
   EA?: number;
+  /** drawn bent between its joints (a beam only); the solve still takes it as straight */
+  bend?: Bend;
+}
+
+/**
+ * A member's bend: its sag at mid-span as a parabola, or an S-bend's largest offset (about a fifth of the span from
+ * each end, to opposite sides), in the drawing's length unit. Positive is up, or to the left of an upright member,
+ * whichever way round it was drawn.
+ */
+export interface Bend {
+  sag: number;
+  /** left out, a parabola */
+  shape?: 'parabola' | 'sbend';
+  /** the straight axis between its joints drawn faint and dashed, with the sag marked */
+  ghost?: boolean;
+  /** the sag mark's text with the axis; left out, $\delta$, and empty, no mark */
+  label?: string;
 }
 
 /** Where a point load or moment acts: a node, or a distance along a member from its a end. */
@@ -186,7 +203,7 @@ export function frameOf(model: StructureModel, member: Member) {
   return { a: { x: a.x, y: a.y }, b: { x: b.x, y: b.y }, u, n: { x: -u.y, y: u.x }, length };
 }
 
-/** Where a place is. */
+/** Where a place is: on a bent member's curve, at its distance along the member's chord. */
 export function placeAt(model: StructureModel, place: Place): Pt {
   if ('node' in place) {
     const n = model.nodes.find((x) => x.id === place.node);
@@ -194,8 +211,63 @@ export function placeAt(model: StructureModel, place: Place): Pt {
   }
   const member = model.parts.find((p): p is Member => p.kind === 'member' && p.id === place.member);
   if (!member) return { x: 0, y: 0 };
-  const f = frameOf(model, member);
-  return { x: f.a.x + f.u.x * place.at, y: f.a.y + f.u.y * place.at };
+  return pointAlong(model, member, place.at);
+}
+
+// ─── bent members ───
+
+/** A member's own way along: left to right, or up when it's vertical. Its x is measured from that end and its moment read that way round. */
+export const forward = (u: Pt) => u.x > 1e-9 || (Math.abs(u.x) <= 1e-9 && u.y > 0);
+
+/** An S-bend's inner control points sit this many times its largest offset off the chord: 2√3. */
+const S_BEND = 2 * Math.sqrt(3);
+
+/** A member's bend when it has one that draws (a finite sag that isn't 0, on a beam), else nothing. */
+export function bendOf(member: Member): Bend | undefined {
+  const b = member.bend;
+  return !member.bar && b && typeof b.sag === 'number' && Number.isFinite(b.sag) && b.sag !== 0 ? b : undefined;
+}
+
+/** The way a positive sag goes: the left-hand normal of the member taken left to right (or up). */
+export const bendSide = (f: { u: Pt; n: Pt }): Pt => (forward(f.u) ? f.n : { x: -f.n.x, y: -f.n.y });
+
+/** How far along the chord, as a fraction, the curve is furthest from it: mid-span, or an S-bend's first peak. */
+export const bendPeak = (bend?: Bend) => (bend?.shape === 'sbend' ? (3 - Math.sqrt(3)) / 6 : 0.5);
+
+/** The curve's offset from the chord, s along it: 4δt(1 − t) for a parabola, 6√3·δt(1 − t)(1 − 2t) for an S-bend. */
+export function bendOffset(bend: Bend | undefined, s: number, length: number) {
+  if (!bend || !length) return 0;
+  const t = s / length;
+  return bend.shape === 'sbend' ? 3 * S_BEND * bend.sag * t * (1 - t) * (1 - 2 * t) : 4 * bend.sag * t * (1 - t);
+}
+
+/** The point s along a member's chord, carried onto its curve when it's bent. */
+export function pointAlong(model: StructureModel, member: Member, s: number, f = frameOf(model, member)): Pt {
+  const bend = bendOf(member);
+  if (!bend) return { x: f.a.x + f.u.x * s, y: f.a.y + f.u.y * s };
+  const [h, side] = [bendOffset(bend, s, f.length), bendSide(f)];
+  return { x: f.a.x + f.u.x * s + side.x * h, y: f.a.y + f.u.y * s + side.y * h };
+}
+
+/**
+ * A bent member's curve as one cubic Bézier from a to b: its two inner control points, a third and two thirds along
+ * the chord. A parabola's is exact, its quadratic's control point (mid-span, 2δ off the chord) lifted to a cubic's
+ * (4δ/3 off at both); an S-bend's are 2√3·δ off, to opposite sides, so the curve's largest offset is δ.
+ */
+export function bendControls(f: { a: Pt; b: Pt; u: Pt; n: Pt }, bend: Bend): [Pt, Pt] {
+  const k = bend.shape === 'sbend' ? S_BEND * bend.sag : (4 / 3) * bend.sag;
+  const side = bendSide(f);
+  const at = (t: number, h: number) => ({ x: f.a.x + (f.b.x - f.a.x) * t + side.x * h, y: f.a.y + (f.b.y - f.a.y) * t + side.y * h });
+  return [at(1 / 3, k), at(2 / 3, bend.shape === 'sbend' ? -k : k)];
+}
+
+/** Points along a cubic Bézier, both ends included. */
+export function cubicPoints(a: Pt, c1: Pt, c2: Pt, b: Pt, steps = 24): Pt[] {
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const t = i / steps;
+    const [w0, w1, w2, w3] = [(1 - t) ** 3, 3 * t * (1 - t) ** 2, 3 * t * t * (1 - t), t ** 3];
+    return { x: w0 * a.x + w1 * c1.x + w2 * c2.x + w3 * b.x, y: w0 * a.y + w1 * c1.y + w2 * c2.y + w3 * b.y };
+  });
 }
 
 /** What a distributed load's w is multiplied by to give it per length of member: the slope's cosine when it's per horizontal length. */
@@ -208,9 +280,11 @@ export function loadDirection(load: { angle: number; perp?: boolean }, memberU?:
   return { x: Math.cos(t), y: Math.sin(t) };
 }
 
-/** The member a point lies on, strictly between its ends, and how far along. */
+/** The member a point lies on, strictly between its ends, and how far along: a straight one, as a bent one isn't split. */
 export function memberAt(model: StructureModel, at: Pt, tolerance: number): { member: Member; at: number } | null {
   for (const member of members(model)) {
+    // ponytail: a joint on a bent member would split it into two curves that aren't parabolas of their own; it stays whole
+    if (bendOf(member)) continue;
     const f = frameOf(model, member);
     const s = (at.x - f.a.x) * f.u.x + (at.y - f.a.y) * f.u.y;
     const off = Math.abs((at.x - f.a.x) * f.n.x + (at.y - f.a.y) * f.n.y);
@@ -508,8 +582,16 @@ function reshape(model: StructureModel, ids: string[], pt: (p: Pt) => Pt, dir: (
       : p.kind === 'member' && whole.has(p.id));
     if (!on) return p;
     switch (p.kind) {
-      case 'member':
-        return swap.has(p.id) ? { ...p, a: p.b, b: p.a, ...(p.release && { release: [p.release[1], p.release[0]] }) } : p;
+      case 'member': {
+        const swapped = swap.has(p.id) ? { ...p, a: p.b, b: p.a, ...(p.release && { release: [p.release[1], p.release[0]] as [boolean, boolean] }) } : p;
+        if (!bendOf(p) || !whole.has(p.id)) return swapped;
+        // the curve goes with the member: its sag, measured up (or left), changes sign when the turn or mirror takes the
+        // member's own way round, and an S-bend's when the member is drawn the other way
+        const end = (id: string) => P(model.nodes.find((n) => n.id === id) ?? { x: 0, y: 0 });
+        const [a, b] = [end(swapped.a), end(swapped.b)];
+        const flip = (forward(frameOf(model, p).u) !== forward({ x: b.x - a.x, y: b.y - a.y }) ? -1 : 1) * (swap.has(p.id) && p.bend!.shape === 'sbend' ? -1 : 1);
+        return flip < 0 ? { ...swapped, bend: { ...p.bend!, sag: -p.bend!.sag } } : swapped;
+      }
       case 'support': {
         const angle = R(p.angle ?? 0);
         const { angle: _, ...rest } = p;
@@ -590,7 +672,9 @@ export function memberNear(model: StructureModel, at: Pt, tolerance: number): { 
   for (const member of members(model)) {
     const f = frameOf(model, member);
     const s = Math.max(0, Math.min(f.length, (at.x - f.a.x) * f.u.x + (at.y - f.a.y) * f.u.y));
-    const off = dist(at, { x: f.a.x + f.u.x * s, y: f.a.y + f.u.y * s });
+    // ponytail: a bent member's distance is to its curve at the point's place along the chord, not the nearest point on
+    // it; a little long where the curve is steep, which only makes it harder to hit there
+    const off = dist(at, pointAlong(model, member, s, f));
     if (off <= tolerance && (!best || off < best.off)) best = { member, at: s, off };
   }
   return best && { member: best.member, at: best.at };
@@ -604,8 +688,9 @@ export function snapOnMember(model: StructureModel, p: Pt, grid: number, toleran
   if (!hit) return { x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid };
   const f = frameOf(model, hit.member);
   const s = Math.max(0, Math.min(f.length, Math.round(hit.at / grid) * grid));
+  const on = pointAlong(model, hit.member, s, f);
   // twelve figures: 3.4, not 3.4000000000000004, in the inspector
-  return { x: Number((f.a.x + f.u.x * s).toPrecision(12)), y: Number((f.a.y + f.u.y * s).toPrecision(12)) };
+  return { x: Number(on.x.toPrecision(12)), y: Number(on.y.toPrecision(12)) };
 }
 
 /** The angle that turns a support's symbol to face the members on its node (a wall behind a cantilever's end). */
@@ -671,7 +756,7 @@ export function placeTool(model: StructureModel, tool: string, at: Pt, tolerance
 /** A two-point tool from a to b: a beam or bar between nodes (made or split as needed), a dimension, or a section cut. */
 export function connect(model: StructureModel, tool: string, a: Pt, b: Pt, tolerance: number): { model: StructureModel; id: string } | null {
   if (dist(a, b) <= tolerance) return null;
-  if (tool === 'beam' || tool === 'bar') {
+  if (tool === 'beam' || tool === 'bar' || tool === 'bent') {
     const first = nodeAt(model, a, tolerance);
     const second = nodeAt(first.model, b, tolerance);
     if (first.node === second.node) return null;
@@ -679,7 +764,9 @@ export function connect(model: StructureModel, tool: string, a: Pt, b: Pt, toler
     const same = next.parts.find((p) => p.kind === 'member' && ((p.a === first.node && p.b === second.node) || (p.a === second.node && p.b === first.node)));
     if (same) return { model: next, id: same.id };
     const id = newId(next, 'm');
-    return { model: { ...next, parts: [...next.parts, { id, kind: 'member', a: first.node, b: second.node, ...(tool === 'bar' && { bar: true }) }] }, id };
+    // a bent beam starts sagging a tenth of its span, to two figures
+    const bend = tool === 'bent' && { bend: { sag: -Number((dist(a, b) / 10).toPrecision(2)) } };
+    return { model: { ...next, parts: [...next.parts, { id, kind: 'member', a: first.node, b: second.node, ...(tool === 'bar' && { bar: true }), ...bend }] }, id };
   }
   if (tool.startsWith('dim-')) {
     const [na, nb] = [a, b].map((p) => model.nodes.find((n) => dist(n, p) <= tolerance));
@@ -746,7 +833,7 @@ export function convertUnits(model: StructureModel, from: Units, to: Units): Str
       case 'member': {
         const { EI, ...rest } = p;
         const ei = p.bar ? EI : stiff(EI);
-        return { ...rest, ...(ei !== undefined && { EI: ei }) };
+        return { ...rest, ...(ei !== undefined && { EI: ei }), ...(p.bend && { bend: { ...p.bend, sag: c(p.bend.sag, l) } }) };
       }
       case 'support':
         return { ...p, ...(p.k !== undefined && { k: c(p.k, p.type === 'rotspring' ? f * l : f / l) }), ...(p.settle !== undefined && { settle: c(p.settle, l) }) };
@@ -774,7 +861,7 @@ export function convertUnits(model: StructureModel, from: Units, to: Units): Str
 
 /**
  * The drawing has what Spectrum 2.5 added (a shear release, a settlement, a load on plan, the deflected shape, x labels)
- * or later (a part's colour or thickness): file version 5.
+ * or later (a part's colour or thickness, a bent member): file version 5.
  */
 export function structureNeedsVersion5(raw: unknown, style: Record<string, unknown>) {
   const model = asStructure(raw);
@@ -782,7 +869,7 @@ export function structureNeedsVersion5(raw: unknown, style: Record<string, unkno
     style.deflection !== undefined ||
     style.positions !== undefined ||
     model.nodes.some((n) => n.shear) ||
-    model.parts.some((p) => (p.kind === 'support' && p.settle !== undefined) || (p.kind === 'dist' && p.projected !== undefined) || (p as Look).colour !== undefined || (p as Look).width !== undefined)
+    model.parts.some((p) => (p.kind === 'support' && p.settle !== undefined) || (p.kind === 'dist' && p.projected !== undefined) || (p as Look).colour !== undefined || (p as Look).width !== undefined || (p.kind === 'member' && p.bend !== undefined))
   );
 }
 

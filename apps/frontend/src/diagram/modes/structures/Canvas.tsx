@@ -2,7 +2,7 @@
 // every edit, with nodes to drag and the rail's tools to place members, supports, loads and notes. Nodes snap to the
 // grid in the drawing's unit and to each other; members are drawn node to node, and one ending on a member splits it.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, SVGProps } from 'react';
 import Icon from '../../../app/Icon';
 import { CanvasGrid } from '../../CanvasGrid';
 import { useCanvasPrefs } from '../../FlowCanvas';
@@ -13,7 +13,7 @@ import { colourCss } from '../shared';
 import { buildScene, extentOf, fitScale, readStyle } from './draw';
 import type { Anchor, Item } from './draw';
 import { INNER_SEP } from './labels';
-import { UNITS, asStructure, connect, dist, frameOf, inBox, mirror, moveBy, nodesOf, placeTool, settleNode, snapOnMember } from './model';
+import { UNITS, asStructure, bendOf, bendPeak, bendSide, connect, dist, frameOf, inBox, mirror, moveBy, nodesOf, placeTool, pointAlong, settleNode, snapOnMember } from './model';
 import type { Part, Pt, StructureModel, Units } from './model';
 import { solve } from './solve';
 import { setShown } from './store';
@@ -48,10 +48,12 @@ type Drag =
   /** a load sliding along its member, or a distributed load's end */
   | { kind: 'slide'; id: string; end: 'at' | 'from' | 'to'; base: StructureModel }
   | { kind: 'point'; id: string; end: 'at' | 'p' | 'q'; base: StructureModel }
+  /** a beam's bend, by the handle where its curve is furthest from its chord */
+  | { kind: 'bend'; id: string; base: StructureModel }
   /** a two-point tool from a, the pointer at b */
   | { kind: 'connect'; a: Pt; b: Pt; moved: boolean };
 
-const TWO_POINT = (tool: string) => tool === 'beam' || tool === 'bar' || tool === 'cut' || tool.startsWith('dim-');
+const TWO_POINT = (tool: string) => tool === 'beam' || tool === 'bent' || tool === 'bar' || tool === 'cut' || tool.startsWith('dim-');
 
 /** A label as it prints (sketch.tsx): units as siunitx sets them, A_y and δ_max with real subscripts. */
 const sketched = (tex: string) => svgRuns(unitsAsText(tex).replace(/\\(max|min)(?![a-zA-Z])/g, '$1'));
@@ -259,7 +261,8 @@ export default function StructureCanvas({
     if (handle) {
       const [id, end] = handle.split(':');
       const part = model.parts.find((p) => p.id === id);
-      if (part?.kind === 'dist') setDrag({ kind: 'slide', id, end: end as 'from' | 'to', base: model });
+      if (end === 'bend') setDrag({ kind: 'bend', id, base: model });
+      else if (part?.kind === 'dist') setDrag({ kind: 'slide', id, end: end as 'from' | 'to', base: model });
       else if (part) setDrag({ kind: 'point', id, end: end as 'p' | 'q', base: model });
       return;
     }
@@ -323,6 +326,20 @@ export default function StructureCanvas({
           return p;
         })
       });
+    } else if (drag.kind === 'bend') {
+      // the offset from the chord where the curve is furthest from it, in whole grid steps; 0 straightens it
+      setDraft({
+        ...drag.base,
+        parts: drag.base.parts.map((p): Part => {
+          if (p.id !== drag.id || p.kind !== 'member') return p;
+          const f = frameOf(drag.base, p);
+          const t = bendPeak(p.bend) * f.length;
+          const side = bendSide(f);
+          const sag = Math.round(((point.x - f.a.x - f.u.x * t) * side.x + (point.y - f.a.y - f.u.y * t) * side.y) / grid) * grid;
+          const { bend: _, ...straight } = p;
+          return sag ? { ...p, bend: { ...p.bend, sag: Number(sag.toPrecision(12)) } } : straight;
+        })
+      });
     } else if (drag.kind === 'point') {
       const p = snapToGrid(point);
       setDraft({
@@ -339,7 +356,7 @@ export default function StructureCanvas({
     commit(made.model);
     onSelect?.([made.id]);
     // members keep the tool, to draw the next; a dimension or cut goes back to Select
-    if (tool !== 'beam' && tool !== 'bar') onTool?.('select');
+    if (tool !== 'beam' && tool !== 'bent' && tool !== 'bar') onTool?.('select');
   };
 
   const onPointerUp = () => {
@@ -434,12 +451,15 @@ export default function StructureCanvas({
     switch (item.t) {
       case 'line': {
         const pts = item.pts.map(T).map((p) => `${p.x},${p.y}`).join(' ');
-        const Tag = item.closed ? 'polygon' : 'polyline';
+        // a bent member as the cubic the export draws
+        const curve = item.controls && [item.pts[0], ...item.controls, item.pts[1]].map(T);
+        // called, not rendered as a component, so React keeps the same element from one render to the next
+        const shape = (props: SVGProps<SVGPathElement & SVGPolylineElement>) => (curve ? <path d={`M${curve[0].x},${curve[0].y} C${curve.slice(1).map((p) => `${p.x},${p.y}`).join(' ')}`} {...props} /> : item.closed ? <polygon points={pts} {...props} /> : <polyline points={pts} {...props} />);
         return (
           <g key={key} {...hit} className={`st-item ${on ? 'selected' : ''}`}>
-            {on && <Tag points={pts} className="st-halo" />}
-            {id && <Tag points={pts} className="st-hit" />}
-            <Tag points={pts} className={`st-ink st-${item.ink} ${item.fill === 'load' ? 'st-fill-load' : ''}`} style={{ ...(item.fill && item.fill !== 'load' && { fill: colourCss(style.diagrams[item.fill].fill), fillOpacity: style.diagrams[item.fill].opacity }), ...strokeOf(item) }} markerEnd={item.arrow ? 'url(#st-arrow)' : undefined} markerStart={item.arrow === '<->' ? 'url(#st-arrow-start)' : undefined} />
+            {on && shape({ className: 'st-halo' })}
+            {id && shape({ className: 'st-hit' })}
+            {shape({ className: `st-ink st-${item.ink} ${item.fill === 'load' ? 'st-fill-load' : ''}`, style: { ...(item.fill && item.fill !== 'load' && { fill: colourCss(style.diagrams[item.fill].fill), fillOpacity: style.diagrams[item.fill].opacity }), ...strokeOf(item) }, markerEnd: item.arrow ? 'url(#st-arrow)' : undefined, markerStart: item.arrow === '<->' ? 'url(#st-arrow-start)' : undefined })}
           </g>
         );
       }
@@ -505,9 +525,10 @@ export default function StructureCanvas({
         if (p.kind === 'dist') {
           const member = shown.parts.find((m) => m.kind === 'member' && m.id === p.member);
           if (!member || member.kind !== 'member') return [];
-          const f = frameOf(shown, member);
-          return (['from', 'to'] as const).map((end) => ({ key: `${p.id}:${end}`, at: { x: f.a.x + f.u.x * p[end], y: f.a.y + f.u.y * p[end] } }));
+          return (['from', 'to'] as const).map((end) => ({ key: `${p.id}:${end}`, at: pointAlong(shown, member, p[end]) }));
         }
+        // one beam picked: its bend, where its curve is furthest from its chord (mid-span when straight)
+        if (p.kind === 'member' && !p.bar && selection.length === 1) return [{ key: `${p.id}:bend`, at: pointAlong(shown, p, bendPeak(bendOf(p)) * frameOf(shown, p).length) }];
         return [];
       });
 
@@ -542,6 +563,7 @@ export default function StructureCanvas({
             })}
             {handles.map((h) => {
               const p = S({ x: h.at.x * scale, y: h.at.y * scale });
+              if (h.key.endsWith(':bend')) return <circle key={h.key} data-handle={h.key} className="ckt-handle" cx={p.x} cy={p.y} r={5}><title>Drag to bend the beam; back to the line straightens it</title></circle>;
               return <rect key={h.key} data-handle={h.key} className="ckt-handle" x={p.x - 4} y={p.y - 4} width={8} height={8} />;
             })}
             {ghost && (() => {
@@ -588,7 +610,7 @@ function shiftItem(item: Item, shift?: Pt): Item {
   const move = (p: Pt) => ({ x: p.x + shift.x, y: p.y + shift.y });
   switch (item.t) {
     case 'line':
-      return { ...item, pts: item.pts.map(move) };
+      return { ...item, pts: item.pts.map(move), ...(item.controls && { controls: [move(item.controls[0]), move(item.controls[1])] as [Pt, Pt] }) };
     case 'arc':
       return { ...item, c: move(item.c) };
     default:
