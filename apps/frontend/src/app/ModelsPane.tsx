@@ -234,7 +234,7 @@ function ProviderModels({
 
 const ROLE_TEXT: Record<ModelRole, [name: string, use: string]> = {
   quick: ['Quick (autocomplete & references)', 'For autocomplete and for splitting pasted references. Listed models think as little as they allow; other servers use their own default.'],
-  vision: ['Vision (images & layout check)', 'For image → LaTeX and the layout check in template transfer, with the model’s recommended effort.']
+  vision: ['Vision (images & layout check)', 'For the layout check in template transfer, with the model’s recommended effort.']
 };
 
 /**

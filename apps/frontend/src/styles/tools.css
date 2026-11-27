@@ -547,12 +547,21 @@
   background: var(--bg-panel);
 }
 
-.composer-box .composer-attach {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-color: var(--border-strong);
-  background: var(--bg-panel);
+/* the persona, a pill with its dot as the chips beside it */
+.composer-context .persona-pick {
+  height: 26px;
+  padding: 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.composer-context .persona-pick:hover:not(:disabled),
+.composer-context .persona-pick.open {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .composer-box .composer-send {

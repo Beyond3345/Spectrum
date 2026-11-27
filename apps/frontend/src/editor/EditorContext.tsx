@@ -56,7 +56,7 @@ export interface EditorApi {
   setCompileOption: <K extends keyof CompileOptions>(key: K, value: CompileOptions[K] | null) => Promise<void>;
   pdfPages: number | null;
   settings: AppSettings;
-  llm: { main: Partial<LLMConfig>; search: Partial<LLMConfig>; vision: Partial<LLMConfig>; quick: Partial<LLMConfig> };
+  llm: { main: Partial<LLMConfig>; search: Partial<LLMConfig>; quick: Partial<LLMConfig> };
   notify(message: string, tone?: 'info' | 'success' | 'error'): void;
   /** opens Settings, at a section when one is named */
   openSettings(section?: SettingsSection): void;
