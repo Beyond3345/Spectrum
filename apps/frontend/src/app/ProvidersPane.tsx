@@ -7,7 +7,7 @@ import Select from './Select';
 import { testSays, useConnectionTest } from './connectionTest';
 import { isKeyRef, keyFailure, selectSavedKey } from './keys';
 import { IS_WINDOWS } from './platform';
-import { CUSTOM, connectPatch, connectionName, connections, credsPatch, disconnectPatch, draftConnection, isHidden, modelRows, ready } from './providerCards';
+import { CUSTOM, connectPatch, connectionName, connections, credsPatch, disconnectBlock, disconnectPatch, draftConnection, isHidden, modelRows, ready } from './providerCards';
 import type { Connection, Use } from './providerCards';
 import { hostOf, loadSettings, useLivePreset, useProviders, useSettings } from './settings';
 import type { AppSettings } from './settings';
@@ -89,9 +89,9 @@ function ProviderRow({
         <button
           className="btn small ghost"
           aria-label={`Disconnect ${name}`}
-          // a main model's provider with no key has nothing left to forget
-          disabled={conn.at === 'main' && !conn.key}
-          title={conn.at === 'main' && !conn.key ? 'The main model runs on it. Choose another main model in Settings › Models first.' : undefined}
+          // never while a model runs on it: no role is left pointing at a provider with no key
+          disabled={!!disconnectBlock(conn)}
+          title={disconnectBlock(conn) || undefined}
           onClick={onDisconnect}
         >
           Disconnect
@@ -210,11 +210,8 @@ export default function ProvidersPane({ onSection }: { onSection: (section: Sect
 
   const disconnect = async (conn: Connection) => {
     const name = connectionName(conn);
-    const after = [
-      conn.uses.includes('main') && `The main model stays on ${name}, without a key, until you choose another in Settings › Models.`,
-      conn.uses.some((use) => use !== 'main') && !conn.uses.includes('main') && 'A quick or vision model that runs on it goes back to the main model’s provider.'
-    ].filter(Boolean);
-    if (conn.key && !(await confirmDialog({ title: `Disconnect ${name}?`, message: ['Spectrum forgets its key.', ...after].join(' '), confirmLabel: 'Disconnect', destructive: true }))) return;
+    if (disconnectBlock(conn)) return;
+    if (conn.key && !(await confirmDialog({ title: `Disconnect ${name}?`, message: 'Spectrum forgets its key.', confirmLabel: 'Disconnect', destructive: true }))) return;
     update(disconnectPatch(loadSettings(), providers, conn));
     if (draft === conn.id) setDraft(null);
     if (editing === conn.at) setEditing('');

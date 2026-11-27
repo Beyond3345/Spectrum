@@ -503,11 +503,15 @@ export function cleanHidden(value: unknown): Record<string, string[]> {
 
 /**
  * A provider as the model menus list it: without the models switched off in Settings › Models. The main model stays
- * whatever the switches say, so the menu always has the model in use.
+ * whatever the switches say, so the menu always has the model in use (Settings does not let a model in use be
+ * switched off, but settings from before, or from another computer, may say so).
  */
 export function shownPreset<T extends ProviderPreset | null>(preset: T, settings: Pick<AppSettings, 'hiddenModels' | 'llmModel'>): T {
   const off = preset ? settings.hiddenModels[preset.id] : undefined;
-  return preset && off?.length ? { ...preset, models: preset.models.filter((m) => m.id === settings.llmModel || !off.includes(m.id)) } : preset;
+  if (!preset || !off?.length) return preset;
+  const hidden = (m: ProviderModel) => m.id !== settings.llmModel && off.includes(m.id);
+  // the ones left out go along as `off`, so a thread that chose one can still name it (usage.ts turnChoice)
+  return { ...preset, models: preset.models.filter((m) => !hidden(m)), off: preset.models.filter(hidden) };
 }
 
 const effortLabel = (level: ReasoningEffort) => REASONING_EFFORTS.find(([value]) => value === level)?.[1] || level;

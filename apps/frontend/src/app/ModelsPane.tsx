@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import type { AutoPrice, ProviderPreset } from '../api/client';
+import { listChats } from '../api/client';
+import type { AutoPrice, ChatSummary, ProviderPreset } from '../api/client';
 import BrandMark, { modelBrand, providerBrand } from './BrandMark';
 import Icon from './Icon';
 import Select from './Select';
 import { autoPrice, normalizeModelId, useAutoPrices } from './autoPrices';
 import { useConnectionTest } from './connectionTest';
-import { connectionName, connections, contextText, hiddenPatch, isHidden, mainModelPatch, modelRows, ready, roleAt, roleModelPatch } from './providerCards';
-import type { Connection, ModelRow } from './providerCards';
+import { connectionName, connections, contextText, hiddenPatch, isHidden, mainModelPatch, modelRows, modelUses, ready, roleAt, roleModelPatch, useText } from './providerCards';
+import type { Connection, ModelRow, ModelUse } from './providerCards';
 import { CURRENCIES, PRICE_FIELDS, ROLE_FIELDS, cleanPrices, effortOptions, followsMain, llmConfigFor, modelOf, recommendedFor, useLivePreset, useProviders, useSettings } from './settings';
 import type { AppSettings, Currency, ModelRole, Price } from './settings';
 import type { Section } from './settingsNav';
@@ -152,8 +153,8 @@ function ProviderModels({
   onToggle: () => void;
   onListed: (at: string, listed: Listed) => void;
   onPrice: (id: string) => void;
-  /** the models a role runs on this provider, which stay in the menus */
-  inUse: Map<string, string>;
+  /** the models in use on this provider (a role's, a thread's), which can't be switched off */
+  inUse: Map<string, ModelUse>;
 }) {
   const live = useLivePreset(conn.preset, conn.endpoint, true);
   const test = useConnectionTest(conn.id, conn.endpoint, conn.key);
@@ -202,7 +203,8 @@ function ProviderModels({
                 <div className="inset-info">
                   <div className="inset-name">
                     {m.label}
-                    {use && <span className="badge accent" title={`The ${use} model`}>{use[0].toUpperCase() + use.slice(1)}</span>}
+                    {use?.role && <span className="badge accent" title={`The ${use.role} model`}>{use.role[0].toUpperCase() + use.role.slice(1)}</span>}
+                    {!!use?.threads.length && <span className="badge" title={use.threads.join(', ')}>{use.threads.length === 1 ? 'Thread' : `${use.threads.length} threads`}</span>}
                   </div>
                   <div className="inset-sub">{m.known ? [m.note, !m.vision && !/text only/i.test(m.note) && 'text only'].filter(Boolean).join(', ') : 'Listed by the provider'}</div>
                 </div>
@@ -220,7 +222,7 @@ function ProviderModels({
                   aria-label={`${m.label} in the model menus`}
                   checked={!!use || !isHidden(settings, conn.id, m.id)}
                   disabled={!!use}
-                  title={use ? `In use as the ${use} model` : undefined}
+                  title={use ? useText(use) : undefined}
                   onChange={(e) => update(hiddenPatch(settings, conn.id, m.id, !e.target.checked))}
                 />
               </div>
@@ -244,10 +246,13 @@ const ROLE_TEXT: Record<ModelRole, [name: string, use: string]> = {
  */
 export default function ModelsPane({
   onSection,
+  projectId,
   otherModel,
   setOtherModel
 }: {
   onSection: (section: Section) => void;
+  /** the open project, whose chats' own models count as in use */
+  projectId?: string;
   otherModel: Record<string, boolean>;
   setOtherModel: Dispatch<SetStateAction<Record<string, boolean>>>;
 }) {
@@ -259,6 +264,11 @@ export default function ModelsPane({
   const [open, setOpen] = useState<Record<string, boolean>>({ main: true });
   const [picked, setPicked] = useState<Picked>({ main: settings.llmModel, id: settings.llmModel });
   const prices = useRef<HTMLHeadingElement>(null);
+  // the open project's chats, for the models they chose for themselves
+  const [chats, setChats] = useState<ChatSummary[]>([]);
+  useEffect(() => {
+    if (projectId) listChats(projectId).then((res) => setChats(res.chats), () => undefined);
+  }, [projectId]);
   if (!providers.length) return <div className="field-hint section-hint"><span className="spinner" /> Loading the providers…</div>;
 
   const conns = connections(settings, providers);
@@ -362,15 +372,6 @@ export default function ModelsPane({
   };
 
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const inUse = (conn: Connection) => {
-    const used = new Map<string, string>();
-    for (const role of ['vision', 'quick'] as const) {
-      const at = roleAt(settings, conns, role);
-      if (at.conn === conn && at.model) used.set(at.model, role);
-    }
-    if (conn === main && settings.llmModel) used.set(settings.llmModel, 'main');
-    return used;
-  };
   const known = conns.flatMap((conn) => rowsOf(conn).map((m): [string, string] => [m.id, m.label]));
   const any = !words.length || conns.some((conn) => rowsOf(conn).some((m) => words.every((w) => `${m.label} ${m.id} ${m.note} ${connectionName(conn)}`.toLowerCase().includes(w))));
 
@@ -417,13 +418,13 @@ export default function ModelsPane({
               setPicked({ main: settings.llmModel, id });
               prices.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
             }}
-            inUse={inUse(conn)}
+            inUse={modelUses(settings, conns, conn, chats)}
           />
         ))}
         {!any && <div className="field-hint">No model matches “{query.trim()}”.</div>}
       </div>
       <div className="field-hint section-hint">
-        A model switched off leaves the model menus: the Spectrum agent’s and the ones below. Beside each is its context and its price for input and output, per million tokens; click it to set your own.
+        A model switched off leaves the model menus: the Spectrum agent’s, the Assistant’s and the ones below. A model in use stays on until another is chosen where it is used. Beside each is its context and its price for input and output, per million tokens; click it to set your own.
       </div>
 
       <h4 className="pane-label">Default roles (pick from enabled models)</h4>

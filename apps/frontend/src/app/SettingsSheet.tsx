@@ -544,7 +544,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
 
           {section === 'providers' && <ProvidersPane onSection={go} />}
 
-          {section === 'models' && <ModelsPane onSection={go} otherModel={otherModel} setOtherModel={setOtherModel} />}
+          {section === 'models' && <ModelsPane onSection={go} projectId={projectId} otherModel={otherModel} setOtherModel={setOtherModel} />}
 
           {section === 'search' && (
             <>

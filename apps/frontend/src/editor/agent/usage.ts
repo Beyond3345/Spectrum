@@ -154,17 +154,32 @@ export function localMeter(events: AgentEvent[]): Meter | null {
 /**
  * A thread's model and effort as its turns send them, and what the picker offers: the main provider's models (the
  * model in Settings › Models first if it is not listed, as a typed or Other one is) and the efforts the chosen model
- * accepts. A choice that no longer fits (the provider changed in Settings) falls back to the settings.
+ * accepts. A choice the provider no longer has at all (the provider changed in Settings) falls back to the settings.
+ * A model switched off in Settings › Models is another matter: the thread keeps it, listed last so the menu can name
+ * it, and `off` says so, for the tab to ask before it sends (offNotice).
  */
-export function turnChoice(preset: ProviderPreset | null, settings: { llmModel: string; reasoningEffort: ReasoningEffort }, choice: TurnChoice) {
+export function turnChoice(
+  preset: ProviderPreset | null,
+  settings: { llmModel: string; reasoningEffort: ReasoningEffort },
+  choice: TurnChoice
+): { model: string; effort: ReasoningEffort; models: [string, string][]; efforts: [ReasoningEffort, string][]; off?: true } {
   const models: [string, string][] = (preset?.models || []).map((m) => [m.id, m.label]);
   if (settings.llmModel && !models.some(([id]) => id === settings.llmModel)) models.unshift([settings.llmModel, settings.llmModel]);
+  const off = choice.model ? preset?.off?.find((m) => m.id === choice.model) : undefined;
+  if (off) models.push([off.id, off.label]);
   const model = choice.model && models.some(([id]) => id === choice.model) ? choice.model : settings.llmModel;
-  const efforts = effortOptions(modelOf(preset, model));
+  const efforts = effortOptions(off || modelOf(preset, model));
   const fits = (e?: ReasoningEffort): e is ReasoningEffort => !!e && efforts.some(([v]) => v === e);
   const effort: ReasoningEffort = fits(choice.effort) ? choice.effort : fits(settings.reasoningEffort) ? settings.reasoningEffort : 'default';
-  return { model, effort, models, efforts };
+  return { model, effort, models, efforts, ...(off && { off: true as const }) };
 }
+
+/**
+ * What the Spectrum agent's tab says, above its message box, while the thread's model is switched off: sending waits
+ * until another model is chosen or this one is switched back on. '' while the choice can be sent as it is.
+ */
+export const offNotice = (choice: { model: string; models: [string, string][]; off?: true }) =>
+  choice.off ? `${choice.models.find(([id]) => id === choice.model)?.[1] || choice.model}, this thread’s model, is switched off in Settings › Models.` : '';
 
 /** A chip of the stats row under an agent's message box, as DeepSeek Harness shows it, and the popover it opens */
 export type StatChip = {

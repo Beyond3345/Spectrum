@@ -989,7 +989,10 @@ function Editor({ projectId, path, loaded, initialTool, onReload }: { projectId:
         </button>
         {settingsOpen && (
           <Sheet title="Diagram composer settings" onClose={() => setSettingsOpen(false)} width={560}>
-            <ComposerPane />
+            {/* the same grouped cards as Settings */}
+            <div className="settings-pane composer-settings">
+              <ComposerPane />
+            </div>
           </Sheet>
         )}
         <MenuButton
