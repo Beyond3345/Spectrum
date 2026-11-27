@@ -226,17 +226,32 @@ function DirectionFields({ load, onMember, update }: { load: Force | Dist; onMem
   );
 }
 
+/** in the prototype's order: the bent shapes first */
 const SHAPES = [
-  ['straight', 'Straight'],
   ['parabola', 'Parabola'],
-  ['sbend', 'S-bend']
+  ['sbend', 'S-bend'],
+  ['straight', 'Straight']
 ] as const;
 
-/** A beam's shape, its sag and its dashed axis with the sag marked (the canvas's handle drags the sag too). */
-function BendFields({ member, length, unit, onChange }: { member: Member; length: number; unit: string; onChange(bend: Bend | undefined): void }) {
+/**
+ * A beam's shape, its sag (a slider beside the exact value) and its dashed axis with the sag marked; the canvas's handle
+ * drags the sag too. A sag of 0 draws it straight but keeps its shape and axis for when it bends again, and a beam with
+ * nothing kept has no bend at all, so its file is as before.
+ */
+function BendFields({ member, length, unit, grid, onChange }: { member: Member; length: number; unit: string; grid: number; onChange(bend: Bend | undefined): void }) {
+  const raw = member.bend;
   const bend = bendOf(member);
   const shape = !bend ? 'straight' : bend.shape === 'sbend' ? 'sbend' : 'parabola';
-  const set = (patch: Partial<Bend>) => onChange({ sag: bend?.sag ?? -Number((length / 10).toPrecision(2)), ...bend, ...patch });
+  const sag = bend?.sag ?? 0;
+  // from straight, a sag of a tenth of the span, down
+  const fallback = -Number((length / 10).toPrecision(2));
+  const set = (patch: Partial<Bend>) => {
+    const next: Bend = { ...raw, sag: raw?.sag ?? 0, ...patch };
+    onChange(next.sag || next.ghost || next.shape || next.label !== undefined ? next : undefined);
+  };
+  // the slider: a fifth of a grid step, a quarter of the span either way (further when the sag is)
+  const step = Number((grid / 5).toPrecision(6));
+  const reach = Math.ceil(Math.max(length / 4, Math.abs(sag)) / step) * step;
   return (
     <>
       <Field label="Shape">
@@ -245,28 +260,29 @@ function BendFields({ member, length, unit, onChange }: { member: Member; length
             labelledBy={`${id}-label`}
             value={shape}
             options={SHAPES}
-            // from straight, a sag of a tenth of the span, down
-            onChange={(next) => (next === 'straight' ? onChange(undefined) : set({ shape: next === 'sbend' ? 'sbend' : undefined }))}
+            onChange={(next) => (next === 'straight' ? set({ sag: 0, shape: undefined }) : set({ shape: next === 'sbend' ? 'sbend' : undefined, sag: bend?.sag || fallback }))}
           />
         )}
       </Field>
-      {bend && (
-        <>
-          <Field label="Sag δ" hint={bend.shape === 'sbend' ? 'The largest offset, near each end, to opposite sides. Positive is up, or left on an upright member.' : 'At mid-span. Positive is up, or left on an upright member.'}>
-            {(id) => <NumberInput id={id} value={bend.sag} unit={unit} onChange={(sag) => sag && set({ sag })} />}
-          </Field>
-          <label className="checkbox-row">
-            <input type="checkbox" role="switch" checked={!!bend.ghost} onChange={(e) => set({ ghost: e.target.checked || undefined })} />
-            <span>Dashed straight axis, with the sag marked</span>
-          </label>
-          {bend.ghost && (
-            <Field label="Sag label" hint="LaTeX, such as $\delta$ or $v_{\max}$; empty leaves the mark out.">
-              {(id) => <input id={id} className="input mono" value={bend.label ?? '$\\delta$'} onChange={(e) => set({ label: e.target.value === '$\\delta$' ? undefined : e.target.value })} spellCheck={false} />}
-            </Field>
-          )}
-          <div className="field-hint">The reactions and diagrams take it as straight between its joints.</div>
-        </>
+      <Field label="Sag δ" hint={shape === 'straight' ? 'Drag or type a sag to bend the beam.' : shape === 'sbend' ? 'The largest offset, near each end, to opposite sides. Positive is up, or left on an upright member.' : 'At mid-span. Positive is up, or left on an upright member.'}>
+        {(id) => (
+          <div className="st-sag">
+            <input id={id} type="range" min={-reach} max={reach} step={step} value={sag} onChange={(e) => set({ sag: Number(Number(e.target.value).toPrecision(10)) })} />
+            <NumberInput label="Sag δ, exactly" value={sag} unit={unit} onChange={(next) => set({ sag: next })} />
+          </div>
+        )}
+      </Field>
+      {/* as the prototype has it, the switch is there for a straight beam too, and drawn once it bends */}
+      <label className="checkbox-row">
+        <input type="checkbox" role="switch" checked={!!raw?.ghost} onChange={(e) => set({ ghost: e.target.checked || undefined })} />
+        <span>Dashed straight axis, with the sag marked</span>
+      </label>
+      {raw?.ghost && (
+        <Field label="Sag label" hint="LaTeX, such as $\delta$ or $v_{\max}$; empty leaves the mark out.">
+          {(id) => <input id={id} className="input mono" value={raw.label ?? '$\\delta$'} onChange={(e) => set({ label: e.target.value === '$\\delta$' ? undefined : e.target.value })} spellCheck={false} />}
+        </Field>
       )}
+      {bend && <div className="field-hint">The reactions and diagrams take it as straight between its joints.</div>}
     </>
   );
 }
@@ -328,7 +344,9 @@ function GroupActions({ model, ids, onChange }: { model: StructureModel; ids: st
 export function StructureInspector({ model: raw, onChange, selection = [] }: { model: StructureModel; onChange(m: StructureModel): void; selection?: string[] }) {
   const model = useMemo(() => asStructure(raw), [raw]);
   const solution = useMemo(() => solve(model), [model]);
-  const units = UNITS[useShown().style.units];
+  const shownStyle = useShown().style;
+  const units = UNITS[shownStyle.units];
+  const grid = units.grids[shownStyle.grid];
   const picked = [...model.nodes.filter((n) => selection.includes(n.id)), ...model.parts.filter((p) => selection.includes(p.id))];
   const remove = (
     <div className="ckt-row">
@@ -443,7 +461,7 @@ export function StructureInspector({ model: raw, onChange, selection = [] }: { m
                   <span>Released at {model.nodes.find((n) => n.id === (end ? part.b : part.a))?.name ?? (end ? 'its end' : 'its start')}</span>
                 </label>
               ))}
-            {!part.bar && <BendFields member={part} length={lengthOf(part.id)} unit={units.length} onChange={(bend) => set({ bend })} />}
+            {!part.bar && <BendFields member={part} length={lengthOf(part.id)} unit={units.length} grid={grid} onChange={(bend) => set({ bend })} />}
             <More key={part.id} summary={part.bar ? 'Stiffness, EA' : 'Stiffness, EI and EA'} open={part.EI !== undefined || part.EA !== undefined}>
               {!part.bar && (
                 <Field label="EI" hint="An indeterminate structure needs only the members’ ratios; a settlement and the deflections use the value.">

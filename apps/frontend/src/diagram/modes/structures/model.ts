@@ -869,7 +869,7 @@ export function structureNeedsVersion5(raw: unknown, style: Record<string, unkno
     style.deflection !== undefined ||
     style.positions !== undefined ||
     model.nodes.some((n) => n.shear) ||
-    model.parts.some((p) => (p.kind === 'support' && p.settle !== undefined) || (p.kind === 'dist' && p.projected !== undefined) || (p as Look).colour !== undefined || (p as Look).width !== undefined || (p.kind === 'member' && p.bend !== undefined))
+    model.parts.some((p) => (p.kind === 'support' && p.settle !== undefined) || (p.kind === 'dist' && p.projected !== undefined) || (p as Look).colour !== undefined || (p as Look).width !== undefined || (p.kind === 'member' && bendOf(p) !== undefined))
   );
 }
 

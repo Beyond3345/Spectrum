@@ -147,17 +147,19 @@ A new bent beam sags by a tenth of its span. Any beam selected on its own has th
 
 The inspector of a beam gives it a *Shape* of three (@fig-structures-bent),
 
-- *Straight*, the usual beam,
-- *Parabola*, which sags by *Sag δ* at mid-span, and
-- *S-bend*, which bends to one side near one end and to the other side near the other, *Sag δ* being its largest offset, about a fifth of the span from each end.
+- *Parabola*, which sags by *Sag δ* at mid-span,
+- *S-bend*, which bends to one side near one end and to the other side near the other, *Sag δ* being its largest offset, about a fifth of the span from each end, and
+- *Straight*, the usual beam.
 
-A positive sag bends the beam up, or to the left of an upright member, whichever way round it was drawn. *Dashed straight axis, with the sag marked* draws the chord as a faint dashed line, with an arrow across to the curve near where it is furthest from it. *Sag label* names the arrow, $delta$ by default, in LaTeX such as `$v_{\max}$`, and an empty label leaves the arrow out.
+*Sag δ* has a slider, reaching a quarter of the span either way, and beside it a field for an exact value. A positive sag bends the beam up, or to the left of an upright member, whichever way round it was drawn. A sag of 0 draws the beam straight but keeps its shape and its axis, so a beam dragged through 0 on the slider bends back as it was. Picking a shape for a straight beam starts it at a tenth of its span.
+
+*Dashed straight axis, with the sag marked* draws the chord as a faint dashed line, with an arrow across to the curve near where it is furthest from it. It can be switched on for a straight beam too, and shows once the beam bends. *Sag label* names the arrow, $delta$ by default, in LaTeX such as `$v_{\max}$`, and an empty label leaves the arrow out.
 
 Loads, released ends and the member forces' labels sit on the curve. A load is still placed by its distance along the chord, and a load perpendicular to the member stays perpendicular to the chord. A joint dropped on a bent beam does not split it, and a truss bar is always straight.
 
 #figure(
   grid(columns: (1fr, 25%), gutter: 10pt, align: horizon, frame("figures/07-structures/bent-beam.png"), frame("figures/07-structures/inspector-bent.png")),
-  caption: [A simply supported beam drawn deflected under $P$, as a parabola with a sag of 0.75~m, its dashed axis and its sag marked $delta$. The round handle at mid-span drags the sag, and the inspector on the right sets the shape, the sag and the label.],
+  caption: [A simply supported beam drawn deflected under $P$, as a parabola with a sag of 0.75~m, its dashed axis and its sag marked $delta$. The round handle at mid-span drags the sag, and the inspector on the right sets the shape, the sag (with its slider or exactly), the axis and the label.],
 ) <fig-structures-bent>
 
 === The joint tools
@@ -177,7 +179,7 @@ Click a member to select it. The inspector shows its name, its kind and its leng
 
 - *Kind* switches it between #ui[Beam or frame member] and #ui[Truss bar].
 - *Released at C* and *Released at B* release the moment at either end, as the #ui[Released member end] tool does.
-- *Shape* keeps a beam straight or bends it as a parabola or an S-bend, with its sag and its dashed axis (@sec-structures-bent).
+- *Shape*, *Sag δ* and *Dashed straight axis, with the sag marked* bend a beam as a parabola or an S-bend, or keep it straight (@sec-structures-bent).
 - *Stiffness, EI and EA* folds the member's stiffness away, and opens by itself when either is set. *EI* is its bending stiffness in the drawing's units, kN~m² by default, and 1 when left alone. An indeterminate structure needs only the members' ratios of EI, but a settlement and the deflections use the value itself, so give each member its real EI before reading a deflection. *Relative EA* is its axial stiffness against the others: members are nearly rigid along their length, and a smaller EA lets this one stretch.
 
 Click a joint to select it. Its inspector has its *Name* (letters, digits and a prime), its *Position* as x and y, which can be typed exactly, and the fold *Hinge and shear release* with a switch for each.
