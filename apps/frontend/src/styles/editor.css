@@ -1701,7 +1701,7 @@ button.compile-status:hover {
   color: var(--text);
 }
 
-/* Find in the PDF (PdfFindBar), over the top right of the pages */
+/* Find in the PDF (PdfFindBar), over the top right of the pages: a 28px capsule */
 .pdf-find {
   position: absolute;
   top: 10px;
@@ -1710,9 +1710,9 @@ button.compile-status:hover {
   display: flex;
   align-items: center;
   gap: 2px;
-  width: min(330px, calc(100% - 28px));
-  height: 36px;
-  padding: 0 4px 0 12px;
+  width: min(300px, calc(100% - 28px));
+  height: 28px;
+  padding: 0 2px 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--bg-elevated);
@@ -1726,8 +1726,8 @@ button.compile-status:hover {
 }
 
 .pdf-find > .sf {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .pdf-find input {
@@ -1739,7 +1739,7 @@ button.compile-status:hover {
   outline: none;
   background: transparent;
   color: var(--text);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .pdf-find-count {
