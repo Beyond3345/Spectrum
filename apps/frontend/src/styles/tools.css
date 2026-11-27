@@ -2272,22 +2272,6 @@ span.log-location {
    Floats
    -------------------------------------------------------------------------- */
 
-.drop-zone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 96px;
-  padding: 16px;
-  border: 1.5px dashed var(--border-strong);
-  border-radius: var(--radius-card);
-  color: var(--text-secondary);
-  font-size: 12.5px;
-  text-align: center;
-  transition: border-color 0.12s ease, background-color 0.12s ease;
-}
-
 .drop-zone.dragging {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -2301,32 +2285,10 @@ span.log-location {
   color: var(--text-tertiary);
 }
 
-.drop-note {
-  color: var(--text-tertiary);
-  font-size: 11.5px;
-}
-
 /* the card title's control or count, at its end */
 .tool-card-title .tool-card-end {
   margin-left: auto;
   font-weight: 400;
-}
-
-/* a card's options grouped in an inset, a hairline between them */
-.float-options {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: var(--radius-control);
-  background: var(--bg-subtle);
-}
-
-.float-options > * + .checkbox-row,
-.float-options > * + .field,
-.float-options > .checkbox-row + * {
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
 }
 
 /* a word in running text that does something, as the chart pointer under Insert table */
@@ -2364,79 +2326,6 @@ span.log-location {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
-}
-
-.figure-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 8px;
-}
-
-.figure-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--text-secondary);
-  text-align: left;
-}
-
-.figure-tile:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.figure-thumb {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 4 / 3;
-  border-radius: 6px;
-  background: var(--bg-subtle);
-  color: var(--text-tertiary);
-  overflow: hidden;
-}
-
-.figure-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-/* the whole name, over as many lines as it takes */
-.figure-name {
-  overflow-wrap: anywhere;
-  font-size: 11.5px;
-  line-height: 1.3;
-}
-
-/* a tile inserts; its corner button previews */
-.figure-tile-wrap {
-  position: relative;
-  display: flex;
-  min-width: 0;
-}
-
-.figure-tile-wrap > .figure-tile {
-  flex: 1;
-}
-
-.figure-tile-wrap > .icon-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-sm);
-  opacity: 0;
-}
-
-.figure-tile-wrap:hover > .icon-btn,
-.figure-tile-wrap > .icon-btn:focus-visible {
-  opacity: 1;
 }
 
 .figure-large {
@@ -2563,42 +2452,30 @@ span.log-location {
   width: 100%;
 }
 
-/* a column's L, C and R (X, S) over it */
-.table-align {
-  display: flex;
-  justify-content: center;
-  min-width: 0;
-}
-
-/* in a narrow column the letters wrap rather than run into the next */
-.table-align .segmented {
-  flex: 0 1 auto;
-  min-width: 0;
-  flex-wrap: wrap;
-  justify-content: center;
-  border-radius: var(--radius-control);
-}
-
-.table-align .segmented.small .segment {
-  min-width: 20px;
-  padding: 0 5px;
-  font-family: var(--font-mono);
-}
-
 .table-grid .input {
   height: 30px;
   padding: 0 8px;
   border-color: transparent;
-  background: var(--fill);
+  background: transparent;
+  font-size: 12.5px;
+}
+
+.table-grid .input:hover {
+  background: var(--bg-hover);
+}
+
+/* room for the column's alignment letter */
+.table-grid .input.first {
+  padding-right: 24px;
 }
 
 .table-grid .input:focus {
   border-color: var(--accent);
 }
 
-/* the header gets a rule in the LaTeX, not bold text */
+/* the header row, bold as the plan shows it (the LaTeX gives it a rule, not bold text) */
 .table-grid .input.head {
-  background: var(--bg-selected);
+  font-weight: 600;
 }
 
 /* a merged cell fills the rows, columns and gaps it covers, over the line targets there */
@@ -2608,11 +2485,7 @@ span.log-location {
   height: 100%;
   min-height: 30px;
   /* opaque, so the rules it stops short of don't show through */
-  background: linear-gradient(var(--fill), var(--fill)), var(--bg-elevated);
-}
-
-.table-grid .input.merged.head {
-  background: linear-gradient(var(--bg-selected), var(--bg-selected)), var(--bg-elevated);
+  background: var(--bg-panel);
 }
 
 /* a gap that takes a line: the line runs from the middle of one outer gap to the other, so corners meet */
@@ -2648,6 +2521,12 @@ span.log-location {
   border-color: var(--text);
 }
 
+/* a row break with no rule: faint and dashed, so the rows still read apart */
+.table-line.h:not(.on)::before {
+  border-style: dashed;
+  border-color: var(--border);
+}
+
 /* a short rule under some columns only (\cmidrule or \cline), drawn above the full-width target in the same gap */
 .table-line.part {
   z-index: 1;
@@ -2674,19 +2553,6 @@ span.log-location {
 
 .table-line.double:hover::before {
   border-style: double;
-}
-
-.table-grid-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.table-size {
-  color: var(--text-tertiary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
 }
 
 textarea.table-latex {
@@ -4515,4 +4381,293 @@ textarea.table-latex {
 .tuning-empty {
   padding: 8px 10px;
   color: var(--text-tertiary);
+}
+
+/* ─── Floats: the cards as the UI plan draws them ─── */
+
+/* the drop zone: an upload arrow, one line and the layout's note under it */
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 16px 14px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--bg-app);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: center;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.drop-zone .drop-icon {
+  color: var(--accent-ink);
+}
+
+.drop-title {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.drop-note {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+/* a card's options grouped in an inset: a row each, its name on the left and its control on the right */
+.float-options {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg-app);
+}
+
+.float-options:empty {
+  display: none;
+}
+
+.option-row {
+  padding: 8px 12px;
+}
+
+.option-row + .option-row {
+  border-top: 1px solid var(--border);
+}
+
+.option-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  min-height: 28px;
+}
+
+.option-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.option-row > .field-hint {
+  margin-top: 4px;
+}
+
+/* Project figures, at the foot of the figure card: three tiles a row */
+.project-figures {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.project-figures-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.project-figures-head .field-hint {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.figure-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* a tile inserts; its corner button previews */
+.figure-tile-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.figure-tile {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-app);
+  color: var(--text);
+  text-align: left;
+}
+
+.figure-tile:hover {
+  background: var(--bg-hover);
+}
+
+.figure-thumb {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text-tertiary);
+  overflow: hidden;
+}
+
+.figure-thumb img {
+  width: 100%;
+  height: 42px;
+  object-fit: contain;
+}
+
+/* the whole name, over as many lines as it takes */
+.figure-name {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.figure-tile-wrap > .icon-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+}
+
+.figure-tile-wrap:hover > .icon-btn,
+.figure-tile-wrap > .icon-btn:focus-visible {
+  opacity: 1;
+}
+
+/* the table card's + Row, + Col, Paste CSV and its menu */
+.table-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* an unseen copy of a first cell's text in the cell's place, which puts the column's L, C or R right after the text */
+.table-grid .table-head-mirror {
+  z-index: 2;
+  overflow: hidden;
+  border-color: transparent;
+  background: transparent;
+  line-height: 28px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.mirror-text {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.mirror-copy {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: pre;
+  vertical-align: top;
+  visibility: hidden;
+}
+
+.table-align {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  margin-left: 4px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  transform: translateY(-50%);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.table-align:hover {
+  color: var(--text);
+}
+
+.table-align:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* the edited cell's lines and merges, in one row under the grid while a cell has the focus */
+.table-cell-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 6px;
+}
+
+.table-cell-name {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.table-cell-tools .chip-row {
+  gap: 4px;
+}
+
+.table-cell-tools .chip {
+  height: 22px;
+  padding: 0 7px;
+  font-size: 11.5px;
+}
+
+/* Caption and Label in the grouped box: their names, then the fields */
+.option-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+/* the table's source, folded away under the options */
+.table-source > summary {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.table-source > textarea {
+  margin-top: 8px;
+}
+
+.table-source > .field-hint {
+  margin-top: 4px;
+}
+
+/* Need a chart?, Copy and Insert table in one row */
+.table-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.table-footer > .field-hint {
+  flex: 1 1 auto;
 }

@@ -6,6 +6,7 @@ import Icon from '../../app/Icon';
 import { effectiveCompile, loadSettings } from '../../app/settings';
 import Sheet from '../../app/Sheet';
 import { openDiagram } from '../../app/desktop';
+import { MenuButton } from '../../app/Menu';
 import { IS_WINDOWS } from '../../app/platform';
 import { forPhysics } from '../../diagram/fileFormat';
 import { clashesWith } from '../../diagram/sets';
@@ -26,7 +27,6 @@ export default function FloatsTab({ show }: { show: 'figure' | 'table' | 'diagra
     <div className="tool-page">
       <div className="float-group" hidden={show !== 'figure'}>
         <InsertFigure />
-        <ProjectFigures />
       </div>
       <div className="float-group" hidden={show !== 'diagram'}>
         <InsertDiagram />
@@ -69,9 +69,53 @@ export function showDiagram(diagram: HandedDiagram) {
 
 // ─── shared by Insert figure and Insert table ───
 
+// The grouped options (.float-options): a row each, its name on the left and its control on the right, a short line
+// under it when one is needed.
+
+/** One row of the grouped options. */
+function OptionRow({ label, labelId, hint, children }: { label: ReactNode; labelId?: string; hint?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="option-row">
+      <div className="option-line">
+        <span className="option-name" id={labelId}>
+          {label}
+        </span>
+        {children}
+      </div>
+      {hint && <div className="field-hint">{hint}</div>}
+    </div>
+  );
+}
+
+/** A row with a switch at its end. */
+function Toggle({ label, checked, disabled, onChange, children }: { label: ReactNode; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void; children?: ReactNode }) {
+  return (
+    <div className="option-row">
+      <label className="option-line">
+        <span className="option-name">{label}</span>
+        <input type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      </label>
+      {children && <div className="field-hint">{children}</div>}
+    </div>
+  );
+}
+
+/** A row with segments to choose one of; value null lights no segment. */
+function Segmented<T extends string>({ label, value, options, onChange, hint }: { label: string; value: T | null; options: (readonly [T, string, string?, string?])[]; onChange: (value: T) => void; hint?: ReactNode }) {
+  const id = useId();
+  return (
+    <OptionRow label={label} labelId={id} hint={hint}>
+      <Choice labelledBy={id} value={value} options={options} onChange={onChange} />
+    </OptionRow>
+  );
+}
+
+// the letters as the segments show them: those that combine, then H on its own
+const PLACEMENT_ORDER = ['h', 't', 'b', 'p', '!', 'H'];
+
 /**
- * Placement letters as toggles that combine (h, t, b, p and !), or H on its own, each explained in its
- * tooltip and in the key underneath. Span both columns makes it figure* or table*, which only takes t, p and !.
+ * Placement letters as segments that combine (h, t, b, p and !), or H on its own, each explained in its tooltip and in
+ * the card's help. Span both columns makes it figure* or table*, which only takes t, p and !.
  */
 function PlacementField({ value, onChange, span, onSpan, kind }: { value: string; onChange: (value: string) => void; span: boolean; onSpan: (span: boolean) => void; kind: 'figure' | 'table' }) {
   const id = useId();
@@ -80,37 +124,41 @@ function PlacementField({ value, onChange, span, onSpan, kind }: { value: string
     onChange(letter === 'H' ? (value === 'H' ? '' : 'H') : placementOf(letters.includes(letter) ? letters.replace(letter, '') : letters + letter));
   const usable = (letter: string) => !span || '!tp'.includes(letter);
   return (
-    <div className="field">
-      <span className="field-label" id={id}>
-        Placement
-      </span>
-      <div className="segmented small placement-toggles" role="group" aria-labelledby={id}>
-        {PLACEMENT_LETTERS.map(([letter, name, meaning]) => {
-          const on = usable(letter) && (letter === 'H' ? value === 'H' : letters.includes(letter));
-          return (
-            <button
-              key={letter}
-              type="button"
-              aria-pressed={on}
-              aria-label={`${name} (${letter})`}
-              title={`${letter}: ${meaning}`}
-              className={`segment ${on ? 'active' : ''}`}
-              disabled={!usable(letter)}
-              onClick={() => toggle(letter)}
-            >
-              {letter}
-            </button>
-          );
-        })}
-      </div>
-      <label className="checkbox-row">
-        <input type="checkbox" role="switch" checked={span} onChange={(e) => onSpan(e.target.checked)} />
-        <span>
-          Span both columns ({kind}*)
-          <span className="field-hint">For two-column papers: at the top of a page or on a page of floats only.</span>
-        </span>
-      </label>
-    </div>
+    <>
+      <OptionRow label="Placement" labelId={id}>
+        <div className="segmented small placement-toggles" role="group" aria-labelledby={id}>
+          {PLACEMENT_ORDER.map((letter) => {
+            const [, name, meaning] = PLACEMENT_LETTERS.find(([l]) => l === letter)!;
+            const on = usable(letter) && (letter === 'H' ? value === 'H' : letters.includes(letter));
+            return (
+              <button
+                key={letter}
+                type="button"
+                aria-pressed={on}
+                aria-label={`${name} (${letter})`}
+                title={`${letter}: ${meaning}`}
+                className={`segment ${on ? 'active' : ''}`}
+                disabled={!usable(letter)}
+                onClick={() => toggle(letter)}
+              >
+                {letter}
+              </button>
+            );
+          })}
+        </div>
+      </OptionRow>
+      <Toggle
+        label={
+          <>
+            Span both columns (<code>{kind}*</code>)
+          </>
+        }
+        checked={span}
+        onChange={onSpan}
+      >
+        {span && 'At the top of a page or on a page of floats only.'}
+      </Toggle>
+    </>
   );
 }
 
@@ -127,47 +175,17 @@ function TypstPlacementField({ value, onChange, span, onSpan }: { value: string;
         label="Placement"
         value={shown}
         options={[
-          ['h', 'In the text', 'Where it is in the text, as Typst places a figure unless told otherwise'],
-          ['t', 'Top', 'placement: top, at the top of the page or column'],
-          ['b', 'Bottom', 'placement: bottom, at the bottom of the page or column'],
-          ['tb', 'Top or bottom', 'placement: auto, whichever is nearer']
+          ['h', 'In the text', undefined, 'Where it is in the text, as Typst places a figure unless told otherwise'],
+          ['t', 'Top', undefined, 'placement: top, at the top of the page or column'],
+          ['b', 'Bottom', undefined, 'placement: bottom, at the bottom of the page or column'],
+          ['tb', 'Top or bottom', undefined, 'placement: auto, whichever is nearer']
         ]}
         onChange={onChange}
       />
-      <label className="checkbox-row">
-        <input type="checkbox" role="switch" checked={span} onChange={(e) => onSpan(e.target.checked)} />
-        <span>
-          Span both columns
-          <span className="field-hint">For two-column documents: scope: "parent", at the top or bottom of the page.</span>
-        </span>
-      </label>
+      <Toggle label="Span both columns" checked={span} onChange={onSpan}>
+        {span && 'scope: "parent", at the top or bottom of the page.'}
+      </Toggle>
     </>
-  );
-}
-
-/** A switch on a row of its own, with a short line under it. */
-function Toggle({ label, checked, disabled, onChange, children }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void; children?: ReactNode }) {
-  return (
-    <label className="checkbox-row">
-      <input type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
-      <span>
-        {label}
-        {children && <span className="field-hint">{children}</span>}
-      </span>
-    </label>
-  );
-}
-
-/** value null lights no segment */
-function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T | null; options: [T, string, string?][]; onChange: (value: T) => void }) {
-  const id = useId();
-  return (
-    <div className="field">
-      <span className="field-label" id={id}>
-        {label}
-      </span>
-      <Choice labelledBy={id} value={value} options={options} onChange={onChange} />
-    </div>
   );
 }
 
@@ -285,6 +303,22 @@ const LAYOUTS: [Layout, string, string?][] = [
   ['row', 'Side by side', 'Side by side in one row'],
   ['grid', 'Grid']
 ];
+/** the widths the Width row shows; More opens the other sizes */
+const COMMON_WIDTHS: [WidthChoice | 'more', string, string?, string?][] = [
+  ['0.5', 'Half'],
+  ['0.75', '¾', 'Three quarters'],
+  ['1', 'Full'],
+  ['more', 'More…', 'More sizes', 'A third, a custom share, a width or height in millimetres, a box or a scale']
+];
+/** what each way of sizing does */
+const SIZE_HINTS = (several: boolean, kind: string | null): Record<SizeMode, string> => ({
+  line: several ? 'Each image takes this share of its panel; the panels share the line.' : 'A share of the line width. A tall image is kept within the page.',
+  width: 'Every image is this wide, and as tall as its shape makes it.',
+  height: 'Every image is this tall, and as wide as its shape makes it.',
+  box: 'As big as fits in this box without stretching.',
+  scale: kind === 'markdown' ? 'Markdown can’t scale an image, so it goes in at the line share.' : 'A scale of the image’s own size, as saved: 0.5 is half.'
+});
+
 const LABELLING: [FigureSet['labels'], string, string?][] = [
   ['sub', '(a), (b)', 'Sub-figures (a), (b) under one caption'],
   ['separate', 'Separate', 'A figure each, with its own number'],
@@ -365,12 +399,13 @@ const panelPreview = (projectId: string, panel: Panel) =>
 const forget = (panel: Panel) => panel.source.kind === 'file' && panel.source.url && URL.revokeObjectURL(panel.source.url);
 
 /** A number field with its unit; empty or out of range falls back to min when it loses focus. */
-function NumberField({ id, label, unit, value, min, max, step = 1, onChange }: { id: string; label: string; unit: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void }) {
+function NumberField({ id, label, name, unit, value, min, max, step = 1, onChange }: { id: string; label: string; /** when the row names it, not label */ name?: string; unit: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void }) {
   return (
     <div className="figure-custom-width">
-      <label htmlFor={id}>{label}</label>
+      {label && <label htmlFor={id}>{label}</label>}
       <input
         id={id}
+        aria-label={name}
         className="input number"
         type="number"
         min={min}
@@ -395,6 +430,8 @@ function InsertFigure() {
   /** null: follows the file name, or the caption for several images */
   const [label, setLabel] = useState<string | null>(null);
   const [prefs, setPrefs] = useState(loadPrefs);
+  /** More… chosen on the Width row */
+  const [more, setMore] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<'' | 'reading' | 'inserting'>('');
   const [dragging, setDragging] = useState(false);
@@ -629,6 +666,9 @@ function InsertFigure() {
 
   const latex = kind !== 'typst' && kind !== 'markdown';
   const showDrop = !first || several;
+  // the share chosen; anything but Half, ¾ or Full of the line shows the other sizes
+  const shareNow = several ? prefs.panelShare : prefs.width;
+  const moreSizes = more || prefs.sizeMode !== 'line' || !['0.5', '0.75', '1'].includes(shareNow);
 
   return (
     <section className="tool-card" data-card="figure" ref={cardRef} onPaste={onPaste}>
@@ -647,9 +687,6 @@ function InsertFigure() {
           />
         )}
       </div>
-      {several && layout === 'grid' && (
-        <NumberField id={`${id}-columns`} label="Columns" unit="images a row" value={prefs.columns} min={2} max={4} onChange={(columns) => set({ columns })} />
-      )}
       {!several && first ? (
         <div className="drop-zone has-file" ref={dropRef} tabIndex={-1} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
           <div className="drop-preview">
@@ -770,9 +807,13 @@ function InsertFigure() {
             <span className="spinner" aria-hidden="true" />
           ) : (
             <>
-              <Icon name="photo.badge.plus" size={several && first ? 20 : 24} />
-              <span>{several ? (first ? 'Add another image' : 'Drop, paste or choose images') : 'Drop, paste or choose an image'}</span>
-              {!first && <span className="drop-note">{several ? (layout === 'grid' ? 'Grid' : 'Side by side') : 'Single figure'} · saved in figures/, HEIC, WebP, SVG and others converted</span>}
+              <Icon name="square.and.arrow.up" size={several && first ? 15 : 17} className="drop-icon" />
+              <span className="drop-title">{several && first ? 'Add another image' : 'Drop, paste, or choose image(s)'}</span>
+              {!first && (
+                <span className="drop-note">
+                  {layout === 'grid' ? `Grid, ${prefs.columns} a row` : several ? 'Side by side' : 'Single figure'} · auto-converts HEIC, WebP &amp; SVG into <code>figures/</code>
+                </span>
+              )}
             </>
           )}
         </div>
@@ -809,19 +850,6 @@ function InsertFigure() {
               <div className="field-hint">Goes in {panelPath(first)} when you insert it, or with -2 added if that name’s taken.</div>
             </div>
           )}
-          {several && (
-            <>
-              <Segmented label="Labelling" value={prefs.labels} options={LABELLING} onChange={(labels) => set({ labels })} />
-              <div className="field-hint">
-                {prefs.labels === 'sub'
-                  ? `Each image is a sub-figure, (a), (b) and so on, under one caption and one figure number${latex ? '. Uses the subcaption package, which is added' : ''}. Refer to one image by its own label.`
-                  : prefs.labels === 'separate'
-                    ? 'Each image is a figure of its own, with its own number, caption and label, side by side.'
-                    : 'The images share the one caption and label, with no (a) or (b).'}
-              </div>
-              <Segmented label="Line up" value={prefs.align} options={ALIGNS} onChange={(align) => set({ align })} />
-            </>
-          )}
           {!(several && prefs.labels === 'separate') && (
             <>
               <div className="field">
@@ -849,75 +877,103 @@ function InsertFigure() {
               <div className="field-hint">Read aloud by screen readers. Download › PDF/UA-1 needs it on every image.</div>
             </div>
           )}
-          <div className="float-options">
-          <Segmented label="Size by" value={prefs.sizeMode} options={SIZE_MODES} onChange={(sizeMode) => set({ sizeMode })} />
-          {prefs.sizeMode === 'line' && (
-            <>
-              <Segmented
-                label={several ? 'Width in its panel' : 'Width'}
-                value={several ? prefs.panelShare : prefs.width}
-                options={WIDTHS}
-                onChange={(choice) => set(several ? { panelShare: choice } : { width: choice })}
+        </>
+      )}
+      <div className="float-options">
+        {several && layout === 'grid' && (
+          <OptionRow label="Columns">
+            <NumberField id={`${id}-columns`} label="" name="Columns" unit="images a row" value={prefs.columns} min={2} max={4} onChange={(columns) => set({ columns })} />
+          </OptionRow>
+        )}
+        {several && (
+          <>
+            <Segmented
+              label="Labelling"
+              value={prefs.labels}
+              options={LABELLING}
+              onChange={(labels) => set({ labels })}
+              hint={
+                prefs.labels === 'sub'
+                  ? `Sub-figures (a), (b) under one caption${latex ? ', with subcaption' : ''}.`
+                  : prefs.labels === 'separate'
+                    ? 'A figure each, with its own number, caption and label.'
+                    : 'One caption and label, no (a) or (b).'
+              }
+            />
+            <Segmented label="Line up" value={prefs.align} options={ALIGNS} onChange={(align) => set({ align })} />
+          </>
+        )}
+        <Segmented
+          label={several ? 'Width in its panel' : 'Width'}
+          value={moreSizes ? 'more' : shareNow}
+          options={COMMON_WIDTHS}
+          onChange={(choice) => {
+            if (choice === 'more') return setMore(true);
+            setMore(false);
+            set({ sizeMode: 'line', ...(several ? { panelShare: choice } : { width: choice }) });
+          }}
+        />
+        {moreSizes && (
+          <>
+            <Segmented label="Size by" value={prefs.sizeMode} options={SIZE_MODES} onChange={(sizeMode) => set({ sizeMode })} hint={SIZE_HINTS(several, kind)[prefs.sizeMode]} />
+            {prefs.sizeMode === 'line' && (
+              <Segmented label="Share" value={shareNow} options={WIDTHS} onChange={(choice) => set(several ? { panelShare: choice } : { width: choice })} />
+            )}
+            {prefs.sizeMode === 'line' && shareNow === 'custom' && (
+              <OptionRow label="Custom">
+                <NumberField id={`${id}-custom`} label="" name="Custom width in per cent" unit={several ? '% of the panel’s width' : '% of the line width'} value={prefs.custom} min={1} max={100} onChange={(custom) => set({ custom })} />
+              </OptionRow>
+            )}
+            {(prefs.sizeMode === 'width' || prefs.sizeMode === 'box') && (
+              <OptionRow label="Width">
+                <NumberField id={`${id}-w`} label="" name="Width in mm" unit="mm" value={prefs.sizeW} min={1} max={400} onChange={(sizeW) => set({ sizeW })} />
+              </OptionRow>
+            )}
+            {(prefs.sizeMode === 'height' || prefs.sizeMode === 'box') && (
+              <OptionRow label="Height">
+                <NumberField id={`${id}-h`} label="" name="Height in mm" unit="mm" value={prefs.sizeH} min={1} max={400} onChange={(sizeH) => set({ sizeH })} />
+              </OptionRow>
+            )}
+            {prefs.sizeMode === 'scale' && (
+              <OptionRow label="Scale">
+                <NumberField id={`${id}-scale`} label="" name="Scale" unit="× its own size" value={prefs.scale} min={0.05} max={5} step={0.05} onChange={(scale) => set({ scale })} />
+              </OptionRow>
+            )}
+          </>
+        )}
+        {kind !== 'markdown' && (
+          <Toggle label="Crop edges" checked={prefs.crop} onChange={(crop) => set({ crop })}>
+            {prefs.crop && (kind === 'typst' ? 'Typst can’t crop an image, so this is left out of Typst documents.' : `Trims ${several ? 'every image' : 'the image'} with trim and clip.`)}
+          </Toggle>
+        )}
+        {prefs.crop && latex && (
+          <div className="option-row figure-trim">
+            {(['Left', 'Bottom', 'Right', 'Top'] as const).map((side, i) => (
+              <NumberField
+                key={side}
+                id={`${id}-trim-${i}`}
+                label={side}
+                unit="mm"
+                value={prefs.trim[i]}
+                min={0}
+                max={200}
+                onChange={(n) => set({ trim: Object.assign([...prefs.trim], { [i]: n }) as FigurePrefs['trim'] })}
               />
-              {(several ? prefs.panelShare : prefs.width) === 'custom' && (
-                <NumberField id={`${id}-custom`} label="Custom" unit={several ? '% of the panel’s width' : '% of the line width'} value={prefs.custom} min={1} max={100} onChange={(custom) => set({ custom })} />
-              )}
-            </>
-          )}
-          {(prefs.sizeMode === 'width' || prefs.sizeMode === 'box') && (
-            <NumberField id={`${id}-w`} label="Width" unit="mm" value={prefs.sizeW} min={1} max={400} onChange={(sizeW) => set({ sizeW })} />
-          )}
-          {(prefs.sizeMode === 'height' || prefs.sizeMode === 'box') && (
-            <NumberField id={`${id}-h`} label="Height" unit="mm" value={prefs.sizeH} min={1} max={400} onChange={(sizeH) => set({ sizeH })} />
-          )}
-          {prefs.sizeMode === 'scale' && <NumberField id={`${id}-scale`} label="Scale" unit="× its own size" value={prefs.scale} min={0.05} max={5} step={0.05} onChange={(scale) => set({ scale })} />}
-          <div className="field-hint">
-            {
-              {
-                line: several ? 'Each image takes this share of its panel; the panels share the line between them.' : 'A share of the line width. A tall image is kept within the page.',
-                width: 'Every image is this wide, and as tall as its shape makes it.',
-                height: 'Every image is this tall, and as wide as its shape makes it. Good for images of different shapes side by side.',
-                box: 'Each image is made as big as fits in this box without stretching it.',
-                scale: kind === 'markdown' ? 'Markdown can’t scale an image, so it goes in at the line share.' : 'A scale of the image’s own size, as saved: 0.5 is half.'
-              }[prefs.sizeMode]
-            }
+            ))}
           </div>
-          {kind !== 'markdown' && (
-            <label className="checkbox-row">
-              <input type="checkbox" role="switch" checked={prefs.crop} onChange={(e) => set({ crop: e.target.checked })} />
-              <span>
-                Crop edges
-                <span className="field-hint">{kind === 'typst' ? 'Typst can’t crop an image, so this is left out of Typst documents.' : `Trims the edges of ${several ? 'every image' : 'the image'} with trim and clip.`}</span>
-              </span>
-            </label>
-          )}
-          {prefs.crop && latex && (
-            <div className="figure-trim">
-              {(['Left', 'Bottom', 'Right', 'Top'] as const).map((side, i) => (
-                <NumberField
-                  key={side}
-                  id={`${id}-trim-${i}`}
-                  label={side}
-                  unit="mm"
-                  value={prefs.trim[i]}
-                  min={0}
-                  max={200}
-                  onChange={(n) => set({ trim: Object.assign([...prefs.trim], { [i]: n }) as FigurePrefs['trim'] })}
-                />
-              ))}
-            </div>
-          )}
-          {kind !== 'typst' && kind !== 'markdown' && (
-            <PlacementField kind="figure" value={prefs.placement} onChange={(placement) => set({ placement })} span={prefs.span} onSpan={(span) => set({ span })} />
-          )}
-          {kind === 'typst' && <TypstPlacementField value={prefs.placement} onChange={(placement) => set({ placement })} span={prefs.span} onSpan={(span) => set({ span })} />}
-          </div>
+        )}
+        {latex && <PlacementField kind="figure" value={prefs.placement} onChange={(placement) => set({ placement })} span={prefs.span} onSpan={(span) => set({ span })} />}
+        {kind === 'typst' && <TypstPlacementField value={prefs.placement} onChange={(placement) => set({ placement })} span={prefs.span} onSpan={(span) => set({ span })} />}
+      </div>
+      {first && (
+        <>
           <button className="btn primary full" onClick={insert} disabled={!!busy || !docOpen}>
             {busy === 'inserting' ? <span className="spinner" /> : <Icon name="plus" />} Insert figure
           </button>
           {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
         </>
       )}
+      <ProjectFigures />
       <FigureHelp />
     </section>
   );
@@ -1242,10 +1298,18 @@ function InsertDiagram() {
             <label htmlFor={`${id}-label`}>Label</label>
             <input id={`${id}-label`} className="input" value={label ?? figureLabel(diagram.path)} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
           </div>
-          {showWidth && <Segmented label="Width" value={width} options={tikz ? DIAGRAM_WIDTHS : WIDTHS} onChange={setWidth} />}
-          {showWidth && width === 'natural' && <div className="field-hint">At its natural size, its lines and labels keep the sizes they were drawn at.</div>}
+          <div className="float-options">
+          {showWidth && (
+            <Segmented
+              label="Width"
+              value={width}
+              options={tikz ? DIAGRAM_WIDTHS : WIDTHS}
+              onChange={setWidth}
+              hint={width === 'natural' && 'At its natural size, its lines and labels keep the sizes they were drawn at.'}
+            />
+          )}
           {showWidth && width === 'custom' && (
-            <div className="figure-custom-width">
+            <div className="option-row figure-custom-width">
               <input
                 id={`${id}-custom`}
                 className="input number"
@@ -1269,6 +1333,7 @@ function InsertDiagram() {
               onSpan={(span) => setPrefs({ ...prefs, span })}
             />
           )}
+          </div>
           <button className="btn primary full" onClick={insert} disabled={busy || !docOpen || !canInsert}>
             {busy ? <span className="spinner" /> : <Icon name="plus" />} Insert diagram
           </button>
@@ -1304,6 +1369,9 @@ const LINES: [TableLines, string][] = [
   ['none', 'None']
 ];
 
+/** how a column's cells line up in the grid, by its LaTeX letter */
+const alignOf = (letter: string) => ({ c: 'center', r: 'right', S: 'right' } as Record<string, 'center' | 'right'>)[letter] ?? 'left';
+
 const blankGrid = (rows: number, cols: number) => Array.from({ length: rows }, () => Array<string>(cols).fill(''));
 
 function InsertTable() {
@@ -1335,6 +1403,29 @@ function InsertTable() {
   /** threeparttable: notes under the table */
   const [withNotes, setWithNotes] = useState(false);
   const [notes, setNotes] = useState('');
+  /** a cell (or the buttons for it) has the focus: its lines and merges show under the grid */
+  const [editing, setEditing] = useState(false);
+  const editRef = useRef<HTMLDivElement>(null);
+  /**
+   * The focus left the grid: the buttons go once the click that moved it is over, so what was clicked below them doesn't
+   * move out from under the pointer, and not at all when the focus came back.
+   */
+  const leaveCell = () => {
+    const hide = () => window.setTimeout(() => !editRef.current?.contains(document.activeElement) && setEditing(false));
+    if (pressed.current) window.addEventListener('pointerup', hide, { once: true });
+    else hide();
+  };
+  const pressed = useRef(false);
+  useEffect(() => {
+    const down = () => (pressed.current = true);
+    const up = () => (pressed.current = false);
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointerup', up, true);
+    return () => {
+      window.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('pointerup', up, true);
+    };
+  }, []);
   const [busy, setBusy] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const focusAfter = useRef<[number, number] | null>(null);
@@ -1381,7 +1472,10 @@ function InsertTable() {
   const toggleShortRule = () =>
     setPartRules((prev) => (shortRule ? prev.filter((p) => p !== shortRule) : [...prev, { row: block.r + block.rows - 1, from: block.c, to: block.c + block.cols - 1 }]));
   const flip = (edge: string) => setToggled((prev) => (prev.includes(edge) ? prev.filter((e) => e !== edge) : [...prev, edge]));
-  const text = kind === 'typst' ? tableTypst(model) : kind === 'markdown' ? tableMarkdown(model) : tableLatex(model);
+  const written = kind === 'typst' ? tableTypst(model) : kind === 'markdown' ? tableMarkdown(model) : tableLatex(model);
+  // the source as typed over in Source, until the grid or an option writes it again
+  const [typed, setTyped] = useState<{ over: string; as: string } | null>(null);
+  const text = typed && typed.over === written ? typed.as : written;
   const docOpen = isDocument(api.activePath);
 
   const focusCell = (r: number, c: number) => gridRef.current?.querySelector<HTMLInputElement>(`[data-cell="${r}-${c}"]`)?.focus();
@@ -1423,6 +1517,26 @@ function InsertTable() {
     setCells((prev) => pasteCells(prev, r, c, block));
   };
 
+  const clearAll = () => {
+    setCells(blankGrid(3, 3));
+    setChosen([]);
+    setToggled([]);
+    setCaption('');
+    setLabel(null);
+    setMerges([]);
+    setPartRules([]);
+    setNotes('');
+  };
+
+  /** Rows on the clipboard into the grid from the cell last edited; where the clipboard can't be read, that cell takes a paste. */
+  const pasteCsv = async () => {
+    const [r, c] = [Math.min(at[0], cells.length - 1), Math.min(at[1], cols - 1)];
+    const typed = await navigator.clipboard?.readText?.().catch(() => '') ?? '';
+    if (typed.trim()) setCells((prev) => pasteCells(prev, r, c, parseDelimited(typed).map((row) => row.map((cell) => cell.replace(/\s*\n\s*/g, ' ')))));
+    else api.notify(`Copy rows from ${IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file, then paste them into a cell.`, 'success');
+    focusCell(r, c);
+  };
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
@@ -1444,28 +1558,73 @@ function InsertTable() {
   return (
     <section className="tool-card" data-card="table">
       <div className="tool-card-title">
-        <Icon name="tablecells" /> Insert table
-        <span className="tool-card-end table-size">
-          {cells.length} × {cols}
+        <Icon name="tablecells" /> Table builder · {cells.length} × {cols}
+        <span className="tool-card-end table-tools">
+          <button type="button" className="btn small outline" aria-label="Add a row" title="Add a row" onClick={addRow}>
+            + Row
+          </button>
+          <button type="button" className="btn small outline" aria-label="Add a column" title="Add a column" onClick={() => setCells((prev) => prev.map((row) => [...row, '']))}>
+            + Col
+          </button>
+          <button type="button" className="btn small ghost" title="Fill the grid from rows copied from Excel or a CSV file" onClick={() => void pasteCsv()}>
+            Paste CSV
+          </button>
+          <MenuButton
+            icon="ellipsis"
+            title="More"
+            className="icon-btn small"
+            align="end"
+            items={[
+              { label: 'Remove the last row', icon: 'minus', disabled: cells.length < 2, onSelect: () => setCells((prev) => prev.slice(0, -1)) },
+              { label: 'Remove the last column', icon: 'minus', disabled: cols < 2, onSelect: () => setCells((prev) => prev.map((row) => row.slice(0, -1))) },
+              { label: 'Clear the table', icon: 'xmark', onSelect: clearAll }
+            ]}
+          />
         </span>
       </div>
-      <div className="table-grid-scroll">
+      <div className="table-edit" ref={editRef} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && leaveCell()}>
+      <div
+        className="table-grid-scroll"
+        title={`Tab moves on, ${IS_WINDOWS ? 'Enter' : 'Return'} moves down. Paste rows from ${IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file into a cell.${kind === 'markdown' ? '' : ' Click between cells to add or remove a line.'}`}
+      >
         {/* cells sit at even grid lines, with a 10 px gap row or column around each for the lines */}
         <div
           className="table-grid"
           ref={gridRef}
-          style={{ gridTemplateColumns: `10px repeat(${cols}, minmax(80px, 1fr) 10px)`, gridTemplateRows: `auto 10px repeat(${cells.length}, 30px 10px)` }}
+          style={{ gridTemplateColumns: `10px repeat(${cols}, minmax(80px, 1fr) 10px)`, gridTemplateRows: `10px repeat(${cells.length}, 30px 10px)` }}
         >
-          {align.map((value, c) => (
-            <div key={`align-${c}`} className="table-align" style={{ gridRow: 1, gridColumn: 2 * c + 2 }}>
-              <Choice
-                label={`Column ${c + 1} alignment`}
-                value={value}
-                options={[...(tableEnv === 'tabular' ? ALIGN : ALIGN_X), ...(latex ? [NUMBERS] : [])].map(([v, letter, name]) => [v, letter, name, name] as const)}
-                onChange={(next) => setChosen((prev) => Object.assign([...prev], { [c]: next }))}
-              />
-            </div>
-          ))}
+          {/* each column's L, C or R (X, S) just after the text of its first cell, which an unseen copy of that text in the
+              cell's place puts there; a click moves it on to the next */}
+          {align.map((value, c) => {
+            const choices = [...(tableEnv === 'tabular' ? ALIGN : ALIGN_X), ...(latex ? [NUMBERS] : [])];
+            const at = Math.max(0, choices.findIndex(([v]) => v === value));
+            const [, letter, name] = choices[at];
+            const next = choices[(at + 1) % choices.length];
+            // under a merged first cell, the column keeps its letter at its own place
+            const merge = mergeAt(fitted, 0, c);
+            const own = !merge || merge.c === c;
+            return (
+              <div
+                key={`align-${c}`}
+                className={`input first table-head-mirror ${header ? 'head' : ''}`}
+                style={{ gridRow: 2, gridColumn: own ? `${2 * c + 2} / span ${2 * (merge?.cols ?? 1) - 1}` : 2 * c + 2, textAlign: own ? alignOf(value) : 'right' }}
+              >
+                <span className="mirror-text">
+                  <span className="mirror-copy">{own ? cells[0][c] : ''}</span>
+                  <button
+                    type="button"
+                    className="table-align"
+                    aria-label={`Column ${c + 1} alignment: ${name}`}
+                    title={`${name}. Click for ${next[2]}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setChosen((prev) => Object.assign([...prev], { [c]: next[0] }))}
+                  >
+                    {letter}
+                  </button>
+                </span>
+              </div>
+            );
+          })}
           {cells.map((row, r) =>
             row.map((cell, c) => {
               const merge = mergeAt(fitted, r, c);
@@ -1474,13 +1633,20 @@ function InsertTable() {
               return (
                 <input
                   key={`${r}-${c}`}
-                  className={`input ${header && r === 0 ? 'head' : ''} ${merge ? 'merged' : ''}`}
-                  style={{ gridRow: `${2 * r + 3} / span ${2 * (merge?.rows ?? 1) - 1}`, gridColumn: `${2 * c + 2} / span ${2 * (merge?.cols ?? 1) - 1}` }}
+                  className={`input ${header && r === 0 ? 'head' : ''} ${r === 0 ? 'first' : ''} ${merge ? 'merged' : ''}`}
+                  style={{
+                    gridRow: `${2 * r + 2} / span ${2 * (merge?.rows ?? 1) - 1}`,
+                    gridColumn: `${2 * c + 2} / span ${2 * (merge?.cols ?? 1) - 1}`,
+                    textAlign: alignOf(align[c])
+                  }}
                   data-cell={`${r}-${c}`}
                   aria-label={`Row ${r + 1}, column ${c + 1}`}
                   value={cell}
                   onChange={(e) => setCell(r, c, e.target.value)}
-                  onFocus={() => setAt([r, c])}
+                  onFocus={() => {
+                    setAt([r, c]);
+                    setEditing(true);
+                  }}
                   onKeyDown={(e) => onCellKey(e, r, c)}
                   onPaste={(e) => onCellPaste(e, r, c)}
                 />
@@ -1492,7 +1658,7 @@ function InsertTable() {
               <div
                 key={`part-${p.row}-${p.from}-${p.to}`}
                 className="table-line h on part"
-                style={{ gridRow: 2 * p.row + 4, gridColumn: `${2 * p.from + 2} / ${2 * p.to + 3}` }}
+                style={{ gridRow: 2 * p.row + 3, gridColumn: `${2 * p.from + 2} / ${2 * p.to + 3}` }}
                 aria-hidden
                 title="Remove the short rule"
                 onMouseDown={(e) => e.preventDefault()}
@@ -1505,7 +1671,7 @@ function InsertTable() {
               <div
                 key={edge}
                 className={`table-line h ${rules.h[i] ? 'on' : ''} ${rules.h[i] === 2 ? 'double' : ''} ${lines === 'booktabs' && (i === 0 || i === cells.length) ? 'heavy' : ''}`}
-                style={{ gridRow: 2 * i + 2, gridColumn: '1 / -1' }}
+                style={{ gridRow: 2 * i + 1, gridColumn: '1 / -1' }}
                 aria-hidden
                 title={rules.h[i] ? 'Remove the line' : 'Add a line'}
                 onMouseDown={(e) => e.preventDefault()}
@@ -1518,7 +1684,7 @@ function InsertTable() {
               <div
                 key={edge}
                 className={`table-line v ${rules.v[j] ? 'on' : ''}`}
-                style={{ gridRow: '2 / -1', gridColumn: 2 * j + 1 }}
+                style={{ gridRow: '1 / -1', gridColumn: 2 * j + 1 }}
                 aria-hidden
                 title={rules.v[j] ? 'Remove the line' : 'Add a line'}
                 onMouseDown={(e) => e.preventDefault()}
@@ -1527,95 +1693,70 @@ function InsertTable() {
             ))}
         </div>
       </div>
-      <div className="table-grid-actions">
-        <button className="btn small ghost" aria-label="Add a row" title="Add a row" onClick={addRow}>
-          <Icon name="plus" /> Row
-        </button>
-        <button className="btn small ghost" aria-label="Remove the last row" title="Remove the last row" disabled={cells.length < 2} onClick={() => setCells((prev) => prev.slice(0, -1))}>
-          <Icon name="minus" /> Row
-        </button>
-        <button className="btn small ghost" aria-label="Add a column" title="Add a column" onClick={() => setCells((prev) => prev.map((row) => [...row, '']))}>
-          <Icon name="plus" /> Column
-        </button>
-        <button
-          className="btn small ghost"
-          aria-label="Remove the last column"
-          title="Remove the last column"
-          disabled={cols < 2}
-          onClick={() => setCells((prev) => prev.map((row) => row.slice(0, -1)))}
-        >
-          <Icon name="minus" /> Column
-        </button>
-        <button
-          className="btn small ghost"
-          onClick={() => {
-            setCells(blankGrid(3, 3));
-            setChosen([]);
-            setToggled([]);
-            setCaption('');
-            setLabel(null);
-            setMerges([]);
-            setPartRules([]);
-            setNotes('');
-          }}
-        >
-          Clear
-        </button>
-      </div>
-      <div className="field-hint">
-        Tab moves on, {IS_WINDOWS ? 'Enter' : 'Return'} moves down. Paste rows from {IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file.{' '}
-        {kind === 'markdown' ? 'Markdown tables have no lines of their own.' : 'Click between cells to add or remove a line.'}
-      </div>
-      {kind !== 'markdown' && (
-        <div className="field">
-          <span className="field-label" id={`${id}-lines-at`}>
-            Lines at row {atRow + 1} and column {atCol + 1}
-          </span>
-          <div className="chip-row" role="group" aria-labelledby={`${id}-lines-at`}>
-            {(
-              [
-                [`Above row ${atRow + 1}`, 'h', atRow],
-                [`Below row ${atRow + 1}`, 'h', atRow + 1],
-                [`Before column ${atCol + 1}`, 'v', atCol],
-                [`After column ${atCol + 1}`, 'v', atCol + 1]
-              ] as const
-            ).map(([name, way, i], k) => (
+      {/* the focused cell's lines and merges, while a cell or these buttons have the focus */}
+      {editing && (
+        <div className="table-cell-tools">
+          <span className="table-cell-name">{merged ? `Merged at ${block.r + 1}, ${block.c + 1}` : `Cell ${atRow + 1}, ${atCol + 1}`}</span>
+          {kind !== 'markdown' && (
+            <span className="chip-row" role="group" aria-label={`Lines at row ${atRow + 1} and column ${atCol + 1}`}>
+              {(
+                [
+                  ['Above', `Line above row ${atRow + 1}`, 'h', atRow],
+                  ['Below', `Line below row ${atRow + 1}`, 'h', atRow + 1],
+                  ['Before', `Line before column ${atCol + 1}`, 'v', atCol],
+                  ['After', `Line after column ${atCol + 1}`, 'v', atCol + 1]
+                ] as const
+              ).map(([word, name, way, i], k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`chip ${rules[way][i] ? 'on' : ''}`}
+                  aria-label={`${name}${rules[way][i] === 2 ? ' (double)' : ''}`}
+                  title={name}
+                  aria-pressed={!!rules[way][i]}
+                  disabled={way === 'v' && lines === 'booktabs'}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => flip(edges[way][i])}
+                >
+                  {word}
+                  {rules[way][i] === 2 && ' (double)'}
+                </button>
+              ))}
+            </span>
+          )}
+          <span className="chip-row" role="group" aria-label={merged ? 'Merged cells' : `Cell at row ${atRow + 1}, column ${atCol + 1}`}>
+            <button type="button" className="chip" disabled={block.c + block.cols >= cols || kind === 'markdown'} onMouseDown={(e) => e.preventDefault()} onClick={() => mergeBy(0, 1)}>
+              Merge right
+            </button>
+            <button type="button" className="chip" disabled={block.r + block.rows >= cells.length || kind === 'markdown'} onMouseDown={(e) => e.preventDefault()} onClick={() => mergeBy(1, 0)}>
+              Merge down
+            </button>
+            <button
+              type="button"
+              className="chip"
+              disabled={!merged}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setMerges((prev) => prev.filter((g) => !(g.r === block.r && g.c === block.c)))}
+            >
+              Split
+            </button>
+            {kind !== 'markdown' && (
               <button
-                key={k}
                 type="button"
-                className={`chip ${rules[way][i] ? 'on' : ''}`}
-                aria-pressed={!!rules[way][i]}
-                disabled={way === 'v' && lines === 'booktabs'}
-                onClick={() => flip(edges[way][i])}
+                className={`chip ${shortRule ? 'on' : ''}`}
+                aria-pressed={!!shortRule}
+                disabled={block.r + block.rows >= cells.length}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={toggleShortRule}
+                title="A rule under just this cell’s columns"
               >
-                {name}
-                {rules[way][i] === 2 && ' (double)'}
+                Short rule
               </button>
-            ))}
-          </div>
+            )}
+          </span>
+          {kind === 'markdown' && <span className="field-hint">Markdown tables can’t merge cells.</span>}
         </div>
       )}
-      <div className="field">
-        <span className="field-label" id={`${id}-merge`}>
-          {merged ? `Merged cells at row ${block.r + 1}, column ${block.c + 1}` : `Cell at row ${atRow + 1}, column ${atCol + 1}`}
-        </span>
-        <div className="chip-row" role="group" aria-labelledby={`${id}-merge`}>
-          <button type="button" className="chip" disabled={block.c + block.cols >= cols || kind === 'markdown'} onClick={() => mergeBy(0, 1)}>
-            Merge right
-          </button>
-          <button type="button" className="chip" disabled={block.r + block.rows >= cells.length || kind === 'markdown'} onClick={() => mergeBy(1, 0)}>
-            Merge down
-          </button>
-          <button type="button" className="chip" disabled={!merged} onClick={() => setMerges((prev) => prev.filter((g) => !(g.r === block.r && g.c === block.c)))}>
-            Split
-          </button>
-          {kind !== 'markdown' && (
-            <button type="button" className={`chip ${shortRule ? 'on' : ''}`} aria-pressed={!!shortRule} disabled={block.r + block.rows >= cells.length} onClick={toggleShortRule}>
-              Short rule below
-            </button>
-          )}
-        </div>
-        {kind === 'markdown' && <div className="field-hint">Markdown tables can’t merge cells.</div>}
       </div>
       {/* style and switches, grouped */}
       <div className="float-options">
@@ -1629,12 +1770,8 @@ function InsertTable() {
                 setLines(next);
                 setToggled([]);
               }}
+              hint={changed && `Changed by hand from ${LINES.find(([preset]) => preset === lines)?.[1]}. Choose a style to start again.`}
             />
-            {changed ? (
-              <div className="field-hint">Changed by hand from {LINES.find(([preset]) => preset === lines)?.[1]}. Choose a style to start again.</div>
-            ) : (
-              lines === 'booktabs' && <div className="field-hint">Heavier rules at the top and bottom, no vertical lines.</div>
-            )}
           </>
         )}
         {latex && (
@@ -1647,16 +1784,22 @@ function InsertTable() {
                 setEnv(next);
                 setChosen((prev) => (next === 'tabular' ? [] : prev));
               }}
+              hint={
+                (tableEnv !== 'tabular' || align.includes('S')) && (
+                  <>
+                    {tableEnv !== 'tabular' && !align.includes('X') && `${tableEnv} needs an X column, so the last column that isn’t numbers fills the width. `}
+                    {long && 'Breaks across pages, repeating the header row. It holds its own caption, so it doesn’t float, span both columns or take notes. '}
+                    {align.includes('S') && 'S lines numbers up on their decimal point (siunitx). Type them without thousands separators.'}
+                  </>
+                )
+              }
             />
-            {tableEnv !== 'tabular' && !align.includes('X') && <div className="field-hint">{tableEnv} needs an X column, so the last column that isn’t numbers fills the width.</div>}
-            {long && <div className="field-hint">Breaks across pages, repeating the header row. It holds its own caption, so it doesn’t float, span both columns or take notes.</div>}
-            {align.includes('S') && <div className="field-hint">S lines numbers up on their decimal point (siunitx). Type them without thousands separators.</div>}
           </>
         )}
         <Toggle label="Header row" checked={header} onChange={setHeader} />
         {kind !== 'markdown' && (
-          <Toggle label="Line breaks in cells" checked={breaks} onChange={setBreaks}>
-            Type \\ or press Shift-{IS_WINDOWS ? 'Enter' : 'Return'} in a cell{latex ? ' (makecell)' : ''}.
+          <Toggle label={latex ? 'Line breaks in cells (makecell)' : 'Line breaks in cells'} checked={breaks} onChange={setBreaks}>
+            {breaks && `Type \\\\ or press Shift-${IS_WINDOWS ? 'Enter' : 'Return'} in a cell.`}
           </Toggle>
         )}
         {kind !== 'markdown' && (
@@ -1665,7 +1808,7 @@ function InsertTable() {
           </Toggle>
         )}
         {kind !== 'markdown' && withNotes && !long && (
-          <div className="field">
+          <div className="field option-row">
             <label htmlFor={`${id}-notes`}>Notes</label>
             <textarea
               id={`${id}-notes`}
@@ -1680,46 +1823,53 @@ function InsertTable() {
         )}
         {latex && (
           <Toggle label="Escape special characters" checked={escape} onChange={setEscape}>
-            &amp; % # _ and the like print as themselves; commands still work.
+            {!escape && 'Cells are written as typed, so & % # _ act as LaTeX.'}
           </Toggle>
         )}
-        <Toggle label="Float" checked={float} onChange={setFloat}>
-          {kind === 'typst' ? 'In a #figure with a caption and a label.' : kind === 'markdown' ? 'With a Table: caption line.' : 'In a table environment with a caption and a label.'}
-        </Toggle>
+        <Toggle label="Float, with a caption and label" checked={float} onChange={setFloat} />
         {float && latex && !long && <PlacementField kind="table" value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
         {float && kind === 'typst' && <TypstPlacementField value={placement} onChange={setPlacement} span={span} onSpan={setSpan} />}
-      </div>
-      {float && (
-        <>
-          <div className="field">
-            <label htmlFor={`${id}-caption`}>Caption</label>
-            <textarea id={`${id}-caption`} className="input" rows={2} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Caption, shown above the table" />
+        {float && (
+          <div className="option-row option-fields">
+            <label className="option-name" htmlFor={`${id}-caption`}>
+              Caption
+            </label>
+            <input id={`${id}-caption`} className="input" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Shown above the table" />
+            <label className="option-name" htmlFor={`${id}-label`}>
+              Label
+            </label>
+            <input id={`${id}-label`} className="input mono" value={label ?? tableTitle(caption, cells).label} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
           </div>
-          <div className="field">
-            <label htmlFor={`${id}-label`}>Label</label>
-            <input id={`${id}-label`} className="input" value={label ?? tableTitle(caption, cells).label} onChange={(e) => setLabel(e.target.value)} spellCheck={false} />
-          </div>
-        </>
-      )}
-      <div className="field">
-        <label htmlFor={`${id}-latex`}>Source</label>
-        <textarea id={`${id}-latex`} className="input mono table-latex" readOnly wrap="off" rows={Math.min(16, text.split('\n').length)} value={text} />
+        )}
       </div>
-      <div className="row">
-        <button className="btn" onClick={copy}>
-          <Icon name="doc.on.doc" /> Copy
+      <details className="table-source">
+        <summary>Source</summary>
+        <textarea
+          aria-label="Source"
+          className="input mono table-latex"
+          wrap="off"
+          spellCheck={false}
+          rows={Math.min(16, text.split('\n').length)}
+          value={text}
+          onChange={(e) => setTyped({ over: written, as: e.target.value })}
+        />
+        {typed && typed.over === written && <div className="field-hint">Typed over: Insert table takes it as it is here, until a change to the grid or an option writes it again.</div>}
+      </details>
+      {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
+      <div className="table-footer">
+        <span className="field-hint">
+          Need a chart? Use{' '}
+          <button type="button" className="link-button" onClick={() => openDiagram(api.projectId).catch((err) => api.notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error'))}>
+            Plot
+          </button>{' '}
+          in the diagram composer.
+        </span>
+        <button className="icon-btn" title="Copy the source" aria-label="Copy the source" onClick={copy}>
+          <Icon name="doc.on.doc" />
         </button>
-        <button className="btn primary grow" onClick={insert} disabled={busy || !docOpen}>
+        <button className="btn primary" onClick={insert} disabled={busy || !docOpen}>
           {busy ? <span className="spinner" /> : <Icon name="plus" />} Insert table
         </button>
-      </div>
-      {!docOpen && <div className="field-hint">{NOT_TEX}</div>}
-      <div className="field-hint">
-        Need a chart?{' '}
-        <button type="button" className="link-button" onClick={() => openDiagram(api.projectId).catch((err) => api.notify(`Couldn’t open the diagram composer: ${errorText(err)}`, 'error'))}>
-          Plot in the diagram composer
-        </button>{' '}
-        imports a table from the document.
       </div>
       <TableHelp />
     </section>
@@ -1732,6 +1882,12 @@ function TableHelp() {
     <details className="tool-help">
       <summary>What these options mean</summary>
       <dl>
+        <dt>The grid</dt>
+        <dd>
+          Tab moves to the next cell and {IS_WINDOWS ? 'Enter' : 'Return'} moves down. Rows copied from {IS_WINDOWS ? '' : 'Numbers, '}Excel or a CSV file and pasted into a cell fill the
+          grid from there, as does Paste CSV. Click between two rows or two columns, or along an edge, to add or remove a line across the table; while a cell is being edited, the
+          buttons under the grid do the same for it and merge it with its neighbours.
+        </dd>
         <dt>tabular</dt>
         <dd>
           LaTeX’s own table. Each column is as wide as its widest cell, so long text runs off the page unless it is short. Works everywhere, with no package. Best for tables of short
@@ -1801,12 +1957,11 @@ function ProjectFigures() {
   const [open, setOpen] = useState('');
 
   return (
-    <section className="tool-card">
-      <div className="tool-card-title">
-        <Icon name="photo.on.rectangle" /> Project figures{api.figureFiles.length ? ` (${api.figureFiles.length})` : ''}
-        {api.figureFiles.length > 0 && <span className="tool-card-end field-hint">Click to insert</span>}
+    <div className="project-figures">
+      <div className="project-figures-head">
+        <span>Project figures{api.figureFiles.length ? ` (${api.figureFiles.length})` : ''}</span>
+        <span className="field-hint">{api.figureFiles.length ? 'Click to insert' : 'None yet'}</span>
       </div>
-      {!api.figureFiles.length && <div className="field-hint">No images in this project yet.</div>}
       <div className="figure-grid">
         {api.figureFiles.map((path) => (
           <div key={path} className="figure-tile-wrap">
@@ -1852,6 +2007,6 @@ function ProjectFigures() {
           </div>
         </Sheet>
       )}
-    </section>
+    </div>
   );
 }
