@@ -163,6 +163,9 @@ const memberOf = (m: StructureModel) => m.parts.find((p): p is Member => p.kind 
 
 (async () => {
   eq([structureNeedsVersion5(sampleBeam(), {}), structureNeedsVersion5(bent({ sag: -0.6 }), {})], [false, true], 'a bend makes it version 5');
+  // a sag of 0 (the inspector's slider at the middle) keeps the shape and axis but draws straight: as before, version and code
+  const resting = bent({ sag: 0, shape: 'sbend', ghost: true });
+  eq([structureNeedsVersion5(resting, {}), structureCode(resting, { view: 'loading' }).body], [false, structureCode(sampleBeam(), { view: 'loading' }).body], 'a sag of 0: straight, as before');
   const diagram: DiagramFile = { language: 'tikz', pkg: 'structures', style: { view: 'diagrams', moments: 'tension' }, model: bent({ sag: -0.6, shape: 'sbend', ghost: true, label: '$v$' }), version: 1 };
   const code = structureCode(diagram.model, diagram.style);
   const back = await readDiagramFile(await diagramFileText(diagram, code));

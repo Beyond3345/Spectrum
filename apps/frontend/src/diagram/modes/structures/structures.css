@@ -77,3 +77,8 @@
 .st-rail .st-sym { stroke: currentColor; }
 .st-rail .st-sym-paper { fill: var(--bg-elevated, #fff); }
 .st-rail .st-arrowhead { fill: currentColor; }
+
+/* a bent beam's sag in the inspector: the slider, and the exact value beside it */
+.st-sag { display: flex; align-items: center; gap: 8px; }
+.st-sag input[type='range'] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.st-sag .form-number { flex: none; width: 88px; }
