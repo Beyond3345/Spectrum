@@ -1716,21 +1716,42 @@ span.log-location {
    Review
    -------------------------------------------------------------------------- */
 
-.review-ticks {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px 16px;
+/* a panel for each check: its tick for Run all and name, its state, its own Run */
+.review-panel {
+  gap: 8px;
 }
 
-.review-tick {
+.review-panel-head {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 28px;
 }
 
-.review-switch {
-  margin-left: 23px;
+.review-panel-head .tool-card-title {
+  white-space: nowrap;
+}
+
+.review-panel-head .disclosure-head {
+  gap: 4px;
   color: var(--text-secondary);
+}
+
+.review-option {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.review-step {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.review-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .review-status {
@@ -1754,23 +1775,6 @@ span.log-location {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.review-group {
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.review-group-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  min-height: 28px;
-}
-
-.review-group-head .disclosure-head h3 {
-  white-space: nowrap;
 }
 
 .review-part h4,
