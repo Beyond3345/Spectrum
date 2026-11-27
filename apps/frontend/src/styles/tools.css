@@ -1691,6 +1691,7 @@ a.research-title:hover {
   gap: 8px;
   color: var(--text-tertiary);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* --------------------------------------------------------------------------

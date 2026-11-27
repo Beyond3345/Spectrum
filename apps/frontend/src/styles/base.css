@@ -1043,6 +1043,7 @@ textarea.input {
   background: var(--bg-selected);
   color: var(--text-secondary);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   line-height: 16px;
   text-align: center;
 }
