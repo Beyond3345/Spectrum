@@ -1,10 +1,16 @@
 // Reading a table out of a document: a LaTeX tabular, a Typst #table or a Markdown pipe table, as rows of cells. Pure;
 // checked in tableRows.check.ts. The diagram composer's Plot mode imports tables through it.
 import { matchBrace, withoutComments } from '../../../backend/src/latex/text.js';
-import { markdownTableRows } from './floats';
 import { closing, readable, typstArgs, typstFigure } from './outlines';
 
-export { markdownTableRows };
+/** A Markdown pipe table's cells, without its divider row; null when text holds none. */
+export function markdownTableRows(text: string): string[][] | null {
+  const lines = text.split('\n').filter((line) => line.includes('|'));
+  const divider = (line: string) => /^[\s|:-]*-[\s|:-]*$/.test(line);
+  if (!lines.some(divider)) return null;
+  const rows = lines.filter((line) => !divider(line)).map((line) => line.trim().replace(/^\||(?<!\\)\|$/g, '').split(/(?<!\\)\|/).map((cell) => cell.trim()));
+  return rows.length ? rows : null;
+}
 
 /**
  * A selected Typst #table's cells, row by row, as its text reads (markup gone, a colspan's cell followed by blanks);
