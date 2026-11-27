@@ -1,6 +1,6 @@
-# Windows test, build and release of Spectrum 2.7.0
+# Windows test, build and release of Spectrum 2.8.0
 
-Written 29 October 2026 for Spectrum 2.0.0 and revised on 21 November 2026 for Spectrum 2.6.0 and on 22 November 2026 for 2.6.1, for an AI agent working on the user's Windows computer. It is self-contained: read it to the end before running anything. 2.6.0 was released on 21 November 2026 for the Mac and then for Windows, built and tested on this computer. 2.6.1, released on 22 November 2026 as `v2.6.1`, adds the Windows fixes made then and a fix to the word count: texcount could not open a document in a folder whose name the system's code page cannot spell, such as one with `大學` in it, and Spectrum showed no words. 2.6.2, released on 22 November 2026 as `v2.6.2` for the Mac only, since its Windows build on GitHub failed, adds two things to check here first: a biblatex document in a folder with `大學` in its path compiles with its citations resolved (TeX Live's Biber could not find the `.bib` there), and in the To-dos tab a to-do added on selected words highlights them in its colour, follows typing and can be dragged onto a group. 2.6.3, released on 22 November 2026 as `v2.6.3`, also carries 2.6.2's Windows release: build it on this computer as before. It adds the fixes for that failed GitHub build (several tests that assumed a Mac, and the precompiled preamble, which MiKTeX had silently turned off) and stops `''` being typed as `'''`. Check that typing `''` in a LaTeX file gives two quotes, and with MiKTeX that a notes template's second compile says it starts from a format of the preamble. 2.6.4, released on 26 November 2026 as `v2.7.0`, adds a setup page on the first start, Google's Antigravity as a local agent and a one-step update for agent adapters. Check here first: Antigravity's card finds `agy.exe` in `%LOCALAPPDATA%\agy\bin` and its Test passes with a Gemini API key; and on a fresh Windows account the setup page shows once and stays until Skip or Continue. 2.7.0, released on 27 November 2026 as `v2.7.0`, had its Windows installer built by the GitHub workflow (`windows.yml`) rather than on this computer; use this document for a later version or to test 2.7.0 here. It adds a proxy for the whole app (Mac only), OpenCode 2 on the Mac, the model and effort in the agents' message box with a row of figures under it, and prices from models.dev. Check here first: both agent tabs show the model chip beside Send and the figures under the box, Settings › Models shows models.dev's prices, and OpenCode 2 is listed as unavailable. 2.6.0 is a large release: it carries the work once planned as 2.5.2, 2.6 and 2.7 (see `CHANGELOG.md`, sections 2.6.0 and 2.5.2), so allow more time than for an earlier version.
+Written 29 October 2026 for Spectrum 2.0.0 and revised on 21 November 2026 for Spectrum 2.6.0 and on 22 November 2026 for 2.6.1, for an AI agent working on the user's Windows computer. It is self-contained: read it to the end before running anything. 2.6.0 was released on 21 November 2026 for the Mac and then for Windows, built and tested on this computer. 2.6.1, released on 22 November 2026 as `v2.6.1`, adds the Windows fixes made then and a fix to the word count: texcount could not open a document in a folder whose name the system's code page cannot spell, such as one with `大學` in it, and Spectrum showed no words. 2.6.2, released on 22 November 2026 as `v2.6.2` for the Mac only, since its Windows build on GitHub failed, adds two things to check here first: a biblatex document in a folder with `大學` in its path compiles with its citations resolved (TeX Live's Biber could not find the `.bib` there), and in the To-dos tab a to-do added on selected words highlights them in its colour, follows typing and can be dragged onto a group. 2.6.3, released on 22 November 2026 as `v2.6.3`, also carries 2.6.2's Windows release: build it on this computer as before. It adds the fixes for that failed GitHub build (several tests that assumed a Mac, and the precompiled preamble, which MiKTeX had silently turned off) and stops `''` being typed as `'''`. Check that typing `''` in a LaTeX file gives two quotes, and with MiKTeX that a notes template's second compile says it starts from a format of the preamble. 2.6.4, released on 26 November 2026 as `v2.8.0`, adds a setup page on the first start, Google's Antigravity as a local agent and a one-step update for agent adapters. Check here first: Antigravity's card finds `agy.exe` in `%LOCALAPPDATA%\agy\bin` and its Test passes with a Gemini API key; and on a fresh Windows account the setup page shows once and stays until Skip or Continue. 2.7.0, released on 27 November 2026 as `v2.8.0`, had its Windows installer built by the GitHub workflow (`windows.yml`) rather than on this computer; use this document for a later version or to test 2.7.0 here. It adds a proxy for the whole app (Mac only), OpenCode 2 on the Mac, the model and effort in the agents' message box with a row of figures under it, and prices from models.dev. Check here first: both agent tabs show the model chip beside Send and the figures under the box, Settings › Models shows models.dev's prices, and OpenCode 2 is listed as unavailable. 2.8.0, released on 27 November 2026 as `v2.8.0`, has its Windows installer built by the GitHub workflow as 2.7.0's was. It brings the new design (the agents' model menu and figures row, Providers and Models in Settings, the Review panels, the reference studio with book editions and locators, the Figures and Tables panels, Plot's table import and the bent beam). Check here first: Settings › Providers and Models, the agent tabs' model menu, and the References card. 2.6.0 is a large release: it carries the work once planned as 2.5.2, 2.6 and 2.7 (see `CHANGELOG.md`, sections 2.6.0 and 2.5.2), so allow more time than for an earlier version.
 
 ## The ground rules
 
@@ -39,12 +39,12 @@ Then:
 ```
 git clone https://github.com/Beyond3345/Spectrum.git
 cd Spectrum
-git switch --detach v2.7.0
+git switch --detach v2.8.0
 git log --oneline -1
 npm ci
 ```
 
-Tell the user which commit `git log` shows: the `v2.7.0` tag, the code the Mac release was built from.
+Tell the user which commit `git log` shows: the `v2.8.0` tag, the code the Mac release was built from.
 
 ## 2. Build the installer
 
@@ -59,7 +59,7 @@ node scripts/desktop.mjs build
   - Any other error is real.
 - **`desktop.mjs texlab`** builds TexLab 5.26.0 from its tagged source with the C runtime linked in. It takes a while and is cached in `%LOCALAPPDATA%\spectrum-build`.
 - **`desktop.mjs build`** fetches the pinned Node, Tectonic, Typst and pandoc downloads (each checked against its SHA-256 in the repository), builds the frontend, the backend bundle and the agent worker, then runs the Tauri build.
-  - The installer appears at `src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.7.0_x64-setup.exe`.
+  - The installer appears at `src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.8.0_x64-setup.exe`.
   - Record its size and its SHA-256 (`Get-FileHash -Algorithm SHA256`).
 
 If a download fails its checksum, stop and report it: never change a pinned checksum to make a build pass.
@@ -111,7 +111,7 @@ Then run each check below and record its counts (tests, passed, failed, skipped)
 
 ## 4. Try the installed app
 
-Install `Spectrum_2.7.0_x64-setup.exe` (it installs for the current user only).
+Install `Spectrum_2.8.0_x64-setup.exe` (it installs for the current user only).
 
 The user's real Spectrum data is on this computer. These checks are best done by the user, or by the agent only with the user watching and saying which projects are scratch ones. Make a scratch project for each check; never edit or delete the user's own projects.
 
@@ -174,7 +174,7 @@ Nothing in this list has run on Windows. Use scratch projects only. Report each 
 10. **To-dos.** A group can be made, renamed, reordered and deleted with Undo; a to-do can carry a note.
 11. **MCP servers** in Settings › Agents: a server can be added and checked, and a variable can be added to it. The local ports control must be absent on Windows, with a line saying why.
 12. **Use from another agent** in the Local agents bar: the switch turns on, and a request to the copied address without its secret is refused.
-13. **The update notice.** Settings › System has the switch. Do not expect a notice: 2.7.0 is the newest version.
+13. **The update notice.** Settings › System has the switch. Do not expect a notice: 2.8.0 is the newest version.
 14. **Review › References exist**, only on the user's word, since it sends the bibliography's DOIs and titles to Crossref, OpenAlex and arXiv.
 
 ### The Windows agent checks
@@ -209,10 +209,10 @@ Each was found on the Mac or in CI and is untested on a real Windows desktop. Re
 
 ## 7. Release (only on the user's word)
 
-The Mac release is published: `main`, the `v2.7.0` tag and a GitHub release carrying `Spectrum_2.7.0_aarch64.dmg` (Apple silicon only since 2.5.0) and `SHA256SUMS.txt`. Check it exists:
+The Mac release is published: `main`, the `v2.8.0` tag and a GitHub release carrying `Spectrum_2.8.0_aarch64.dmg` (Apple silicon only since 2.5.0) and `SHA256SUMS.txt`. Check it exists:
 
 ```
-gh release view v2.7.0 --repo Beyond3345/Spectrum
+gh release view v2.8.0 --repo Beyond3345/Spectrum
 ```
 
 If it does not exist yet, stop and tell the user. When it exists and the user says to attach the Windows build, there are two ways.
@@ -225,16 +225,16 @@ Upload the installer and TexLab's source, which goes with every installer becaus
 $src = "texlab-5.26.0-source.tar.gz"
 Invoke-WebRequest https://github.com/latex-lsp/texlab/archive/refs/tags/v5.26.0.tar.gz -OutFile $src
 (Get-FileHash $src -Algorithm SHA256).Hash.ToLower() -eq "47af7e71247fe186ddbaa62373ce5fbebc802ab8df9924958ac62788a644f84e"
-gh release upload v2.7.0 "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.7.0_x64-setup.exe" $src --repo Beyond3345/Spectrum
+gh release upload v2.8.0 "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.8.0_x64-setup.exe" $src --repo Beyond3345/Spectrum
 ```
 
 Then add the installer's line to the release's checksums:
 
 ```
-gh release download v2.7.0 --pattern SHA256SUMS.txt --repo Beyond3345/Spectrum
-$hash = (Get-FileHash "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.7.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
-Add-Content SHA256SUMS.txt "$hash  Spectrum_2.7.0_x64-setup.exe"
-gh release upload v2.7.0 SHA256SUMS.txt --clobber --repo Beyond3345/Spectrum
+gh release download v2.8.0 --pattern SHA256SUMS.txt --repo Beyond3345/Spectrum
+$hash = (Get-FileHash "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\Spectrum_2.8.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+Add-Content SHA256SUMS.txt "$hash  Spectrum_2.8.0_x64-setup.exe"
+gh release upload v2.8.0 SHA256SUMS.txt --clobber --repo Beyond3345/Spectrum
 ```
 
 Show the user the new `SHA256SUMS.txt` before the upload.
@@ -243,7 +243,7 @@ Show the user the new `SHA256SUMS.txt` before the upload.
 
 This is the way earlier releases were done.
 
-- **Starting it:** run the Windows workflow on `main` with the release's tag: `gh workflow run windows.yml --ref main -f release_tag=v2.7.0`.
+- **Starting it:** run the Windows workflow on `main` with the release's tag: `gh workflow run windows.yml --ref main -f release_tag=v2.8.0`.
 - **What it does:** it builds and tests on a clean runner, then attaches its own installer and TexLab's source to the release. A release run fails rather than attaching an installer when the Hunspell binding does not build.
 - **Checksums:** it does not update `SHA256SUMS.txt`, so add the line as in A, using the attached installer's hash.
 
