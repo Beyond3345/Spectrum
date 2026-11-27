@@ -68,6 +68,8 @@ export type AppSettings = {
   accent: Accent;
   /** Spectrum colours each area of the app from palette.json (appearance.ts); Simple is the plain look before 2.5 */
   colourStyle: 'spectrum' | 'simple';
+  /** the marks of agents, providers and models (BrandMark.tsx): one set of line marks, or each brand's own logo where Spectrum ships one */
+  logos: 'line' | 'full';
   /** '#rrggbb' for the Custom accent */
   accentCustom: string;
   /** see-through window (Liquid Glass on macOS 26 and later, vibrancy before) */
@@ -86,13 +88,13 @@ export type AppSettings = {
   editorThemeDark: string;
   /** colours changed from the chosen theme, per mode */
   editorColours: { light: EditorColours; dark: EditorColours };
-  /** preset id from Settings → Template transfer */
+  /** preset id from Settings → Document parsers */
   parser: string;
   /** each parser's endpoint ('' = the preset's own) and key, kept when switching between them */
   parserSaved: Record<string, { endpoint: string; key: string; appId?: string }>;
   /** the API a custom parser speaks (a preset id) */
   parserProtocol: string;
-  /** preset id from Settings → Models, 'custom', or '' to work it out from the endpoint */
+  /** preset id from Settings → Providers, 'custom', or '' to work it out from the endpoint */
   llmProvider: string;
   /** each provider's key, endpoint and model, kept when switching between them */
   providerSaved: Record<string, { key: string; endpoint: string; model: string }>;
@@ -104,6 +106,8 @@ export type AppSettings = {
   modelPrices: Prices;
   /** Settings › Models: fill in the prices not typed from models.dev's public list, taken again every six hours */
   autoPrices: boolean;
+  /** Settings › Models: the models switched off, by provider id ('custom' for Other), which leave the model menus (this computer's, as the models are). A model missing here is on. */
+  hiddenModels: Record<string, string[]>;
   searchEndpoint: string;
   searchApiKey: string;
   searchModel: string;
@@ -165,7 +169,7 @@ export type AppSettings = {
   searchProviderKeys: Partial<Record<SearchProvider, string>>;
   searchConnections: SearchProvider[];
   serpEngine: 'google' | 'google_scholar' | 'baidu';
-  /** Research's sources (Settings › Search), on this computer only; its OpenAlex and Semantic Scholar keys are the connections' */
+  /** Research's sources (Settings › Search & Web), on this computer only; its OpenAlex and Semantic Scholar keys are the connections' */
   openalexEmail: string;
   ncbiKey: string;
   unpaywallEmail: string;
@@ -251,6 +255,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   accent: 'system',
   colourStyle: 'spectrum',
+  logos: 'line',
   accentCustom: '#0a84ff',
   glass: false,
   glassClarity: 50,
@@ -272,6 +277,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reasoningEffort: 'default',
   modelPrices: {},
   autoPrices: true,
+  hiddenModels: {},
   searchEndpoint: '',
   searchApiKey: '',
   searchModel: '',
@@ -485,6 +491,25 @@ export function cleanPrices(value: unknown): Prices {
   );
 }
 
+/** The models switched off as kept: each provider's ids once each, as text; anything else is nothing switched off. */
+export function cleanHidden(value: unknown): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(typeof value === 'object' && value && !Array.isArray(value) ? value : {}).flatMap(([provider, list]) => {
+      const ids = Array.isArray(list) ? [...new Set(list.filter((id): id is string => typeof id === 'string' && !!id))].slice(0, 2000) : [];
+      return provider && ids.length ? [[provider, ids]] : [];
+    })
+  );
+}
+
+/**
+ * A provider as the model menus list it: without the models switched off in Settings › Models. The main model stays
+ * whatever the switches say, so the menu always has the model in use.
+ */
+export function shownPreset<T extends ProviderPreset | null>(preset: T, settings: Pick<AppSettings, 'hiddenModels' | 'llmModel'>): T {
+  const off = preset ? settings.hiddenModels[preset.id] : undefined;
+  return preset && off?.length ? { ...preset, models: preset.models.filter((m) => m.id === settings.llmModel || !off.includes(m.id)) } : preset;
+}
+
 const effortLabel = (level: ReasoningEffort) => REASONING_EFFORTS.find(([value]) => value === level)?.[1] || level;
 
 /** Effort choices for a model: the levels it accepts, or all of them for a model Spectrum doesn't know. */
@@ -531,6 +556,7 @@ function parse(raw: string | null): AppSettings {
     if (!REASONING_EFFORTS.some(([value]) => value === merged.reasoningEffort)) merged.reasoningEffort = 'default';
     merged.modelPrices = cleanPrices(merged.modelPrices);
     merged.autoPrices = merged.autoPrices !== false;
+    merged.hiddenModels = cleanHidden(merged.hiddenModels);
     if (!Number.isFinite(merged.editorFontSize)) merged.editorFontSize = DEFAULT_SETTINGS.editorFontSize;
     merged.editorKeymap = editorKeymap(merged.editorKeymap);
     merged.updateCheck = merged.updateCheck !== false;
@@ -546,6 +572,7 @@ function parse(raw: string | null): AppSettings {
     if (merged.englishGrammar !== 'languagetool') merged.englishGrammar = 'harper';
     if (!ACCENTS.includes(merged.accent)) merged.accent = 'system';
     if (merged.colourStyle !== 'simple') merged.colourStyle = 'spectrum';
+    if (merged.logos !== 'full') merged.logos = 'line';
     if (typeof merged.accentCustom !== 'string' || !HEX.test(merged.accentCustom)) merged.accentCustom = DEFAULT_SETTINGS.accentCustom;
     merged.glass = merged.glass === true;
     if (!Number.isFinite(merged.glassClarity)) merged.glassClarity = DEFAULT_SETTINGS.glassClarity;
@@ -688,7 +715,7 @@ export const composerDefaults = (settings: AppSettings): ComposerDefaults => ({
  * keys, a path, the window's see-through look, an editor font or compiler only one computer may have, or this switch.
  */
 const SHARED_KEYS = [
-  'theme', 'accent', 'colourStyle', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize', 'editorKeymap',
+  'theme', 'accent', 'colourStyle', 'logos', 'accentCustom', 'pdfPageLight', 'pdfPageDark', 'editorThemeLight', 'editorThemeDark', 'editorColours', 'editorFontSize', 'editorKeymap',
   'autoInsertCite', 'continueLists', 'todoPlacement', 'closeMaths', 'mathPreview', 'snippets', 'shortcuts', 'spellCheck', 'grammarStyle', 'oxfordComma', 'languages', 'englishGrammar', 'syncDoubleClick', 'syncHighlightColour', 'syncHighlightCustom',
   'syncHighlightSeconds', 'projectFolders', 'tagColours', 'personas', 'defaultInstructions', 'composerMixSets', 'composerStylesOff', 'composerMoments', 'composerMohrShear', 'composerVectorNotation',
   'composerSiUnits', 'composerDiagrams', 'composerGrid', 'composerGridEvery', 'composerDark', 'composerMinimap'
@@ -954,7 +981,7 @@ export function llmConfigFor(settings: AppSettings, purpose: LLMPurpose): Partia
   };
 }
 
-const hostOf = (url: string) => {
+export const hostOf = (url: string) => {
   try {
     return new URL(url).host;
   } catch {
@@ -1047,7 +1074,7 @@ function endpointAndKey(known: Known[], next: ProviderPreset | null, typed?: str
 }
 
 /** The key a role leaves behind is kept for its provider, without touching the main model saved there. */
-function keepRoleKey(settings: AppSettings, providers: ProviderPreset[], role: ModelRole) {
+export function keepRoleKey(settings: AppSettings, providers: ProviderPreset[], role: ModelRole) {
   const f = ROLE_FIELDS[role];
   if (followsMain(settings, role) || !settings[f.apiKey] || !settings[f.endpoint]) return settings.providerSaved;
   const id = rolePresetOf(providers, settings, role)?.id || 'custom';
@@ -1092,9 +1119,10 @@ const liveLists = new Map<string, Promise<LiveList>>();
 
 /**
  * A live preset (Ollama) with the models its server lists now, and why there are none if it can't
- * be reached; any other preset as it is.
+ * be reached; any other preset as it is. Without the models switched off in Settings › Models, unless `all` (Settings
+ * itself, which lists every one).
  */
-export function useLivePreset(preset: ProviderPreset | null, endpoint: string) {
+export function useLivePreset(preset: ProviderPreset | null, endpoint: string, all = false) {
   const key = preset?.live ? `${preset.id} ${endpoint || preset.endpoint}` : '';
   const [got, setGot] = useState<{ key: string; list: LiveList } | null>(null);
   const [asked, setAsked] = useState(0);
@@ -1114,8 +1142,10 @@ export function useLivePreset(preset: ProviderPreset | null, endpoint: string) {
     };
   }, [key, asked]);
   const list = got?.key === key ? got.list : null;
+  const [settings] = useSettings();
+  const full = preset && list?.ok && list.models ? { ...preset, models: list.models, recommended: list.recommended || preset.recommended } : preset;
   return {
-    preset: preset && list?.ok && list.models ? { ...preset, models: list.models, recommended: list.recommended || preset.recommended } : preset,
+    preset: all ? full : shownPreset(full, settings),
     error: list?.ok ? '' : list?.error || '',
     refresh: () => {
       liveLists.delete(key);

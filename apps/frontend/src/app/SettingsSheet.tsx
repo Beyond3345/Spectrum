@@ -1,5 +1,4 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { autoPrice, useAutoPrices } from './autoPrices';
 import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -62,7 +61,7 @@ import Select from './Select';
 import Sheet from './Sheet';
 import Tabs from './Tabs';
 import { ParserFields } from './TransferPanel';
-import { keyFailure, selectSavedKey } from './keys';
+import { selectSavedKey } from './keys';
 import GitHubSettings from './GitHubSettings';
 import AgentsPane from './AgentSettings';
 import DiagramFields from '../diagram/modes/structures/DiagramFields';
@@ -72,7 +71,10 @@ import { IS_MAC, IS_WINDOWS, OS_NAME, tildify } from './platform';
 import { ACCENTS, PDF_PAGES_DARK, PDF_PAGES_LIGHT, TAG_COLOURS, useDarkMode } from './appearance';
 import type { IconColour } from './appearance';
 import { groupSkills, projectSkills, skillId, skillOn } from './skills';
-import { modelChoices, testSays, useConnectionTest } from './connectionTest';
+import ModelsPane from './ModelsPane';
+import ProvidersPane from './ProvidersPane';
+import { SECTION_GROUPS, SECTION_HUES, findSections } from './settingsNav';
+import type { Section } from './settingsNav';
 
 // the notices are long, so they load only when asked for
 const Licences = lazy(() => import('./Licences'));
@@ -85,15 +87,10 @@ import {
   AS_YOU_TYPE,
   autoCompileLabel,
   SYNC_HIGHLIGHTS,
-  effortOptions,
   followsMain,
-  llmConfigFor,
   modelOf,
-  presetForEndpoint,
   presetOf,
-  presetPatch,
   recommendedFor,
-  rolePatch,
   rolePresetOf,
   providerKey,
   providerKeyPatch,
@@ -104,96 +101,21 @@ import {
   loadSettings,
   useLivePreset,
   useProviders,
-  PRICE_FIELDS,
-  CURRENCIES,
-  cleanPrices,
   useSettings
 } from './settings';
-import type { AppSettings, Currency, ModelRole, PdfPageDark, PdfPageLight, Price, Theme } from './settings';
-import type { ProviderPreset } from '../api/client';
+import type { AppSettings, PdfPageDark, PdfPageLight, Theme } from './settings';
 import { FIXED_SHORTCUTS, SHORTCUTS, canonical, formatShortcut, shortcutFromEvent, shortcutKey, shortcutProblem } from './shortcuts';
 import type { Shortcut } from './shortcuts';
 import { UNIVERSITY_STYLES } from '../diagram/universityStyles';
 
-export type Section =
-  | 'appearance'
-  | 'editor'
-  | 'engines'
-  | 'checkpoints'
-  | 'composer'
-  | 'language'
-  | 'shortcuts'
-  | 'snippets'
-  | 'projects'
-  | 'github'
-  | 'models'
-  | 'personas'
-  | 'skills'
-  | 'agents'
-  | 'search'
-  | 'zotero'
-  | 'transfer'
-  | 'system';
+export type { Section } from './settingsNav';
+export { SECTION_GROUPS } from './settingsNav';
 
-// grouped under headings, so the list reads at a glance
 /** Where a list or a switch applies, in Settings › Spelling & grammar and Settings › Skills. */
 const SCOPES = [
   ['all', 'All projects'],
   ['project', 'This project']
 ] as const;
-
-export const SECTION_GROUPS: [string, [Section, string, string][]][] = [
-  ['General', [
-    ['appearance', 'Appearance', 'circle.lefthalf.filled'],
-    ['editor', 'Editor', 'text.cursor'],
-    ['shortcuts', 'Shortcuts', 'keyboard'],
-    ['system', 'System', 'stethoscope']
-  ]],
-  ['Writing', [
-    ['engines', 'Engines', 'hammer'],
-    ['language', 'Spelling & grammar', 'textformat.abc.dottedunderline'],
-    ['snippets', 'Snippets', 'curlybraces'],
-    ['composer', 'Diagram composer', 'pencil'],
-    ['checkpoints', 'Checkpoints', 'clock.arrow.circlepath']
-  ]],
-  ['Projects', [
-    ['projects', 'Projects', 'folder'],
-    ['github', 'GitHub', 'arrow.triangle.branch'],
-    ['zotero', 'Zotero', 'books.vertical'],
-    ['transfer', 'Template transfer', 'arrow.triangle.2.circlepath']
-  ]],
-  ['AI', [
-    ['models', 'Models', 'sparkles'],
-    ['personas', 'Personas', 'brain.head.profile'],
-    ['skills', 'Skills', 'graduationcap'],
-    ['agents', 'Agents', 'terminal'],
-    ['search', 'Search', 'magnifyingglass']
-  ]]
-];
-
-/** each pane's area, for its icon's colour in the Spectrum colour style; Symbols' graphite for the general ones */
-// each pane's icon in its own colour, different from its neighbours in the list (appearance.ts ICON_COLOURS);
-// GitHub and Zotero in their own brand colours
-const SECTION_HUES: Record<Section, IconColour> = {
-  appearance: 'pink',
-  editor: 'blue',
-  shortcuts: 'indigo',
-  snippets: 'yellow',
-  system: 'gray',
-  engines: 'orange',
-  language: 'red',
-  composer: 'green',
-  checkpoints: 'teal',
-  projects: 'cyan',
-  github: 'github',
-  zotero: 'zotero',
-  transfer: 'purple',
-  models: 'purple',
-  personas: 'mint',
-  skills: 'orange',
-  agents: 'teal',
-  search: 'blue'
-};
 
 const THEMES: [Theme, string, string][] = [
   ['system', 'System', 'circle.lefthalf.filled'],
@@ -225,96 +147,12 @@ const INSTALL_HINTS: Record<string, string> = {
 };
 
 /** projectId: the open project, for Skills' This project; section: the one to open on */
-/**
- * The user's own prices, for the main model or any other: the provider's listed models, the main model when typed,
- * and every model already priced (of any provider, kept when the provider changes). Each price has its currency.
- */
-function ModelPrices({ settings, update, preset }: { settings: AppSettings; update: (patch: Partial<AppSettings>) => void; preset: ProviderPreset | null }) {
-  const models = new Map<string, string>([[settings.llmModel, modelOf(preset, settings.llmModel)?.label || settings.llmModel]]);
-  for (const m of preset?.models || []) if (!models.has(m.id)) models.set(m.id, m.label);
-  for (const id of Object.keys(settings.modelPrices)) if (!models.has(id)) models.set(id, id);
-  // the model chosen here, until the main model changes
-  const [picked, setPicked] = useState({ main: settings.llmModel, id: settings.llmModel });
-  // a model named here, such as a local agent's, listed until a price is typed for it
-  const [named, setNamed] = useState('');
-  if (picked.id && !models.has(picked.id) && picked.id === named) models.set(named, named);
-  const model = picked.main === settings.llmModel && models.has(picked.id) ? picked.id : settings.llmModel;
-  const auto = useAutoPrices(settings.autoPrices);
-  const fromAuto = autoPrice(auto.prices, model);
-  const price = settings.modelPrices[model] || {};
-  const [, symbol] = CURRENCIES.find(([code]) => code === (price.currency || 'USD'))!;
-  const set = (patch: Partial<Price>) => update({ modelPrices: cleanPrices({ ...settings.modelPrices, [model]: { ...price, ...patch } }) });
-  return (
-    <div className="field">
-      <label id="settings-modelPrice">Prices</label>
-      <div className="row">
-        <Select
-          className="grow"
-          labelId="settings-mainTitle settings-modelPrice"
-          value={model}
-          options={[...models].map(([id, label]): [string, string] => [id, `${label}${id === settings.llmModel ? ' (main model)' : settings.modelPrices[id] ? ' (priced)' : ''}`])}
-          onChange={(id) => setPicked({ main: settings.llmModel, id })}
-        />
-        <Select
-          labelId="settings-modelPrice settings-priceCurrency"
-          value={price.currency || 'USD'}
-          options={CURRENCIES.map(([code, sign, name]): [string, string] => [code, `${name} (${sign.trim()})`])}
-          onChange={(currency) => set({ currency: currency as Currency })}
-        />
-        <span id="settings-priceCurrency" className="sr-only">Currency</span>
-      </div>
-      <div className="row">
-        {PRICE_FIELDS.map((k) => (
-          <input
-            key={k}
-            className="input grow"
-            type="number"
-            min={0}
-            step="any"
-            aria-label={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}, ${symbol.trim()} per million tokens`}
-            placeholder={`${{ input: 'Input', cached: 'Cached input', output: 'Output' }[k]}${fromAuto?.[k] !== undefined && !price.currency ? ` (${fromAuto[k]})` : ''}`}
-            value={price[k] ?? ''}
-            onChange={(e) => set({ [k]: e.target.value.trim() === '' ? undefined : Number(e.target.value) })}
-          />
-        ))}
-      </div>
-      <div className="row">
-        <input
-          className="input grow"
-          aria-label="Another model to price, by its name"
-          placeholder="Another model, such as a local agent’s: its name"
-          value={named}
-          onChange={(e) => setNamed(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && named.trim()) { setNamed(named.trim()); setPicked({ main: settings.llmModel, id: named.trim() }); }
-          }}
-        />
-        <button className="btn small" disabled={!named.trim()} onClick={() => { setNamed(named.trim()); setPicked({ main: settings.llmModel, id: named.trim() }); }}>
-          Price it
-        </button>
-      </div>
-      <div className="field-hint">
-        Input, cached input and output, per million tokens, in your provider’s currency. Both agent tabs show an estimate of the cost from them, in that currency; Spectrum converts no currencies. A price you leave empty comes from models.dev, in US dollars, shown in the empty field. With OpenRouter, or an agent that reports its own cost, that figure is shown instead.
-      </div>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={settings.autoPrices} onChange={(e) => update({ autoPrices: e.target.checked })} />
-        Fill in prices from models.dev
-      </label>
-      {settings.autoPrices && (
-        <div className="field-hint">
-          Spectrum takes models.dev’s public price list every six hours, through your proxy, and sends it nothing.{' '}
-          {auto.syncedAt ? `Last taken ${new Date(auto.syncedAt).toLocaleString('en-AU')}.` : 'Not taken yet.'}
-          {auto.error && ` The last try failed: ${auto.error}.`}{' '}
-          <button className="btn small ghost" onClick={() => void auto.refresh()}>Update now</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function SettingsSheet({ onClose, projectId, section: start = 'appearance' }: { onClose: () => void; projectId?: string; section?: Section }) {
   const [settings, update] = useSettings();
   const [section, setSection] = useState<Section>(start);
+  // the sidebar's search: the panes whose name or settings match, each with the label that matched
+  const [query, setQuery] = useState('');
+  const found = useMemo(() => findSections(query), [query]);
   // the skill or persona with unsaved edits, so closing Settings or leaving its page asks first
   const [unsaved, setUnsaved] = useState('');
   const leave = async (then: () => void) => {
@@ -322,31 +160,28 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
     setUnsaved('');
     then();
   };
+  const go = (value: Section) => value !== section && leave(() => (setSection(value), setLicences(false)));
+  // the list is longer than the sheet: the pane showing is kept in sight, and each pane starts at its top
+  const nav = useRef<HTMLElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    nav.current?.querySelector('.nav-row.active')?.scrollIntoView({ block: 'nearest' });
+    if (body.current) body.current.scrollTop = 0;
+  }, [section]);
   const [check, setCheck] = useState<SystemCheck | null>(null);
   const [checkError, setCheckError] = useState('');
   const [licences, setLicences] = useState(false);
   const navigate = useNavigate();
   const providers = useProviders();
-  // Ollama's models come from Ollama itself
+  // Ollama's models come from Ollama itself; every one, whatever Settings › Models has switched off
   const live = {
-    main: useLivePreset(presetOf(providers, settings), settings.llmEndpoint),
-    quick: useLivePreset(followsMain(settings, 'quick') ? null : rolePresetOf(providers, settings, 'quick'), settings.referencesEndpoint),
-    vision: useLivePreset(followsMain(settings, 'vision') ? null : rolePresetOf(providers, settings, 'vision'), settings.visionEndpoint)
+    main: useLivePreset(presetOf(providers, settings), settings.llmEndpoint, true),
+    quick: useLivePreset(followsMain(settings, 'quick') ? null : rolePresetOf(providers, settings, 'quick'), settings.referencesEndpoint, true),
+    vision: useLivePreset(followsMain(settings, 'vision') ? null : rolePresetOf(providers, settings, 'vision'), settings.visionEndpoint, true)
   };
   const preset = live.main.preset;
-  // Test connection, beside each key: what the provider lists fills the Model menu
-  const tests = {
-    main: useConnectionTest(preset?.id || 'custom', settings.llmEndpoint, settings.llmApiKey),
-    quick: useConnectionTest(rolePresetOf(providers, settings, 'quick')?.id || 'custom', settings.referencesEndpoint, settings.referencesApiKey),
-    vision: useConnectionTest(rolePresetOf(providers, settings, 'vision')?.id || 'custom', settings.visionEndpoint, settings.visionApiKey)
-  };
-  const mainModel = modelOf(preset, settings.llmModel);
-  const effortChoices = effortOptions(mainModel);
   // stays on Other… while a typed name happens to match a listed model, e.g. glm-5.3 on the way to glm-5.3-flashx
   const [otherModel, setOtherModel] = useState<Record<string, boolean>>({});
-  const typedModel = otherModel.main || !(mainModel || tests.main.models.includes(settings.llmModel));
-  const visionConfig = llmConfigFor(settings, 'vision');
-  const imagesGoElsewhere = visionConfig.model !== settings.llmModel || visionConfig.endpoint !== settings.llmEndpoint;
 
   // a fresh Ollama has no model chosen until it lists what's installed
   const firstModels: Partial<AppSettings> = {};
@@ -365,171 +200,6 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
   useEffect(() => {
     if (fill !== '{}') update(JSON.parse(fill));
   }, [fill]);
-
-  /** Another provider's address switches to that provider as the menu does, so the key it had never goes there. */
-  const setEndpoint = (value: string) => {
-    const next = presetForEndpoint(providers, value);
-    // an Ollama on another port is still Ollama, and has no key to leak; an empty field or an https address
-    // (a server that wants a key) leaves it, so the key field shows
-    if (next?.id === preset?.id || (!next && preset?.local && value.trim() && !/^https:/i.test(value.trim()))) return update({ llmEndpoint: value });
-    update(presetPatch(settings, providers, next, value));
-  };
-
-  const chooseModel = (id: string) => {
-    setOtherModel((was) => ({ ...was, main: id === 'other' }));
-    if (id === 'other' || !preset) return update({ llmModel: '' });
-    const picked = modelOf(preset, id);
-    const reader = recommendedFor(preset, 'vision');
-    update({
-      llmModel: id,
-      reasoningEffort: 'default',
-      // a text-only model needs somewhere to send images
-      ...(picked && !picked.vision && followsMain(settings, 'vision') && !settings.visionModel && reader && { visionModel: reader })
-    });
-  };
-
-  /** titleId: the section heading, so a screen reader hears “Quick model Region” rather than just “Region” */
-  const regionField = (titleId: string, id: string, preset: ProviderPreset, value: string, onChange: (endpoint: string) => void) => {
-    const own = [preset.endpoint, ...(preset.regions || []).map((r) => r.endpoint)];
-    return (
-      <div className="field">
-        <label id={id}>Region</label>
-        <Select
-          labelId={`${titleId} ${id}`}
-          value={value}
-          options={[
-            [preset.endpoint, 'International'],
-            ...(preset.regions || []).map((r): [string, string] => [r.endpoint, r.label]),
-            ...(own.includes(value) ? [] : [[value, 'Custom endpoint'] as [string, string]])
-          ]}
-          onChange={onChange}
-        />
-      </div>
-    );
-  };
-
-  const refreshButton = (l: (typeof live)['main']) =>
-    l.preset?.live && (
-      <button className="btn small" onClick={l.refresh}>
-        Refresh
-      </button>
-    );
-
-  const testButton = (t: (typeof tests)['main'], name: string) => (
-    <button className="btn small" disabled={t.testing} aria-label={`Test connection for the ${name}`} onClick={t.run}>
-      {t.testing ? 'Testing…' : 'Test connection'}
-    </button>
-  );
-  const testResult = (t: (typeof tests)['main'], model: string) =>
-    t.result && (
-      <div className={`field-hint ${t.result.ok ? '' : 'error'}`} role="status">
-        {testSays(t.result, model)}
-      </div>
-    );
-
-  const keyHint = (p: ProviderPreset | null) =>
-    p && (
-      <>
-        Create one on the <a href={p.keyUrl} target="_blank" rel="noreferrer">{p.name} key page</a>. Each provider’s key is kept when you switch.
-      </>
-    );
-
-  /** The quick or vision model: “Same as main” by default, or its own provider, region, model and key. */
-  const roleModel = (role: ModelRole, title: string, use: string, effort: string) => {
-    const f = ROLE_FIELDS[role];
-    const name = role === 'quick' ? 'Quick model' : 'Vision model';
-    const same = followsMain(settings, role);
-    const ownLive = same ? live.main : live[role];
-    const own = ownLive.preset;
-    const value = settings[f.model];
-    const choices = (own?.models || []).filter((m) => role === 'quick' || m.vision);
-    const test = same ? tests.main : tests[role];
-    // a model only the provider lists may not read images, so the vision menu keeps to the presets
-    const listed = role === 'quick' ? test.models : [];
-    // an empty name only means “the main model's” while the role follows the main provider
-    const typed = otherModel[role] || !own || (value ? !choices.some((m) => m.id === value) && !listed.includes(value) : !same);
-    const current = same ? 'same' : own?.id || 'custom';
-    const picked = modelOf(own, value);
-    const blindMain = role === 'vision' && same && !value && mainModel && !mainModel.vision;
-    return (
-      <>
-        <h3 id={`settings-${role}Title`} className="form-section-title">{title}</h3>
-        <div className="field-hint section-hint">{use} {effort}</div>
-        <div className="field">
-          <label id={`settings-${role}Provider`}>Provider</label>
-          <Select
-            labelId={`settings-${role}Title settings-${role}Provider`}
-            value={current}
-            options={[
-              ['same', `Same as main (${preset?.name || 'Other'})`],
-              ...providers.filter((p) => p.id !== preset?.id || p.id === current).map((p): [string, string] => [p.id, p.name]),
-              ['custom', 'Other (OpenAI-compatible)']
-            ]}
-            onChange={(id) => {
-              setOtherModel((was) => ({ ...was, [role]: false }));
-              update(rolePatch(settings, providers, role, id));
-            }}
-          />
-          {!same && <div className="field-hint">{own ? own.note : 'Any server that speaks the OpenAI chat completions API.'}</div>}
-        </div>
-        {!same && own?.regions && regionField(`settings-${role}Title`, `settings-${role}Region`, own, settings[f.endpoint], (endpoint) => update({ [f.endpoint]: endpoint }))}
-        {!same &&
-          text('Endpoint', f.endpoint, {
-            name: `${name} endpoint`,
-            placeholder: own?.endpoint || 'http://localhost:1234/v1',
-            hint: own || settings[f.endpoint] ? '' : 'Until this has an address, the main model is used.',
-            // pins the provider, so clearing the field to retype it keeps this section as it is
-            onChange: (value) => update({ [f.endpoint]: value, [f.provider]: settings[f.provider] || own?.id || 'custom' })
-          })}
-        {own && (
-          <div className="field">
-            <label id={`settings-${role}ModelPick`}>Model</label>
-            <div className="row">
-              <Select
-                className="grow"
-                labelId={`settings-${role}Title settings-${role}ModelPick`}
-                value={typed ? 'other' : value}
-                options={[
-                  ...(same ? [['', 'Same as main model'] as [string, string]] : []),
-                  ...modelChoices(choices, listed, recommendedFor(own, role)),
-                  ['other', 'Other…']
-                ]}
-                onChange={(id) => {
-                  setOtherModel((was) => ({ ...was, [role]: id === 'other' }));
-                  update({ [f.model]: id === 'other' ? '' : id });
-                }}
-              />
-              {!same && refreshButton(ownLive)}
-            </div>
-            <div className={`field-hint ${blindMain || (!same && ownLive.error) ? 'error' : ''}`}>
-              {blindMain
-                ? 'The main model reads text only, so choose a model that reads images.'
-                : !same && ownLive.error
-                  ? ownLive.error
-                  : typed
-                    ? 'Type the model’s name exactly as the provider lists it.'
-                    : picked?.note
-                      ? `${picked.note}.`
-                      : value && !picked
-                        ? 'Listed by the provider. Spectrum has no notes on this model.'
-                        : ''}
-            </div>
-          </div>
-        )}
-        {typed && text(own ? 'Model name' : 'Model', f.model, { name: `${name} name`, placeholder: same ? settings.llmModel || 'Same as main model' : 'Model name', list: own ? [] : test.models })}
-        {!same &&
-          !own?.local &&
-          text('API key', f.apiKey, {
-            name: `${name} API key`,
-            placeholder: 'Paste your key',
-            secret: true,
-            hint: keyHint(own),
-            action: testButton(test, name.toLowerCase()),
-            after: testResult(test, value)
-          })}
-      </>
-    );
-  };
 
   useEffect(() => {
     if (check || checkError) return;
@@ -593,23 +263,52 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
   return (
     <Sheet title="Settings" onClose={() => leave(onClose)} width={780} className="settings-sheet">
       <div className="settings-layout">
-        <nav className="settings-nav">
-          {SECTION_GROUPS.map(([heading, sections]) => (
-            <div key={heading} className="settings-nav-group" role="group" aria-label={heading}>
-              <div className="settings-nav-heading">{heading}</div>
-              {sections.map(([value, label, icon]) => (
-                <button key={value} className={`nav-row hue-${SECTION_HUES[value]} ${section === value ? 'active' : ''}`} onClick={() => value !== section && leave(() => (setSection(value), setLicences(false)))}>
-                  <span className="nav-tile">
-                    <Icon name={icon} />
-                  </span>
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-          ))}
+        <nav ref={nav} className="settings-nav" aria-label="Settings">
+          <label className="search-field settings-search">
+            <Icon name="magnifyingglass" />
+            <input
+              aria-label="Search settings"
+              placeholder="Search settings"
+              value={query}
+              spellCheck={false}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                // Return opens the first pane found; Escape clears the search before it closes Settings
+                if (e.key === 'Enter' && found.size && !found.has(section)) go([...found.keys()][0]);
+                if (e.key === 'Escape' && query) (e.stopPropagation(), setQuery(''));
+              }}
+            />
+            {query && (
+              <button className="search-clear" aria-label="Clear search" onClick={() => setQuery('')}>
+                <Icon name="xmark.circle.fill" />
+              </button>
+            )}
+          </label>
+          <div className="settings-nav-list">
+          {SECTION_GROUPS.map(([heading, sections]) => {
+            const rows = sections.filter(([value]) => found.has(value));
+            return rows.length ? (
+              <div key={heading} className="settings-nav-group" role="group" aria-label={heading}>
+                <div className="settings-nav-heading">{heading}</div>
+                {rows.map(([value, label, icon]) => (
+                  <button key={value} className={`nav-row hue-${SECTION_HUES[value]} ${section === value ? 'active' : ''}`} aria-current={section === value ? 'page' : undefined} onClick={() => go(value)}>
+                    <span className="nav-tile">
+                      <Icon name={icon} />
+                    </span>
+                    <span>
+                      {label}
+                      {found.get(value) && <span className="settings-nav-found">{found.get(value)}</span>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null;
+          })}
+          {!found.size && <div className="field-hint settings-nav-none" role="status">No setting matches.</div>}
+          </div>
         </nav>
 
-        <div className="settings-pane">
+        <div ref={body} className="settings-pane">
           {section === 'appearance' && (
             <>
               <h3 className="form-section-title">Theme</h3>
@@ -638,6 +337,17 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
                 />
               </div>
               <div className="field-hint">Spectrum gives each icon its own colour, so each one stands out from its neighbours. Simple keeps to grey and your accent colour.</div>
+
+              <h3 id="settings-logos" className="form-section-title">Logos</h3>
+              <div>
+                <Segmented
+                  labelledBy="settings-logos"
+                  value={settings.logos}
+                  options={[['line', 'Line marks'], ['full', 'Full logos']]}
+                  onChange={(logos) => update({ logos })}
+                />
+              </div>
+              <div className="field-hint">Line marks draw every agent, provider and model in one plain style. Full logos shows each brand’s own logo where Spectrum has one, and its line mark otherwise.</div>
 
               <h3 id="settings-accent" className="form-section-title">Accent colour</h3>
               <div className="row">
@@ -832,92 +542,9 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
             </>
           )}
 
-          {section === 'models' && (
-            <>
-              <h3 id="settings-mainTitle" className="form-section-title">Main model</h3>
-              {keyFailure() && <div className="field-hint error">Your API keys stay in this window’s storage, as before: {keyFailure()}</div>}
-              <div className="field">
-                <label id="settings-llmProvider">Provider</label>
-                <Select
-                  labelId="settings-mainTitle settings-llmProvider"
-                  value={preset?.id || 'custom'}
-                  options={[...providers.map((p): [string, string] => [p.id, p.name]), ['custom', 'Other (OpenAI-compatible)']]}
-                  onChange={(id) => {
-                    setOtherModel({});
-                    update(presetPatch(settings, providers, providers.find((p) => p.id === id) || null));
-                  }}
-                />
-                <div className="field-hint">
-                  {preset ? preset.note : 'Any server that speaks the OpenAI chat completions API, such as LM Studio or vLLM.'}
-                </div>
-              </div>
-              {preset?.regions && regionField('settings-mainTitle', 'settings-llmRegion', preset, settings.llmEndpoint, (endpoint) => update({ llmEndpoint: endpoint }))}
-              {text('Endpoint', 'llmEndpoint', {
-                name: 'Main model endpoint',
-                placeholder: preset?.endpoint || 'https://api.openai.com/v1/chat/completions',
-                hint: preset?.local
-                  ? 'For Ollama on another computer, use its address, e.g. http://192.168.1.20:11434, and turn on Expose Ollama to the network in its settings.'
-                  : preset
-                    ? ''
-                    : 'The chat completions address or the base URL, e.g. http://localhost:1234/v1',
-                onChange: setEndpoint
-              })}
-              {preset && (
-                <div className="field">
-                  <label id="settings-llmModelPick">Model</label>
-                  <div className="row">
-                    <Select
-                      className="grow"
-                      labelId="settings-mainTitle settings-llmModelPick"
-                      value={typedModel ? 'other' : settings.llmModel}
-                      options={[...modelChoices(preset.models, tests.main.models, preset.recommended.main), ['other', 'Other…']]}
-                      onChange={chooseModel}
-                    />
-                    {refreshButton(live.main)}
-                  </div>
-                  <div className={`field-hint ${live.main.error ? 'error' : ''}`}>
-                    {live.main.error ||
-                      (typedModel
-                        ? 'Type the model’s name exactly as the provider lists it.'
-                        : !mainModel
-                          ? 'Listed by the provider. Spectrum has no notes on this model.'
-                          : [
-                              mainModel.note && `${mainModel.note}.`,
-                              !mainModel.vision && (imagesGoElsewhere ? 'Reads text only, so images go to the vision model.' : 'Reads text only, so set a vision model below for images.')
-                            ]
-                              .filter(Boolean)
-                              .join(' '))}
-                  </div>
-                </div>
-              )}
-              {typedModel && text(preset ? 'Model name' : 'Model', 'llmModel', { name: 'Main model name', placeholder: preset?.recommended.main || 'Model name', list: preset ? [] : tests.main.models })}
-              {!preset?.local &&
-                text('API key', 'llmApiKey', {
-                  name: 'Main model API key',
-                  placeholder: 'Paste your key',
-                  secret: true,
-                  hint: keyHint(preset),
-                  action: testButton(tests.main, 'main model'),
-                  after: testResult(tests.main, settings.llmModel)
-                })}
-              <div className="field">
-                <label id="settings-reasoningEffort">Reasoning effort</label>
-                <Select
-                  labelId="settings-mainTitle settings-reasoningEffort"
-                  value={effortChoices.some(([value]) => value === settings.reasoningEffort) ? settings.reasoningEffort : 'default'}
-                  options={effortChoices}
-                  onChange={(value) => update({ reasoningEffort: value as AppSettings['reasoningEffort'] })}
-                />
-                <div className="field-hint">
-                  How long the model may think before answering. Higher levels are slower and cost more.
-                </div>
-              </div>
-              {settings.llmModel && <ModelPrices settings={settings} update={update} preset={preset} />}
+          {section === 'providers' && <ProvidersPane onSection={go} />}
 
-              {roleModel('quick', 'Quick model', 'Used for autocomplete and for splitting pasted references.', 'Listed models think as little as they allow, so it stays quick; other servers use their own default.')}
-              {roleModel('vision', 'Vision model', 'Used for image → LaTeX and the layout check in template transfer.', 'Uses the model’s recommended effort.')}
-            </>
-          )}
+          {section === 'models' && <ModelsPane onSection={go} otherModel={otherModel} setOtherModel={setOtherModel} />}
 
           {section === 'search' && (
             <>
@@ -1226,7 +853,7 @@ function ShortcutsPane({ groups = SHORTCUT_GROUPS, compact = false }: { groups?:
         </div>
       )}
       {groups.map((group) => (
-        <div key={group}>
+        <div key={group} className="shortcut-group">
           {!compact && <h3 className="form-section-title">{group}</h3>}
           <div className="kv-list">
             {SHORTCUTS.filter((s) => s.group === group).map((s) => {

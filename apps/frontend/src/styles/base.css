@@ -1714,24 +1714,48 @@ button.chip.active:hover {
   padding: 0;
 }
 
+/* a card's tint on the sheet, a shade off it in either mode */
+.settings-sheet {
+  --inset-fill: color-mix(in srgb, var(--text) 3.5%, transparent);
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
   height: min(580px, calc(100vh - 140px));
 }
 
+/* the search stays at the top; the list of panes scrolls under it */
 .settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 12px 10px;
+  min-height: 0;
+  padding: 14px 0 0;
   border-right: 1px solid var(--border);
+}
+
+.settings-nav-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 0 10px 14px;
   overflow-y: auto;
 }
 
 .settings-nav .nav-row {
-  min-height: 32px;
+  gap: 9px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
   font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-nav .nav-row .sf {
+  width: 15px;
+  height: 15px;
 }
 
 .settings-nav-group {
@@ -1740,23 +1764,489 @@ button.chip.active:hover {
   gap: 1px;
 }
 
-.settings-nav-group + .settings-nav-group {
-  margin-top: 12px;
-}
-
 .settings-nav-heading {
-  padding: 4px 10px 2px;
+  padding: 2px 8px;
   color: var(--text-tertiary);
   font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .settings-pane {
   display: flex;
   flex-direction: column;
-  gap: 16px;
   padding: 20px 24px 28px;
   overflow-y: auto;
+}
+
+/* the pane scrolls rather than squeezing what is in it */
+.settings-pane > * {
+  flex-shrink: 0;
+  margin-top: 16px;
+}
+
+.settings-pane > :first-child {
+  margin-top: 0;
+}
+
+.settings-pane > .form-section-title:not(:first-child) {
+  margin-top: 26px;
+}
+
+.settings-pane > .section-hint {
+  margin-top: 8px;
+}
+
+/* Each section as a grouped inset card. A pane's settings sit straight in it, between its headings: every run of
+   rows (a field, a switch, a row of controls, and the hints under them) is drawn as one card, with the corners of the
+   app's other cards and a hairline between its rows. What has an outline of its own (a list, a path, a card) stands
+   between the cards as it is, and so does a hint that follows one or opens a section. */
+.settings-pane > :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)) {
+  margin-top: 0;
+  padding: 11px 14px;
+  border: solid var(--border);
+  border-width: 1px 1px 0;
+  background: var(--inset-fill);
+}
+
+/* a hint belongs to the row above it */
+.settings-pane > .field-hint:not(.section-hint) {
+  padding-top: 0;
+  border-top-width: 0;
+}
+
+.settings-pane > :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)):has(+ .field-hint:not(.section-hint)) {
+  padding-bottom: 6px;
+}
+
+/* the lists that were cards already take the same tint */
+.settings-pane :is(.kv-list, .sys-list) {
+  background: var(--inset-fill);
+}
+
+/* the first row of a card */
+.settings-pane > :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)):first-child,
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class])),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class])),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + .field-hint:not(.section-hint) + :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class])),
+.settings-pane > .field-hint:not(.section-hint):first-child + :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class])) {
+  margin-top: 12px;
+  border-top-width: 1px;
+  border-top-left-radius: var(--radius-card);
+  border-top-right-radius: var(--radius-card);
+}
+
+.settings-pane > :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)):first-child {
+  margin-top: 0;
+}
+
+/* the last */
+.settings-pane > :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))) {
+  border-bottom-width: 1px;
+  border-bottom-left-radius: var(--radius-card);
+  border-bottom-right-radius: var(--radius-card);
+}
+
+/* a hint with no row above it is plain text */
+.settings-pane > .field-hint:not(.section-hint):first-child,
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + .field-hint:not(.section-hint) {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.settings-pane > .field-hint:not(.section-hint):first-child {
+  margin-top: 0;
+}
+
+/* a lone button or bar of buttons is no card */
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)),
+.settings-pane > :not(:is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint))) + .field-hint:not(.section-hint) + .field-hint:not(.section-hint) + :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)),
+.settings-pane > .field-hint:not(.section-hint):first-child + :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)),
+.settings-pane > :is(.row, div:not([class])):not(:has(+ :is(.field, .checkbox-row, .row:not(.skills-bar), .theme-picker, .editor-theme-columns, div:not([class]), .field-hint:not(.section-hint)))):not(:has(.field, .segmented, input)):first-child {
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* the controls at the right of their rows, as in a list of settings: a switch after its label, a menu beside its */
+:is(.settings-pane, .settings-pane > .field) > .checkbox-row:has(> input[role='switch']) {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+:is(.settings-pane, .settings-pane > .field) > .checkbox-row > span {
+  flex: 1;
+  min-width: 0;
+}
+
+:is(.settings-pane, .settings-pane > .field) > .checkbox-row:has(> input[role='switch']) > input {
+  margin-top: 0;
+}
+
+.settings-pane > .field:has(> .popup-button) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 16px;
+}
+
+.settings-pane > .field:has(> .popup-button) > label {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.settings-pane > .field:has(> .popup-button) > .popup-button {
+  grid-area: 1 / 2;
+  width: auto;
+  max-width: 290px;
+}
+
+.settings-pane > .field:has(> .popup-button) > :not(label, .popup-button) {
+  grid-column: 1 / -1;
+}
+
+/* Settings › Shortcuts: a group's heading over its list */
+.shortcut-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* the sidebar's search, and the setting a search found a pane by */
+.settings-search.search-field {
+  width: auto;
+  flex: none;
+  gap: 7px;
+  height: 30px;
+  margin: 0 10px 12px;
+  padding: 0 8px 0 10px;
+  font-size: 12.5px;
+}
+
+.settings-search.search-field > .sf {
+  width: 13px;
+  height: 13px;
+}
+
+.settings-nav .nav-row > span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 4px 0;
+}
+
+.settings-nav-found {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-nav-none {
+  padding: 4px 10px;
+}
+
+/* a button that reads as a link in a sentence */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* A brand's mark (BrandMark.tsx), the same for an agent, a provider and a model: a line mark drawn in strokes in the
+   colour of the text, or the brand's own logo. In Settings' rows and menus it sits on a small tile; an agent's icon
+   (.agent-icon) is its tile already. A line mark's tile takes the surface's colour; a logo's stays white in both
+   modes, since some logos are drawn in one dark ink. */
+.brand-line,
+.brand-full {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.brand-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+span.brand-tile {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+span.brand-tile:has(> .brand-full) {
+  background: #fff;
+}
+
+.agent-icon:not(.missing, .agent-add):has(> .brand-line) {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+/* in a model menu and on its button, before the provider's name */
+:is(.menu-label, .popup-label) > .brand-tile {
+  width: 20px;
+  height: 20px;
+  margin: -2px 7px -2px 0;
+  border-radius: 6px;
+}
+
+.popup-label > .role-extra {
+  display: none;
+}
+
+/* Test, Edit and Disconnect read as one group */
+.inset-row > .btn.ghost + .btn.ghost {
+  margin-left: -9px;
+}
+
+.inset-row > .popup-button .brand-tile {
+  width: 18px;
+  height: 18px;
+  margin-left: -4px;
+  border-radius: 9px;
+}
+
+.inset-row > .popup-button .brand-tile > :is(.brand-line, .brand-full) {
+  width: 12px;
+  height: 12px;
+}
+
+/* Settings › Providers and Settings › Models, laid out as the owner's plan draws them: a title with its action at the
+   right, small labels over inset cards, and rows of a name over a line of detail with the controls at the right */
+.pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pane-title {
+  margin: 0;
+  font: 700 17px/1.2 var(--font-display);
+}
+
+.pane-note {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.settings-pane > .pane-label {
+  margin: 18px 0 -8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.inset-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--inset-fill);
+  overflow: hidden;
+}
+
+.inset-card > * + * {
+  border-top: 1px solid var(--border);
+}
+
+.inset-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+}
+
+.inset-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.inset-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.inset-sub {
+  margin-top: 1px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.inset-sub :is(.ok, .warn, .error),
+.inset-sub.error {
+  font-weight: 500;
+}
+
+.inset-sub .ok {
+  color: var(--green-text);
+}
+
+.inset-sub .warn {
+  color: var(--orange-text);
+}
+
+.inset-sub .error,
+.inset-sub.error {
+  color: var(--red-text);
+}
+
+/* what a row opens under itself: a provider's fields, a model name to type */
+.inset-more {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 12px;
+}
+
+.inset-card > .inset-more {
+  padding-top: 12px;
+}
+
+.inset-item > .inset-row:has(+ .inset-more) {
+  padding-bottom: 9px;
+}
+
+/* the controls stand out from the card's tint, as the plan's do */
+.inset-card :is(.btn.outline, .popup-button, .input),
+.settings-pane > :is(.field, .row, .editor-theme-columns) :is(.popup-button, .input) {
+  background-color: var(--bg-elevated);
+}
+
+/* a role's menu, as a pill at the right of its row */
+.inset-row > .popup-button {
+  flex: none;
+  max-width: 46%;
+  height: 28px;
+  padding: 0 9px 0 11px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Settings › Models: each provider's models under a heading that folds, open in the accent colour */
+.model-search.search-field {
+  width: auto;
+  height: 34px;
+  border-radius: var(--radius-control);
+}
+
+.acc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.acc-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.acc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.acc-head {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.acc-head:hover {
+  background: var(--bg-hover);
+}
+
+.acc-head.open {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.acc-chev.sf {
+  width: 11px;
+  height: 11px;
+  color: var(--text-tertiary);
+  transition: transform 0.14s ease;
+}
+
+.acc-head.open .acc-chev {
+  color: var(--accent-ink);
+  transform: rotate(90deg);
+}
+
+.acc-meta.error {
+  color: var(--red-text);
+}
+
+.acc-meta {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* a model's context and price; a click sets your own price */
+.model-meta-pill {
+  flex: none;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  font: 500 11px/1.3 var(--font-mono);
+  cursor: pointer;
+}
+
+.model-meta-pill:hover {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
 }
 
 .theme-picker {
@@ -2307,10 +2797,13 @@ textarea.skill-file-text {
   }
 
   .settings-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .settings-nav-list {
+    flex-direction: row;
+    flex-wrap: wrap;
   }
 
   .settings-nav .nav-row {

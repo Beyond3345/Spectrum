@@ -7,7 +7,7 @@ import type { Section as SettingsSection } from './SettingsSheet';
 import { hasModel, texName } from './firstRun';
 
 /**
- * The setup page, filling the window the first time Spectrum starts on a computer (and from Settings › System): the TeX
+ * The setup page, filling the window the first time Spectrum starts on a computer (and from Settings › System & Network): the TeX
  * the compiles use, a model for the AI features (optional) and a first project. Each row ticks itself from what the app
  * knows. Skip, Continue or a first project made or opened from it leave it for good; quitting leaves it due (firstRun.ts).
  */
@@ -74,7 +74,7 @@ export default function FirstRunPage({ settings, projects, onSettings, onTemplat
                 : 'The assistant, agents and AI autocomplete need a model: an API key, or a model running on this computer. Everything else works without one.'
             }
           >
-            <button className="btn" onClick={() => onSettings('models')}>Settings › Models</button>
+            <button className="btn" onClick={() => onSettings('providers')}>Settings › Providers</button>
           </Step>
 
           <Step

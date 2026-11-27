@@ -206,7 +206,7 @@ export default function ProjectPage() {
   const [settingsClosed, setSettingsClosed] = useState(0);
   const [query, setQuery] = useState('');
   const [prefs, setPrefs] = useState(loadPrefs);
-  // the setup page: on the first start on this computer, and from Settings › System (/projects?setup)
+  // the setup page: on the first start on this computer, and from Settings › System & Network (/projects?setup)
   const [params, setParams] = useSearchParams();
   const [fresh, setFresh] = useState(startedFresh);
   const setup = fresh || params.has('setup');

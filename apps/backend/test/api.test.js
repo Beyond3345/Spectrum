@@ -1865,7 +1865,7 @@ test('a template change without a model creates nothing; one that errors leaves 
   assert.match(noKey.json.error, /No AI model is set up yet/);
   const noToken = await api('/api/transfer/start-pdf', { method: 'POST', body: { ...body, llmConfig: llmConfig() } });
   assert.equal(noToken.status, 400);
-  assert.equal(noToken.json.error, 'Add your MinerU token in Settings › Template transfer first.');
+  assert.equal(noToken.json.error, 'Add your MinerU token in Settings › Document parsers first.');
   const badParser = await api('/api/transfer/start-pdf', { method: 'POST', body: { ...body, llmConfig: llmConfig(), parser: { id: 'docling', endpoint: 'ftp://x' } } });
   assert.equal(badParser.json.error, 'The address for Docling must start with http:// or https://.');
   assert.equal(await count(), before);
@@ -1921,12 +1921,12 @@ test('model errors are plain sentences', async () => {
     method: 'POST',
     body: { task: 'chat', prompt: 'hi', mode: 'direct', interaction: 'chat', llmConfig: config }
   });
-  assert.equal((await chat(llmConfig('denied'))).json.reply, 'The API key was rejected. Check it in Settings › Models.');
+  assert.equal((await chat(llmConfig('denied'))).json.reply, 'The API key was rejected. Check it in Settings › Providers.');
   // a server error is tried again before it is reported
   assert.equal((await chat(llmConfig('broken'))).json.reply, 'The model provider returned an error (HTTP 500): boom. Spectrum tried 3 times.');
   // a provider that repeats the key: never shown, or saved with the chat
   assert.equal((await chat({ ...llmConfig('echo'), apiKey: 'sk-test-canary' })).json.reply, 'The model provider returned an error (HTTP 400): Incorrect API key provided: Bearer [API key].');
-  assert.equal((await chat({})).json.reply, 'No AI model is set up yet. Add an endpoint, model and API key in Settings › Models.');
+  assert.equal((await chat({})).json.reply, 'No AI model is set up yet. Connect a provider in Settings › Providers.');
   assert.match((await chat({ endpoint: 'http://127.0.0.1:9/v1', apiKey: 'k', model: 'm' })).json.reply, /^Couldn’t reach 127\.0\.0\.1:9\./);
 });
 

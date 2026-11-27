@@ -382,7 +382,7 @@ async function tryConnections(config, run) {
       errors.push({ provider: connection.provider, error });
     }
   }
-  throw new Error(errors.length ? errors.map((e) => `${e.provider}: ${e.error}`).join(' · ') : 'Set up a search connection in Settings › Search.');
+  throw new Error(errors.length ? errors.map((e) => `${e.provider}: ${e.error}`).join(' · ') : 'Set up a search connection in Settings › Search & Web.');
 }
 
 export function searchWithFallback({ searchConfig, ...options }) {

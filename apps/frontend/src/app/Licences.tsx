@@ -14,7 +14,7 @@ export function licenceUrl(url: string) {
   return `/licences/${url}${/\.txt$/i.test(url) ? '' : '.txt'}`;
 }
 
-/** Settings › System › Licences: the third-party notices, each licence a link that opens in the browser. */
+/** Settings › System & Network › Licences: the third-party notices, each licence a link that opens in the browser. */
 export default function Licences({ onBack }: { onBack: () => void }) {
   return (
     <>

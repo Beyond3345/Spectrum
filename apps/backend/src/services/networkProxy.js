@@ -1,5 +1,5 @@
 // The proxy Spectrum reaches the internet through, for a network that reaches it only through one (a company proxy, or
-// a proxy app such as Clash). Spectrum learns it in this order: the one the user typed in Settings › System (Proxy),
+// a proxy app such as Clash). Spectrum learns it in this order: the one the user typed in Settings › System & Network (Proxy),
 // the Mac's network settings, the proxy variables of the user's login shell, which an app started from the Finder does
 // not have. The backend's own requests go through it from one place (applyProxy: Node's global proxy, pointed at a
 // relay in this process that goes on through the proxy); an isolated agent, MCP server or compile, which isolation

@@ -1,4 +1,4 @@
-// Self-check for Settings › System › Network: what the line says of the proxy in use, or of none. Run:
+// Self-check for Settings › System & Network › Network: what the line says of the proxy in use, or of none. Run:
 // npx esbuild apps/frontend/src/app/proxy.check.ts --bundle --platform=node --format=esm --loader:.svg=text --loader:.css=empty --outfile=<scratch>.mjs && node <scratch>.mjs
 import { proxyLine } from './ProxySettings';
 

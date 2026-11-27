@@ -4,7 +4,7 @@ import Icon from './Icon';
 import { useSettings } from './settings';
 
 // The projects page's notice of a newer Spectrum: a link to its release page, nothing downloaded. Asked only while
-// Settings › System › "Tell me when a newer Spectrum is out" is on; OK hides it until a later one comes out.
+// Settings › System & Network › "Tell me when a newer Spectrum is out" is on; OK hides it until a later one comes out.
 
 const HIDDEN = 'spectrum-update-hidden';
 

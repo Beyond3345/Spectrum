@@ -96,7 +96,7 @@ test('native model search uses real server tools and requires provider-returned 
   await nativeWebSearch({ query: 'q', purpose: 'references', llmConfig: { endpoint: 'https://api.anthropic.com/v1/messages', model: 'configured-claude', apiKey: 'claude-key' } });
   assert.equal(calls.at(-1).body.tools[0].type, 'web_search_20250305');
   assert.match(calls.at(-1).body.messages[0].content[0].text, /citation metadata/);
-  await assert.rejects(nativeWebSearch({ query: 'q', llmConfig: { endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'configured-gemini', apiKey: 'gemini-key' } }), /no verified built-in web search\. Turn on OpenAlex .* in Settings › Search\./);
+  await assert.rejects(nativeWebSearch({ query: 'q', llmConfig: { endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'configured-gemini', apiKey: 'gemini-key' } }), /no verified built-in web search\. Turn on OpenAlex .* in Settings › Search & Web\./);
 });
 
 test('read-only chat can search with fallback but cannot call file-edit tools', async () => {

@@ -691,7 +691,7 @@ export async function fetchPdf({ root, id, resultId, email }) {
   if (own && email) links.push(...await unpaywallLinks(own, email).catch(() => []));
   if (r.openAccess) links.push(r.openAccess);
   if (!links.length) {
-    throw httpError(own && !email ? 'No open-access copy is known for this paper. Add your email in Settings › Search so Spectrum can ask Unpaywall.' : 'No open-access PDF was found for this paper.', 404);
+    throw httpError(own && !email ? 'No open-access copy is known for this paper. Add your email in Settings › Search & Web so Spectrum can ask Unpaywall.' : 'No open-access PDF was found for this paper.', 404);
   }
   // why each link failed: not a PDF, or the download's own error (too slow, unreachable)
   let notPdf = false;

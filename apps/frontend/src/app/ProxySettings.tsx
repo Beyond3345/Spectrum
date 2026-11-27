@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getProxy, saveProxy, type ProxyState } from '../api/client';
 import { errorText } from '../editor/shared';
 
-/** What the Network part of Settings › System says of the proxy in use, or of none. */
+/** What the Network part of Settings › System & Network says of the proxy in use, or of none. */
 export function proxyLine(state: ProxyState) {
   if (!state.supported) return 'On Windows, Spectrum connects as Windows does, and does not use a proxy of its own yet.';
   return state.proxy
@@ -10,7 +10,7 @@ export function proxyLine(state: ProxyState) {
     : 'No proxy found: Spectrum connects directly. It looks here first, then in this Mac’s network settings, then in your shell.';
 }
 
-/** Settings › System › Network: the proxy Spectrum goes through, and one to type for every connection it makes. */
+/** Settings › System & Network › Network: the proxy Spectrum goes through, and one to type for every connection it makes. */
 export default function ProxySettings() {
   const [state, setState] = useState<ProxyState | null>(null);
   const [value, setValue] = useState('');

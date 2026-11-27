@@ -7,7 +7,7 @@ import { toast } from './Toast';
 // The keys typed in Settings live in the keychain (Windows: encrypted for the Windows account) through the backend;
 // the settings keep a reference for each (spectrum-key:<32 hex>), which the backend swaps for the key in any request.
 // A key typed or kept from before is moved there on start and a second after it is typed; one that can't be moved stays
-// in the window's storage, working as before, and Settings › Models says why.
+// in the window's storage, working as before, and Settings › Providers says why.
 
 const KEY_REF = /^spectrum-key:[0-9a-f]{32}$/;
 export const isKeyRef = (value: unknown) => typeof value === 'string' && KEY_REF.test(value);
@@ -41,7 +41,7 @@ export function keysIn(settings: AppSettings) {
 let failure = '';
 // the keys the keychain last refused, which aren't offered again (it could ask the user each time) until they change
 let refused = '';
-/** Why keys stay in the window's storage, or '' when they don't (shown in Settings › Models). */
+/** Why keys stay in the window's storage, or '' when they don't (shown in Settings › Providers). */
 export const keyFailure = () => failure;
 
 /** Moves the keys typed out in the settings into the keychain, leaving references in their place. */

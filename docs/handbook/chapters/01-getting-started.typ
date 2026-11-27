@@ -51,15 +51,15 @@ The first time Spectrum starts on a computer, it opens on a setup page that fill
 - a model for the AI features, which are optional, and
 - a first project, started from a template (@sec-start-templates) or from a folder that already holds the files.
 
-Each step is marked #ui[Set up] once it is done, and its buttons open the place to do it: #menu[Settings][Engines], #menu[Settings][Models], the template gallery or #ui[Open a folder]. #ui[Skip] or #ui[Continue] goes on to the projects page, as does making or opening the first project from the page. After that the page does not open by itself again on that computer, and nothing asks afterwards for a step left undone. Quitting Spectrum while the page is open leaves it to open again on the next start. A second computer shows it once too, while a computer that already used an earlier Spectrum, with projects or saved settings, never does. #ui[Show the setup page again] in #menu[Settings][System] brings it back. The rest is set in the Settings window (@sec-start-settings), and a short pass through it before the first project is still worthwhile.
+Each step is marked #ui[Set up] once it is done, and its buttons open the place to do it: #menu[Settings][Engines], #menu[Settings][Providers], the template gallery or #ui[Open a folder]. #ui[Skip] or #ui[Continue] goes on to the projects page, as does making or opening the first project from the page. After that the page does not open by itself again on that computer, and nothing asks afterwards for a step left undone. Quitting Spectrum while the page is open leaves it to open again on the next start. A second computer shows it once too, while a computer that already used an earlier Spectrum, with projects or saved settings, never does. #ui[Show the setup page again] in #menu[Settings][System & Network] brings it back. The rest is set in the Settings window (@sec-start-settings), and a short pass through it before the first project is still worthwhile.
 
 #shot("figures/01-getting-started/get-started.png", [The setup page on the first start. TeX Live 2026 was found, so its step is set up, while no model is set up and there is no project yet.], width: 80%) <fig-start-get-started>
 
 #howto[set up Spectrum before the first project][
 + Open Settings with #key("⌘", ",")
-+ Choose a provider under #ui[Models] and paste its API key, if the AI features will be used
++ Connect a provider under #ui[Providers] with its API key, if the AI features will be used
 + Choose the theme under #ui[Appearance] and the default compiler under #ui[Engines]
-+ Check the #ui[System] section to confirm which TeX tools Spectrum can find
++ Check the #ui[System & Network] section to confirm which TeX tools Spectrum can find
 + Set up the local agents you use, such as OpenCode or Codex, under #ui[Agents]
 ]
 
@@ -208,7 +208,7 @@ The copy is kept until #ui[Done], so #ui[Continue editing] in the menu picks up 
 
 == The Settings window <sec-start-settings>
 
-The Settings window holds every preference of the application. It opens with #key("⌘", ","), with #ui[Settings] at the foot of the sidebar on the projects page or in the editor, and in places from the feature it concerns, such as the gear button in the diagram composer. Its sections are grouped under four headings, and each is described in the chapter given in @tab-start-settings.
+The Settings window holds every preference of the application. It opens with #key("⌘", ","), with #ui[Settings] at the foot of the sidebar on the projects page or in the editor, and in places from the feature it concerns, such as the gear button in the diagram composer. Its sections are grouped under five headings, which are General, Writing & Editor, Workspace & Sync, AI & Agents and Research & Import, and each section is described in the chapter given in @tab-start-settings. The #ui[Search] box above the list finds a section by its name or by a setting in it. Typing "proxy", for example, leaves only #ui[System & Network] in the list, with the setting that matched under its name, and #key("Enter") opens the first section found. Within a section, the settings that belong together are drawn as one card under their heading.
 
 #figure(
   table(
@@ -216,20 +216,24 @@ The Settings window holds every preference of the application. It opens with #ke
     align: left,
     table.header([Section], [What it holds], [Where]),
     [Appearance], [the theme, colour style, accent colour, window and PDF page colours], [@sec-start-appearance],
-    [Editor], [jumps between the source and the PDF, the editor's font and colour themes], [@sec-start-appearance],
     [Shortcuts], [every keyboard shortcut, each of which can be changed], [@sec-writing-shortcuts],
-    [System], [the TeX tools Spectrum found, its folders and the licences], [@sec-start-setup],
+    [System & Network], [the network proxy, the TeX tools Spectrum found, its folders and the licences], [@sec-start-setup],
+    [Editor], [jumps between the source and the PDF, the editor's font and colour themes], [@sec-start-appearance],
     [Engines], [the default compile settings and the LaTeX, Typst and Markdown engines], [@sec-writing-engines],
     [Spelling & grammar], [the languages, dictionaries and grammar checkers], [@sec-writing-checks],
+    [Snippets], [your own snippets and their triggers], [@ch-writing],
     [Diagram composer], [canvas backgrounds, tool keys and university styles], [@ch-composer],
-    [Checkpoints], [automatic checkpoints and clearing out old ones], [@ch-references],
     [Projects], [where Spectrum opens, the default folder for new projects and opening files], [@sec-start-projects],
+    [Checkpoints], [automatic checkpoints and clearing out old ones], [@ch-references],
     [GitHub], [signing in and the settings repository], [@ch-references],
+    [Providers], [the model providers that are connected, with their keys], [@sec-assistant-models],
+    [Models], [the main, quick and vision models, the models in the menus and the prices], [@sec-assistant-models],
+    [Agents, Personas, Skills], [the local agents, the personas and the skills], [@ch-assistant],
+    [Search & Web], [web search and the sources Research uses], [@ch-assistant],
     [Zotero], [the connection to Zotero], [@ch-references],
-    [Template transfer], [the PDF parsers for Change template], [@ch-assistant],
-    [Models, Personas, Skills, Agents, Search], [the AI features and web search], [@ch-assistant],
+    [Document parsers], [the PDF parsers for Change template], [@ch-assistant],
   ),
-  caption: [The sections of the Settings window.],
+  caption: [The sections of the Settings window, in the order of its list.],
 ) <tab-start-settings>
 
 Settings are saved as they are changed, so there is no Save button. A few sections that hold longer text, such as Personas and Skills, ask before closing with changes that have not been saved.
@@ -252,11 +256,12 @@ Settings are saved as they are changed, so there is no Save button. A few sectio
 
 - the theme, which is System, Light or Dark. System follows the macOS appearance and switches with it,
 - the colour style, which is Spectrum or Simple and is described below,
+- the logos, which are #ui[Line marks] or #ui[Full logos]. A mark stands before the name of each local agent, model provider and model, in the agent workspace and in #menu[Settings][Agents], #menu[Settings][Providers] and #menu[Settings][Models]. With Line marks, which is the default, every one is a plain drawing in the colour of the text, so the whole application reads as one set. With Full logos, each brand shows its own logo where Spectrum has one, and its line mark otherwise,
 - the accent colour, which can follow macOS or be Spectrum, Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite or any other colour chosen with the colour well at the end of the row. Spectrum, drawn as a wheel of the colours below, runs the #ui[Compile] button and progress bars through every colour and is blue everywhere else, since an orange accent would read as a warning,
 - on macOS, a see-through window, which uses Liquid Glass on macOS 26 and later and a frosted blur on earlier versions, with a Clarity slider from Frosted to Clear that sets how much of the desktop shows through while the editor and the PDF stay readable and
 - the colour of the PDF's pages, one for light mode (White, Cream, Sepia or Grey) and one for dark mode (Dark, Black, Dimmed or White). Dark and Black turn the ink light, while Dimmed keeps the page's own colours a little darker. The PDF's #dots menu changes the colour for the mode that is showing.
 
-#shot("figures/01-getting-started/settings-appearance.png", [The Appearance section of Settings, with the theme, the colour style, the accent colour and the colour of the PDF's pages. The see-through window appears here on macOS.], width: 72%) <fig-start-appearance>
+#shot("figures/01-getting-started/settings-appearance.png", [The Appearance section of Settings, with the theme, the colour style, the logos and the accent colour. The colour of the PDF's pages is further down, and the see-through window appears here on macOS.], width: 72%) <fig-start-appearance>
 
 === Colour style
 
