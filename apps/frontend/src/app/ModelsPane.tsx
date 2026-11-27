@@ -176,7 +176,8 @@ function ProviderModels({
           <Icon name="chevron.right" className="acc-chev" />
           <ProviderMark id={conn.id} />
           <span className="acc-name">{name}</span>
-          <span className="acc-meta">{rows.length ? `${on} of ${rows.length} enabled` : 'No list'}</span>
+          {/* said on the heading too, so it shows while the section is folded */}
+          <span className={`acc-meta ${live.error ? 'error' : ''}`}>{live.error ? 'Can’t be reached' : rows.length ? `${on} of ${rows.length} enabled` : 'No list'}</span>
         </button>
         {live.preset?.live && <button className="btn small ghost" aria-label={`Refresh ${name}’s models`} onClick={live.refresh}>Refresh</button>}
       </div>
@@ -230,8 +231,8 @@ function ProviderModels({
 }
 
 const ROLE_TEXT: Record<ModelRole, [name: string, use: string]> = {
-  quick: ['Quick (autocomplete & references)', 'Listed models think as little as they allow, so it stays quick.'],
-  vision: ['Vision (images & layout check)', 'For image → LaTeX and the layout check in template transfer.']
+  quick: ['Quick (autocomplete & references)', 'For autocomplete and for splitting pasted references. Listed models think as little as they allow; other servers use their own default.'],
+  vision: ['Vision (images & layout check)', 'For image → LaTeX and the layout check in template transfer, with the model’s recommended effort.']
 };
 
 /**
@@ -281,9 +282,10 @@ export default function ModelsPane({
           `${i}|${m.id}`,
           <>
             <ProviderMark id={conn.id} />
-            {/* the provider's name in the menu; its mark alone on the button */}
-            {multi && <span className="role-provider">{connectionName(conn)} · </span>}
-            {`${m.label}${m.id === recommended ? ' (recommended)' : ''}`}
+            {/* the provider's name and “recommended” in the menu; on the button the mark and the model alone */}
+            {multi && <span className="role-extra">{connectionName(conn)} · </span>}
+            {m.label}
+            {m.id === recommended && <span className="role-extra"> (recommended)</span>}
           </>
         ]);
     });
@@ -319,9 +321,7 @@ export default function ModelsPane({
                 ? 'The main model reads text only, so choose a model that reads images.'
                 : typed
                   ? `Type the model’s name exactly as ${multi ? connectionName(at.conn) : 'the provider'} lists it.`
-                  : at.model && !picked
-                    ? 'Listed by the provider. Spectrum has no notes on this model.'
-                    : use}
+                  : [picked?.note ? `${picked.note}.` : at.model && !picked ? 'Listed by the provider. Spectrum has no notes on this model.' : '', use].filter(Boolean).join(' ')}
             </div>
           </div>
           <Select
@@ -342,6 +342,8 @@ export default function ModelsPane({
             <input
               className="input"
               aria-label={`${name} model name${multi ? `, on ${connectionName(at.conn)}` : ''}`}
+              // a server of the user's own: the names it listed when tested, to choose from
+              list={`settings-${role}Model-list`}
               value={at.model}
               placeholder={same ? settings.llmModel || 'Same as main model' : 'Model name'}
               spellCheck={false}
@@ -350,6 +352,7 @@ export default function ModelsPane({
               autoComplete="off"
               onChange={(e) => update({ [f.model]: e.target.value })}
             />
+            <datalist id={`settings-${role}Model-list`}>{rowsOf(at.conn).filter((m) => !m.known).map((m) => <option key={m.id} value={m.id} />)}</datalist>
           </div>
         )}
       </div>

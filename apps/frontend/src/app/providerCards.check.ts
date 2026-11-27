@@ -93,6 +93,17 @@ s = at(credsPatch(fresh, providers, draft, { endpoint: 'http://localhost:1234/v1
 eq(cards(s), ['main deepseek main+quick+vision key', 'saved:custom custom '], 'a custom endpoint');
 eq(ready(connections(s, providers)[1]), true, 'a local server needs no key');
 
+// a second custom endpoint, while the vision model runs on the first: it starts empty and never takes the first's key
+let two = at(credsPatch(fresh, providers, draftConnection(fresh, null), { endpoint: 'https://one.example/v1' }), fresh);
+two = at(credsPatch(two, providers, connections(two, providers)[1], { key: 'sk-one' }), two);
+two = at(roleModelPatch(two, providers, 'vision', connections(two, providers)[1], 'one-vision'), two);
+eq(cards(two), ['main deepseek main+quick key', 'vision custom vision key'], 'the vision model on a custom endpoint');
+draft = draftConnection(two, null);
+eq([draft.endpoint, draft.key], ['', ''], 'another custom endpoint starts empty');
+two = at(credsPatch(two, providers, draft, { endpoint: 'http://localhost:1234/v1' }), two);
+eq([two.providerSaved.custom, two.visionEndpoint, two.visionApiKey], [{ model: '', key: '', endpoint: 'http://localhost:1234/v1' }, 'https://one.example/v1', 'sk-one'], 'the first’s key stays with the first');
+eq(cards(two), ['main deepseek main+quick key', 'vision custom vision key', 'saved:custom custom '], 'two custom endpoints');
+
 // Disconnect forgets the key wherever it is held
 s = at(disconnectPatch(old, providers, openai), old);
 eq(['openai' in s.providerSaved, cards(s).length], [false, 3], 'a provider kept for later goes');

@@ -1873,19 +1873,19 @@ button.chip.active:hover {
 }
 
 /* the controls at the right of their rows, as in a list of settings: a switch after its label, a menu beside its */
-.settings-pane > .checkbox-row:has(> input[role='switch']) {
+:is(.settings-pane, .settings-pane > .field) > .checkbox-row:has(> input[role='switch']) {
   flex-direction: row-reverse;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
 }
 
-.settings-pane > .checkbox-row > span {
+:is(.settings-pane, .settings-pane > .field) > .checkbox-row > span {
   flex: 1;
   min-width: 0;
 }
 
-.settings-pane > .checkbox-row:has(> input[role='switch']) > input {
+:is(.settings-pane, .settings-pane > .field) > .checkbox-row:has(> input[role='switch']) > input {
   margin-top: 0;
 }
 
@@ -1998,7 +1998,7 @@ span.provider-mark {
   border-radius: 6px;
 }
 
-.popup-label > .role-provider {
+.popup-label > .role-extra {
   display: none;
 }
 
@@ -2196,6 +2196,10 @@ span.provider-mark {
 .acc-head.open .acc-chev {
   color: var(--accent-ink);
   transform: rotate(90deg);
+}
+
+.acc-meta.error {
+  color: var(--red-text);
 }
 
 .acc-meta {

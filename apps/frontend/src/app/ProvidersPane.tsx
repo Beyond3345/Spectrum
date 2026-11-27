@@ -47,6 +47,8 @@ function ProviderRow({
   useEffect(() => setEndpoint(conn.endpoint), [conn.endpoint]);
   const commit = () => endpoint !== conn.endpoint && update(credsPatch(settings, providers, conn, { endpoint: endpoint.trim() }));
 
+  // the model that runs on it, so a test can say when the provider doesn't list it
+  const running = conn.uses.includes('main') ? settings.llmModel : conn.uses.includes('quick') ? settings.referencesModel : conn.uses.includes('vision') ? settings.visionModel : '';
   const [state, tone] = test.testing
     ? ['Testing…', '']
     : test.result
@@ -97,7 +99,7 @@ function ProviderRow({
       </div>
       {(editing || test.result) && (
         <div className="inset-more">
-          {test.result && <div className={`field-hint ${test.result.ok ? '' : 'error'}`} role="status">{testSays(test.result, '')}</div>}
+          {test.result && <div className={`field-hint ${test.result.ok ? '' : 'error'}`} role="status">{testSays(test.result, running)}</div>}
           {editing && (
             <>
               <div className="field-hint">{preset ? preset.note : CUSTOM_NOTE}</div>

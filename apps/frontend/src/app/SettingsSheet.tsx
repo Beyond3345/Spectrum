@@ -161,6 +161,13 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
     then();
   };
   const go = (value: Section) => value !== section && leave(() => (setSection(value), setLicences(false)));
+  // the list is longer than the sheet: the pane showing is kept in sight, and each pane starts at its top
+  const nav = useRef<HTMLElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    nav.current?.querySelector('.nav-row.active')?.scrollIntoView({ block: 'nearest' });
+    if (body.current) body.current.scrollTop = 0;
+  }, [section]);
   const [check, setCheck] = useState<SystemCheck | null>(null);
   const [checkError, setCheckError] = useState('');
   const [licences, setLicences] = useState(false);
@@ -256,7 +263,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
   return (
     <Sheet title="Settings" onClose={() => leave(onClose)} width={780} className="settings-sheet">
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Settings">
+        <nav ref={nav} className="settings-nav" aria-label="Settings">
           <label className="search-field settings-search">
             <Icon name="magnifyingglass" />
             <input
@@ -301,7 +308,7 @@ export default function SettingsSheet({ onClose, projectId, section: start = 'ap
           </div>
         </nav>
 
-        <div className="settings-pane">
+        <div ref={body} className="settings-pane">
           {section === 'appearance' && (
             <>
               <h3 className="form-section-title">Theme</h3>

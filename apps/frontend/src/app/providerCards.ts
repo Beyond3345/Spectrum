@@ -73,7 +73,8 @@ export function connectionName(conn: Connection) {
 /** The card a provider gets while it is being connected, before it has a key: nothing is stored until one is typed. */
 export const draftConnection = (settings: AppSettings, preset: ProviderPreset | null): Connection => {
   const id = preset?.id || CUSTOM;
-  return { at: `saved:${id}`, id, preset, endpoint: text(settings.providerSaved[id]?.endpoint) || preset?.endpoint || '', key: '', uses: [] };
+  // a custom endpoint starts empty: what is kept under Other is a server already shown, or one that left
+  return { at: `saved:${id}`, id, preset, endpoint: preset ? text(settings.providerSaved[id]?.endpoint) || preset.endpoint : '', key: '', uses: [] };
 };
 
 /**
@@ -118,8 +119,10 @@ export function credsPatch(settings: AppSettings, providers: ProviderPreset[], c
     if (change.endpoint !== undefined) Object.assign(patch, { [f.endpoint]: change.endpoint, [f.provider]: settings[f.provider] || conn.id });
     if (change.key !== undefined) Object.assign(patch, { [f.apiKey]: change.key });
   }
-  const saved = settings.providerSaved[conn.id];
-  if (!onMain && conn.id !== main && (conn.at.startsWith('saved:') || (saved && hostOf(text(saved.endpoint)) === host))) {
+  // what is kept for this provider counts only at this connection's host: a key never follows to another address
+  const kept = settings.providerSaved[conn.id];
+  const saved = kept && hostOf(text(kept.endpoint)) === host ? kept : undefined;
+  if (!onMain && conn.id !== main && (conn.at.startsWith('saved:') || saved)) {
     patch.providerSaved = {
       ...settings.providerSaved,
       [conn.id]: { model: text(saved?.model), key: change.key ?? (text(saved?.key) || conn.key), endpoint: change.endpoint ?? (text(saved?.endpoint) || conn.endpoint) }
