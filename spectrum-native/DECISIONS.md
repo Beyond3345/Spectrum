@@ -20,6 +20,9 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 - Removed from 3.0.0: the 1.10 migration notice, Change template (template transfer), the PDF
   parsers and their Settings pane, and Export to Word.
 - 3.0.0 uses the user's new icon set (`assets/icons/app/`) for every icon, replacing 2.8's.
+- Blueprint second update (29 Nov): line icons everywhere (dots only for tags/status), collapsible
+  folders in Files, palette pill in headers, aux-file sweep, 18 research sources, Reference Helper
+  type/format pickers, template style audit, and the Composer as 5 visual studios.
 - Keep 2.8's Spectrum editor theme as **Spectrum Classic** (Light and Dark) beside 3.0.0's new
   Spectrum editor theme.
 - Fix 2.8.1's update notifier, which didn't work and didn't open the GitHub release page.
@@ -242,3 +245,38 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     `#4373a8` reaches 4.6:1.
 83. **Compiling state**: the button reads "Compiling" with a turning ring; no colour change.
 84. **The Outline and Settings docks are honest placeholders** until 2b (outline) and 11a (Settings).
+
+## Windows sandbox worker (session 6d)
+
+85. **No loopback exemption** for AppContainer: it needs admin rights and opens every local port.
+    The network gate is proxy variables only in the restricted tier (`network_enforced: false`), and
+    AppContainer refuses a gate. (`validate.rs`)
+86. **Read-only "runtime" grants (TeX trees) persist** under the capability `spectrumSandboxRuntime`,
+    so a TeX tree is stamped once, not per run. (`grant.rs`, `run.rs`)
+87. **The restricted tier is Chromium's `USER_LIMITED` token plus low integrity**; it can still read
+    anything all users can read. (`win/token.rs`)
+88. **Only `.exe` programs run; npm `.cmd` shims become `node.exe` + the script.** (`validate.rs`)
+89. **Desktop (UI) limits are dropped with a warning when Spectrum is already inside a job.** (`run.rs`)
+90. **`CREATE_NO_WINDOW` instead of 2.8's hidden new console.** A hard-killed worker can leave stale
+    ACL entries and its AppContainer profile; the next run cleans what it finds. (`win/process.rs`)
+
+## spectrum-editor syntax (session 2b)
+
+91. **The BibTeX grammar is vendored inside spectrum-editor** (`vendor/`, MIT licence, built by
+    `build.rs` + cc) rather than as its own crate. Added to THIRD_PARTY_NOTICES.
+92. **A background first parse that finishes after more typing replays those edits** instead of being
+    thrown away. (`syntax.rs`)
+93. **Scope bars include the `\begin` and `\end` lines** (2.8 drew only the lines between), and depths
+    come from the text so they don't jump while the tree reparses. (`scope.rs`)
+94. **Outline levels**: `\part` 0 to `\subparagraph` 6; Markdown gets all six levels plus setext headings
+    (2.8 had `#`–`####`); LaTeX floats come from the tree, not TexLab. (`outline.rs`)
+95. **Outline and folds use a pruned tree walk** (4–13 ms on 20k lines) instead of queries (~50 ms).
+96. **Incremental reparse is 0.7 ms**, over the plan's 0.3 ms, still well inside a frame.
+97. **`\iff` / `\ifthenelse` aren't folded; a Typst `// TODO` ends at its line.**
+
+## Blueprint second update
+
+98. **Superseded**: 1c's flat file list (decision 4 of 1c, entry 69's file dots) → collapsible folders
+    with file-type line icons (session 1f).
+99. **The kit's Lucide icons stay as a fallback** for anything the 92 line icons don't cover, so no
+    button ever lacks an icon; each use of the fallback is listed in 1f's report.

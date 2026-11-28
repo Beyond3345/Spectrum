@@ -915,3 +915,40 @@ the setup page). Their removal is 2.8.1 behaviour; nothing to rebuild.
 | 11c to-dos & PDF notes | To-do list with groups, colours, highlights, drag; PDF sticky notes |
 | 11d document insights | The insights panel with counts, numbers and pages, metadata, texcount |
 | 11e accessibility & copy pass | Screen reader labels, keyboard paths, reduce transparency, Australian English copy check across every screen |
+
+
+## Added by the blueprint (29 Nov, second update)
+
+New 3.0.0 requirements beyond 2.8.1. Same rules: tick when built, never delete.
+
+| ID | Feature | Source | 3.0.0 session | Status |
+|---|---|---|---|---|
+| N1 | Line icons (92 SVGs) everywhere; coloured dots only for tags and status | blueprint addendum | 1f, every UI session | not started |
+| N2 | Files tree keeps collapsible folders (`diagrams/`, `figures/`, subfolders) | blueprint addendum | 1f | not started |
+| N3 | Command palette pill in the workspace and Home headers | blueprint addendum | 1f | not started |
+| N4 | Projects Home sidebar: nested folder tree with counts, Archived row, Tags, Sources | Blueprint 4 | 1d | not started |
+| N5 | Template style-guide audit (LATEX_STYLE 14 points, TYPST_STYLE 12 points) + templates tests in Rust CI | blueprint addendum | 1d | not started |
+| N6 | First run: 3 engine cards, 2 AI cards, first project | Blueprint 11 | 1e | not started |
+| N7 | Auto-sweep external compiler files into `.spectrum/aux/` on open/refresh (`autoTidyAuxFiles`, default on) | blueprint Phase 1 | 1e | not started |
+| N8 | Research: 8 more zero-key sources (DBLP, Europe PMC, INSPIRE-HEP, DOAJ, ERIC, HAL, DataCite/Zenodo, Open Library) | blueprint Phase 7 | 7, 7b | not started |
+| N9 | Research: 5 optional key sources (NASA ADS, CORE, IEEE Xplore, Springer Nature, Scopus), keys in keystore | blueprint Phase 7 | 7, 7b | not started |
+| N10 | Pinned source pills (`researchPinnedSources`) in Settings › Search & Web, + Sources popover, discipline presets | blueprint Phase 7 | 7b, 11a | not started |
+| N11 | Reference Helper: entry-type picker and BibLaTeX (default) / BibTeX toggle on the draft card | Blueprint 6B | 7, 7b | not started |
+| N12 | Settings › Appearance: Accent colour (Calm Slate default), Provider & agent marks (Line / Full) | Blueprint 3 | 11a | not started |
+| N13 | Composer studio: Circuits (snap grid, wire routing, sub-circuits, siunitx default, CircuiTikZ + CeTZ/Zap) | Blueprint 9A | 9c | not started |
+| N14 | Composer studio: Structures & Mechanics (beams, trusses, reactions, AFD/SFD/BMD, Mohr, fluid statics) | Blueprint 9B | 9d | not started |
+| N15 | Composer studio: Maths & Geometry (vectors, constructions, conics, matrix warp, Venn, commutative diagrams) | Blueprint 9C | 9d | not started |
+| N16 | Composer studio: Plots & Data (CSV preview, 9 series, Bode, groupplot, 3D, histograms, annotations) | Blueprint 9D | 9e | not started |
+| N17 | Composer studio: Graphs & Flow (flowcharts, state machines, block diagrams, swimlanes → TikZ/Fletcher/Mermaid) | Blueprint 9E | 9e | not started |
+| N18 | Every 2.8.1 `spectrum-diagram v1` file (including form, tikzcd, fletcher, Mermaid, plain TikZ modes) opens in its parent studio | blueprint Phase 9 | 9b–9e | not started |
+| N19 | siunitx value fields by default in the Composer (accepts `\qty{}{}`, formats typed units; raw toggle) | blueprint addendum | 9c–9e | not started |
+
+## Deferred by session 2b (now owned by 2f)
+
+| ID | Feature | Source | 3.0.0 session | Status |
+|---|---|---|---|---|
+| E2b-1 | Outline across `\input` / `#include` files | fe/editor outline | 2f | not started |
+| E2b-2 | Float and Typst figure numbering in the outline | fe/editor outline | 2f | not started |
+| E2b-3 | Highlighting inside Markdown code fences and Typst raw blocks | fe/editor | 2f | not started |
+| E2b-4 | Words marked as to-dos (`todoHighlights.ts`) | fe/editor/todoHighlights.ts | 2f / 11c | not started |
+| E2b-5 | Current environment name at the cursor | fe/editor | 2f | not started |

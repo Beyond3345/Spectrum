@@ -57,6 +57,7 @@ The editor themes reuse the colour values of the themes below. Only the colours 
 | --- | --- | --- |
 | GitHub Light and Dark | [primer/github-vscode-theme](https://github.com/primer/github-vscode-theme) 6.3.5 and @primer/primitives 7.10.0 | MIT |
 | One Light and One Dark | [atom/atom](https://github.com/atom/atom) one-light-syntax and one-dark-syntax | MIT |
+| [tree-sitter-bibtex](https://github.com/latex-lsp/tree-sitter-bibtex) grammar (3.0.0 only) | `spectrum-native/crates/spectrum-editor/vendor/`, the generated `parser.c` compiled into the 3.0.0 editor for BibTeX highlighting and outline | MIT, see [vendor/LICENSE](spectrum-native/crates/spectrum-editor/vendor/LICENSE) |
 | Solarized Light and Dark | [altercation/solarized](https://github.com/altercation/solarized), mapped as in microsoft/vscode | MIT |
 | Tokyo Night and Tokyo Night Day | [folke/tokyonight.nvim](https://github.com/folke/tokyonight.nvim) | Apache 2.0 |
 | Catppuccin Latte and Mocha | [catppuccin/palette](https://github.com/catppuccin/palette) 1.8.0 | MIT |

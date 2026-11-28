@@ -86,6 +86,46 @@ editor design: `bg-code` background, plan syntax colours (commands green, bracke
 environment names purple, maths magenta) and the plan's text and gutter tokens. A 2.8 setting of
 `spectrum-light`/`spectrum-dark` lands on the new Spectrum; Classic is one pick away in Settings.
 
+### Blueprint update of 29 Nov (second)
+
+The blueprint now carries mockups for every major screen (Blueprints 4–12) and these binding rules:
+
+- **Line icons everywhere**: the 92 SVGs in `spectrum-native/assets/icons/{brands,ui}` (24×24,
+  1.8 px stroke, `currentColor`) for engines, file types, folders, Home, sidebar, Settings panes,
+  toolbars, setup cards, Composer tools and AI providers/agents. Coloured dots only for user tags and
+  status. The kit's Lucide set stays as a fallback for anything the 92 don't cover.
+- **Files tree keeps real folders**: `diagrams/`, `figures/` and every subfolder are collapsible
+  nodes with chevrons, never flattened paths (replaces 1c's flat list).
+- **Command palette pill in the header** of the workspace and Home ("Search commands & files… ⌘⇧P").
+- **Projects Home (Blueprint 4, session 1d)**: sidebar with Home, All Projects, a nested folder tree
+  with per-folder counts, Archived row, Tags, Sources (GitHub, Templates, Typst Universe); 2.8.1's
+  full Customise Folder (7 colours, ~190 symbols, emoji) with line-style folder icons.
+- **Template style-guide audit (1d)**: every non-venue template in `templates/` conforms to
+  `docs/LATEX_STYLE.md` (14 points) and `docs/TYPST_STYLE.md` (12 points); port
+  `apps/backend/test/templates.test.js` to Rust CI tests.
+- **First run (Blueprint 11, 1e)**: three equal engine cards (LaTeX, Typst, Markdown), two equal
+  optional AI cards (Models & Providers; Local Agents & MCP), first project; never shown to updaters.
+- **Auto-sweep of external compiler files (1a follow-up, in 1e)**: on project open or refresh (never
+  mid-compile) move stray TeX working files (.aux, .log, .bbl, .synctex.gz, .fls, .fdb_latexmk …)
+  into `<project>/.spectrum/aux/<rel-path>`, skipping files changed in the last 2 s, locked files,
+  symlinks and Git-tracked files; setting `autoTidyAuxFiles`, default on, in Settings › Projects.
+- **Research (7, 7b)**: 18 sources (5 default, 8 more zero-key, 5 optional key sources), user-pinned
+  source pills (`researchPinnedSources`) and discipline presets; Reference Helper separate from
+  Research/Claims, with an entry-type picker and a BibLaTeX (default) / BibTeX toggle.
+- **Settings (Blueprint 3, 11a)**: 18 panes in 5 groups — General: Appearance, Shortcuts, System &
+  Network; Writing & Editor: Editor, Engines, Spelling & grammar, Snippets, Diagram composer;
+  Workspace & Sync: Projects, Checkpoints, GitHub; AI & Agents: Providers, Models, Agents, Personas,
+  Skills; Research & Search: Search & Web, Zotero. Appearance adds Accent colour (Calm Slate Mono
+  default) and Provider & agent marks (Line | Full).
+- **Diagram Composer becomes 5 visual studios** (9b window + 9c–9e): Circuits; Structures &
+  Mechanics; Maths & Geometry; Plots & Data; Graphs & Flow. Visual direct manipulation first (left
+  palette, centre snap-grid canvas with live compiled preview, right inspector, code in a Code tab),
+  siunitx value formatting by default. 2.8.1's separate form, tikzcd, fletcher, Mermaid and plain
+  TikZ modes are absorbed (their capabilities live on inside the studios) and every 2.8.1
+  `spectrum-diagram v1` file opens in its parent studio.
+- **Phase 11** (11a, 11c, 11d, 11e) completes parity; done when every non-removed
+  FEATURE_PARITY.md row is built and verified on macOS and Windows.
+
 ### Removed from 3.0.0 (user, 29 Nov)
 
 Not rebuilt: the 1.10 migration notice; Change template (template transfer, all four routes);
@@ -157,9 +197,10 @@ they can run in parallel sessions, each in its own worktree, because they don't 
 | 8 | Checkpoints, diffs, GitHub device flow | `spectrum-git` | 1b | |
 | 9a | LaTeX ↔ Typst, Jyutping | `spectrum-convert` | 1a | Round-trip fixture keeps labels/citations |
 | 9b | Diagram composer window (trailer format verbatim) | `spectrum-diagram` | 2c, 3a | Opens 2.8 diagram files, hand-edited bodies open in code mode |
-| 1d | Projects page & templates (folders, tags, archive, templates, Typst Universe, import UI, switcher; no 1.10 notice) | `spectrum-app`, `spectrum-core` | 1c | FEATURE_PARITY rows ticked |
-| 1e | First run, 2.8 settings migration (localStorage → settings.json), network proxy finder and gate | `spectrum-core`, `spectrum-app` | 1a | 2.8 settings carried over |
-| 2f | Insert menu and floats panel (figure, table, images, packages) | `spectrum-editor`, `spectrum-app` | 2c | |
+| 1f | Shell follow-up: line icons throughout, collapsible folders in Files, header palette pill, file-type icons | `spectrum-ui`, `spectrum-app` | 1c | Matches Blueprints 1, 10 |
+| 1d | Projects Home (Blueprint 4), folders, tags, archive, templates + style-guide audit, Typst Universe, import UI, switcher | `spectrum-app`, `spectrum-core` | 1c | FEATURE_PARITY rows ticked |
+| 1e | First run (Blueprint 11), 2.8 settings migration (localStorage → settings.json), network proxy, auto-sweep of external aux files | `spectrum-core`, `spectrum-app` | 1a | 2.8 settings carried over |
+| 2f | Insert menu and floats panel; 2b follow-ups (cross-file outline, figure numbering, fence highlighting, word to-dos) | `spectrum-editor`, `spectrum-app` | 2c | |
 | 3d | Compile extras (decision 65's list, compile menu, live output, Logs tab, export formats, Mermaid in Markdown) | `spectrum-compile`, `spectrum-app` | 3a, 4b | |
 | 3e | Engine downloads and system check (Typst versions, Tinymist, pandoc, Biber, Python) | `spectrum-compile`, `spectrum-xtask` | 3a | |
 | 4c | PDF extras (two-page, contents/pages sidebar, presentation, page memory, Typst live, Markdown preview) | `spectrum-pdf` | 4b | |
@@ -170,9 +211,9 @@ they can run in parallel sessions, each in its own worktree, because they don't 
 | 7b | Research, references and Zotero UI | `spectrum-references`, `spectrum-app` | 7 | |
 | 7c | Review and preflight (six checks, AI review) | `spectrum-references`, `spectrum-app` | 7, 3a | |
 | 8b | GitHub sync merge engine, conflicted copies, GitHub view, settings repository | `spectrum-git`, `spectrum-app` | 8 | |
-| 9c | Composer: circuits and general drawing | `spectrum-diagram` | 9b | |
-| 9d | Composer: structures, vectors and forms | `spectrum-diagram` | 9b | |
-| 9e | Composer: plots, flow, tikz-cd, Mermaid | `spectrum-diagram` | 9b | |
+| 9c | Composer studio: Circuits (Blueprint 9A) | `spectrum-diagram` | 9b | |
+| 9d | Composer studios: Structures & Mechanics; Maths & Geometry (9B, 9C) | `spectrum-diagram` | 9b | |
+| 9e | Composer studios: Plots & Data; Graphs & Flow (9D, 9E) | `spectrum-diagram` | 9b | |
 | 11a | Settings window (18 panes: 2.8's 19 minus Document parsers, search, Appearance, Models, About/Licences) | `spectrum-app`, `spectrum-ui` | 1e | |
 | 11c | To-dos and PDF sticky notes | `spectrum-app`, `spectrum-pdf` | 2b, 4b | |
 | 11d | Document insights panel | `spectrum-app` | 2b, 3a | |
