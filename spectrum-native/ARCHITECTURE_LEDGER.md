@@ -95,6 +95,31 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 - `LanguageTool::new(server).check(..).await -> GrammarReport` (async reqwest; no server management).
 - Perf: `cargo test --release -p spectrum-checkers --test perf -- --ignored --nocapture`.
 
+### spectrum-ai (session 6a: providers only)
+
+- `LlmClient::new()` (Clone): `.stream(LlmConfig, Request) -> EventStream` (Tokio; no GPUI executor),
+  `.list_live_models(&Preset, endpoint) -> LiveModels`, `.reads_images(&LlmConfig)`. Retries busy statuses and
+  dropped connections before anything is heard (`StreamEvent::Retrying`), drops rejected parameters.
+- `LlmConfig { endpoint, api_key (the key itself), model, provider: Option<preset id> }`;
+  `role_config(&AppSettings, ModelRole, &KeyStore)` / `role_config_refs`; `ModelRole::{Main, Fast, Vision,
+  References}` (Fast and References share 2.8's `references*` quick model), `.effort(&settings)`.
+- `Request { system, messages: Vec<Message>, tools: Vec<Tool>, effort: Effort, max_tokens, temperature,
+  cache_key, cancel: CancellationToken }`; `Message::{User(Vec<Part>), Assistant(AssistantMessage), Tool}`;
+  `Part::{Text, Image{url}}`, `Part::image(mime, bytes)`; `AssistantMessage { text, tool_calls, replay }` —
+  send `replay` back unchanged on the next tool-loop turn (thinking signatures, encrypted reasoning).
+- `StreamEvent::{TextDelta, ReasoningDelta, ToolCall, Usage, Retrying, Stop { reason, message }, Error}`;
+  tool calls and usage come just before `Stop`. `Usage { input, output, cache_read, cache_write, cost }`,
+  `StopReason::{EndTurn, ToolUse, MaxTokens, Refusal}`, `LlmError` (Display = user copy, `.notice()`).
+- `LlmProvider` (one per format: `ChatCompletions`, `AnthropicMessages`, `OpenAiResponses`; `provider(Api)`)
+  with `body(BodyParts)`, `parser() -> Box<dyn StreamParser>`.
+- Presets: `presets()`, `preset(id)`, `preset_for_endpoint`, `Preset { models, regions, recommended, .. }`,
+  `Model { levels, effort, vision }`, `EffortLevel` (7 wire levels; `colour_slot()` → eff_off..eff_max),
+  `Effort::{Default, Fast, Level}` (`From<ReasoningEffort>`), `effort_for`, `ollama_model`.
+- `PriceCache::new(data_dir).prices(refresh) -> PriceList` (`DATA_DIR/models-dev.json`, 6 h), `.price(model)`,
+  `Price::cost(&Usage)`; `normalize_model_id`, `is_local_model`, `prices_of`.
+- Tests: `tests/streams.rs` + `tests/bodies.rs` on a local server (`tests/support/server.rs`), fixtures in
+  `tests/fixtures/*.sse`. No network.
+
 ## Globals
 
 - `SpectrumTheme` (spectrum-theme); the kit's `Theme` is driven from it, never edited directly.
