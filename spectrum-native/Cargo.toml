@@ -87,6 +87,7 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 encoding_rs = "0.8.44"
 tempfile = "3.27.0"
 url = "2.5.9"
+tokio-util = "0.7.20"
 
 [workspace.lints.rust]
 # allowed per module only for FFI (Hunspell, PDFium, macOS, Win32)

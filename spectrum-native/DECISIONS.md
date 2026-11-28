@@ -141,3 +141,20 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     2.8's own colours live on as `spectrum-classic-light` / `spectrum-classic-dark`. So an upgraded
     user sees the new design by default and can pick Classic in Settings, rather than being pinned to
     the old look. **Confirmed by the user, 28 Nov.**
+
+## spectrum-ai providers (session 6a)
+
+47. **The Fast and References roles both read 2.8's single "quick model" settings** (`references*`),
+    because 2.8 had one quick model for both. (`roles.rs`)
+48. **Effort keeps the providers' 7 levels** (Spectrum's 6 colours plus Minimal, drawn in the Low
+    colour). (`presets.rs`)
+49. **Reasoning from `<think>` blocks and `reasoning_content` streams as reasoning**; 2.8 dropped it.
+    (`provider/chat.rs`)
+50. **Tool calls are released when the answer ends**; an answer cut off mid-call is an error rather
+    than a half-built call. (`provider.rs`)
+51. **Each message keeps the provider's raw reply** to send back next turn, as 2.8's
+    `_anthropic`/`_responses` did. (`types.rs`)
+52. **OpenAI Responses requests no reasoning summary** (unchanged from 2.8), so OpenAI's reasoning
+    shows only if OpenAI sends it. (`provider/responses.rs`)
+53. **A failed request is retried only before anything has streamed**; a stream that breaks midway
+    reports the error. Not ported yet: `testConnection`, native web search, `Retry-After` dates.

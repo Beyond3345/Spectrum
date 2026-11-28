@@ -62,3 +62,15 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
       diagnostics and an outline.
 - [ ] The project folder can be moved or put in the Recycle Bin while a server runs.
 - [ ] Quitting Spectrum leaves no texlab.exe or tinymist.exe running.
+
+## AI providers (spectrum-ai)
+
+- [ ] A streamed answer arrives piece by piece through a corporate or system proxy.
+- [ ] Anthropic and OpenAI work behind a TLS-inspecting proxy whose root certificate is only in the
+      Windows certificate store (or a clear certificate error appears).
+- [ ] Ollama on `localhost:11434`: models are listed, a model answers with no key, and thinking shows
+      as reasoning.
+- [ ] Ollama on another computer on the network (`http://<ip>:11434`) lists models and answers.
+- [ ] Stopping an answer mid-stream stops it within a second.
+- [ ] `models-dev.json` (prices) is written to `%APPDATA%\com.beyond3345.spectrum` and replaced
+      cleanly when it refreshes.
