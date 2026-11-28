@@ -6,9 +6,23 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+links = "hunspell"
 
 [dependencies]
-spectrum-core.workspace = true
+harper-core.workspace = true
+regex.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+reqwest = { workspace = true, features = ["form"] }
+parking_lot.workspace = true
+
+[build-dependencies]
+cc.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "net", "io-util"] }
 
 [lints]
 workspace = true

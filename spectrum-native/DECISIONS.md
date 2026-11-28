@@ -62,3 +62,51 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 21. **Snapshot tests** (`SPECTRUM_SNAPSHOT=1 cargo test -p spectrum-app --test snapshot`) render
     views offscreen with the real Metal renderer to PNGs, because the shell can't screen-capture.
     Every UI session checks its work this way. Not part of the gate (needs a Mac GPU).
+
+## spectrum-core (sessions 1a, 1b)
+
+22. **zip without default features** (deflate only). The defaults pull in zstd-sys, a C build that
+    needs the Windows SDK headers; Overleaf and arXiv archives use deflate.
+23. **Imports reject unsafe archives outright**: a `..` or absolute entry fails the whole zip or tar
+    import (2.8 silently dropped or skipped it); symlinks are skipped and logged. (`import.rs`)
+24. **The file tree hides node_modules, target, `_minted-*` and 2.8's gitignored TeX build files.**
+    2.8's tree showed them. (`tree.rs`)
+25. **App settings live in `DATA_DIR/settings.json`.** 2.8 kept them in the WebView's localStorage,
+    which the native app can't read directly; migrating them is a later session's job (`paths.rs`).
+    Snippets, personas, project folders and composer diagrams stay as raw JSON until their owner
+    crates parse them (`settings.rs`).
+26. **A field of the wrong type falls back to its default on its own**, keeping the rest of the file,
+    rather than failing the whole settings file. (`json.rs`)
+27. **Sync folders (iCloud, OneDrive and any other sync app's folder, as 2.8's `placeOf` checks) are
+    detected once at startup**, not every minute. (`paths/sync.rs`)
+
+## spectrum-compile (session 3c, log parser)
+
+28. **Forward search ignores the column**, as 2.8 does. (`synctex/forward.rs`)
+29. **Typst diagnostics are also read in the CLI's default human format**; errors with no location
+    are dropped, as 2.8 did. (`log_parser/typst.rs`)
+30. **A SyncTeX file outside the project gives no jump** (`None` / `OutsideProject`); 2.8 returned an
+    absolute path on another drive. 2.8's symlink check isn't needed with that rule. (`synctex/store.rs`)
+31. **Constant regexes are built through one helper that may `expect`**, allowed with a reason, since
+    a bad constant pattern is a programming error caught by every test run. (`lib.rs`)
+32. **New `DiagnosticKind`** (overfull box, undefined reference, missing file …), derived from the
+    message, so the UI can group and filter. (`log_parser/tex.rs`)
+33. **Legacy SyncTeX cache locations from 1.4.0 and 1.7.0 aren't read**; a recompile rebuilds them.
+34. **Test fixture logs are committed** via a `.gitignore` exception (the repo ignores `*.log`).
+
+## spectrum-checkers (session 5b)
+
+35. **Harper lints each paragraph separately and caches by its text**, so an edit re-lints one
+    paragraph. A whole-paper Harper pass takes ~80 ms warm; with the cache a 5,000-word paper
+    re-checks in ~5 ms after an edit (plan target <15 ms). A never-seen paper takes ~0.5 s and the
+    very first check ~0.8 s (dictionary load), both off the UI thread. (`harper.rs`)
+36. **Byte offsets everywhere**, not 2.8's UTF-16 offsets; LanguageTool's UTF-16 offsets are converted.
+    The editor converts once at its boundary. (`masking.rs`, `languagetool.rs`)
+37. **Combining accents aren't blanked as "other script"** (2.8 blanked them), so accented Latin words
+    are checked properly; emoji and CJK still are. (`harper.rs`)
+38. **Spelling lints carry no suggestions**; `suggest()` runs when the user opens the fix menu, as in
+    2.8. (`spelling.rs`)
+39. **A LanguageTool failure keeps what was already checked** and reports the failure alongside,
+    rather than discarding the whole result. (`harper.rs`, `languagetool.rs`)
+40. **Not yet ported**: language detection, downloaded dictionaries, starting a local LanguageTool
+    server, ignored-rules files. They come with the editor wiring session (5c) and Settings.
