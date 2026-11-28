@@ -53,6 +53,13 @@ impl Cleanup {
     }
 }
 
+impl Drop for Cleanup {
+    /// For a panic on the way. After the explicit call there is nothing left to do.
+    fn drop(&mut self) {
+        self.run();
+    }
+}
+
 /// Runs the request and returns the last event. Everything the program started is dead and
 /// every per-run grant is revoked by the time it returns.
 pub(crate) fn run(request: &Request, launch: &Launch, input: BufReader<Stdin>) -> Event {
@@ -161,10 +168,11 @@ fn isolate(
     ];
     listen(input, stdin_write, Arc::clone(&kill));
 
+    // a time too far off to add up is no deadline
     let deadline = request
         .limits
         .timeout_ms
-        .map(|ms| Instant::now() + Duration::from_millis(ms));
+        .and_then(|ms| Instant::now().checked_add(Duration::from_millis(ms)));
     let reason = loop {
         if program.wait(100)? {
             break ExitReason::Exited;
