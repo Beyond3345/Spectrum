@@ -8,7 +8,7 @@
 
 use std::io::Write;
 use std::net::{SocketAddr, TcpStream};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, ExitCode};
 use std::time::Duration;
 
 fn main() -> ExitCode {
@@ -74,12 +74,13 @@ fn connect(address: &str) -> Result<String, String> {
 
 /// A job that allows no breakaway refuses the flag, and the process is never made.
 fn breakaway() -> Result<String, String> {
+    // a plain child first, with the program's own pipes (the null device is closed to an
+    // AppContainer): the refusal below must be the flag's, not every process's
+    if let Err(error) = own()?.args(["env", "PROBE"]).status() {
+        return Ok(format!("but no process starts at all: {error}"));
+    }
     let mut command = own()?;
-    command
-        .args(["env", "PROBE"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    command.args(["env", "PROBE"]);
     #[cfg(windows)]
     std::os::windows::process::CommandExt::creation_flags(&mut command, 0x0100_0000 | 0x0800_0000); // CREATE_BREAKAWAY_FROM_JOB, CREATE_NO_WINDOW
     command

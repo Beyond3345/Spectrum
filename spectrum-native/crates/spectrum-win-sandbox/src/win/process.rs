@@ -234,7 +234,12 @@ pub(crate) fn spawn_suspended(spawn: &Spawn<'_>) -> Result<Process, Failure> {
         }
     };
     if created == 0 {
-        return Err(last_error(&format!("Start “{}” isolated", spawn.command)));
+        // read before the message is built: an allocation may change the last error
+        let error = std::io::Error::last_os_error();
+        return Err(Failure::os(format!(
+            "Start “{}” isolated: {error}",
+            spawn.command
+        )));
     }
     // SAFETY: two handles the call has just returned
     unsafe {

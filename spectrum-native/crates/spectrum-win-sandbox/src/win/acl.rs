@@ -433,14 +433,17 @@ impl Objects for WinFs {
             )
         };
         if raw == INVALID_HANDLE_VALUE {
-            return Err(failed(&format!("Open “{path}” without following links")));
+            // read before the message is built: an allocation may change the last error
+            let error = std::io::Error::last_os_error();
+            return Err(format!("Open “{path}” without following links: {error}"));
         }
         // SAFETY: a handle CreateFileW has just returned
         let handle = unsafe { own(raw) };
         let mut info = BY_HANDLE_FILE_INFORMATION::default();
         // SAFETY: an open handle and a structure valid for writes
         if unsafe { GetFileInformationByHandle(raw, &raw mut info) } == 0 {
-            return Err(failed(&format!("Inspect “{path}”")));
+            let error = std::io::Error::last_os_error();
+            return Err(format!("Inspect “{path}”: {error}"));
         }
         let object = Object {
             dir: info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0,
