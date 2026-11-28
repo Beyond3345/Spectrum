@@ -102,8 +102,8 @@ impl Segmented {
     }
 }
 
-/// The left sidebar's tab strip (`.mk-tabs`): Files, Outline, Research, To-dos, each label in its
-/// own hue (plan Section 3).
+/// The left sidebar's tab strip (`.mk-tabs`): Files, Research, To-dos, each label in its calm
+/// pastel (plan Section 3).
 pub fn sidebar_tabs(
     id: impl Into<ElementId>,
     selected: SidebarTab,
@@ -116,16 +116,10 @@ pub fn sidebar_tabs(
         .position(|t| *t == selected)
         .unwrap_or(0);
     for tab in SidebarTab::ALL {
-        let label = match tab {
-            SidebarTab::Files => "Files",
-            SidebarTab::Outline => "Outline",
-            SidebarTab::Research => "Research",
-            SidebarTab::Todos => "To-dos",
-        };
         strip.segments.push(Segment {
-            label: Some(label.into()),
+            label: Some(tab.name().into()),
             icon: None,
-            colour: Some(theme.sidebar_tab(tab).0),
+            colour: Some(theme.sidebar_tab(tab).text),
         });
     }
     strip
@@ -186,7 +180,7 @@ impl RenderOnce for Segmented {
 }
 
 /// A file in the sidebar (`.mk-file`): a coloured dot for its kind and its path. The open file
-/// sits on its tab's 13% tint in full-strength bold text.
+/// sits on its tab's 12% pastel tint in full-strength bold text.
 #[derive(IntoElement)]
 pub struct FileRow {
     id: ElementId,
@@ -230,7 +224,7 @@ impl FileRow {
 impl RenderOnce for FileRow {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.global::<SpectrumTheme>();
-        let (_, tint) = theme.sidebar_tab(SidebarTab::Files);
+        let tint = theme.sidebar_tab(SidebarTab::Files).active;
         let hover = theme.bg_hover;
         div()
             .id(self.id)

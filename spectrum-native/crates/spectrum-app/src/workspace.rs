@@ -43,6 +43,8 @@ struct Naming {
     _subscription: Subscription,
 }
 
+// independent view flags (loaded, sidebar, outline, compiling), not a state machine
+#[allow(clippy::struct_excessive_bools)]
 pub struct WorkspaceView {
     focus_handle: FocusHandle,
     tree_focus: FocusHandle,
@@ -54,6 +56,10 @@ pub struct WorkspaceView {
     selected: Option<PathBuf>,
     tab: SidebarTab,
     sidebar_open: bool,
+    /// The Outline docked at the sidebar's foot is expanded.
+    outline_open: bool,
+    /// A compile is running (Compile shows its progress ring).
+    compiling: bool,
     naming: Option<Naming>,
     watcher: Option<ProjectWatcher>,
     /// Reads the project, then follows the watcher; dropped with the view.
@@ -121,6 +127,8 @@ impl WorkspaceView {
             selected: None,
             tab: SidebarTab::Files,
             sidebar_open: true,
+            outline_open: true,
+            compiling: false,
             naming: None,
             watcher: None,
             load_task: None,
@@ -131,6 +139,12 @@ impl WorkspaceView {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// Marks a compile as running or finished; Compile shows a progress ring while it runs.
+    pub fn set_compiling(&mut self, compiling: bool, cx: &mut Context<Self>) {
+        self.compiling = compiling;
+        cx.notify();
     }
 
     pub fn project_name(&self) -> &str {
