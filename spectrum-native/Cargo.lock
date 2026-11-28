@@ -9178,9 +9178,11 @@ dependencies = [
 name = "spectrum-editor"
 version = "3.0.0"
 dependencies = [
+ "ropey",
  "spectrum-core",
  "spectrum-theme",
  "spectrum-ui",
+ "tracing",
 ]
 
 [[package]]
