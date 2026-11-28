@@ -6,6 +6,7 @@ pub mod paths;
 pub mod project;
 mod random;
 pub mod settings;
+pub mod watcher;
 #[cfg(windows)]
 mod win32;
 
