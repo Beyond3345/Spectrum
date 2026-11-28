@@ -1,12 +1,28 @@
 //! Engine discovery, compile runner and sandbox, log parser and SyncTeX.
 
+mod engines;
+mod error;
 mod log_parser;
 mod paths;
+mod process;
+mod runner;
 mod synctex;
 
+pub use engines::{
+    Asset, EngineManifest, Engines, PandocMinimum, PandocRelease, Release, TARGET, TinymistRelease,
+    TypstRelease, TypstReleases, at_least, bundled_dir, find_executable, sha256_file,
+    system_search_path, unix_search_path, verify_sha256, version_of, windows_search_path,
+    with_tex_folder,
+};
+pub use error::CompileError;
 pub use log_parser::{
     Diagnostic, DiagnosticKind, Severity, last_pass, parse_tex_log, parse_typst_diagnostics,
     project_file,
+};
+pub use process::CancelToken;
+pub use runner::{
+    BibTool, CompileEvent, CompileOutcome, CompileRequest, CompileStatus, LatexEngine,
+    MarkdownEngine, Runner, Toolchain, Trust, compile,
 };
 pub use synctex::{
     EditHit, SyncBox, SyncHit, Synctex, SynctexError, SynctexStore, decode_synctex,
