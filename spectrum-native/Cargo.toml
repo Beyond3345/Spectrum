@@ -68,7 +68,7 @@ tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 tracing-appender = "0.2.5"
 flate2 = "1.1.11"
-zip = "8.6.0"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }  # no zstd-sys: a C build that needs the Windows SDK
 tar = "0.4.46"
 quick-xml = "0.42.0"
 regex = "1.13.2"
@@ -84,6 +84,7 @@ smallvec = "1.16.6"
 parking_lot = "0.12.5"
 # the version GPUI renders into; only spectrum-app's snapshot tests use it directly
 image = { version = "0.25.10", default-features = false, features = ["png"] }
+tempfile = "3"
 
 [workspace.lints.rust]
 # allowed per module only for FFI (Hunspell, PDFium, macOS, Win32)
