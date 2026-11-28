@@ -8,6 +8,12 @@ license.workspace = true
 publish = false
 
 [dependencies]
+gpui-kit.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "time", "macros"] }
+futures.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 spectrum-core.workspace = true
 spectrum-compile.workspace = true
 spectrum-lsp.workspace = true
@@ -21,6 +27,16 @@ spectrum-ui.workspace = true
 spectrum-editor.workspace = true
 spectrum-pdf.workspace = true
 spectrum-diagram.workspace = true
+
+[dev-dependencies]
+# real offscreen rendering for snapshot tests (tests/snapshot.rs)
+gpui-kit = { workspace = true, features = ["test-support"] }
+image.workspace = true
+
+# the Mac platform must start on the main thread, which libtest doesn't give tests
+[[test]]
+name = "snapshot"
+harness = false
 
 [lints]
 workspace = true

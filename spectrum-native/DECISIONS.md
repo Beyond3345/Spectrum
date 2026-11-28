@@ -49,3 +49,16 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 15. **Diff colours are the plan's green-soft and red-soft tokens** (12% / 11%), not 2.8's 14% / 13%.
 16. **Simple colour style** neutralises area icons and toolbar buttons to `text-secondary` but keeps
     scope bars and error/warning colours, as the plan says.
+17. **UI font `.AppleSystemUIFont` / Segoe UI, mono SF Mono / Consolas**, from the plan's `--font-ui`
+    and `--font-mono` stacks. Named explicitly because otherwise the kit enumerates every installed
+    font at startup (about 120 ms). Windows uses Consolas rather than the stack's Cascadia Mono, which
+    Windows 10 doesn't ship. The editor's own bundled fonts come in Phase 2.
+18. **Body text 14 px** (the plan's `body { font: 14px … }`); the kit defaults to 16.
+19. **Cold start target not met yet**: the window opens in about 150–210 ms on an M-series Mac
+    (GPUI platform start ~85–125 ms, Metal window ~70 ms; Spectrum's own setup ~1 ms). The plan wants
+    <100 ms. Left for the Phase 10 performance audit, which measures the signed .app bundle.
+20. **Window background is Blurred** (macOS vibrancy), with the plan's opaque canvas painted on top
+    for now. Glass clarity becomes a setting when Settings is built.
+21. **Snapshot tests** (`SPECTRUM_SNAPSHOT=1 cargo test -p spectrum-app --test snapshot`) render
+    views offscreen with the real Metal renderer to PNGs, because the shell can't screen-capture.
+    Every UI session checks its work this way. Not part of the gate (needs a Mac GPU).

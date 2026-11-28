@@ -2,8 +2,36 @@
 //! lists, popovers) draw in Spectrum's colours and radii instead of the kit's defaults.
 
 use crate::{RADIUS_CARD, RADIUS_CONTROL, SpectrumTheme};
-use gpui_kit::component::{Theme, ThemeMode};
+use gpui_kit::component::{Theme, ThemeMode, ThemeRegistry};
 use gpui_kit::{App, px, white};
+
+/// The plan's `--font-ui` and `--font-mono`, named as the platform knows them. Naming them up
+/// front stops the kit enumerating every installed font (about 120 ms at startup) to find a
+/// fallback for its defaults.
+#[cfg(target_os = "macos")]
+const FONTS: (&str, &str) = (".AppleSystemUIFont", "SF Mono");
+#[cfg(not(target_os = "macos"))]
+const FONTS: (&str, &str) = ("Segoe UI", "Consolas");
+
+/// Initialises the component kit with Spectrum's fonts already set. Call instead of
+/// `gpui_kit::init`, before [`SpectrumTheme::apply`].
+pub fn init(cx: &mut App) {
+    let mut theme = Theme::default();
+    theme.font_family = FONTS.0.into();
+    theme.mono_font_family = FONTS.1.into();
+    cx.set_global(theme);
+    gpui_kit::init(cx);
+    // a theme installed before init has no registered light and dark configs; take the kit's
+    let registry = ThemeRegistry::global(cx);
+    let (light, dark) = (
+        registry.default_light_theme().clone(),
+        registry.default_dark_theme().clone(),
+    );
+    Theme::update(cx, |k| {
+        k.light_theme = light;
+        k.dark_theme = dark;
+    });
+}
 
 pub(crate) fn sync(theme: &SpectrumTheme, cx: &mut App) {
     let mode = if theme.is_dark() {
@@ -16,6 +44,8 @@ pub(crate) fn sync(theme: &SpectrumTheme, cx: &mut App) {
     Theme::change(mode, None, cx);
     let c = **theme;
     Theme::update(cx, |k| {
+        // the plan's body text is 14 px (its `body { font: 14px … }`); the kit defaults to 16
+        k.font_size = px(14.);
         k.radius = px(RADIUS_CONTROL);
         k.radius_lg = px(RADIUS_CARD);
 

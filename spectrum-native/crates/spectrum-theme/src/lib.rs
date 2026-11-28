@@ -7,6 +7,8 @@ mod kit;
 mod palette;
 mod tokens;
 
+pub use kit::init;
+
 use gpui_kit::{App, Global, Hsla, WindowAppearance, rgb, rgba};
 use std::ops::Deref;
 
