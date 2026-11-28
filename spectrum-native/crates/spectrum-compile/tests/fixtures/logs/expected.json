@@ -1,0 +1,325 @@
+{
+ "pdflatex.log": [
+  [
+   "error",
+   "sections/part.tex",
+   1,
+   "Undefined control sequence \\oops.",
+   "...ation \\cite{nobody} and a bad command \\oops"
+  ],
+  [
+   "error",
+   "broken.tex",
+   8,
+   "Undefined control sequence \\notacommand.",
+   "Undefined here: \\notacommand"
+  ],
+  [
+   "error",
+   "broken.tex",
+   10,
+   "Missing $ inserted.",
+   "The value x_"
+  ],
+  [
+   "error",
+   "broken.tex",
+   11,
+   "Missing $ inserted.",
+   "\\include{chapters/absent}"
+  ],
+  [
+   "error",
+   "broken.tex",
+   0,
+   "I can't write on file `chapters/absent.aux'.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   4,
+   "Token not allowed in a PDF string (Unicode): removing `math shift' on input line 4.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   4,
+   "Token not allowed in a PDF string (Unicode): removing `\\\\' on input line 4.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Reference `sec:missing' on page 1 undefined on input line 5.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Citation `ghost' on page 1 undefined on input line 5.",
+   ""
+  ],
+  [
+   "warning",
+   "sections/part.tex",
+   1,
+   "Citation `nobody' on page 1 undefined on input line 1.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   7,
+   "Overfull \\hbox (166.24202pt too wide) detected at line 7",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Overfull \\hbox (271.5014pt too wide) in paragraph at lines 5--9",
+   ""
+  ]
+ ],
+ "pdflatex-file-line-error.log": [
+  [
+   "error",
+   "sections/part.tex",
+   1,
+   "Undefined control sequence \\oops.",
+   "...ation \\cite{nobody} and a bad command \\oops"
+  ],
+  [
+   "error",
+   "broken.tex",
+   8,
+   "Undefined control sequence \\notacommand.",
+   "Undefined here: \\notacommand"
+  ],
+  [
+   "error",
+   "broken.tex",
+   10,
+   "Missing $ inserted.",
+   "The value x_"
+  ],
+  [
+   "error",
+   "broken.tex",
+   11,
+   "Missing $ inserted.",
+   "\\include{chapters/absent}"
+  ],
+  [
+   "error",
+   "broken.tex",
+   11,
+   "I can't write on file `chapters/absent.aux'.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   4,
+   "Token not allowed in a PDF string (Unicode): removing `math shift' on input line 4.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   4,
+   "Token not allowed in a PDF string (Unicode): removing `\\\\' on input line 4.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Reference `sec:missing' on page 1 undefined on input line 5.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Citation `ghost' on page 1 undefined on input line 5.",
+   ""
+  ],
+  [
+   "warning",
+   "sections/part.tex",
+   1,
+   "Citation `nobody' on page 1 undefined on input line 1.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   7,
+   "Overfull \\hbox (166.24202pt too wide) detected at line 7",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Overfull \\hbox (271.5014pt too wide) in paragraph at lines 5--9",
+   ""
+  ]
+ ],
+ "xelatex.log": [
+  [
+   "error",
+   "sections/part.tex",
+   1,
+   "Undefined control sequence \\oops.",
+   "...ation \\cite{nobody} and a bad command \\oops"
+  ],
+  [
+   "error",
+   "broken.tex",
+   8,
+   "Undefined control sequence \\notacommand.",
+   "Undefined here: \\notacommand"
+  ],
+  [
+   "error",
+   "broken.tex",
+   10,
+   "Missing $ inserted.",
+   "The value x_"
+  ],
+  [
+   "error",
+   "broken.tex",
+   11,
+   "Missing $ inserted.",
+   "\\include{chapters/absent}"
+  ],
+  [
+   "error",
+   "broken.tex",
+   11,
+   "I can't write on file `chapters/absent.aux'.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   0,
+   "Rerun to get /PageLabels entry.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   4,
+   "Token not allowed in a PDF string (Unicode): removing `math shift' on input line 4.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   4,
+   "Token not allowed in a PDF string (Unicode): removing `\\\\' on input line 4.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Reference `sec:missing' on page 1 undefined on input line 5.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Citation `ghost' on page 1 undefined on input line 5.",
+   ""
+  ],
+  [
+   "warning",
+   "sections/part.tex",
+   1,
+   "Citation `nobody' on page 1 undefined on input line 1.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   7,
+   "Overfull \\hbox (166.25726pt too wide) detected at line 7",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Overfull \\hbox (271.58003pt too wide) in paragraph at lines 5--9",
+   ""
+  ]
+ ],
+ "tectonic.log": [
+  [
+   "error",
+   "sections/part",
+   1,
+   "Undefined control sequence",
+   ""
+  ],
+  [
+   "error",
+   "broken.tex",
+   1,
+   "Undefined control sequence \\oops.",
+   "...ation \\cite{nobody} and a bad command \\oops"
+  ],
+  [
+   "warning",
+   "broken.tex",
+   0,
+   "Rerun to get /PageLabels entry.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   4,
+   "Token not allowed in a PDF string (Unicode): removing `math shift' on input line 4.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   4,
+   "Token not allowed in a PDF string (Unicode): removing `\\\\' on input line 4.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Reference `sec:missing' on page 1 undefined on input line 5.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   5,
+   "Citation `ghost' on page 1 undefined on input line 5.",
+   ""
+  ],
+  [
+   "warning",
+   "broken.tex",
+   1,
+   "Citation `nobody' on page 1 undefined on input line 1.",
+   ""
+  ]
+ ]
+}

@@ -1,0 +1,12 @@
+\documentclass{article}
+\usepackage{hyperref}
+\begin{document}
+\section{Intro $x\\y$}\label{sec:intro}
+See \ref{sec:missing} and \cite{ghost}.
+\input{sections/part}
+\hbox to 1cm{This box is far too wide for its declared width.}
+Undefined here: \notacommand{} and more text.
+
+The value x_1 is small.
+\include{chapters/absent}
+\end{document}
