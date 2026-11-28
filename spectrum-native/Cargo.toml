@@ -88,6 +88,7 @@ encoding_rs = "0.8.44"
 tempfile = "3.27.0"
 url = "2.5.9"
 tokio-util = "0.7.20"
+libc = "0.2.191"
 
 [workspace.lints.rust]
 # allowed per module only for FFI (Hunspell, PDFium, macOS, Win32)

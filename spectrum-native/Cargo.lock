@@ -9146,11 +9146,15 @@ version = "3.0.0"
 dependencies = [
  "encoding_rs",
  "flate2",
+ "libc",
  "regex",
  "serde",
  "serde_json",
+ "sha2 0.11.2",
+ "spectrum-core",
  "tempfile",
  "thiserror 2.0.21",
+ "tokio",
  "tracing",
 ]
 

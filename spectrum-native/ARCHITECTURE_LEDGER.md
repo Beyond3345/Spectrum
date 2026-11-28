@@ -63,7 +63,24 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 - `keystore`: `KeyStore<S: SecretStore>` (`store_keys`, `with_keys`, `held_values`, `hold_values`),
   `SystemSecretStore::new(&AppPaths)` (Keychain / DPAPI), `key_ref`, `ref_id`.
 
-### spectrum-compile (no spectrum-core dependency yet; paths come in as arguments)
+### spectrum-compile (depends on spectrum-core; tokio `process`)
+
+- Engines: `EngineManifest::bundled()` (`assets/engines.json`, 3.0.0 pins, `.asset()` for `TARGET`),
+  `sha256_file`, `verify_sha256`. `system_search_path()` (login shell + texbin/Homebrew, or MiKTeX/TeX Live;
+  up to 4 s, call once off the UI thread), `with_tex_folder`, `find_executable(name, path)`, `version_of`.
+  `Engines::new(&AppPaths, bundled_dir(), search_path, &manifest)`: `.tectonic()`, `.typst(pin)` (never the
+  PATH's), `.pandoc()`, `.tectonic_biber()`, `.find(name)`, `.with_search_path(..)`. Downloads aren't here yet.
+- Compile: `Toolchain::new(engines, data_dir)` (+ `typst_fonts`, `csl`, `crossref_filter`, Mac `sandbox`);
+  `CompileRequest::new(root, main_rel, out_dir)` (`engine: LatexEngine`, `markdown_engine`, `bib_tool`,
+  `trust: Trust {Normal, Trusted, Untrusted}`, `halt_on_error`, `draft`, `typst_version`, `typst_inputs`).
+  `Runner::compile(&toolchain, &request, Some(tx)).await -> CompileOutcome` cancels the running one (kills
+  its process group) first; `Runner::cancel()`; or `compile(.., &CancelToken)`. Events: `CompileEvent::Engine`,
+  `Output(line)`. Outcome: `status` (Succeeded/Failed/Stopped/TimedOut), `engine`, `diagnostics` (project
+  paths), `pdf` (build folder), `pdf_copy` (beside the source), `synctex` (hand to `SynctexStore::keep`),
+  `log` (200 kB), `error`, `biber_missing`. `out_dir` is emptied per compile; `<out_dir>-tmp`, `<out_dir>-md`.
+- Trust and sandbox: `is_trusted(&paths, id, root)`, `set_trusted(..)` (`DATA_DIR/trusted-projects.json`,
+  2.8's format). Mac: `CompileSandbox::new(data_dir, home)` (`confinement()`, sandbox-exec profile, thinned
+  Biber and real python3 in `DATA_DIR/compile-cache`); `blocked_notes(log, pass_log, confined, failed)`.
 
 - `parse_tex_log(log, root) -> Vec<Diagnostic>`: pdfLaTeX/XeLaTeX/LuaLaTeX/Latexmk/Tectonic logs,
   errors first. `last_pass(log) -> Vec<String>` (unwrapped lines of the last TeX pass, for Preflight).
