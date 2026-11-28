@@ -24,7 +24,22 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 
 ## Public API
 
-None yet.
+### spectrum-compile (no spectrum-core dependency yet; paths come in as arguments)
+
+- `parse_tex_log(log, root) -> Vec<Diagnostic>`: pdfLaTeX/XeLaTeX/LuaLaTeX/Latexmk/Tectonic logs,
+  errors first. `last_pass(log) -> Vec<String>` (unwrapped lines of the last TeX pass, for Preflight).
+  `project_file(file, main_file, files) -> String` (a log location as a project file).
+- `parse_typst_diagnostics(log, project_root, cwd) -> Vec<Diagnostic>`: `--diagnostic-format short`
+  and the default human format.
+- `Diagnostic { path, line, column, severity: Severity, message, kind: DiagnosticKind, context }`;
+  `DiagnosticKind`: General, BadBox, UndefinedReference, UndefinedCitation, MissingFile, Bibliography,
+  Typst, App.
+- `Synctex::read(path, ansi_code_page)`, `Synctex::parse(text)`, `.forward(&tags, line) -> Vec<SyncBox>`,
+  `.inverse(page, x, y) -> Option<SyncHit>`, `.inputs()`, `.input(tag)`. Points from the page's top left.
+- `SynctexStore::new(root, <cache>/synctex, ansi_code_page)`: `.keep(doc, built, cwd, copy)`,
+  `.edit(doc, page, x, y) -> EditHit { file, line, column }`, `.view(doc, file, line) -> Vec<SyncBox>`;
+  errors `SynctexError` (NotCompiled, NoSource, NotInPdf, OutsideProject, Io, Meta), Display is user copy.
+- `decode_synctex(bytes, label)`, `windows_code_page_label(code_page)`.
 
 ## Globals
 
