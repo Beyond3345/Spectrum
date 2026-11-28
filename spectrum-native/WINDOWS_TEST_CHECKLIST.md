@@ -28,6 +28,7 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
 - [ ] App and project settings from 2.8 load; unknown fields survive a save (open a project's
       `.spectrum\settings.json` before and after).
 - [ ] With Documents inside OneDrive, new projects go to `%USERPROFILE%\Spectrum`, not OneDrive.
+- [ ] The same with Dropbox (found through `%APPDATA%\Dropbox\info.json`) and Synology Drive.
 - [ ] Saving a file while antivirus or OneDrive is scanning the folder doesn't fail (atomic save retry).
 - [ ] Importing an Overleaf .zip and an arXiv source tarball works; a zip with `..` paths is refused.
 - [ ] Editing a project file in another app (e.g. Notepad) refreshes Spectrum's file tree.

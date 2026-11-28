@@ -96,6 +96,23 @@ fn home_join(home: &Path, parts: &[&str]) -> PathBuf {
 /// The sync apps' folders under `home` (and those the system names elsewhere).
 // ponytail: looked for once at start; 2.8 looked again every minute, for a sync app set up while it ran
 pub fn detect_sync_roots(home: &Path) -> Vec<SyncRoot> {
+    detect_with(home, &dropbox_infos(home))
+}
+
+/// Where Dropbox writes `info.json` (help.dropbox.com/installs/locate-dropbox-folder).
+fn dropbox_infos(home: &Path) -> Vec<PathBuf> {
+    if cfg!(windows) {
+        ["APPDATA", "LOCALAPPDATA"]
+            .iter()
+            .filter_map(std::env::var_os)
+            .map(|dir| PathBuf::from(dir).join("Dropbox").join("info.json"))
+            .collect()
+    } else {
+        vec![home.join(".dropbox").join("info.json")]
+    }
+}
+
+fn detect_with(home: &Path, dropbox_infos: &[PathBuf]) -> Vec<SyncRoot> {
     let mut found: Vec<SyncRoot> = Vec::new();
     let mut add = |p: PathBuf, provider: SyncProvider| {
         if p.is_absolute() && !found.iter().any(|r| same_folder(&r.path, &p)) && p.is_dir() {
@@ -137,18 +154,9 @@ pub fn detect_sync_roots(home: &Path) -> Vec<SyncRoot> {
         }
         add(home.join("iCloudDrive"), SyncProvider::ICloud);
     }
-    // Dropbox says where its folders are (help.dropbox.com/installs/locate-dropbox-folder)
-    let infos: Vec<PathBuf> = if cfg!(windows) {
-        ["APPDATA", "LOCALAPPDATA"]
-            .iter()
-            .filter_map(std::env::var_os)
-            .map(|dir| PathBuf::from(dir).join("Dropbox").join("info.json"))
-            .collect()
-    } else {
-        vec![home.join(".dropbox").join("info.json")]
-    };
-    for file in infos {
-        let Ok(text) = fs::read(&file) else { continue };
+    // Dropbox says where its folders are
+    for file in dropbox_infos {
+        let Ok(text) = fs::read(file) else { continue };
         let Ok(serde_json::Value::Object(info)) = serde_json::from_slice(&text) else {
             continue;
         };
@@ -276,7 +284,8 @@ mod tests {
         fs::write(home.join(".dropbox/info.json"), info.to_string()).unwrap();
         fs::create_dir_all(home.join("SynologyDrive").join(MARKER)).unwrap();
         fs::create_dir_all(home.join("Plain")).unwrap();
-        let roots = detect_sync_roots(home);
+        // the macOS layout on every platform; Windows reads %APPDATA% instead
+        let roots = detect_with(home, &[home.join(".dropbox/info.json")]);
         assert!(roots.contains(&SyncRoot {
             path: dropbox.clone(),
             provider: SyncProvider::Dropbox
