@@ -140,4 +140,4 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 46. **Saved editor-theme ids `spectrum-light` / `spectrum-dark` mean the new 3.0.0 Spectrum theme**;
     2.8's own colours live on as `spectrum-classic-light` / `spectrum-classic-dark`. So an upgraded
     user sees the new design by default and can pick Classic in Settings, rather than being pinned to
-    the old look.
+    the old look. **Confirmed by the user, 28 Nov.**
