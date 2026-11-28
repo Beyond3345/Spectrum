@@ -13,6 +13,8 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 - The plan's design system is the target for every screen. Screens the plan doesn't draw are
   designed in its system, and any 2.8 screen that is dated or inconsistent is modernised, rather
   than copied from 2.8's CSS. (This replaces "fall back to 2.8 where the plan is silent" for looks.)
+- Keep 2.8's Spectrum editor theme as **Spectrum Classic** (Light and Dark) beside 3.0.0's new
+  Spectrum editor theme.
 - Fix 2.8.1's update notifier, which didn't work and didn't open the GitHub release page.
 
 ## Platform and toolchain
@@ -134,3 +136,8 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     relied on the WebView passing `target="_blank"` to the browser. 3.0.0 re-asks every 6 hours,
     retries failures after 30 minutes, shows the notice in the title bar and on Home, adds "Check for
     updates", and opens the release page with the OS's own URL opener.
+
+46. **Saved editor-theme ids `spectrum-light` / `spectrum-dark` mean the new 3.0.0 Spectrum theme**;
+    2.8's own colours live on as `spectrum-classic-light` / `spectrum-classic-dark`. So an upgraded
+    user sees the new design by default and can pick Classic in Settings, rather than being pinned to
+    the old look.

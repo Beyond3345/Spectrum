@@ -52,6 +52,16 @@ draw (About, dialogs, sheets, empty states, onboarding, notices, the Composer's 
 in its system, and any 2.8 screen that is dated or inconsistent is modernised to match. Each such
 redesign goes in `spectrum-native/DECISIONS.md`.
 
+### Editor themes (session 2e)
+
+Port all of 2.8's editor themes (`apps/frontend/src/editor/editorThemes.ts`) with their exact
+colours. 2.8's Spectrum Light and Spectrum Dark are kept, renamed **Spectrum Classic Light** and
+**Spectrum Classic Dark** (ids `spectrum-classic-light` / `spectrum-classic-dark`). 3.0.0's new
+**Spectrum Light / Dark** (ids `spectrum-light` / `spectrum-dark`, the defaults) use the plan's
+editor design: `bg-code` background, plan syntax colours (commands green, brackets amber,
+environment names purple, maths magenta) and the plan's text and gutter tokens. A 2.8 setting of
+`spectrum-light`/`spectrum-dark` lands on the new Spectrum; Classic is one pick away in Settings.
+
 ### Update notifier (session 10a; the core can land earlier in `spectrum-core`)
 
 2.8.1's notice didn't work. Causes found:
