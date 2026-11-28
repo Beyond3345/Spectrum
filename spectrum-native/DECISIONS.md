@@ -280,3 +280,20 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     with file-type line icons (session 1f).
 99. **The kit's Lucide icons stay as a fallback** for anything the 92 line icons don't cover, so no
     button ever lacks an icon; each use of the fallback is listed in 1f's report.
+
+## spectrum-git (session 8)
+
+100. **Checkpoints stay in 2.8's own `.spectrum/history` format** (manifests, gzipped objects,
+     `index.json`), not git: 2.8 never kept checkpoints in git, so existing checkpoints list and
+     restore unchanged, and the store works inside sync-app folders. Tested on a hand-made 2.8 project
+     with 1.7.0- and 2.8-era checkpoints and a sync-app conflict copy. (`history.rs`)
+101. **`.spectrum/settings.json` is committed to GitHub, as in 2.8**: it carries the repo link and
+     holds only key *references*, never keys. Checkpoints never include `.spectrum`. (`repo.rs`)
+102. **The GitHub token moves into the keystore** (Keychain / DPAPI) under `github`; `github.json`
+     keeps only the account. A token 2.8 left in `github.json` is moved on first run. (`github/auth.rs`)
+103. **libgit2's own HTTPS is off** (on macOS it needs OpenSSL); a reqwest/rustls transport sends the
+     token as a header, never writing it to `.git/config`. Push over real HTTPS is not yet tested
+     (fetch is); covered by the hand tests. (`transport.rs`)
+104. **A research session changed on both sides keeps this computer's copy.** Templates in the
+     settings repo, the 1.10.4 mirror merge base, `computer.json` and pull scheduling are left to
+     session 8b.

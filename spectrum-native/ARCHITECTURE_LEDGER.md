@@ -7,7 +7,8 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 | Crate | Kind | Depends on |
 |-------|------|------------|
 | spectrum-core | pure lib | — |
-| spectrum-compile, -ai, -references, -git, -convert | pure lib | core |
+| spectrum-compile, -ai, -references, -convert | pure lib | core |
+| spectrum-git | pure lib | core (git2 without https or ssh, similar, reqwest) |
 | spectrum-lsp | pure lib | — (lsp-types, tokio, url) |
 | spectrum-checkers | pure lib | — (harper-core, Hunspell C++ via cc, reqwest) |
 | spectrum-theme | GPUI lib | — |
@@ -234,6 +235,27 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
   Error { kind, message }}`. The worker's stdin closing is a kill.
 - `paths::{normalise, within, overlaps, is_secret_name}` (Windows path rules as text; 2.8's secret names). Test
   bin `spectrum-win-sandbox-probe` (never shipped); `tests/escape.rs` runs on Windows only.
+
+### spectrum-git (session 8; blocking calls go off the UI thread, async ones on the Tokio runtime)
+
+- `history`: checkpoints in 2.8's `.spectrum/history` (not git; 2.8 and 1.7.0 checkpoints list, 2.8 lists ours).
+  `list`, `create(root, label, Reason) -> Created { checkpoint, unchanged, skipped }`, `restore(root, id, Option<rel>)
+  -> Restored { safety, kept_aside }`, `rename`, `delete`, `delete_automatic(days)`, `changes(id)`, `compare(from, to)`,
+  `compare_with_current(id)` → `Vec<FileChange { path, status, added, removed, binary }>`, `read_file`, `file_diff`.
+  `Reason::{Manual, BeforeAi, BeforeRestore, BeforeTransfer, Compile}` (a compile's replaces the last within 10 min).
+- `diff_text(old, new) -> TextChanges { hunks, added, removed }`, `diff_bytes -> FileDiff::{Text, Binary}`;
+  `Hunk { kind: HunkKind::{Added, Removed, Changed}, old, new (byte ranges), old_lines, new_lines, words: Vec<WordChange> }`.
+- `github`: `GitHubAuth::new(&AppPaths, &KeyStore)` (`token`, `status`, `author(machine)`, `sign_in_with_token`,
+  `sign_out`, `set_settings_repo`; token held in the keystore as `github`, account in `DATA_DIR/github.json`);
+  `start_device_sign_in(web)`, `poll_device`, `wait_for_device(web, code, &AtomicBool)`, `client_id()`;
+  `GitHub::new(token)` / `with_bases(api, web, token)`: `user`, `repo`, `create_repo`, `repo_shared`, `repo_file`,
+  `list_repo_projects`, `repo_url`.
+- `ProjectSync { github, author, machine_name, home, sync_roots }`: `back_up(root, &BackupOptions)`, `pull`, `sync`,
+  `link(root, Option<RepoRef>, preview, allow_deletions)`, `set_personal`, `initialise`, `status`, `get_from_github`
+  → `PullResult { state: PullState::{Current, Merged, Confirm, Preview}, from_theirs, conflicts, changed_app, deleting, problems }`.
+  The caller holds the project's file lock and waits for compiles/agents. `refusal(root)`.
+- `SettingsRepo::new(data_dir, github, login, author, Machine)`: `sync(own_skills)`, `sync_personas(&[Value])`, `sync_skills`.
+- `GitError` (Display = user copy, `.notice()`, `.is_waiting()`); https for libgit2 is our reqwest transport (`transport.rs`).
 
 ## Globals
 

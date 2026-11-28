@@ -111,3 +111,17 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
 - [ ] The first confined compile with MiKTeX or TeX Live is slower (granting), the second instant.
 - [ ] The restricted tier cannot read `Documents` or `.ssh`; a sandboxed program cannot read the clipboard.
 - [ ] Killing Spectrum mid-run kills the sandboxed program.
+
+## Checkpoints and GitHub (spectrum-git)
+
+- [ ] Sign in with the GitHub device code; back up a new project to a private repo.
+- [ ] Push and pull against real GitHub; a rejected push pulls, then pushes again.
+- [ ] A Git for Windows CRLF checkout commits nothing, and an edit goes up as LF.
+- [ ] A file name from a Mac that Windows can't hold is named and kept on GitHub.
+- [ ] A 2.8 `github.json` token moves into DPAPI and the sign-in survives a restart.
+- [ ] Restore a 2.8 checkpoint on a 2.8-era project.
+- [ ] Settings-repo personas and skills go across Mac ↔ Windows.
+
+## Editor syntax (spectrum-editor)
+
+- [ ] The vendored BibTeX grammar (`parser.c`) builds with MSVC (`cargo xtask check` on Windows).
