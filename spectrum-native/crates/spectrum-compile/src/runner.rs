@@ -143,6 +143,9 @@ pub struct Toolchain {
     pub csl: Option<PathBuf>,
     /// Spectrum's pandoc filter for `@fig:x` cross-references (2.8's `data/pandoc/crossref.lua`).
     pub crossref_filter: Option<PathBuf>,
+    /// The Mac's compile sandbox; `None` runs every compile unconfined (Windows, for now).
+    #[cfg(target_os = "macos")]
+    pub sandbox: Option<std::sync::Arc<crate::CompileSandbox>>,
 }
 
 impl Toolchain {
@@ -153,6 +156,13 @@ impl Toolchain {
             typst_fonts: Vec::new(),
             csl: None,
             crossref_filter: None,
+            #[cfg(target_os = "macos")]
+            sandbox: std::env::var_os("HOME").map(|home| {
+                std::sync::Arc::new(crate::CompileSandbox::new(
+                    data_dir.to_path_buf(),
+                    home.into(),
+                ))
+            }),
         }
     }
 }

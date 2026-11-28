@@ -118,11 +118,24 @@ pub fn sha256_file(path: &Path) -> Result<String, CompileError> {
         }
         hash.update(&buf[..n]);
     }
-    Ok(hash.finalize().iter().fold(String::new(), |mut hex, b| {
+    Ok(hex(&hash.finalize()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().fold(String::new(), |mut hex, b| {
         use std::fmt::Write;
         let _ = write!(hex, "{b:02x}");
         hex
-    }))
+    })
+}
+
+/// SHA-256 of some bytes as lowercase hex.
+#[cfg_attr(
+    not(target_os = "macos"),
+    allow(dead_code, reason = "the Mac sandbox's")
+)]
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    hex(&Sha256::digest(bytes))
 }
 
 /// Whether the file on disk is the one whose digest is `expected` (hex, either case).

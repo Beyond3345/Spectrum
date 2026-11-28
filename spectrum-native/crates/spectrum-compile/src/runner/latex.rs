@@ -298,6 +298,55 @@ pub(super) fn is_miktex(job: &Job<'_>, env: &Env, program: &Path) -> bool {
         && !job.cancel.is_cancelled()
 }
 
+/// The compile's sandbox profile on a Mac, with its variables set in `env`; `None` for a trusted project, or
+/// where sandbox-exec doesn't work (the log then says the compile wasn't confined).
+#[cfg(target_os = "macos")]
+async fn confine(
+    job: &mut Job<'_>,
+    engine: LatexEngine,
+    env: &mut Env,
+    tmp_dir: &Path,
+    biber: Option<&Path>,
+) -> Option<String> {
+    let request = job.request;
+    if request.trust == super::Trust::Trusted {
+        return None;
+    }
+    let sandbox = job.tools.sandbox.clone()?;
+    let search_path = env.path();
+    let confine = crate::sandbox::ConfineRequest {
+        build: &request.out_dir,
+        tmp: tmp_dir,
+        search_path: &search_path,
+        tectonic: engine == LatexEngine::Tectonic,
+        root: &request.project_root,
+        runs: std::iter::once(program_of(job, engine))
+            .chain(biber.map(Path::to_path_buf))
+            .collect(),
+    };
+    match sandbox.apply(env, confine).await {
+        Ok(profile) => profile,
+        Err(warning) => {
+            job.note(warning);
+            None
+        }
+    }
+}
+
+/// Windows has no compile sandbox in this crate (`spectrum-win-sandbox` is its own): TeX's restricted shell
+/// escape is the guard.
+#[cfg(not(target_os = "macos"))]
+#[allow(clippy::unused_async, reason = "the Mac's version is async")]
+async fn confine(
+    _job: &mut Job<'_>,
+    _engine: LatexEngine,
+    _env: &mut Env,
+    _tmp_dir: &Path,
+    _biber: Option<&Path>,
+) -> Option<String> {
+    None
+}
+
 #[allow(clippy::too_many_lines, reason = "2.8's buildWith, step by step")]
 async fn build_with(
     job: &mut Job<'_>,
@@ -357,11 +406,14 @@ async fn build_with(
     if request.trust == super::Trust::Trusted {
         env.set("openout_any", "a");
     }
+    // on a Mac every program of the compile runs confined, unless the user trusts the project
+    let profile = confine(job, engine, &mut env, &tmp_dir, biber.as_deref()).await;
+    let confined = profile.is_some();
     let build = Build {
         env,
         out_dir,
         base: base.clone(),
-        profile: None,
+        profile,
     };
 
     let options = PassOptions {
@@ -499,6 +551,18 @@ async fn build_with(
         }
         if crate::regex(r"(?i)biblatex control file version").is_match(&job.sink.log) {
             job.note(BIBLATEX_VERSION_NOTE);
+        }
+    }
+    // what the sandbox or TeX's own limits stopped, which Trust this project would allow
+    if request.trust == super::Trust::Normal {
+        let notes = crate::blocked_notes(
+            &unwrap_log(&job.sink.log),
+            &pass_log(out_dir),
+            confined,
+            code != Some(0),
+        );
+        for line in notes.lines() {
+            job.note(line);
         }
     }
     let biber_missing =

@@ -310,3 +310,43 @@ async fn a_newer_compile_cancels_the_running_one() {
     assert_eq!(second.status, CompileStatus::Failed);
     assert!(started.elapsed() < Duration::from_secs(30));
 }
+
+/// An untrusted document's Lua can't make a folder outside its build folder (TeX's restricted mode and, on a
+/// Mac, the sandbox stop it); a trusted one's can. The sandbox alone is proved in `sandbox.rs`.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn an_untrusted_compile_is_confined_and_a_trusted_one_is_not() {
+    let setup = Setup::new();
+    if !setup.has("lualatex") {
+        return;
+    }
+    // lfs, which TeX's own openout_any doesn't guard, so only the sandbox stands in the way
+    let escape = setup.dir.path().join("escape");
+    let doc = format!(
+        "\\documentclass{{article}}\\begin{{document}}\\directlua{{local ok, e = lfs.mkdir([[{}]]) texio.write_nl(tostring(e))}}x\\end{{document}}\n",
+        escape.display()
+    );
+    std::fs::write(setup.project().join("escape.tex"), doc).unwrap();
+    let (confined, _) = setup
+        .run(&setup.request("escape.tex", LatexEngine::LuaLatex))
+        .await;
+    assert!(confined.pdf.is_some(), "{}", confined.log);
+    assert!(
+        !escape.exists(),
+        "the sandbox let a document write outside its build folder"
+    );
+    assert!(
+        confined
+            .log
+            .to_lowercase()
+            .contains("operation not permitted"),
+        "{}",
+        confined.log
+    );
+
+    let mut trusted = setup.request("escape.tex", LatexEngine::LuaLatex);
+    trusted.trust = spectrum_compile::Trust::Trusted;
+    let (outcome, _) = setup.run(&trusted).await;
+    assert!(outcome.pdf.is_some(), "{}", outcome.log);
+    assert!(escape.exists());
+}
