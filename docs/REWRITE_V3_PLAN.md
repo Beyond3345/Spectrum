@@ -74,8 +74,7 @@ The blueprint (updated by the user on 29 Nov) now holds these rules itself; this
   `src-tauri/icons` everywhere (bundle `.icns`, .exe and installer `.ico`, in-app brand mark, window
   icon); see its README for which file goes where.
 - **Windows installer** shows that logo (`app-icon.png` in the header, `icon.ico` as the .exe
-  resource via `winresource`), a subtle 6-hue top hairline and a mono progress bar. (The blueprint
-  names 2.8's icon paths; the new set replaces them.)
+  resource via `winresource`), a subtle 6-hue top hairline and a mono progress bar.
 
 ### Editor themes (session 2e)
 
