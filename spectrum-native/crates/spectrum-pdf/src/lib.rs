@@ -15,9 +15,12 @@ pub mod cache;
 mod colour;
 mod engine;
 pub mod layout;
+mod view;
 
 pub use colour::PageColour;
 pub use engine::{
     Bitmap, DocId, PageSize, PdfDoc, PdfEngine, PdfError, PixelRect, RenderRequest, candidates,
     find_library, page_pixels,
 };
+pub use layout::Zoom;
+pub use view::{FitPage, FitWidth, PdfPanel, PdfPanelEvent, ZoomIn, ZoomOut, bind_keys};
