@@ -25,7 +25,9 @@ jobs:
         working-directory: spectrum-native
     steps:
       # the dictionaries and templates ship as they are in the repo, with LF line endings
+      # runs before checkout, so not in spectrum-native, which doesn't exist yet
       - run: git config --global core.autocrlf false
+        working-directory: .
 
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
