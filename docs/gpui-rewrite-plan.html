@@ -1,0 +1,2511 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spectrum 3.0.0 — Rust &amp; GPUI Rewrite Architecture, Implementation Plan &amp; Code Standard</title>
+<style>
+  :root {
+    --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "Segoe UI Variable Text", "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace;
+
+    /* Master Spectrum 6-Hue Prism (from tokens.css) */
+    --logo-spectrum: linear-gradient(90deg, #f05747, #f1a33c, #f8d84a, #6cdb6c, #3b82f7, #b260eb);
+    --spectrum-subtle: linear-gradient(90deg, rgba(240,87,71,.11), rgba(241,163,60,.11), rgba(248,216,74,.11), rgba(108,219,108,.11), rgba(59,130,247,.11), rgba(178,96,235,.11));
+
+    /* Effort colours */
+    --eff-off: #8e8e93;
+    --eff-low: #3b82f7;
+    --eff-med: #279442;
+    --eff-high: #f1a33c;
+    --eff-xhigh: #f05747;
+    --eff-max: #b260eb;
+
+    /* Light surfaces */
+    --bg-canvas: #eef0f4;
+    --bg-app: #f7f7f8;
+    --bg-panel: #ffffff;
+    --bg-subtle: #f3f3f5;
+    --bg-hover: rgba(0, 0, 0, 0.045);
+    --bg-selected: rgba(0, 0, 0, 0.075);
+    --bg-code: #f5f6fa;
+    --bg-code-border: rgba(0, 0, 0, 0.08);
+
+    --text: #0d0d10;
+    --text-secondary: #54545c;
+    --text-tertiary: #71717a;
+    --border: rgba(0, 0, 0, 0.09);
+    --border-strong: rgba(0, 0, 0, 0.16);
+
+    --accent: #0073df;
+    --accent-soft: rgba(0, 115, 223, 0.12);
+    --red: #d23855;
+    --red-soft: rgba(210, 56, 85, 0.11);
+    --orange: #c45001;
+    --orange-soft: rgba(196, 80, 1, 0.11);
+    --amber: #9e6a04;
+    --amber-soft: rgba(252, 171, 5, 0.16);
+    --green: #2f9e44;
+    --green-soft: rgba(47, 158, 68, 0.12);
+    --teal: #0a8282;
+    --teal-soft: rgba(10, 130, 130, 0.12);
+    --purple: #7361e4;
+    --purple-soft: rgba(115, 97, 228, 0.13);
+    --magenta: #a34ec6;
+    --magenta-soft: rgba(163, 78, 198, 0.13);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
+    --radius-panel: 16px;
+    --radius-card: 12px;
+    --radius-control: 9px;
+  }
+
+  [data-theme="dark"] {
+    --bg-canvas: #0b0b0e;
+    --bg-app: #151518;
+    --bg-panel: #1d1d21;
+    --bg-subtle: #26262c;
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-selected: rgba(255, 255, 255, 0.11);
+    --bg-code: #121216;
+    --bg-code-border: rgba(255, 255, 255, 0.09);
+
+    --text: #f2f2f7;
+    --text-secondary: #a1a1aa;
+    --text-tertiary: #84848e;
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.18);
+
+    --accent: #7ab4fe;
+    --accent-soft: rgba(122, 180, 254, 0.16);
+    --red: #ff8893;
+    --red-soft: rgba(255, 136, 147, 0.16);
+    --orange: #fe8f5b;
+    --orange-soft: rgba(254, 143, 91, 0.16);
+    --amber: #e8a127;
+    --amber-soft: rgba(232, 161, 39, 0.18);
+    --green: #3dd68c;
+    --green-soft: rgba(61, 214, 140, 0.16);
+    --teal: #10caca;
+    --teal-soft: rgba(16, 202, 202, 0.16);
+    --purple: #a9a5ff;
+    --purple-soft: rgba(169, 165, 255, 0.18);
+    --magenta: #d592f2;
+    --magenta-soft: rgba(213, 146, 242, 0.18);
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font: 14px/1.62 var(--font-ui);
+    color: var(--text);
+    background: var(--bg-canvas);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Layout */
+  .layout {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    min-height: 100vh;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--bg-app);
+    border-right: 1px solid var(--border);
+    padding: 20px 16px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 6px;
+  }
+  .brand-prism {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--logo-spectrum);
+    box-shadow: var(--shadow-sm);
+    flex: none;
+  }
+  .brand-title {
+    font: 700 15px/1.2 var(--font-display);
+    letter-spacing: -0.01em;
+  }
+  .brand-sub {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+  .prism-bar {
+    height: 3px;
+    border-radius: 99px;
+    background: var(--logo-spectrum);
+    width: 100%;
+  }
+
+  .theme-row {
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    background: var(--bg-subtle);
+    border-radius: var(--radius-control);
+    border: 1px solid var(--border);
+  }
+  .theme-btn {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font: 600 12px/1 var(--font-ui);
+    padding: 7px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .theme-btn.active {
+    background: var(--bg-panel);
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .progress-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 12px;
+  }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 7px;
+  }
+  .progress-track {
+    height: 6px;
+    background: var(--bg-subtle);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--logo-spectrum);
+    transition: width .25s ease;
+  }
+
+  .nav-group-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    padding: 6px 8px 2px;
+  }
+  .nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background .12s, color .12s;
+  }
+  .nav-link:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  /* Main content */
+  .main {
+    padding: 32px 42px 80px;
+    max-width: 1120px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* Hero */
+  .hero {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    padding: 30px 32px;
+    box-shadow: var(--shadow-md);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+  .hero::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: var(--logo-spectrum);
+  }
+  .hero-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 99px;
+    background: var(--spectrum-subtle);
+    border: 1px solid var(--border);
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font: 700 28px/1.18 var(--font-display);
+    letter-spacing: -0.025em;
+    margin: 0 0 10px;
+  }
+  .hero p {
+    margin: 0 0 18px;
+    color: var(--text-secondary);
+    font-size: 14.5px;
+    max-width: 820px;
+  }
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+  }
+  .metric {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 13px 14px;
+  }
+  .metric-label {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+  .metric-val {
+    font: 700 20px/1.25 var(--font-display);
+    margin-top: 3px;
+  }
+  .metric-sub {
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+
+  /* Sections */
+  section {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    padding: 26px 28px;
+    margin-bottom: 22px;
+    box-shadow: var(--shadow-sm);
+    scroll-margin-top: 20px;
+  }
+  .sec-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sec-badge {
+    font: 700 11px/1 var(--font-mono);
+    padding: 5px 9px;
+    border-radius: 7px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex: none;
+  }
+  section h2 {
+    font: 700 20px/1.25 var(--font-display);
+    letter-spacing: -0.015em;
+    margin: 0;
+  }
+  section h3 {
+    font: 700 15.5px/1.3 var(--font-display);
+    margin: 22px 0 8px;
+    letter-spacing: -0.01em;
+  }
+  section h4 {
+    font: 700 13.5px/1.35 var(--font-ui);
+    margin: 16px 0 6px;
+  }
+  p { margin: 0 0 11px; }
+  ul, ol { margin: 0 0 12px; padding-left: 20px; }
+  li { margin-bottom: 5px; }
+
+  /* Code & Pre */
+  code {
+    font: 12.5px/1.45 var(--font-mono);
+    background: var(--bg-code);
+    border: 1px solid var(--bg-code-border);
+    padding: 1.5px 5px;
+    border-radius: 5px;
+  }
+  pre {
+    margin: 10px 0 14px;
+    padding: 14px 16px;
+    background: var(--bg-code);
+    border: 1px solid var(--bg-code-border);
+    border-radius: var(--radius-card);
+    overflow-x: auto;
+    font: 12.5px/1.55 var(--font-mono);
+    tab-size: 4;
+  }
+  pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  /* Tables */
+  .table-wrap {
+    overflow-x: auto;
+    margin: 12px 0 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    background: var(--bg-subtle);
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  tr:last-child td { border-bottom: 0; }
+
+  /* Cards & Grids */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin: 12px 0 16px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 12px 0 16px;
+  }
+  .card {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 14px 16px;
+  }
+  .card-title {
+    font: 700 13.5px/1.3 var(--font-display);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  /* Callouts */
+  .callout {
+    border-radius: var(--radius-card);
+    padding: 13px 16px;
+    margin: 12px 0 16px;
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    background: var(--bg-subtle);
+  }
+  .callout.info { border-left-color: var(--accent); background: var(--accent-soft); }
+  .callout.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+  .callout.danger { border-left-color: var(--red); background: var(--red-soft); }
+  .callout.good { border-left-color: var(--green); background: var(--green-soft); }
+  .callout-title {
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+
+  /* Palette swatches */
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 12px 0 16px;
+  }
+  .swatch {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .swatch-chip {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    flex: none;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+  }
+  .swatch-name { font-weight: 700; font-size: 12.5px; line-height: 1.2; }
+  .swatch-hex { font: 11px/1.3 var(--font-mono); color: var(--text-secondary); }
+
+  /* Phase blocks */
+  details.phase {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--bg-subtle);
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  details.phase > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 700;
+    font-size: 14.5px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid transparent;
+    user-select: none;
+  }
+  details.phase[open] > summary {
+    border-bottom-color: var(--border);
+  }
+  details.phase > summary::-webkit-details-marker { display: none; }
+  .phase-pill {
+    font: 700 11px/1 var(--font-mono);
+    padding: 5px 8px;
+    border-radius: 6px;
+    color: #fff;
+    flex: none;
+  }
+  .phase-meta {
+    margin-left: auto;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .phase-body {
+    padding: 16px 18px;
+  }
+  .phase-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .phase-check input[type="checkbox"] {
+    margin-top: 3px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  /* Pill tags */
+  .tag {
+    display: inline-block;
+    font: 600 11px/1.2 var(--font-mono);
+    padding: 3px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    vertical-align: middle;
+  }
+  .tag.keep { background: var(--green-soft); color: var(--green); border-color: transparent; }
+  .tag.simplify { background: var(--amber-soft); color: var(--amber); border-color: transparent; }
+  .tag.replace { background: var(--purple-soft); color: var(--purple); border-color: transparent; }
+  .tag.risk { background: var(--red-soft); color: var(--red); border-color: transparent; }
+
+  /* Architecture SVG */
+  .arch-box {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    margin: 12px 0 16px;
+    overflow-x: auto;
+  }
+
+  /* Visual Blueprint Mockups */
+  .mockup-frame {
+    background: var(--bg-app);
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    margin: 14px 0 18px;
+  }
+  .mockup-titlebar {
+    height: 36px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-app);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .tl { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .mk-workspace {
+    display: grid;
+    grid-template-columns: 185px minmax(0, 1.15fr) minmax(0, 0.85fr);
+    min-height: 330px;
+    background: var(--bg-app);
+    gap: 8px;
+    padding: 8px;
+  }
+  .mk-sidebar {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 11.5px;
+  }
+  .mk-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    background: var(--bg-subtle);
+    padding: 3px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 10px;
+  }
+  .mk-tab { padding: 4px 2px; border-radius: 6px; }
+  .mk-tab.on { background: var(--bg-panel); box-shadow: var(--shadow-sm); }
+  .mk-file { padding: 4px 7px; border-radius: 6px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+  .mk-file.on { background: rgba(210,56,85,0.13); color: var(--text); font-weight: 600; }
+  .mk-pane {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .mk-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+    flex-wrap: wrap;
+  }
+  .mk-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font: 700 11px/1 var(--font-ui);
+    border: 1px solid transparent;
+  }
+  .mk-btn.active { border-color: currentColor; }
+  .mk-compile {
+    margin-left: auto;
+    padding: 4px 11px;
+    border-radius: 99px;
+    background: var(--logo-spectrum);
+    color: #fff;
+    font: 700 11px/1.2 var(--font-ui);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .mk-code {
+    flex: 1;
+    padding: 10px 10px 10px 0;
+    font: 11.5px/1.65 var(--font-mono);
+    background: var(--bg-code);
+  }
+  .mk-line {
+    display: grid;
+    grid-template-columns: 32px 22px 1fr;
+    align-items: stretch;
+    padding: 0 8px 0 4px;
+  }
+  .mk-line.cur { background: var(--bg-hover); }
+  .mk-ln { text-align: right; padding-right: 6px; color: var(--text-tertiary); user-select: none; }
+  .mk-bars { display: flex; gap: 2px; padding-left: 3px; align-items: stretch; }
+  .mk-bar { width: 2.5px; border-radius: 1.5px; }
+  .mk-pdf {
+    flex: 1;
+    background: var(--bg-subtle);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .mk-page {
+    width: 100%;
+    max-width: 250px;
+    background: #ffffff;
+    color: #111;
+    border-radius: 4px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow-sm);
+    font: 10.5px/1.55 Georgia, serif;
+  }
+  [data-theme="dark"] .mk-page { background: #18181b; color: #e4e4e7; border: 1px solid rgba(255,255,255,0.08); }
+  .mk-setup {
+    max-width: 520px;
+    margin: 14px auto 18px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+  }
+  .mk-setup-body { padding: 20px 24px 22px; }
+  .mk-settings-mock {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    min-height: 240px;
+    background: var(--bg-panel);
+  }
+  @media (max-width: 980px) {
+    .mk-workspace, .mk-settings-mock { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+    .main { padding: 20px 18px 60px; }
+    .metric-grid, .swatch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-prism"></div>
+      <div>
+        <div class="brand-title">Spectrum 3.0.0</div>
+        <div class="brand-sub">Rust + GPUI Rewrite Plan</div>
+      </div>
+    </div>
+    <div class="prism-bar"></div>
+
+    <div class="theme-row">
+      <button class="theme-btn active" id="btn-light" onclick="setTheme('light')">Light</button>
+      <button class="theme-btn" id="btn-dark" onclick="setTheme('dark')">Dark</button>
+    </div>
+
+    <div class="progress-box">
+      <div class="progress-label">
+        <span>Rebuild Checklist</span>
+        <span id="progress-text">0 / 0</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+
+    <div>
+      <div class="nav-group-label">Blueprint</div>
+      <nav class="nav-list">
+        <a class="nav-link" href="#overview"><span class="dot" style="background:#d23855"></span>1. Goals &amp; Targets</a>
+        <a class="nav-link" href="#workspace"><span class="dot" style="background:#c45001"></span>2. Cargo Workspace &amp; Upgrades</a>
+        <a class="nav-link" href="#data-contracts"><span class="dot" style="background:#e8590c"></span>2B. Disk Formats &amp; Migration</a>
+        <a class="nav-link" href="#theme-ui"><span class="dot" style="background:#fcab05"></span>3. Spectrum Theme &amp; UI Plan</a>
+        <a class="nav-link" href="#visual-blueprints"><span class="dot" style="background:#d5c918"></span>3B. Visual Mockups &amp; GPUI Code</a>
+      </nav>
+
+      <div class="nav-group-label">Execution Phases</div>
+      <nav class="nav-list">
+        <a class="nav-link" href="#phases"><span class="dot" style="background:#438303"></span>4. Phases 0–10 (Exact Details)</a>
+        <a class="nav-link" href="#phase-0"><span class="dot" style="background:#03845f"></span>Phase 0–1: Core &amp; UI Kit</a>
+        <a class="nav-link" href="#phase-2"><span class="dot" style="background:#0a8282"></span>Phase 2–4: Editor, Compile, PDF</a>
+        <a class="nav-link" href="#phase-5"><span class="dot" style="background:#067fa1"></span>Phase 5–7: LSP, AI, Research</a>
+        <a class="nav-link" href="#phase-8"><span class="dot" style="background:#0073df"></span>Phase 8–10: Git, Convert, Ship</a>
+      </nav>
+
+      <div class="nav-group-label">Governance</div>
+      <nav class="nav-list">
+        <a class="nav-link" href="#windows-parity"><span class="dot" style="background:#067fa1"></span>5. Windows Build &amp; Parity</a>
+        <a class="nav-link" href="#code-standard"><span class="dot" style="background:#7361e4"></span>6. Unified Code Standard</a>
+        <a class="nav-link" href="#opus-watchouts"><span class="dot" style="background:#a34ec6"></span>7. Watch-Outs for Opus 5.5</a>
+      </nav>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- HERO -->
+    <header class="hero">
+      <div class="hero-kicker">Target Release: v3.0.0 &bull; Architecture Blueprint &bull; Opus 5.5 Ready</div>
+      <h1>Rebuilding Spectrum 3.0.0 in Rust &amp; GPUI</h1>
+      <p>
+        A complete, end-to-end engineering blueprint for building <strong>Spectrum v3.0.0</strong> by replacing v2.8.0's
+        Tauri + React + Node.js/Fastify stack (~188k LOC across WebView and Node sidecar) with a single native, GPU-accelerated
+        Rust + GPUI desktop application for macOS (Apple Silicon / Metal) and Windows (x64 / DirectX 12) — upgrading all bundled
+        engines, checkers, and libraries to their latest verified releases while preserving the signature <strong>Spectrum of Colours</strong>
+        visual identity and 100% on-disk compatibility with existing 2.x projects.
+      </p>
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="metric-label">Cold Startup</div>
+          <div class="metric-val" style="color:var(--green)">&lt; 120 ms</div>
+          <div class="metric-sub">vs. ~1.5–3s WebView + Node boot</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Idle Memory (RAM)</div>
+          <div class="metric-val" style="color:var(--accent)">&lt; 90 MB</div>
+          <div class="metric-sub">vs. ~400–700 MB WebView + V8</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Frame Budget</div>
+          <div class="metric-val" style="color:var(--purple)">120 Hz (8.3 ms)</div>
+          <div class="metric-sub">Metal / DX12, zero GC pauses</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Workspace Crates</div>
+          <div class="metric-val" style="color:var(--orange)">17 Crates</div>
+          <div class="metric-sub">Strict acyclic DAG (incl. Win sandbox, setup &amp; xtask)</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- SECTION 1: OVERVIEW -->
+    <section id="overview">
+      <div class="sec-header">
+        <span class="sec-badge" style="background:var(--red-soft);color:var(--red)">Section 01</span>
+        <h2>Goals, Architecture Shift &amp; Compatibility Contract</h2>
+      </div>
+
+      <p>
+        Today's Spectrum runs three layers: a thin Tauri 2 Rust shell (<code>src-tauri/src/main.rs</code>, 1.8k LOC),
+        a React + CodeMirror 6 + PDF.js frontend (<code>apps/frontend</code>, 98.5k LOC), and a Node.js + Fastify + LangGraph backend
+        (<code>apps/backend</code>, 88.2k LOC) communicating over localhost HTTP/SSE with a session cookie.
+        The rewrite collapses all three into <strong>one native Rust binary</strong> with direct in-process calls, GPU-rendered UI via GPUI,
+        and zero embedded browser or Node runtime.
+      </p>
+
+      <div class="arch-box">
+        <svg viewBox="0 0 920 250" width="100%" style="max-width:920px;display:block;margin:0 auto;font-family:-apple-system,system-ui,sans-serif">
+          <defs>
+            <linearGradient id="prismGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f05747"/><stop offset="20%" stop-color="#f1a33c"/>
+              <stop offset="40%" stop-color="#f8d84a"/><stop offset="60%" stop-color="#6cdb6c"/>
+              <stop offset="80%" stop-color="#3b82f7"/><stop offset="100%" stop-color="#b260eb"/>
+            </linearGradient>
+          </defs>
+          <!-- Layer 1: App Shell -->
+          <rect x="20" y="14" width="880" height="44" rx="10" fill="none" stroke="url(#prismGrad)" stroke-width="2.5"/>
+          <text x="460" y="34" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">spectrum-app (GPUI Window, Menus, Focus, Keymaps, Workspace Shell)</text>
+          <text x="460" y="50" text-anchor="middle" font-size="11" fill="#71717a">macOS Metal + Vibrancy &bull; Windows DirectX 12 / Blade &bull; Single Instance &bull; OS File Associations</text>
+
+          <!-- Layer 2: UI Views -->
+          <rect x="20" y="74" width="210" height="48" rx="8" fill="rgba(196,80,1,0.12)" stroke="#c45001"/>
+          <text x="125" y="95" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">spectrum-editor</text>
+          <text x="125" y="112" text-anchor="middle" font-size="10.5" fill="#71717a">Rope + Tree-sitter + IME + Vim</text>
+
+          <rect x="244" y="74" width="210" height="48" rx="8" fill="rgba(6,127,161,0.12)" stroke="#067fa1"/>
+          <text x="349" y="95" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">spectrum-pdf</text>
+          <text x="349" y="112" text-anchor="middle" font-size="10.5" fill="#71717a">PDFium Tiles + SyncTeX + Notes</text>
+
+          <rect x="468" y="74" width="210" height="48" rx="8" fill="rgba(252,171,5,0.14)" stroke="#9e6a04"/>
+          <text x="573" y="95" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">spectrum-ui + theme</text>
+          <text x="573" y="112" text-anchor="middle" font-size="10.5" fill="#71717a">GPUI Kit Facade + 12-Hue Palette</text>
+
+          <rect x="692" y="74" width="208" height="48" rx="8" fill="rgba(67,131,3,0.12)" stroke="#438303"/>
+          <text x="796" y="95" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">spectrum-diagram</text>
+          <text x="796" y="112" text-anchor="middle" font-size="10.5" fill="#71717a">Code + Live SVG/PDF Preview</text>
+
+          <!-- Layer 3: Pure Rust Services (Zero GPUI dependency) -->
+          <rect x="20" y="138" width="880" height="48" rx="8" fill="rgba(115,97,228,0.10)" stroke="#7361e4" stroke-dasharray="4 3"/>
+          <text x="460" y="158" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">Pure-Rust Domain &amp; Service Crates (Tokio Runtime &bull; Zero GPUI Dependency &bull; 100% Unit-Testable)</text>
+          <text x="460" y="175" text-anchor="middle" font-size="10.5" fill="#71717a">spectrum-core &bull; spectrum-compile &bull; spectrum-lsp &bull; spectrum-checkers (Harper/Hunspell) &bull; spectrum-ai &bull; spectrum-references &bull; spectrum-git &bull; spectrum-convert</text>
+
+          <!-- Layer 4: External Binaries & Disk -->
+          <rect x="20" y="200" width="880" height="38" rx="8" fill="rgba(110,110,115,0.10)" stroke="#8e8e93"/>
+          <text x="460" y="223" text-anchor="middle" font-size="11.5" fill="currentColor">Bundled Engines &amp; On-Disk Data: Tectonic &bull; Typst &bull; TexLab &bull; Tinymist &bull; Biber &bull; Pandoc &bull; PDFium &bull; ~/Documents/Spectrum &bull; dictionaries/ &bull; templates/ &bull; skills/</text>
+        </svg>
+      </div>
+
+      <h3>Non-Negotiable Compatibility Contract</h3>
+      <ul>
+        <li><strong>Projects stay ordinary folders:</strong> Existing folders in <code>~/Documents/Spectrum</code> (LaTeX, Typst, Markdown) open in place without migration.</li>
+        <li><strong>Reuse bundled assets verbatim:</strong> Keep existing <code>templates/</code>, <code>dictionaries/</code> (SCOWL / AussieDic + licences), <code>skills/</code>, <code>engines.json</code> checksums, and bundled CJK/mono fonts.</li>
+        <li><strong>Engine compatibility:</strong> Reuse the exact same bundled <code>tectonic</code>, <code>typst</code>, <code>texlab</code>, and on-demand <code>tinymist</code>, <code>biber</code>, <code>pandoc</code> binaries + system TeX Live / MiKTeX detection.</li>
+        <li><strong>Settings &amp; secrets migration (2.x &rarr; 3.0.0):</strong> Read existing Spectrum 2.8.0 settings JSON gracefully on first launch (non-destructively migrating to v3.0.0 schema); store API keys and GitHub OAuth tokens in the OS keychain (macOS Keychain / Windows Credential Manager) via <code>keyring</code>.</li>
+        <li><strong>Version 3.0.0 across all metadata:</strong> Set <code>version = "3.0.0"</code> in <code>[workspace.package]</code> and inherit via <code>version.workspace = true</code> in every crate, macOS <code>Info.plist</code> (<code>CFBundleShortVersionString</code> / <code>CFBundleVersion</code>), Windows branded setup metadata (<code>spectrum-win-setup</code>), and About/Update dialogs.</li>
+      </ul>
+    </section>
+
+    <!-- SECTION 2: CARGO WORKSPACE & STACK -->
+    <section id="workspace">
+      <div class="sec-header">
+        <span class="sec-badge" style="background:var(--orange-soft);color:var(--orange)">Section 02</span>
+        <h2>Cargo Workspace Layout &amp; Pinned Dependency Stack</h2>
+      </div>
+
+      <p>
+        Splitting the codebase into <strong>17 focused crates</strong> keeps incremental <code>cargo check</code> cycles fast (critical when Opus 5.5 iterates),
+        prevents spaghetti imports, and enforces a hard boundary: <strong>only the UI crates (<code>spectrum-theme</code>, <code>spectrum-ui</code>, <code>spectrum-editor</code>, <code>spectrum-pdf</code>, <code>spectrum-diagram</code>, <code>spectrum-app</code>, and <code>spectrum-win-setup</code>) may depend on <code>gpui</code></strong>.
+        All 10 domain/service/tooling crates are pure Rust so they compile in seconds and run headless tests without a window server.
+      </p>
+
+<pre><code>spectrum-native/
+├── Cargo.toml                  # Workspace manifest + [workspace.dependencies] + [workspace.lints]
+├── rust-toolchain.toml         # Pinned stable Rust channel (e.g., 1.86.0) + rustfmt + clippy
+├── rustfmt.toml                # Unified formatting config
+├── clippy.toml                 # Complexity &amp; cognitive-load limits
+├── justfile                    # Canonical dev, check, test, bench, and bundle commands
+├── assets/                     # Icons (SVG), bundled fonts, palette.json, engines.json
+├── crates/
+│   ├── spectrum-core/          # [Pure] Paths, project model, settings, fs watcher, events, AppError
+│   ├── spectrum-compile/       # [Pure] Tectonic/Typst/TeXLive runner, sandbox, log parser, SyncTeX
+│   ├── spectrum-lsp/           # [Pure] Async JSON-RPC 2.0 client for TexLab &amp; Tinymist
+│   ├── spectrum-checkers/      # [Pure] In-process harper-core + Hunspell C++ FFI + LanguageTool
+│   ├── spectrum-ai/            # [Pure] Streaming LLM clients, Rust agent loop, MCP/ACP, keyring
+│   ├── spectrum-references/    # [Pure] BibTeX, DOI/arXiv, OpenAlex/S2/Crossref/PubMed, Zotero, Review
+│   ├── spectrum-git/           # [Pure] Checkpoints, diffs (similar), git2/gix, GitHub Device OAuth
+│   ├── spectrum-convert/       # [Pure] LaTeX &lt;-&gt; Typst converter, typst-syntax, Jyutping engine
+│   ├── spectrum-theme/         # [GPUI] 12-area Spectrum palette, Light/Dark/System, typography tokens
+│   ├── spectrum-ui/            # [GPUI] Thin Spectrum-themed facade over GPUI Kit (gpui-component)
+│   ├── spectrum-editor/        # [GPUI] Rope buffer, Tree-sitter, virtualized viewport, IME, Vim/Emacs
+│   ├── spectrum-pdf/           # [GPUI] PDFium worker pool, LRU GPU tile cache, SyncTeX, sticky notes
+│   ├── spectrum-diagram/       # [GPUI] Simplified split code + live SVG/PDF preview &amp; starters
+│   ├── spectrum-win-sandbox/   # [Win32] Pure-Rust AppContainer / Low-IL + Job Object isolation worker
+│   ├── spectrum-win-setup/     # [Win32/GPUI] Modern branded Windows installer, updater, repair &amp; uninstaller
+│   ├── spectrum-xtask/         # [Build] Cross-platform dep fetcher, TexLab builder, DMG &amp; Setup packager
+│   └── spectrum-app/           # [GPUI] Binary entry, Tokio bridge, windows, menus, workspace assembly
+└── scripts/                    # Engine downloader, PDFium fetcher, macOS DMG &amp; Windows Setup helpers</code></pre>
+
+      <h3>Exact Crate Selection (JS/Web &rarr; Rust Native Mapping)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Subsystem</th>
+              <th>Current Spectrum (Web/Node)</th>
+              <th>Target Rust Crate / Strategy</th>
+              <th>Why This Choice</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>UI Framework &amp; Component Kit</strong></td>
+              <td>Tauri 2 + React 18 + CSS</td>
+              <td><code>gpui</code> + <strong>GPUI Kit</strong> (e.g. <code>gpui-component</code>) wrapped in <code>spectrum-ui</code></td>
+              <td>Direct Metal / DX12 GPU rendering at 120Hz, plus battle-tested native buttons, inputs, modals, popovers, resizable panes, dock/tabs, tables, and virtual lists out of the box—saving weeks of primitive boilerplate.</td>
+            </tr>
+            <tr>
+              <td><strong>Async Runtime</strong></td>
+              <td>Node.js event loop + Fastify</td>
+              <td>GPUI foreground executor + shared <code>tokio</code> multi-thread runtime</td>
+              <td>GPUI uses <code>smol</code> internally; bridging to a single shared <code>tokio</code> runtime lets us use <code>reqwest</code>, <code>notify</code>, MCP, and LSP cleanly.</td>
+            </tr>
+            <tr>
+              <td><strong>Text Buffer</strong></td>
+              <td>CodeMirror 6 (<code>@codemirror/state</code>)</td>
+              <td><code>ropey</code> + custom UTF-8/UTF-16 line-index &amp; transaction undo tree</td>
+              <td>O(log N) edits on huge <code>.tex</code> files, minimal memory, native slice iterators.</td>
+            </tr>
+            <tr>
+              <td><strong>Syntax Highlighting</strong></td>
+              <td>Lezer + <code>codemirror-lang-typst</code></td>
+              <td><code>tree-sitter</code> + <code>tree-sitter-latex</code>, <code>tree-sitter-typst</code>, <code>tree-sitter-md</code>, <code>tree-sitter-bibtex</code></td>
+              <td>Incremental sub-millisecond AST reparsing; also powers folding and outline fallback.</td>
+            </tr>
+            <tr>
+              <td><strong>PDF Rendering</strong></td>
+              <td><code>pdfjs-dist</code> + <code>pdf-lib</code></td>
+              <td><code>pdfium-render</code> (dynamically linked <code>libpdfium</code> / <code>pdfium.dll</code>)</td>
+              <td>C++ native speed, accurate scientific font/TikZ vector rendering, text extraction &amp; link rects.</td>
+            </tr>
+            <tr>
+              <td><strong>Spell &amp; Grammar</strong></td>
+              <td><code>nodehun</code> (N-API) + Harper WASM</td>
+              <td><code>harper-core</code> (direct Rust crate) + <code>cc</code> FFI to existing <code>native/hunspell/core</code></td>
+              <td>Zero WASM or N-API overhead; reuses existing audited Hunspell C++ source and dictionaries.</td>
+            </tr>
+            <tr>
+              <td><strong>Git &amp; Diffs</strong></td>
+              <td><code>isomorphic-git</code> + <code>diff</code></td>
+              <td><code>git2</code> (or <code>gix</code> for read paths) + <code>similar</code></td>
+              <td>Orders of magnitude faster status/commit/checkout than JS <code>isomorphic-git</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>AI &amp; Agents</strong></td>
+              <td>LangGraph + LangChain + MCP/ACP SDK</td>
+              <td><code>reqwest</code> (rustls) + <code>eventsource-stream</code> + custom Rust state-machine agent + <code>rmcp</code> / JSON-RPC</td>
+              <td>Transparent, debuggable tool loop with zero JS dependency bloat and full cancellation control.</td>
+            </tr>
+            <tr>
+              <td><strong>Markdown &amp; SVG</strong></td>
+              <td><code>react-markdown</code> + <code>katex</code> + <code>mermaid</code></td>
+              <td><code>pulldown-cmark</code> &rarr; GPUI elements; <code>resvg</code>/<code>usvg</code> for SVG &amp; math previews</td>
+              <td>Native GPU text rendering for AI chat; math snippets rendered via fast Typst-to-SVG or cached raster.</td>
+            </tr>
+            <tr>
+              <td><strong>Secrets &amp; Paths</strong></td>
+              <td><code>keyStore.js</code> + Tauri paths</td>
+              <td><code>keyring</code> + <code>directories</code> + <code>notify</code></td>
+              <td>Native OS keychain, standard Application Support / AppData paths, OS file-change events.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Dependency &amp; Bundled Component Upgrade Audit (for v3.0.0)</h3>
+      <p>
+        During the v3.0.0 rebuild, <strong>check upstream for newer stable releases of every bundled dependency and native checker</strong>
+        and upgrade them in lockstep rather than blindly copying 2.8.0 pins. Record every updated version, SHA-256 checksum, and licence
+        in <code>engines.json</code>, <code>checkers.lock.json</code>, <code>Cargo.lock</code>, and <code>THIRD_PARTY_NOTICES.md</code>:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Current 2.8.0 Pin</th>
+              <th>v3.0.0 Upgrade Action for Opus 5.5</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Harper (Grammar)</strong></td>
+              <td><code>3.0.0</code> (WASM)</td>
+              <td>Check latest <code>harper-core</code> on crates.io / Automattic GitHub; switch from WASM to direct Rust crate dependency and verify LaTeX/Typst masking tests pass.</td>
+            </tr>
+            <tr>
+              <td><strong>Hunspell (Spelling)</strong></td>
+              <td><code>1.7.6</code> (C++ via N-API)</td>
+              <td>Check latest stable tag on <code>hunspell/hunspell</code>; vendor updated C++ sources in <code>native/hunspell/core</code>, update <code>checkers.lock.json</code> hashes, and compile directly via <code>cc</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>Dictionaries</strong></td>
+              <td>SCOWL <code>2026.02.25</code> / AussieDic <code>3.1.0</code> / <code>wooorm</code></td>
+              <td>Check upstream SCOWL, AussieDic, and <code>wooorm/dictionaries</code> commits; re-run catalogue licence &amp; UTF-8/word verification checks.</td>
+            </tr>
+            <tr>
+              <td><strong>Typst &amp; <code>typst-syntax</code></strong></td>
+              <td><code>0.15.1</code></td>
+              <td>Check latest stable Typst release; update both the bundled <code>typst</code> binary (macOS arm64/x64 + Windows x64 SHA-256s in <code>engines.json</code>) and the <code>typst-syntax</code> Rust crate in lockstep.</td>
+            </tr>
+            <tr>
+              <td><strong>Tectonic, TexLab, Tinymist, Pandoc, Biber, LanguageTool</strong></td>
+              <td>Tectonic <code>0.17.0</code>, TexLab <code>5.26.0</code>, Tinymist <code>0.15.10</code>, Pandoc <code>3.12.1</code>, Biber <code>2.17</code>, LanguageTool <code>6.8</code></td>
+              <td>Check latest stable GitHub releases for each engine, LSP server &amp; grammar server; update <code>engines.json</code> asset URLs, sizes, and SHA-256 checksums for macOS and Windows.</td>
+            </tr>
+            <tr>
+              <td><strong>PDFium, GPUI, GPUI Kit &amp; Rust Crates</strong></td>
+              <td>New for v3.0.0</td>
+              <td>Pin latest stable <code>pdfium-binaries</code> release (with SHA-256), latest compatible <strong>GPUI Kit + <code>gpui</code></strong> pair, latest <code>tree-sitter</code> grammars, and latest Rust crate releases; verify with <code>cargo audit</code> / <code>cargo outdated</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>Bundled Fonts, Skills &amp; <code>xjyutping</code></strong></td>
+              <td>2.8.0 snapshots</td>
+              <td>Check for upstream updates to <code>xjyutping</code>, bundled mono/CJK fonts, and K-Dense skills; update <code>THIRD_PARTY_NOTICES.md</code> for every bumped asset.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SECTION 2B: ON-DISK DATA FORMATS, MIGRATION & 2.8.0 REFERENCE MAP -->
+    <section id="data-contracts">
+      <div class="sec-header">
+        <span class="sec-badge" style="background:var(--orange-soft);color:var(--orange)">Section 02B</span>
+        <h2>Exact On-Disk Formats, 2.8.0 &rarr; 3.0.0 Migration &amp; Reference Map</h2>
+      </div>
+      <p>
+        Spectrum 2.8.0 has dozens of battle-tested edge cases baked into its storage, security, and file formats.
+        <strong>Opus 5.5 must preserve every contract below verbatim</strong> so upgrading from 2.8.0 to 3.0.0 is zero-friction
+        and existing projects, API keys, diagrams, and SyncTeX caches work immediately.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data / Subsystem</th>
+              <th>Exact On-Disk Format &amp; Path</th>
+              <th>2.8.0 Reference File to Port From</th>
+              <th>v3.0.0 Rust Implementation Detail</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>App Data Dir, Bundle ID &amp; File Associations</strong></td>
+              <td>
+                Bundle ID: <code>com.beyond3345.spectrum</code>.<br>
+                <strong>macOS:</strong> <code>~/Library/Application Support/com.beyond3345.spectrum</code> (logs in <code>~/Library/Logs/com.beyond3345.spectrum</code>).<br>
+                <strong>Windows:</strong> <code>%APPDATA%\com.beyond3345.spectrum</code>.<br>
+                Associations: Owner (<code>.tex</code>, <code>.ltx</code>, <code>.bib</code>); Alternate (<code>.sty</code>, <code>.cls</code>, <code>.clo</code>, <code>.dtx</code>, <code>.ins</code>, <code>.bst</code>, <code>.bbx</code>, <code>.cbx</code>, <code>.lbx</code>, <code>.dbx</code>, <code>.typ</code>, <code>.md</code>, <code>.markdown</code>).
+              </td>
+              <td><code>src-tauri/tauri.conf.json</code> &amp; <code>apps/backend/src/config/constants.js</code></td>
+              <td><strong>Critical:</strong> Keep the exact <code>com.beyond3345.spectrum</code> folder name (NOT <code>Spectrum</code>) so v3.0.0 seamlessly reads existing 2.8.x settings, <code>keys.dpapi</code>, templates, skills, and project registries!</td>
+            </tr>
+            <tr>
+              <td><strong>API Keys &amp; Secrets</strong></td>
+              <td>
+                <strong>macOS:</strong> Login Keychain service <code>com.beyond3345.spectrum.api-keys</code>, account <code>api-keys</code> (base64 JSON <code>{ salt, keys: { id: { value, at } }, held? }</code>).<br>
+                <strong>Windows:</strong> <code>DATA_DIR/keys.dpapi</code> (base64 DPAPI <code>CurrentUser</code> blob of the same JSON).
+              </td>
+              <td><code>apps/backend/src/services/keyStore.js</code></td>
+              <td>Read existing keychain/DPAPI blobs directly in Rust (<code>security-framework</code> on macOS; <code>windows-sys</code> <code>CryptUnprotectData</code> on Windows — eliminating the PowerShell spawn!). Keep HMAC-SHA256 <code>spectrum-key:&lt;32hex&gt;</code> refs so synced settings stay valid.</td>
+            </tr>
+            <tr>
+              <td><strong>Project Settings</strong></td>
+              <td><code>&lt;project&gt;/.spectrum/settings.json</code> (separate from <code>project.json</code> so GitHub sync doesn't drop keys).</td>
+              <td><code>apps/backend/src/services/projectSettings.js</code></td>
+              <td>Atomic write (temp file + rename) under per-project mutex. If unreadable/corrupt JSON, <strong>never overwrite</strong> — surface a conflict warning.</td>
+            </tr>
+            <tr>
+              <td><strong>Cloud-Drive Safety</strong></td>
+              <td>Default <code>~/Documents/Spectrum</code>, automatically redirected to <code>~/Spectrum</code> if <code>Documents</code> is inside OneDrive or iCloud Drive.</td>
+              <td><code>apps/backend/src/index.js</code> &amp; <code>syncService.js</code></td>
+              <td>Port <code>placeOf(PROJECTS_DIR)</code> check at startup so GitHub-backed projects aren't corrupted by cloud-sync locks on <code>.git</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>SyncTeX Cache</strong></td>
+              <td><code>&lt;cache&gt;/synctex/&lt;rel-doc&gt;.gz</code> + <code>&lt;rel-doc&gt;.json</code> (<code>{ root, cwd, copy? }</code>).</td>
+              <td><code>apps/backend/src/services/synctex.js</code></td>
+              <td>Port exact <code>SP_PER_BP = 65781.76</code> conversion, per-line UTF-8 + Windows ANSI CodePage (<code>HKLM\...\CodePage\ACP</code>) fallback decoding, <code>copy</code> path remapping (for Jyutping auto-mode copies), and Windows <code>?</code> root-prefix repair.</td>
+            </tr>
+            <tr>
+              <td><strong>Diagram Files</strong></td>
+              <td><code>diagrams/&lt;name&gt;.{tex,typ,mmd}</code> ending with magic trailer: <code>% spectrum-diagram v1 &lt;b64-json&gt; &lt;sha256-16hex&gt;</code> (<code>//</code> for Typst, <code>%%</code> for Mermaid).</td>
+              <td><code>apps/frontend/src/diagram/fileFormat.ts</code></td>
+              <td>Verify SHA-256 of body above trailer. If hash matches, load structured metadata; if user hand-edited the body, open cleanly in code mode without clobbering their edits.</td>
+            </tr>
+            <tr>
+              <td><strong>App Settings &amp; Editor Roles</strong></td>
+              <td><code>AppSettings</code> covering 4 model roles (<code>main</code>, <code>fast</code>, <code>vision</code>, <code>references</code>), 12 <code>EditorColourRole</code>s, <code>pdfPageLight</code> (<code>white|cream|sepia|grey</code>), <code>pdfPageDark</code> (<code>dark|black|dimmed|white</code>), <code>glass</code> + <code>glassClarity</code>, <code>snippets</code>, <code>personas</code>, <code>compileDefaults</code>, <code>liveOutput</code>, <code>checkpointOnCompile</code>, <code>compileAfterApply</code>.</td>
+              <td><code>apps/frontend/src/app/settings.ts</code></td>
+              <td>Deserialize with <code>#[serde(default)]</code> and unknown-field preservation (<code>#[serde(flatten)] extra: BTreeMap&lt;String, Value&gt;</code>) so downgrading or syncing across machines never loses fields.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SECTION 3: SPECTRUM THEME & UI SIMPLIFICATIONS -->
+    <section id="theme-ui">
+      <div class="sec-header">
+        <span class="sec-badge" style="background:var(--amber-soft);color:var(--amber)">Section 03</span>
+        <h2>Spectrum of Colours Theme &amp; Native UI Simplification Matrix</h2>
+      </div>
+
+      <p>
+        Spectrum's visual soul is its <strong>12-area colour wheel</strong> (from <code>apps/frontend/src/app/palette.json</code>),
+        the <strong>6-hue prism gradient</strong> (<code>#f05747 &rarr; #f1a33c &rarr; #f8d84a &rarr; #6cdb6c &rarr; #3b82f7 &rarr; #b260eb</code>),
+        clean macOS-native rounded panels (<code>16px</code> panel / <code>12px</code> card / <code>10px</code> control radii),
+        optional window vibrancy, and WCAG AA contrast in both Light and Dark modes.
+        All 12 area tokens must be ported verbatim into <code>spectrum-theme</code> as strongly typed Rust structs.
+      </p>
+
+      <div class="swatch-grid">
+        <div class="swatch"><div class="swatch-chip" style="background:#d23855"></div><div><div class="swatch-name">1. Projects</div><div class="swatch-hex">L #d23855 &bull; D #ff8893</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#c45001"></div><div><div class="swatch-name">2. Editor</div><div class="swatch-hex">L #c45001 &bull; D #fe8f5b</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#fcab05"></div><div><div class="swatch-name">3. Assistant</div><div class="swatch-hex">L #9e6a04 &bull; D #e8a127</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#d5c918"></div><div><div class="swatch-name">4. References</div><div class="swatch-hex">L #7f7703 &bull; D #c0b529</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#438303"></div><div><div class="swatch-name">5. Composer</div><div class="swatch-hex">L #438303 &bull; D #86c660</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#03845f"></div><div><div class="swatch-name">6. Circuits</div><div class="swatch-hex">L #03845f &bull; D #2cce99</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#0a8282"></div><div><div class="swatch-name">7. Structures</div><div class="swatch-hex">L #0a8282 &bull; D #10caca</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#067fa1"></div><div><div class="swatch-name">8. Vectors</div><div class="swatch-hex">L #067fa1 &bull; D #00c3f5</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#0073df"></div><div><div class="swatch-name">9. Flow</div><div class="swatch-hex">L #0073df &bull; D #7ab4fe</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#7361e4"></div><div><div class="swatch-name">10. Plots</div><div class="swatch-hex">L #7361e4 &bull; D #a9a5ff</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#a34ec6"></div><div><div class="swatch-name">11. Forms</div><div class="swatch-hex">L #a34ec6 &bull; D #d592f2</div></div></div>
+        <div class="swatch"><div class="swatch-chip" style="background:#6e6e73"></div><div><div class="swatch-name">12. Symbols</div><div class="swatch-hex">L #6e6e73 &bull; D #a1a1a6</div></div></div>
+      </div>
+
+      <h3>Must-Keep Signature Feature: Nested Environment &amp; Scope Gutter Bars</h3>
+      <p>
+        In Spectrum 2.8.0 (<code>apps/frontend/src/editor/latexEditor.ts</code> lines 211–263), the editor gutter renders
+        <strong>vertical coloured scope bars</strong> beside the line numbers &amp; fold chevrons to visually separate nested
+        environments, functions, and loops (e.g. <code>document</code> &rarr; <code>enumerate</code> &rarr; <code>align*</code>).
+        <strong>This multi-colour nested scope differentiation MUST be kept in <code>spectrum-editor</code></strong> (and extended
+        to Typst blocks <code>{...}</code>/<code>[...]</code>/<code>#for</code>/<code>#if</code> and Markdown fences),
+        <strong>but the exact bar styling and colour progression do not need to copy 2.8.0 verbatim</strong> — Opus 5.5 can design
+        a cleaner, more cohesive Spectrum progression that matches the v3.0.0 UI:
+      </p>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="dot" style="background:#2f9e44"></span>Flexible GPU Gutter Design &amp; Behaviour</div>
+          <ul>
+            <li><strong>Visual craft:</strong> Crisp rounded vertical rails (e.g. <code>2–2.5px</code> wide, <code>2–3px</code> gap, up to <code>8</code> nesting depths) rendered directly on the GPU canvas — can use subtle top/bottom end-caps or soft glow on the active scope.</li>
+            <li><strong>Nesting calculation:</strong> Strip comments first; track open/close scopes per line in an incremental <code>Vec&lt;u8&gt;</code> depth table cached by <code>buffer_version</code> (&lt;0.2ms).</li>
+            <li><strong>Interactive polish:</strong> Boost opacity (e.g. 85–95%) on the cursor's innermost active scope while keeping outer scopes softer (45–55%), and support click-a-bar to jump to its matching opening/closing line.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="dot" style="background:#7361e4"></span>Recommended 6-Hue Optical Spectrum Progression</div>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;font:12px/1.4 var(--font-mono)">
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:3px;background:#e5484d;display:inline-block"></span><strong>d0</strong> Coral Red &mdash; L <code>#d23855</code> / D <code>#ff7b86</code></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:3px;background:#e8890c;display:inline-block"></span><strong>d1</strong> Warm Amber &mdash; L <code>#c46d01</code> / D <code>#f5b82e</code></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:3px;background:#2f9e44;display:inline-block"></span><strong>d2</strong> Emerald Green &mdash; L <code>#2f9e44</code> / D <code>#52d67a</code></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:3px;background:#067fa1;display:inline-block"></span><strong>d3</strong> Cerulean Cyan &mdash; L <code>#067fa1</code> / D <code>#22c3f5</code></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:3px;background:#0073df;display:inline-block"></span><strong>d4</strong> Flow Blue &mdash; L <code>#0073df</code> / D <code>#62a8ff</code></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:3px;background:#894ec6;display:inline-block"></span><strong>d5</strong> Spectrum Violet &mdash; L <code>#894ec6</code> / D <code>#c084fc</code></div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Unified Toolbar &amp; Chrome Spectrum Redesign (Fixing 2.8.0's Scrambled Hues)</h3>
+      <p>
+        In 2.8.0 (<code>EditorPage.tsx</code> lines 3850–3920), toolbar icons used arbitrary Apple system colours out of order
+        (<code>blue &rarr; mint &rarr; orange &rarr; green &rarr; pink</code> on the left; <code>purple &rarr; red &rarr; cyan &rarr; plain &rarr; indigo</code> on the right).
+        For v3.0.0, re-map every toolbar button, sidebar tab, and Tools sub-tab into a <strong>coherent left-to-right optical Spectrum</strong>
+        (Warm = Creation/Authoring &rarr; Cool = Inspection/Tools/AI), where every light/dark pair satisfies WCAG 3:1 icon contrast and 4.5:1 active-text contrast:
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>UI Surface</th>
+              <th>Ordered Left-to-Right Spectrum Mapping (v3.0.0)</th>
+              <th>Coherence Logic</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Editor Toolbar — Left (Insert &amp; Create)</strong></td>
+              <td>
+                <span class="tag" style="background:rgba(229,72,77,.14);color:#c92a2a">1. Insert (+) · Coral Red (#e5484d / #ff6369)</span>
+                <span class="tag" style="background:rgba(217,95,2,.14);color:#c45001">2. Figure · Orange (#d95f02 / #fe8f5b)</span>
+                <span class="tag" style="background:rgba(184,122,0,.15);color:#9e6a04">3. Table · Amber (#b87a00 / #f5b82e)</span>
+                <span class="tag" style="background:rgba(47,158,68,.14);color:#2b8a3e">4. Diagram · Green (#2f9e44 / #52d67a)</span>
+                <span class="tag" style="background:rgba(10,138,122,.14);color:#087f5b">5. Jyutping · Jade Teal (#0a8a7a / #2cce99)</span>
+              </td>
+              <td>Smooth <strong>Red &rarr; Orange &rarr; Amber &rarr; Green &rarr; Teal</strong> warm-to-emerald arc for authoring actions.</td>
+            </tr>
+            <tr>
+              <td><strong>Editor Toolbar — Right (Inspect &amp; AI)</strong></td>
+              <td>
+                <span class="tag" style="background:rgba(6,127,161,.14);color:#067fa1">6. Insights · Cyan (#067fa1 / #22c3f5)</span>
+                <span class="tag" style="background:rgba(0,115,223,.14);color:#0073df">7. Grammar · Flow Blue (#0073df / #62a8ff)</span>
+                <span class="tag" style="background:rgba(88,86,214,.14);color:#5856d6">8. Tools · Indigo (#5856d6 / #8b89ff)</span>
+                <span class="tag" style="background:rgba(137,78,198,.14);color:#793fb3">9. Assistant · Violet (#894ec6 / #c084fc)</span>
+                <span class="tag" style="background:rgba(192,57,143,.14);color:#b02a7c">10. Agent · Magenta (#c0398f / #f472b6)</span>
+              </td>
+              <td>Continues seamlessly from Teal into <strong>Cyan &rarr; Blue &rarr; Indigo &rarr; Violet &rarr; Magenta</strong> for analysis, tools, and AI.</td>
+            </tr>
+            <tr>
+              <td><strong>Left Sidebar Tabs</strong></td>
+              <td>
+                <span class="tag" style="background:rgba(210,56,85,.14);color:#d23855">Files · Rose (#d23855 / #ff8893)</span>
+                <span class="tag" style="background:rgba(184,122,0,.15);color:#9e6a04">Outline · Amber (#b87a00 / #f5b82e)</span>
+                <span class="tag" style="background:rgba(10,130,130,.14);color:#0a8282">Research · Teal (#0a8282 / #10caca)</span>
+                <span class="tag" style="background:rgba(115,97,228,.14);color:#7361e4">To-dos · Violet (#7361e4 / #a9a5ff)</span>
+              </td>
+              <td>4 evenly spaced 90&deg; waypoints around the Spectrum wheel — maximally distinguishable at a glance.</td>
+            </tr>
+            <tr>
+              <td><strong>Tools Panel Sub-tabs</strong></td>
+              <td>
+                <span class="tag" style="background:rgba(196,80,1,.14);color:#c45001">Logs · Orange (#c45001 / #fe8f5b)</span>
+                <span class="tag" style="background:rgba(47,158,68,.14);color:#2b8a3e">Review · Green (#2f9e44 / #3dd68c)</span>
+                <span class="tag" style="background:rgba(10,130,130,.14);color:#0a8282">Versions · Teal (#0a8282 / #10caca)</span>
+                <span class="tag" style="background:rgba(88,86,214,.14);color:#5856d6">GitHub · Indigo (#5856d6 / #8b89ff)</span>
+              </td>
+              <td>Ordered <strong>Orange &rarr; Green &rarr; Teal &rarr; Indigo</strong>; errors/warnings still override badges in semantic red/orange.</td>
+            </tr>
+            <tr>
+              <td><strong>Settings Sidebar (5 Groups, 19 Panes)</strong></td>
+              <td>
+                <span class="tag" style="background:rgba(210,56,85,.14);color:#d23855">General (Rose/Red)</span>
+                <span class="tag" style="background:rgba(196,80,1,.14);color:#c45001">Writing &amp; Editor (Orange/Amber)</span>
+                <span class="tag" style="background:rgba(47,158,68,.14);color:#2b8a3e">Workspace &amp; Sync (Emerald/Teal)</span>
+                <span class="tag" style="background:rgba(0,115,223,.14);color:#0073df">AI &amp; Agents (Cyan/Blue)</span>
+                <span class="tag" style="background:rgba(137,78,198,.14);color:#793fb3">Research &amp; Import (Indigo/Violet)</span>
+              </td>
+              <td>Unifies all 19 panes from <code>settingsNav.ts</code> into a smooth top-to-bottom 5-band Spectrum gradient with live keyword search across all field labels (auto-collected from field definitions, fixing 2.8.x's hand-maintained <code>SECTION_LABELS</code> drift).</td>
+            </tr>
+            <tr>
+              <td><strong>Simple Mode Fallback</strong></td>
+              <td><code>ColourStyle::Simple</code> collapses all toolbar/sidebar icon hues to neutral <code>theme.text_secondary</code> while keeping the Editor Scope Gutter bars and semantic error/warning colours active.</td>
+              <td>Preserves 2.8.0's clean monochrome option for users who prefer minimal chrome.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>UI Simplification Matrix: What to Keep Faithful vs. Redesign Simpler</h3>
+      <p>
+        Replicating every complex HTML/CSS layout pixel-for-pixel in GPUI wastes months without improving the user experience.
+        Follow this explicit design contract so Opus 5.5 builds a <strong>modern, cohesive, smooth native UI</strong> while avoiding web-widget quagmires:
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Area / Feature</th>
+              <th>Decision</th>
+              <th>Target GPUI Design (Simpler &amp; More Native)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Workspace Shell &amp; Spectrum Accent</strong></td>
+              <td><span class="tag keep">Keep Faithful</span></td>
+              <td>Left collapsible sidebar (268px, area-coloured icons + 16% tinted active pills), rounded main panels, Spectrum-gradient Compile split button, Light/Dark/System + Simple/Spectrum colour style toggle, macOS <code>WindowBackgroundAppearance::Blurred</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>Code Editor</strong></td>
+              <td><span class="tag keep">Upgrade</span></td>
+              <td>Zed-style ultra-crisp GPU canvas: gutter line numbers + fold chevrons + Spectrum Scope Gutter bars + diagnostic dots, inline ghost-text AI autocomplete, crisp inline diff hunks, floating hover/completion popover, Command Palette (<code>Cmd+Shift+P</code>) &amp; Quick Open (<code>Cmd+P</code>), all <strong>25 built-in editor themes</strong> (<code>editorThemes.ts</code>) + 4 bundled mono fonts (<code>JetBrains Mono</code>, <code>Fira Code</code>, <code>IBM Plex Mono</code>, <code>Source Code Pro</code>).</td>
+            </tr>
+            <tr>
+              <td><strong>PDF Preview</strong></td>
+              <td><span class="tag keep">Upgrade</span></td>
+              <td>Continuous smooth-scroll GPU viewport with floating pill toolbar (zoom, page jump, light/dark/sepia invert, SyncTeX jump pulse, sticky-note sidebar list instead of complex draggable DOM popups).</td>
+            </tr>
+            <tr>
+              <td><strong>Diagram Composer</strong></td>
+              <td><span class="tag simplify">Simplify</span></td>
+              <td><strong>Do NOT reimplement <code>@xyflow/react</code>.</strong> Build a clean 3-part native composer: (1) Category starter gallery with Spectrum area chips, (2) Live code editor (TikZ / CircuiTikZ / Typst CeTZ / Mermaid) with parametric property sliders, (3) Auto-compiled live SVG/PDF preview pane.</td>
+            </tr>
+            <tr>
+              <td><strong>AI Chat &amp; Agent Workspace</strong></td>
+              <td><span class="tag simplify">Simplify</span></td>
+              <td>Clean native thread view using <code>pulldown-cmark</code> &rarr; GPUI blocks (headings, lists, syntax-highlighted code blocks, collapsible tool-call cards, inline Apply/Reject diff cards). Render display math via fast background Typst-to-SVG cache instead of porting KaTeX.</td>
+            </tr>
+            <tr>
+              <td><strong>Settings &amp; Preferences</strong></td>
+              <td><span class="tag simplify">Simplify</span></td>
+              <td>Dedicated two-column native Settings window (or full tab): left category rail with Spectrum-coloured icons, right flat scroll list of uniform labelled rows (toggle, dropdown, text input, action button). No nested sheets-on-sheets.</td>
+            </tr>
+            <tr>
+              <td><strong>Insert Table / Figure / Symbols</strong></td>
+              <td><span class="tag simplify">Simplify</span></td>
+              <td>Fast keyboard-first modal palettes: searchable Symbol grid (grouped by category), Insert Figure file picker + caption/label form, Insert Table dimensions + CSV/TSV paste &rarr; LaTeX/Typst generator.</td>
+            </tr>
+            <tr>
+              <td><strong>Projects Home &amp; Templates</strong></td>
+              <td><span class="tag keep">Keep Faithful</span></td>
+              <td>Clean list/grid of local project folders with search, tags/folders, "New" button (<code>--new-fill</code>), Template gallery, arXiv ID import, Overleaf <code>.zip</code> import, and Typst Universe browser.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SECTION 3B: VISUAL UI BLUEPRINTS & REFERENCE GPUI CODE SNIPPETS -->
+    <section id="visual-blueprints">
+      <div class="sec-header">
+        <span class="sec-badge" style="background:var(--amber-soft);color:var(--amber)">Section 03B</span>
+        <h2>Visual UI Blueprints &amp; Reference GPUI Code Snippets</h2>
+      </div>
+      <p>
+        These live-themed visual mockups (toggle Light/Dark in the sidebar to inspect both modes) and companion Rust/GPUI
+        reference snippets serve as the <strong>visual and structural ground truth for Opus 5.5</strong> so layout hierarchy,
+        Spectrum colour ordering, scope-gutter painting, and installer UX are built right on the first pass.
+      </p>
+
+      <h3>Blueprint 1 — 3-Pane Workspace, Ordered Spectrum Toolbar &amp; Nested Scope Gutter</h3>
+      <div class="mockup-frame">
+        <div class="mockup-titlebar">
+          <span class="tl" style="background:#ff5f57"></span>
+          <span class="tl" style="background:#febc2e"></span>
+          <span class="tl" style="background:#28c840"></span>
+          <span style="margin-left:8px;font-weight:700;color:var(--text)">Spectrum 3.0.0</span>
+          <span>&mdash; thesis-2026 / main.tex</span>
+          <span class="mk-compile">&#9654; Compile &nbsp;|&nbsp; &#9662;</span>
+        </div>
+        <div class="mk-workspace">
+          <!-- Left Sidebar -->
+          <div class="mk-sidebar">
+            <div class="mk-tabs">
+              <div class="mk-tab on" style="color:#d23855">Files</div>
+              <div class="mk-tab" style="color:#b87a00">Outline</div>
+              <div class="mk-tab" style="color:#0a8282">Res.</div>
+              <div class="mk-tab" style="color:#7361e4">To-do</div>
+            </div>
+            <div class="mk-file on"><span class="dot" style="background:#d23855"></span>main.tex</div>
+            <div class="mk-file"><span class="dot" style="background:#0a8282"></span>refs.bib</div>
+            <div class="mk-file"><span class="dot" style="background:#2f9e44"></span>diagrams/circuit.tex</div>
+            <div class="mk-file"><span class="dot" style="background:#8e8e93"></span>figures/plot.pdf</div>
+          </div>
+
+          <!-- Center Editor Pane -->
+          <div class="mk-pane">
+            <div class="mk-toolbar">
+              <!-- Warm Creation Cluster -->
+              <span class="mk-btn" title="Insert" style="background:rgba(229,72,77,.14);color:#e5484d">+</span>
+              <span class="mk-btn" title="Figure" style="background:rgba(217,95,2,.14);color:#d95f02">Img</span>
+              <span class="mk-btn" title="Table" style="background:rgba(184,122,0,.15);color:#b87a00">Tbl</span>
+              <span class="mk-btn" title="Diagram" style="background:rgba(47,158,68,.14);color:#2f9e44">Dia</span>
+              <span class="mk-btn" title="Jyutping" style="background:rgba(10,138,122,.14);color:#0a8a7a">粵</span>
+              <span style="flex:1"></span>
+              <!-- Cool Inspection & AI Cluster -->
+              <span class="mk-btn" title="Insights" style="background:rgba(6,127,161,.14);color:#067fa1">Ins</span>
+              <span class="mk-btn" title="Grammar" style="background:rgba(0,115,223,.14);color:#0073df">Aa</span>
+              <span class="mk-btn" title="Tools" style="background:rgba(88,86,214,.14);color:#5856d6">Tls</span>
+              <span class="mk-btn active" title="Assistant" style="background:rgba(137,78,198,.18);color:#894ec6">&#10022;</span>
+              <span class="mk-btn" title="Agent" style="background:rgba(192,57,143,.14);color:#c0398f">Ag</span>
+            </div>
+            <div class="mk-code">
+              <div class="mk-line"><span class="mk-ln">27</span><span class="mk-bars"><span class="mk-bar" style="background:rgba(229,72,77,.55)"></span></span><span><span style="color:var(--green)">\begin</span><span style="color:var(--amber)">{</span><span style="color:var(--purple)">enumerate</span><span style="color:var(--amber)">}</span></span></div>
+              <div class="mk-line"><span class="mk-ln">28</span><span class="mk-bars"><span class="mk-bar" style="background:rgba(229,72,77,.55)"></span><span class="mk-bar" style="background:rgba(232,137,12,.60)"></span></span><span>&nbsp;&nbsp;<span style="color:var(--green)">\item</span> Find the domain of f.</span></div>
+              <div class="mk-line"><span class="mk-ln">29</span><span class="mk-bars"><span class="mk-bar" style="background:rgba(229,72,77,.55)"></span><span class="mk-bar" style="background:rgba(232,137,12,.60)"></span></span><span>&nbsp;&nbsp;<span style="color:var(--green)">\begin</span><span style="color:var(--amber)">{</span><span style="color:var(--purple)">align*</span><span style="color:var(--amber)">}</span></span></div>
+              <div class="mk-line cur"><span class="mk-ln" style="color:var(--text);font-weight:700">30</span><span class="mk-bars"><span class="mk-bar" style="background:rgba(229,72,77,.45)"></span><span class="mk-bar" style="background:rgba(232,137,12,.50)"></span><span class="mk-bar" style="background:rgba(47,158,68,.95)"></span></span><span>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--green)">\text</span><span style="color:var(--amber)">{</span>Domain<span style="color:var(--amber)">}</span> &amp;= <span style="color:var(--magenta)">\mathbb{R}</span></span></div>
+              <div class="mk-line"><span class="mk-ln">31</span><span class="mk-bars"><span class="mk-bar" style="background:rgba(229,72,77,.45)"></span><span class="mk-bar" style="background:rgba(232,137,12,.50)"></span><span class="mk-bar" style="background:rgba(47,158,68,.95)"></span></span><span>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--green)">\text</span><span style="color:var(--amber)">{</span>Co-domain<span style="color:var(--amber)">}</span> &amp;= [0, \infty)</span></div>
+              <div class="mk-line"><span class="mk-ln">32</span><span class="mk-bars"><span class="mk-bar" style="background:rgba(229,72,77,.55)"></span><span class="mk-bar" style="background:rgba(232,137,12,.60)"></span></span><span>&nbsp;&nbsp;<span style="color:var(--green)">\end</span><span style="color:var(--amber)">{</span><span style="color:var(--purple)">align*</span><span style="color:var(--amber)">}</span></span></div>
+              <div class="mk-line"><span class="mk-ln">33</span><span class="mk-bars"><span class="mk-bar" style="background:rgba(229,72,77,.55)"></span></span><span><span style="color:var(--green)">\end</span><span style="color:var(--amber)">{</span><span style="color:var(--purple)">enumerate</span><span style="color:var(--amber)">}</span></span></div>
+            </div>
+          </div>
+
+          <!-- Right PDF Pane -->
+          <div class="mk-pane">
+            <div class="mk-toolbar" style="justify-content:center;font-size:11px;color:var(--text-secondary)">
+              <span>Page 1 / 8</span> &bull; <span>125%</span> &bull; <span>Fit Width</span> &bull; <span style="color:var(--accent)">SyncTeX</span>
+            </div>
+            <div class="mk-pdf">
+              <div class="mk-page">
+                <div style="font-weight:700;font-size:12px;margin-bottom:6px">1. Analysis Problems</div>
+                <div>1. Find the domain of <em>f</em>.</div>
+                <div style="text-align:center;margin:6px 0;padding:4px;border-radius:4px;background:rgba(0,115,223,0.12);border:1px solid rgba(0,115,223,0.35)">
+                  Domain = &#8477;<br>Co-domain = [0, &infin;)
+                </div>
+                <div style="font-size:9px;color:#71717a;margin-top:6px">SyncTeX pulse highlight on double-click</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Blueprint 2: Windows Branded Installer -->
+        <div>
+          <h3>Blueprint 2 — Modern Branded Windows Installer (<code>spectrum-win-setup</code>)</h3>
+          <div class="mk-setup" style="margin-top:8px">
+            <div style="height:4px;background:var(--logo-spectrum)"></div>
+            <div class="mk-setup-body">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+                <div class="brand-prism" style="width:42px;height:42px;border-radius:11px"></div>
+                <div>
+                  <div style="font:700 17px/1.2 var(--font-display)">Spectrum <span class="tag" style="margin-left:4px">v3.0.0</span></div>
+                  <div style="font-size:12px;color:var(--text-secondary)">Update detected: v2.8.1 &rarr; v3.0.0 (Native Rust + GPUI)</div>
+                </div>
+              </div>
+              <div style="background:var(--bg-subtle);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:12px">
+                <div><strong>Install folder:</strong> <code>%LOCALAPPDATA%\Programs\Spectrum</code></div>
+                <div style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;color:var(--text-secondary)">
+                  <span>&#9745; Desktop shortcut</span>
+                  <span>&#9745; Start Menu</span>
+                  <span>&#9745; Associate .tex / .typ</span>
+                </div>
+              </div>
+              <div class="progress-track" style="height:7px;margin-bottom:14px"><div class="progress-fill" style="width:68%"></div></div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:11.5px;color:var(--text-secondary)">Repair &bull; Uninstall</span>
+                <span class="mk-compile" style="margin-left:0;padding:7px 16px;font-size:12px">Update to 3.0.0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Blueprint 3: 5-Band Settings Window -->
+        <div>
+          <h3>Blueprint 3 — Unified 5-Band Spectrum Settings</h3>
+          <div class="mockup-frame" style="margin-top:8px">
+            <div class="mk-settings-mock">
+              <div style="border-right:1px solid var(--border);padding:10px;background:var(--bg-app);font-size:11.5px;display:flex;flex-direction:column;gap:4px">
+                <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:7px;padding:5px 8px;color:var(--text-tertiary);margin-bottom:4px">Search 19 panes...</div>
+                <div style="font-weight:700;font-size:10px;color:#d23855;margin-top:2px">GENERAL</div>
+                <div class="mk-file on"><span class="dot" style="background:#d23855"></span>Appearance</div>
+                <div style="font-weight:700;font-size:10px;color:#c45001;margin-top:4px">WRITING &amp; EDITOR</div>
+                <div class="mk-file"><span class="dot" style="background:#c45001"></span>Editor &bull; Engines</div>
+                <div style="font-weight:700;font-size:10px;color:#2f9e44;margin-top:4px">WORKSPACE &amp; SYNC</div>
+                <div class="mk-file"><span class="dot" style="background:#2f9e44"></span>Projects &bull; GitHub</div>
+                <div style="font-weight:700;font-size:10px;color:#0073df;margin-top:4px">AI &amp; AGENTS</div>
+                <div class="mk-file"><span class="dot" style="background:#0073df"></span>Providers &bull; Agents</div>
+                <div style="font-weight:700;font-size:10px;color:#894ec6;margin-top:4px">RESEARCH &amp; IMPORT</div>
+                <div class="mk-file"><span class="dot" style="background:#894ec6"></span>Zotero &bull; Parsers</div>
+              </div>
+              <div style="padding:14px 16px;font-size:12px">
+                <div style="font:700 15px/1.2 var(--font-display);margin-bottom:10px">Appearance</div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+                  <span>Theme</span><span class="tag">System | Light | Dark</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+                  <span>Colour style</span><span class="tag" style="background:var(--spectrum-subtle)">Spectrum | Simple</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:8px 0">
+                  <span>Window vibrancy</span><span class="tag">On &bull; Clarity 60%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Reference GPUI Code Snippets (Canonical Patterns for Opus 5.5)</h3>
+
+      <h4>Snippet A — <code>spectrum-editor/src/scope_gutter.rs</code> (GPU Nested Scope Bars)</h4>
+<pre><code>use gpui::{Bounds, Hsla, Pixels, Point, Size, Window, fill, px};
+use spectrum_theme::SpectrumTheme;
+
+/// Per-line nesting depth (0..=8) computed incrementally on buffer edits.
+#[derive(Default)]
+pub struct ScopeDepthMap {
+    pub version: u64,
+    pub depths: Vec&lt;u8&gt;,
+}
+
+/// Paints rounded vertical Spectrum scope bars directly onto the GPUI canvas.
+/// Active innermost scope gets full opacity (0.92); outer scopes stay subtle (0.52).
+pub fn paint_scope_bars(
+    window: &amp;mut Window,
+    theme: &amp;SpectrumTheme,
+    gutter_origin: Point&lt;Pixels&gt;,
+    line_height: Pixels,
+    depth: u8,
+    is_active_scope_line: bool,
+) {
+    let bar_w = px(2.5);
+    let gap = px(2.5);
+    let visible = depth.min(8) as usize;
+    for level in 0..visible {
+        let mut color: Hsla = theme.scope_bar_color(level % 6);
+        color.a = if is_active_scope_line &amp;&amp; level + 1 == visible { 0.92 } else { 0.52 };
+        let x = gutter_origin.x + px(6.0) + (bar_w + gap) * (level as f32);
+        let bounds = Bounds::new(
+            Point::new(x, gutter_origin.y + px(1.0)),
+            Size::new(bar_w, (line_height - px(2.0)).max(px(2.0))),
+        );
+        window.paint_quad(fill(bounds, color).corner_radii(px(1.25)));
+    }
+}</code></pre>
+
+      <h4>Snippet B — <code>spectrum-app/src/workspace/toolbar.rs</code> (Ordered Spectrum Toolbar + Prism Compile Button)</h4>
+<pre><code>use gpui::{div, linear_color_stop, linear_gradient, prelude::*, px, Context, Window};
+use spectrum_theme::{SpectrumTheme, ToolbarSlot};
+use spectrum_ui::{IconButton, SplitButton};
+
+pub fn render_editor_toolbar(
+    window: &amp;mut Window,
+    cx: &amp;mut Context&lt;WorkspaceView&gt;,
+) -&gt; impl IntoElement {
+    let theme = cx.global::&lt;SpectrumTheme&gt;();
+    // 6-hue Spectrum prism helper in spectrum-theme (implemented via segmented GPU quads
+    // or GPUI's gradient API depending on the pinned gpui version's stop-count support)
+    let prism_bg = theme.prism_fill();
+
+    div()
+        .h(px(38.0))
+        .px(px(10.0))
+        .flex()
+        .items_center()
+        .gap(px(4.0))
+        .bg(theme.bg_subtle)
+        .border_b_1()
+        .border_color(theme.border)
+        // Warm creation cluster: Coral Red -&gt; Orange -&gt; Amber -&gt; Green -&gt; Teal
+        .child(IconButton::spectrum("insert", "plus", ToolbarSlot::Insert, theme))
+        .child(IconButton::spectrum("figure", "photo", ToolbarSlot::Figure, theme))
+        .child(IconButton::spectrum("table", "table", ToolbarSlot::Table, theme))
+        .child(IconButton::spectrum("diagram", "pencil", ToolbarSlot::Diagram, theme))
+        .child(IconButton::spectrum("jyutping", "jyut", ToolbarSlot::Jyutping, theme))
+        .child(div().flex_1())
+        // Cool inspection &amp; AI cluster: Cyan -&gt; Blue -&gt; Indigo -&gt; Violet -&gt; Magenta
+        .child(IconButton::spectrum("insights", "chart", ToolbarSlot::Insights, theme))
+        .child(IconButton::spectrum("grammar", "check", ToolbarSlot::Grammar, theme))
+        .child(IconButton::spectrum("tools", "grid", ToolbarSlot::Tools, theme))
+        .child(IconButton::spectrum("assistant", "sparkles", ToolbarSlot::Assistant, theme))
+        .child(IconButton::spectrum("agent", "wand", ToolbarSlot::Agent, theme))
+        .child(SplitButton::primary("Compile").bg(prism_bg))
+}</code></pre>
+
+      <h4>Snippet C — <code>spectrum-app/src/runtime.rs</code> (Mandatory <code>smol</code> &harr; <code>tokio</code> Bridge)</h4>
+<pre><code>use std::future::Future;
+use std::sync::OnceLock;
+use tokio::runtime::{Builder, Runtime};
+
+static TOKIO_RT: OnceLock&lt;Runtime&gt; = OnceLock::new();
+
+pub fn init_tokio_runtime() {
+    TOKIO_RT.get_or_init(|| {
+        Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name("spectrum-tokio")
+            .enable_all()
+            .build()
+            .expect("failed to initialize Spectrum Tokio runtime")
+    });
+}
+
+/// Runs any Tokio future (reqwest, LSP, MCP, compile) safely from GPUI's smol executor.
+/// Returns Err if the background task was cancelled or panicked (zero .unwrap()/.expect()!).
+pub async fn spawn_tokio&lt;F, T&gt;(fut: F) -&gt; Result&lt;T, RuntimeError&gt;
+where
+    F: Future&lt;Output = T&gt; + Send + 'static,
+    T: Send + 'static,
+{
+    let rt = TOKIO_RT.get().ok_or(RuntimeError::NotInitialized)?;
+    let (tx, rx) = futures_channel::oneshot::channel();
+    rt.spawn(async move {
+        let _ = tx.send(fut.await);
+    });
+    rx.await.map_err(|_| RuntimeError::TaskCancelled)
+}</code></pre>
+    </section>
+
+    <!-- SECTION 4: PHASED IMPLEMENTATION PLAN -->
+    <section id="phases">
+      <div class="sec-header">
+        <span class="sec-badge" style="background:var(--green-soft);color:var(--green)">Section 04</span>
+        <h2>Phased Implementation Plan (Phases 0–10)</h2>
+      </div>
+      <p>
+        Each phase ends with a <strong>runnable, testable milestone</strong>. Never start Phase <em>N+1</em> until Phase <em>N</em> passes
+        <code>cargo fmt --check</code>, <code>cargo clippy --all-targets -- -D warnings</code>, and <code>cargo test --workspace</code>.
+        Check off milestones as Opus 5.5 completes them (progress is saved automatically in your browser).
+      </p>
+
+      <!-- PHASE 0 -->
+      <details class="phase" id="phase-0" open>
+        <summary>
+          <span class="phase-pill" style="background:#d23855">PHASE 0</span>
+          <span>Workspace Bootstrap, GPUI Pinning &amp; Theme Engine</span>
+          <span class="phase-meta">Crates: workspace, spectrum-theme, spectrum-app (skeleton)</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li>Initialize Cargo workspace with <code>resolver = "2"</code>, <code>[workspace.package] version = "3.0.0"</code> (inherited across all 17 crates via <code>version.workspace = true</code>), <code>rust-toolchain.toml</code> (latest stable Rust), <code>rustfmt.toml</code>, <code>clippy.toml</code>, and <code>[workspace.lints]</code>.</li>
+            <li>Run the initial <strong>Dependency Upgrade Audit</strong>: check latest compatible <strong>GPUI Kit</strong> (e.g. <code>gpui-component</code>) + matching <code>gpui</code> release, latest stable Rust crates, and latest <code>engines.json</code> / <code>checkers.lock.json</code> upstream versions before locking Phase 0.</li>
+            <li>Pin <strong>GPUI Kit</strong> (e.g. <code>gpui-component</code>) and its exact matching <code>gpui</code> release/rev in <code>[workspace.dependencies]</code> (never let Cargo resolve two different <code>gpui</code> versions). Verify it compiles on macOS (Metal) and Windows (DX12) with a minimal smoke window before writing any domain code.</li>
+            <li>Create the <strong>Tokio Bridge</strong> in <code>spectrum-app/src/runtime.rs</code>: a global <code>OnceLock&lt;tokio::runtime::Runtime&gt;</code> plus a tiny helper <code>spawn_tokio(cx, fut)</code> that runs Tokio futures on the multi-threaded Tokio pool and delivers results back onto GPUI's foreground executor via <code>oneshot</code>.</li>
+            <li>Implement <code>spectrum-theme</code>:
+              <ul>
+                <li><code>AreaHue</code> enum with all 12 areas from <code>palette.json</code> (<code>Projects</code>, <code>Writing</code>, <code>Assistant</code>, <code>References</code>, <code>Composer</code>, <code>Circuits</code>, <code>Structures</code>, <code>Vectors</code>, <code>Flow</code>, <code>Plots</code>, <code>Forms</code>, <code>Symbols</code>).</li>
+                <li><code>ThemeMode</code> (<code>Light</code>, <code>Dark</code>, <code>System</code>), <code>ColourStyle</code> (<code>Spectrum</code>, <code>Simple</code>), <code>SpectrumTheme</code> global (<code>impl Global for SpectrumTheme</code>) holding every surface, text, border, syntax, diff, and effort colour token.</li>
+                <li>Write a <code>sync_kit_theme(&amp;SpectrumTheme, cx)</code> adapter that pushes Spectrum's Light/Dark tokens and radii into GPUI Kit's global theme on startup and whenever the user toggles appearance.</li>
+                <li><code>SpectrumGradient</code> helper for the 6-hue prism bar and Compile split button.</li>
+              </ul>
+            </li>
+            <li>Bundle SF/Lucide/Fluent monochrome SVG icons into <code>assets/icons/</code> and wire a custom GPUI <code>AssetSource</code> (using <code>rust-embed</code> in release builds, filesystem in debug).</li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p0-1"><span>Blank Spectrum window opens in &lt;100ms on macOS (vibrant titlebar with custom traffic-light offset) and Windows, toggling Light/Dark and Spectrum/Simple themes live.</span></label>
+          <label class="phase-check"><input type="checkbox" data-id="p0-2"><span><code>just check</code> (fmt + clippy + test) passes cleanly with zero warnings, workspace version is <code>3.0.0</code>, and dependency upgrade inventory is recorded.</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 1 -->
+      <details class="phase" id="phase-1">
+        <summary>
+          <span class="phase-pill" style="background:#c45001">PHASE 1</span>
+          <span>Core Domain, Project Folders &amp; Reusable GPUI UI Kit</span>
+          <span class="phase-meta">Crates: spectrum-core, spectrum-ui</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong><code>spectrum-core</code>:</strong>
+              <ul>
+                <li><code>paths.rs</code>: Platform-aware data dir matching 2.8.x bundle ID <code>com.beyond3345.spectrum</code> (<code>~/Library/Application Support/com.beyond3345.spectrum</code> on macOS, <code>%APPDATA%\com.beyond3345.spectrum</code> on Windows), default projects dir (<code>~/Documents/Spectrum</code>, auto-redirected to <code>~/Spectrum</code> if inside iCloud/OneDrive), and bundled engine binary locator.</li>
+                <li><code>project.rs</code>: Project metadata, recursive file-tree scanner (ignoring <code>.git</code>, <code>target</code>, aux TeX build junk), main-file detection (<code>main.tex</code>, <code>main.typ</code>, <code>README.md</code>), template instantiation, Overleaf <code>.zip</code> import (<code>zip</code> crate), arXiv tarball import (<code>flate2</code> + <code>tar</code>).</li>
+                <li><code>watcher.rs</code>: Debounced filesystem watcher (<code>notify-debouncer-mini</code>) emitting typed <code>FsEvent</code>s over a broadcast channel so external edits (e.g. Git or AI agents) immediately refresh the file tree and open buffers.</li>
+                <li><code>settings.rs</code>: Versioned <code>AppSettings</code> and per-project <code>ProjectSettings</code> structs serialized with <code>serde_json</code>, atomic write (write temp + rename) to prevent corruption on crash.</li>
+              </ul>
+            </li>
+            <li><strong><code>spectrum-ui</code> (Spectrum Facade over GPUI Kit):</strong>
+              <ul>
+                <li>Start from <strong>GPUI Kit</strong>'s ready-made components instead of writing every primitive from scratch: leverage its <code>Button</code>, <code>TextInput</code>, <code>Dropdown</code>/<code>Select</code>, <code>Segmented</code>, <code>TabBar</code>, <code>Modal</code>/<code>Sheet</code>, <code>Popover</code>, <code>Notification</code> (toasts), <code>ResizablePanelGroup</code> (3-pane split), <code>Sidebar</code>, and <code>VirtualList</code>/<code>Table</code>.</li>
+                <li>Wrap them in thin Spectrum-styled helpers inside <code>spectrum-ui</code> that inject <code>AreaHue</code> tinting, Spectrum's 6-hue Compile <code>SplitButton</code>, and consistent <code>16px/12px/10px</code> radii.</li>
+                <li>Build only the few truly custom Spectrum chrome pieces on top: the fuzzy <code>CommandPalette</code> (<code>Cmd+Shift+P</code>) &amp; <code>QuickOpen</code> (<code>Cmd+P</code>, backed by <code>nucleo-matcher</code>) and the Spectrum-gradient Compile split button.</li>
+              </ul>
+            </li>
+            <li><strong>Workspace Shell in <code>spectrum-app</code>:</strong> Build the Home/Projects view and the 3-pane Project Workspace skeleton (File Tree | Editor slot | PDF slot) with working file opening, creation, rename, delete (to OS Trash via <code>trash</code> crate), and Command Palette.</li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p1-1"><span>Can open existing <code>~/Documents/Spectrum</code> projects, browse the file tree, create/rename/trash files, switch themes, and invoke actions from <code>Cmd+Shift+P</code> Command Palette &amp; <code>Cmd+P</code> Quick Open.</span></label>
+          <label class="phase-check"><input type="checkbox" data-id="p1-2"><span>All <code>spectrum-core</code> file, project, and settings modules have unit tests covering edge cases (non-UTF8 filenames, missing dirs, atomic saves).</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 2 -->
+      <details class="phase" id="phase-2">
+        <summary>
+          <span class="phase-pill" style="background:#9e6a04">PHASE 2</span>
+          <span>High-FPS Native Code Editor (Rope + Tree-sitter + IME + Vim)</span>
+          <span class="phase-meta">Crate: spectrum-editor</span>
+        </summary>
+        <div class="phase-body">
+          <div class="callout warn">
+            <div class="callout-title">Where to Use GPUI Kit vs. Custom Editor Canvas</div>
+            Use <strong>GPUI Kit's text inputs</strong> for all form fields, settings, BibTeX fields, search bars, and the AI chat composer.
+            For the main LaTeX/Typst/Markdown code editor, build a dedicated <code>spectrum-editor</code> (or start from GPUI Kit's multi-line code input as a Phase 2 prototype and replace its rendering core with the Rope + Tree-sitter + virtualized canvas below) so 20k-line files, Vim/Emacs modes, inline AI diffs, and Jyutping IME hit 120Hz cleanly.
+          </div>
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong>Document &amp; Rope Layer (<code>buffer.rs</code>):</strong>
+              <ul>
+                <li>Back text storage with <code>ropey::Rope</code>. Maintain a monotonically increasing <code>version: u64</code> for LSP synchronization and highlight cache invalidation.</li>
+                <li>Implement a transaction-based undo/redo stack (grouping rapid keystrokes within 400ms or word boundaries) and multi-cursor / selection model (<code>Vec&lt;Selection&gt;</code> sorted and merged).</li>
+                <li>Provide fast O(log N) conversions between byte offset, UTF-16 <code>(line, col)</code> (required by LSP &amp; macOS IME), and char index.</li>
+              </ul>
+            </li>
+            <li><strong>Incremental Syntax Highlighting (<code>highlight.rs</code>):</strong>
+              <ul>
+                <li>Integrate <code>tree-sitter</code> with grammars for LaTeX, Typst, Markdown, and BibTeX. On edit, call <code>tree.edit(&amp;InputEdit)</code> and reparse incrementally (typically &lt;0.3ms).</li>
+                <li>Run Tree-sitter highlight queries only for the <strong>visible viewport line range + 40 lines overscan</strong>, mapping captures directly to <code>SpectrumTheme</code> syntax colours (<code>command</code>, <code>bracket</code>, <code>comment</code>, <code>math</code>, <code>string</code>, <code>heading</code>).</li>
+                <li>Extract document outline (<code>\section</code>, <code>\subsection</code>, Typst <code>= Heading</code>, Markdown <code>#</code>) and foldable ranges directly from the Tree-sitter AST.</li>
+              </ul>
+            </li>
+            <li><strong>GPU Viewport &amp; Line Shaping (<code>view.rs</code>, <code>element.rs</code>):</strong>
+              <ul>
+                <li>Implement a custom GPUI <code>Element</code> for the editor canvas. Compute visible line range from scroll offset + line height; never lay out off-screen lines.</li>
+                <li>Cache <code>ShapedLine</code> per <code>(line_idx, buffer_version, wrap_width)</code> in a bounded LRU cache so scrolling and cursor blinking do zero re-shaping.</li>
+                <li>Render in strict Z-order: active line highlight &rarr; diff hunk background &rarr; selection rects &rarr; search match highlights &rarr; diagnostic/spell squiggles &rarr; shaped text runs &rarr; ghost-text AI completion &rarr; crisp cursor(s).</li>
+                <li>Render synchronized gutter (<code>scope_gutter.rs</code>): line numbers, fold chevrons, <strong>nested Spectrum Scope Gutter Bars</strong> (<code>2px</code> rounded vertical bars, <code>2px</code> gap, up to 8 depths cycling the 6-colour scope palette for LaTeX environments, Typst blocks, and Markdown fences, with active-scope highlight), git diff bar, and diagnostic/todo markers.</li>
+              </ul>
+            </li>
+            <li><strong>Smart Academic Editing &amp; Snippets (<code>smart_typing.rs</code>, <code>snippets.rs</code>, <code>math_preview.rs</code>):</strong>
+              <ul>
+                <li>Port Spectrum's smart-typing helpers from <code>apps/frontend/src/editor/smartTyping.ts</code>: auto-closing <code>$</code>, <code>\(</code>, <code>\[</code>, <code>\left(</code> (<code>closeMaths</code>); auto-continuing <code>\item</code> and Typst list items on Enter (<code>continueLists</code>).</li>
+                <li>User snippets (<code>trigger + Tab</code> expansion with tab-stop placeholders) and inline <code>% TODO</code> / <code>// TODO</code> highlight tracking (<code>todos.ts</code> / <code>todoHighlights.ts</code>).</li>
+                <li><strong>Inline Math &amp; Figure Preview at Cursor (<code>math_preview.rs</code>, <code>figure_preview.rs</code>):</strong> When the cursor sits inside <code>$...$</code> or <code>\[...\]</code>, debounce 250ms, render to SVG in the background, and show a crisp floating popover; support <code>Mod-Alt-p</code> (macOS) / <code>Shift-Alt-p</code> (Windows, avoiding AltGr) to compile just the <code>tikzpicture</code>, <code>table</code>, or <code>equation</code> at the cursor in isolation.</li>
+                <li><strong>25 Built-In Editor Themes &amp; Customizable Shortcuts (<code>shortcuts.ts</code>):</strong> Port all 25 themes from <code>editorThemes.ts</code> (independent Light/Dark picks + 12 per-role overrides) and the full customizable shortcut table (<code>Mod-Enter</code> Compile, <code>Mod-b</code>/<code>Mod-i</code>/<code>Shift-Mod-e</code> LaTeX wrapping, <code>Mod-1/2/3</code> layout views, <code>Alt-Click</code> multi-cursor, <code>Mod-Click</code> Go to Definition).</li>
+              </ul>
+            </li>
+            <li><strong>Keyboard, Clipboard, Search &amp; IME (<code>input.rs</code>, <code>vim.rs</code>, <code>search.rs</code>):</strong>
+              <ul>
+                <li>Implement GPUI's <code>EntityInputHandler</code> trait completely (<code>text_for_range</code>, <code>selected_text_range</code>, <code>marked_text_range</code>, <code>replace_text_in_range</code>, <code>replace_and_mark_text_in_range</code>, <code>bounds_for_range</code>) — <strong>critical for Chinese/Cantonese Jyutping IME</strong> and macOS accent popovers.</li>
+                <li>Implement Find &amp; Replace bar (literal, case-sensitive, whole-word, regex via <code>regex</code> crate) with live match count and jump.</li>
+                <li>Add optional Vim/Emacs keymap state machine as a thin action-translation layer over core editor commands (<code>MoveUp</code>, <code>DeleteWord</code>, <code>Yank</code>, etc.), never tangled into buffer logic.</li>
+              </ul>
+            </li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p2-1"><span>Opening a 20,000-line <code>.tex</code> file takes &lt;30ms; typing and scrolling stay locked at 120fps (&lt;4ms frame time).</span></label>
+          <label class="phase-check"><input type="checkbox" data-id="p2-2"><span>Chinese/Jyutping IME composition, undo/redo, folding, bracket matching, and regex find/replace all work cleanly on macOS and Windows.</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 3 -->
+      <details class="phase" id="phase-3">
+        <summary>
+          <span class="phase-pill" style="background:#438303">PHASE 3</span>
+          <span>Compilation Pipeline, Log Diagnostics &amp; SyncTeX</span>
+          <span class="phase-meta">Crate: spectrum-compile</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong>Engine Discovery &amp; PATH Resolution (<code>engines.rs</code>):</strong>
+              <ul>
+                <li>Port <code>engines.json</code> manifest &amp; SHA-256 verification. Locate bundled <code>tectonic</code>, <code>typst</code>, <code>biber</code>, <code>pandoc</code> first; also probe login shell <code>PATH</code> + <code>/Library/TeX/texbin</code>, <code>/opt/homebrew/bin</code> (macOS) and MiKTeX/TeX Live registry paths (Windows).</li>
+                <li>On Windows, always set <code>creation_flags(0x0800_0000)</code> (<code>CREATE_NO_WINDOW</code>) on every spawned engine process.</li>
+              </ul>
+            </li>
+            <li><strong>Build Runner, Live Output &amp; macOS Seatbelt Sandbox (<code>runner.rs</code>, <code>sandbox.rs</code>):</strong>
+              <ul>
+                <li>Support Tectonic, Typst, pdfLaTeX, XeLaTeX, LuaLaTeX, Latexmk, and Markdown-to-PDF (via Typst/Pandoc), plus optional live console output in the PDF pane while compiling (<code>liveOutput</code>) and automatic post-compile checkpointing (<code>checkpointOnCompile</code>).</li>
+                <li>Stream stdout/stderr line-by-line to UI log panel; enforce cancellation when a newer auto-compile triggers (kill entire process group cleanly).</li>
+                <li><strong>Port exact macOS compile confinement (from <code>compileSandbox.js</code>):</strong> Untrusted projects run under <code>/usr/bin/sandbox-exec</code> with isolated <code>TEXMFVAR</code> in <code>DATA_DIR/compile-cache</code>. Include two crucial macOS workarounds from 2.8.0:
+                  <br>&bull; <code>thin_biber()</code>: detect universal Mach-O Biber (magic <code>0xcafebabe</code>), pre-thin this Mac's slice into <code>compile-cache/bin/&lt;hash&gt;/biber</code> and prepend to <code>PATH</code> so Biber never tries to invoke <code>lipo</code>/<code>xcodebuild</code> inside the sandbox.
+                  <br>&bull; <code>real_python()</code>: resolve Apple's <code>/usr/bin/python3</code> shim via <code>xcrun --find python3</code> and symlink it into <code>compile-cache/bin/python/python3</code> so <code>latexminted</code> works confined.</li>
+                <li>Port <code>trustService</code> ("Trust this project" lifts sandbox) and background Tectonic warmup on first launch.</li>
+              </ul>
+            </li>
+            <li><strong>Log Parser &amp; Native SyncTeX (<code>log_parser.rs</code>, <code>synctex.rs</code>):</strong>
+              <ul>
+                <li>Port TeX/Typst error &amp; warning regex parsers (file, line, severity, message, overfull hbox) so clicking any log item jumps directly to the editor line and displays inline diagnostics.</li>
+                <li>Implement a pure-Rust <code>.synctex.gz</code> parser (<code>flate2</code>) supporting both forward search (source <code>(file, line, col)</code> &rarr; PDF <code>(page, x, y, w, h)</code>) and inverse search (PDF click &rarr; source line). For Typst, use Typst's native source-span jump support.</li>
+              </ul>
+            </li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p3-1"><span>Clicking the Spectrum Compile split button compiles LaTeX (Tectonic &amp; TeX Live) and Typst projects, streams logs, and highlights errors in the editor.</span></label>
+          <label class="phase-check"><input type="checkbox" data-id="p3-2"><span>SyncTeX forward and inverse coordinate lookup passes unit tests against fixture <code>.synctex.gz</code> files.</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 4 -->
+      <details class="phase" id="phase-4">
+        <summary>
+          <span class="phase-pill" style="background:#03845f">PHASE 4</span>
+          <span>Native GPU PDF Viewer (PDFium + LRU Tile Cache)</span>
+          <span class="phase-meta">Crate: spectrum-pdf</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong>PDFium Worker Thread (<code>engine.rs</code>):</strong>
+              <ul>
+                <li>Bind PDFium via <code>pdfium-render</code>. Because PDFium is not thread-safe across calls on the same document, dedicate a single actor thread (<code>std::thread</code> + crossbeam channel) owning the <code>PdfDocument</code>.</li>
+                <li>Support atomic reload after recompile without losing current scroll position or zoom level (keep displaying the previous cached frame until the new page tile finishes rendering — zero white flash!).</li>
+              </ul>
+            </li>
+            <li><strong>GPU Tile Cache &amp; Colour Modes (<code>cache.rs</code>, <code>view.rs</code>):</strong>
+              <ul>
+                <li>Render visible pages (plus 1 page above/below) at <code>zoom * window_scale_factor</code> into RGBA buffers, upload to GPUI <code>RenderImage</code>, and store in a bounded LRU cache (e.g. max 128 MB pixel budget — evict furthest pages automatically).</li>
+                <li>Apply fast SIMD/LUT pixel transform on the worker thread for <strong>Dark Mode</strong> (smart luminance inversion preserving hue), <strong>Sepia</strong>, and <strong>Paper</strong> page colours.</li>
+                <li>Support trackpad pinch-to-zoom, Cmd+/Cmd-, Fit-Width, Fit-Page, and continuous vertical scrolling.</li>
+              </ul>
+            </li>
+            <li><strong>Interactive Overlays (<code>overlays.rs</code>, <code>notes.rs</code>):</strong>
+              <ul>
+                <li>Extract PDF text character bounding boxes (<code>PdfPageText</code>) for drag-to-select &amp; copy, plus in-PDF text search (<code>Cmd+F</code>) with highlighted rects.</li>
+                <li>Extract PDF internal/external link annotations (<code>PdfPageLinks</code>) so citations and ToC links jump smoothly or open URLs.</li>
+                <li>Double-click triggers SyncTeX inverse jump to <code>spectrum-editor</code>; forward jump draws a fading Spectrum-coloured pulse rectangle on the target PDF region.</li>
+                <li>Store sticky notes in the existing project notes JSON format; render pin badges on the PDF page and edit notes in a clean collapsible side drawer.</li>
+                <li>Support export to PNG, SVG, HTML, and PDF/A (for Typst via CLI flags, for PDF pages via PDFium bitmap/image export).</li>
+              </ul>
+            </li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p4-1"><span>A 100-page scientific PDF with heavy TikZ figures scrolls smoothly at 60–120fps while keeping total PDF cache memory under 128 MB.</span></label>
+          <label class="phase-check"><input type="checkbox" data-id="p4-2"><span>Double-click SyncTeX jump, text selection/copy, internal links, dark-mode page colours, and zero-flash reload on recompile all work.</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 5 -->
+      <details class="phase" id="phase-5">
+        <summary>
+          <span class="phase-pill" style="background:#0a8282">PHASE 5</span>
+          <span>LSP Integration &amp; In-Process Spelling/Grammar</span>
+          <span class="phase-meta">Crates: spectrum-lsp, spectrum-checkers</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong><code>spectrum-lsp</code>:</strong>
+              <ul>
+                <li>Implement a lightweight async JSON-RPC 2.0 stdio transport (<code>Content-Length</code> framing) using <code>lsp-types</code> over Tokio child processes for <code>texlab</code> (LaTeX/BibTeX) and <code>tinymist</code> (Typst).</li>
+                <li>Wire lifecycle: <code>initialize</code>, <code>textDocument/didOpen</code>, incremental <code>didChange</code>, <code>didSave</code>, <code>publishDiagnostics</code>, <code>completion</code>, <code>hover</code>, <code>definition</code>, <code>rename</code>, and <code>documentSymbol</code> (feeding the Outline panel).</li>
+                <li>Auto-restart crashed language servers with exponential backoff (max 3 retries).</li>
+              </ul>
+            </li>
+            <li><strong><code>spectrum-checkers</code> (Zero WASM / Zero N-API! — Upgraded for v3.0.0):</strong>
+              <ul>
+                <li><strong>Harper Grammar (port edge cases from <code>grammarService.js</code>):</strong> Check for the latest <code>harper-core</code> release (upgrading from 2.8.0's <code>3.0.0</code> WASM build) and add it directly as a Rust crate dependency.
+                  <br>&bull; <strong>Lazy init:</strong> Do not allocate Harper's dictionary (~150–200 MB) until the first grammar check runs (keeps idle RAM &lt;90 MB!).
+                  <br>&bull; <strong>50k-char chunking &amp; cancellation:</strong> Process long theses in <code>50_000</code>-char parts checking an <code>AtomicBool</code> cancel token between parts.
+                  <br>&bull; <strong>Dialects &amp; house rules:</strong> Support all 5 dialects (<code>en-AU</code> default, <code>en-US</code>, <code>en-GB</code>, <code>en-CA</code>, <code>en-IN</code>), Oxford comma mode (<code>avoid | require | off</code>), style toggle, and per-project <code>ownWords</code>.
+                  <br>&bull; <strong>Markup &amp; CJK safety:</strong> Mask LaTeX/Typst markup at identical offsets (set <code>fixable = false</code> if a span overlaps markup) and blank non-Latin scripts (<code>OTHER_SCRIPT</code>) inside English prose runs so inline Chinese never triggers false errors.</li>
+                <li><strong>Hunspell Spelling:</strong> Check <code>hunspell/hunspell</code> for updates beyond <code>1.7.6</code>, refresh <code>native/hunspell/core/*.cxx</code> + <code>checkers.lock.json</code> hashes, compile via <code>build.rs</code> + <code>cc</code>, and expose a safe Rust wrapper (<code>SpellChecker::new(aff, dic)</code>) loading updated <code>dictionaries/</code> (SCOWL / AussieDic / user languages + personal word list).</li>
+                <li><strong>LanguageTool (Optional):</strong> Async HTTP client to configured local/remote LanguageTool server.</li>
+                <li>Run checkers on a debounced background task (350ms after typing stops) and push squiggle ranges + quick-fix suggestions into <code>spectrum-editor</code>.</li>
+              </ul>
+            </li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p5-1"><span>TexLab &amp; Tinymist provide completions, hover docs, Go to Definition, Rename, and live diagnostics in the editor.</span></label>
+          <label class="phase-check"><input type="checkbox" data-id="p5-2"><span>In-process Harper + Hunspell check prose in &lt;15ms on a 5,000-word paper with one-click quick-fix replacement.</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 6 -->
+      <details class="phase" id="phase-6">
+        <summary>
+          <span class="phase-pill" style="background:#067fa1">PHASE 6</span>
+          <span>AI Assistant, Rust Agent Loop &amp; MCP/ACP Workspace</span>
+          <span class="phase-meta">Crate: spectrum-ai</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong>Unified Streaming LLM Client (<code>providers.rs</code> — port exact API protocols from <code>apps/backend/src/services/providers.js</code>):</strong>
+              <ul>
+                <li>Define a clean <code>LlmProvider</code> trait supporting streaming text deltas, reasoning/thinking deltas, tool calls, vision image attachments, and token usage (with <code>models.dev</code> 6-hour auto-price cache for cost estimation).</li>
+                <li>Support all 4 model roles (<code>main</code>, <code>fast</code>, <code>vision</code>, <code>references</code>) and the exact protocol quirks from 2.8.0:
+                  <br>&bull; <strong>OpenAI:</strong> Use the <strong>Responses API</strong> (<code>reasoning: { effort }</code>) — Chat Completions refuses tools with effort above <code>none</code>.
+                  <br>&bull; <strong>Anthropic:</strong> Use the <strong>Messages API</strong> (<code>output_config: { effort }</code>; <code>thinking: { type: "disabled" }</code> when effort is <code>none</code>).
+                  <br>&bull; <strong>Gemini, OpenRouter, DeepSeek, Moonshot Kimi (+ China region), Z.ai GLM (+ BigModel China), Alibaba Qwen (+ Beijing/HK regions &amp; <code>enable_thinking</code>/<code>thinking_budget</code>), Ollama (live model list, no key):</strong> Map effort levels accurately to each provider's fields and Spectrum's 6 effort colours (<code>--eff-off</code>..<code>--eff-max</code>).</li>
+                <li>Read/write API keys using the 2.8.0-compatible OS keychain / Windows DPAPI store (<code>spectrum-core::keystore</code>).</li>
+              </ul>
+            </li>
+            <li><strong>Inline Assistant &amp; Diff Review (<code>assistant.rs</code>):</strong>
+              <ul>
+                <li>Context-aware actions: Explain compile error, Polish, Rewrite, Translate, custom Personas, and AI inline ghost-text autocomplete (debounced request using the <code>fast</code> model).</li>
+                <li>Return edits as structured search/replace hunks rendered directly in <code>spectrum-editor</code> with per-hunk Accept / Reject buttons, optional <code>checkpointEveryApply</code>, <code>compileAfterApply</code>, and <code>offerFixAfterApply</code> automations.</li>
+              </ul>
+            </li>
+            <li><strong>Native Agent Workspace, Sandboxing &amp; MCP/ACP (<code>agent.rs</code>, <code>sandbox.rs</code>, <code>workspace.rs</code>, <code>mcp.rs</code>, <code>acp.rs</code>):</strong>
+              <ul>
+                <li>Replace LangGraph with an explicit, deterministic Rust state machine (<code>Plan &rarr; ToolCall &rarr; Observe &rarr; Verify</code>) with max-step budgets, cancellation tokens, and bundled <code>skills/</code> loading.</li>
+                <li><strong>Port exact isolation &amp; security invariants (from <code>agentSandbox.js</code> &amp; <code>agentWorkspace.js</code>):</strong>
+                  <br>&bull; Enforce <strong>50 MB max single file, 500 MB max project, 10,000 max files</strong>; reject symlinks and hardlinks (<code>O_NOFOLLOW</code>, <code>nlink == 1</code>).
+                  <br>&bull; Support <strong>Isolated</strong> mode (baseline snapshot + isolated <code>work/</code> copy + SHA-256 verified <code>proposal.json</code> + 3-way merge on apply) and <strong>Direct</strong> mode (mandatory <code>before-ai</code> checkpoint; abort if any exposed file fails backup).
+                  <br>&bull; macOS Seatbelt profile denying <code>.spectrum</code>, <code>.git</code>, <code>.claude</code>, and secret file extensions, with optional host-allowlist local proxy gate (<code>agentNetwork</code>) and <code>com.apple.SecurityServer</code>/<code>trustd</code> rules for <code>rustls-native-certs</code>; Windows native restricted sandbox helper (<code>native/agent-sandbox</code>).</li>
+                <li>Implement MCP client (stdio &amp; Streamable HTTP/SSE) and ACP JSON-RPC bridge for external local agents (OpenCode, Codex, Claude Agent).</li>
+              </ul>
+            </li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p6-1"><span>Streaming chat works across OpenAI, Anthropic, Gemini, and Ollama with native Markdown rendering and one-click Apply Diff in the editor.</span></label>
+          <label class="phase-check"><input type="checkbox" data-id="p6-2"><span>Built-in Spectrum agent and at least one external ACP agent + MCP server execute tool calls safely inside an isolated workspace.</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 7 -->
+      <details class="phase" id="phase-7">
+        <summary>
+          <span class="phase-pill" style="background:#0073df">PHASE 7</span>
+          <span>References, Zotero, Research Aggregator &amp; Preflight Review</span>
+          <span class="phase-meta">Crate: spectrum-references</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong>BibTeX &amp; Citation Resolver (<code>bibtex.rs</code>, <code>resolve.rs</code>):</strong>
+              <ul>
+                <li>Parse/format <code>.bib</code> files (<code>biblatex</code> crate or custom lossless parser preserving comments/ordering).</li>
+                <li>Convert pasted DOIs (Crossref content negotiation), arXiv IDs (arXiv Atom XML via <code>quick-xml</code>), and URLs into clean BibTeX entries and insert <code>\cite{key}</code> / <code>@key</code> at cursor.</li>
+              </ul>
+            </li>
+            <li><strong>Parallel Research Tab (<code>research.rs</code>):</strong>
+              <ul>
+                <li>Query OpenAlex, Semantic Scholar, arXiv, Crossref, and PubMed concurrently with <code>tokio::join!</code>, deduplicate by normalized DOI/title, and render results in a fast virtualized GPUI list with one-click "Add to .bib".</li>
+              </ul>
+            </li>
+            <li><strong>Zotero Integration (<code>zotero.rs</code>):</strong>
+              <ul>
+                <li>Connect to local Zotero Better BibTeX / local API (and optional Zotero Web API) to browse collections and insert citations.</li>
+              </ul>
+            </li>
+            <li><strong>Document Parsers &amp; Template Transfer (<code>transfer.rs</code>):</strong>
+              <ul>
+                <li>Port MinerU / OCR PDF-to-LaTeX/Typst template transfer (polling every <code>3s</code>, <code>10 min</code> timeout, reading tokens from <code>spectrum-core::keystore</code>) for converting existing PDFs into editable Spectrum projects.</li>
+              </ul>
+            </li>
+            <li><strong>Preflight Review Engine (<code>review.rs</code>):</strong>
+              <ul>
+                <li>Pure-Rust static analyzers: undefined citations/labels, unused bibliography keys, compile/layout warnings (overfull boxes, missing figures), anonymity check (author names/emails/grants in blind submissions), accessibility checks (alt-text, PDF tagging), plus optional AI review pass.</li>
+              </ul>
+            </li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p7-1"><span>Pasting a DOI or arXiv ID generates a valid BibTeX entry; Research tab returns deduplicated results from all 5 academic sources in parallel.</span></label>
+          <label class="phase-check"><input type="checkbox" data-id="p7-2"><span>Preflight Review reports missing references, anonymity leaks, and layout warnings with click-to-jump links.</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 8 -->
+      <details class="phase" id="phase-8">
+        <summary>
+          <span class="phase-pill" style="background:#7361e4">PHASE 8</span>
+          <span>Checkpoints, Native Git &amp; GitHub Sync</span>
+          <span class="phase-meta">Crate: spectrum-git</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong>Local Checkpoints (<code>checkpoints.rs</code>):</strong>
+              <ul>
+                <li>Use <code>git2</code> (libgit2 statically linked) to initialize/commit/tag project checkpoints without requiring a system <code>git</code> binary.</li>
+                <li>Render side-by-side or unified word-level diffs using <code>similar</code> with Spectrum's <code>--diff-added</code> / <code>--diff-removed</code> tokens and one-click restore.</li>
+              </ul>
+            </li>
+            <li><strong>GitHub Device Flow &amp; Private Sync (<code>github.rs</code>):</strong>
+              <ul>
+                <li>Implement GitHub OAuth Device Flow using Spectrum's existing client ID <code>Ov23lictk8ESvCDcCwyF</code> (no client secret, overridable via <code>SPECTRUM_GITHUB_CLIENT_ID</code>), storing the token in OS keychain / Windows DPAPI.</li>
+                <li>Push/pull private project repositories and settings-sync repo with conflict detection and clear recovery UI.</li>
+              </ul>
+            </li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p8-1"><span>Creating, diffing, and restoring checkpoints takes &lt;50ms; GitHub Device Flow signs in and syncs a private repo cleanly.</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 9 -->
+      <details class="phase" id="phase-9">
+        <summary>
+          <span class="phase-pill" style="background:#a34ec6">PHASE 9</span>
+          <span>LaTeX &harr; Typst Converter, Jyutping &amp; Simplified Diagram Composer</span>
+          <span class="phase-meta">Crates: spectrum-convert, spectrum-diagram</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong>LaTeX &harr; Typst Converter (<code>spectrum-convert</code>):</strong>
+              <ul>
+                <li>Port Spectrum's region-aware conversion pipeline (<code>toTypst</code> / <code>toLatex</code>), leveraging the Rust <code>typst-syntax</code> crate directly (already used in <code>native/typst-syntax</code>) and Tree-sitter LaTeX AST.</li>
+                <li>Preserve labels, cross-references, citations, math equations, figures, and tables; automatically run a verification compile on the converted project and report any warnings.</li>
+              </ul>
+            </li>
+            <li><strong>Cantonese Jyutping (<code>jyutping.rs</code>):</strong>
+              <ul>
+                <li>Port <code>xjyutping</code> preamble injection / compile-time ruby annotation hook and bundle the 6 Chinese fonts so Cantonese documents compile identically to Spectrum 2.8.</li>
+              </ul>
+            </li>
+            <li><strong>Simplified Native Diagram Composer (<code>spectrum-diagram</code>):</strong>
+              <ul>
+                <li>Open as a secondary GPUI window (matching <code>open_diagram</code>) with area-coloured category chips (Circuits, Structures, Vectors, Flow, Plots, Forms).</li>
+                <li>Left rail: starter templates &amp; parametric controls (dimensions, labels, university colour styles); Center: <code>spectrum-editor</code> instance for TikZ / CircuiTikZ / CeTZ / Mermaid source; Right: debounced live-compiled SVG/PDF preview rendered via <code>resvg</code> or <code>spectrum-pdf</code>.</li>
+                <li>One-click "Insert into Document" writes the diagram source file + <code>\input</code> / <code>#image</code> into the active project.</li>
+              </ul>
+            </li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p9-1"><span>Sample LaTeX paper converts to Typst (and back) and compiles with zero lost labels/citations; Jyutping sample compiles with ruby annotations.</span></label>
+          <label class="phase-check"><input type="checkbox" data-id="p9-2"><span>Diagram Composer opens in its own window, previews starter circuits/plots/flowcharts live, and inserts cleanly into the document.</span></label>
+        </div>
+      </details>
+
+      <!-- PHASE 10 -->
+      <details class="phase" id="phase-10">
+        <summary>
+          <span class="phase-pill" style="background:#6e6e73">PHASE 10</span>
+          <span>OS Integration, Packaging, Signing &amp; Performance Audit</span>
+          <span class="phase-meta">Crate: spectrum-app + scripts/</span>
+        </summary>
+        <div class="phase-body">
+          <h4>Exact Implementation Steps</h4>
+          <ol>
+            <li><strong>OS Lifecycle &amp; Polish:</strong>
+              <ul>
+                <li>Single-instance IPC (Unix domain socket on macOS / named pipe on Windows) so double-clicking a <code>.tex</code> or <code>.typ</code> file in Finder/Explorer focuses the running window and opens the file.</li>
+                <li>Graceful quit flush: intercept <code>Cmd+Q</code> / window close to synchronously flush all dirty editor buffers before exit.</li>
+                <li>macOS native menu bar, LaunchServices default-handler registration for all 15 extensions in <code>tauri.conf.json</code>, window-state persistence (position/size/maximized), and GitHub Releases update checker (<code>updateService</code>) that can trigger <code>spectrum-win-setup --update</code> on Windows or open the DMG on macOS.</li>
+              </ul>
+            </li>
+            <li><strong>Release Bundling:</strong>
+              <ul>
+                <li><strong>macOS (<code>aarch64-apple-darwin</code>):</strong> Bundle <code>Spectrum.app</code> with <code>libpdfium.dylib</code>, bundled engines, dictionaries, templates, skills, and fonts; sign with Developer ID, notarize, and package into DMG.</li>
+                <li><strong>Windows (<code>x86_64-pc-windows-msvc</code>):</strong> Package <code>spectrum.exe</code> + <code>pdfium.dll</code> + <code>spectrum-win-sandbox.exe</code> + engines + assets into the modern branded <code>Spectrum_3.0.0_x64-setup.exe</code> (<code>spectrum-win-setup</code>) via GitHub Actions.</li>
+              </ul>
+            </li>
+            <li><strong>Performance Gate Audit:</strong>
+              <ul>
+                <li>Profile with Instruments (macOS) / Tracy / <code>samply</code>. Verify: cold start &lt;120ms, idle RAM &lt;90 MB, 120Hz editor typing &lt;4ms p99, PDF cache strictly bounded, zero memory leaks over 30-minute edit/compile soak test.</li>
+              </ul>
+            </li>
+          </ol>
+          <h4>Definition of Done</h4>
+          <label class="phase-check"><input type="checkbox" data-id="p10-1"><span>Signed macOS DMG and modern branded Windows installer/updater/uninstaller (<code>Spectrum_3.0.0_x64-setup.exe</code>) for <strong>Spectrum v3.0.0</strong> build reproducibly from CI, pass all performance targets, and ship with updated <code>engines.json</code>, <code>checkers.lock.json</code>, and <code>THIRD_PARTY_NOTICES.md</code>.</span></label>
+        </div>
+      </details>
+    </section>
+
+    <!-- SECTION 5: WINDOWS BUILD & MACOS/WINDOWS PARITY -->
+    <section id="windows-parity">
+      <div class="sec-header">
+        <span class="sec-badge" style="background:var(--teal-soft);color:var(--teal)">Section 05</span>
+        <h2>Windows Build Guide &amp; macOS / Windows Feature Parity Plan</h2>
+      </div>
+
+      <p>
+        In Spectrum 2.8.0, Windows lagged behind macOS in several critical areas (documented in <code>docs/WINDOWS_AGENT_CHECKS.md</code>
+        and <code>apps/backend/src/services/compileSandbox.js</code>): Node-based agents stalled on libuv named pipes inside Windows AppContainer,
+        local agents lacked Spectrum's tools and Direct editing, compiles and Markdown draft previews ran unconfined, and host allowlists were macOS-only.
+        <strong>The v3.0.0 Rust rewrite is our opportunity to bring Windows to near-100% parity with macOS</strong> while dramatically simplifying the Windows build.
+      </p>
+
+      <h3>A. Closing Every macOS vs. Windows Parity Gap</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Capability</th>
+              <th>Spectrum 2.8.0 on Windows</th>
+              <th>Spectrum 3.0.0 Native Rust Solution (Parity Target)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Windows Sandbox Worker</strong></td>
+              <td>External C# <code>Worker.cs</code> compiled with <code>csc.exe</code>; AppContainer only.</td>
+              <td>Replace <code>Worker.cs</code> with a pure-Rust crate (<code>spectrum-win-sandbox</code> using <code>windows-sys</code>) built into the workspace. Supports <strong>AppContainer + Job Object</strong> (for native binaries &amp; Rust tools) and an optional <strong>Restricted Token + Low Integrity (<code>S-1-16-4096</code>) + Job Object</strong> tier for Node/npm agents that hit AppContainer global named-pipe <code>EACCES</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>Local Agents (Codex, Claude Agent, OpenCode, Pi, ZCode, DeepSeek Harness)</strong></td>
+              <td>Node-based agents disabled due to Node's <code>\\.\pipe\uv-*</code> AppContainer stall; no Spectrum tools; Isolated-only; <code>.cmd</code> shims blocked.</td>
+              <td>
+                1. Spectrum's MCP tools server is now <strong>pure Rust</strong> (no Node/libuv global pipe bug) &rarr; works inside Windows isolation.<br>
+                2. Support both native <code>.exe</code> discovery (<code>Program Files</code>, <code>%LOCALAPPDATA%\Programs</code>, Scoop, Winget, Cargo) and <code>.cmd</code>/Node agents via the Low-Integrity Restricted Token + Job Object tier.<br>
+                3. Enable <strong>Direct editing</strong> (with mandatory <code>before-ai</code> checkpoint) and full Spectrum tools on Windows.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Untrusted Compile &amp; Draft Preview Confinement</strong></td>
+              <td>Unconfined on Windows (relies only on TeX restricted shell escape; Biber/MakeIndex can read outside draft; Markdown draft PDF preview disabled).</td>
+              <td>Run untrusted LaTeX, Typst, Biber, Pandoc, and Markdown draft compiles inside <code>spectrum-win-sandbox</code> (Job Object + restricted read/write ACLs limited to draft, build cache, and TeX/engine folders + <code>CREATE_NO_WINDOW</code>). Unlocks <strong>Markdown draft PDF before/after preview</strong> on Windows.</td>
+            </tr>
+            <tr>
+              <td><strong>Per-Agent Network Host Allowlist</strong></td>
+              <td>macOS only (via Seatbelt <code>gatePort</code>).</td>
+              <td>Run the same Rust local HTTP/CONNECT proxy gate (<code>agent_network</code>) on Windows: deny direct internet in sandboxed child (drop <code>internetClient</code> AppContainer capability / set proxy env + loopback exemption to gate port only) so Windows enforces the exact same host allowlist.</td>
+            </tr>
+            <tr>
+              <td><strong>API Key Storage</strong></td>
+              <td>Spawns <code>powershell.exe</code> to call .NET <code>ProtectedData</code> on <code>keys.dpapi</code>.</td>
+              <td>Call Win32 <code>CryptProtectData</code> / <code>CryptUnprotectData</code> directly in-process via <code>windows-sys</code> — zero PowerShell latency, 100% compatible with existing 2.8.0 <code>keys.dpapi</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>Window Chrome &amp; Vibrancy</strong></td>
+              <td>WebView2 solid window; macOS gets Liquid Glass / vibrancy.</td>
+              <td>GPUI DirectX 12 / Blade rendering with Windows 11 <strong>Mica / Acrylic</strong> backdrop (gracefully falling back to solid surfaces on Windows 10 or Reduce Transparency), custom titlebar controls, and crisp Fluent monochrome SVG icons.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>B. Modern Branded Windows Installer, Updater &amp; Uninstaller (<code>spectrum-win-setup</code>)</h3>
+      <p>
+        Replace Tauri's dated, generic NSIS wizard with a <strong>modern, Spectrum-branded Rust + GPUI Windows installer</strong>
+        (<code>Spectrum_3.0.0_x64-setup.exe</code>) carrying an embedded <code>zstd</code>-compressed payload. No NSIS required!
+      </p>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="dot" style="background:#d23855"></span>Visual Design &amp; Branding</div>
+          <ul>
+            <li>Sleek borderless/rounded modern window following Windows 10/11 Light &amp; Dark mode (with Mica backdrop on Win11).</li>
+            <li>Features the <strong>Spectrum logo</strong> (<code>app-icon.png</code> / multi-res <code>.ico</code>), the signature <strong>6-hue Spectrum prism header bar</strong>, and a smooth Spectrum-gradient progress bar.</li>
+            <li>Clean single-card flow (no multi-page "Next &rarr; Next &rarr; Next" legacy wizard): version badge (<code>v3.0.0</code>), install path picker, and concise toggles (Desktop shortcut, Start Menu, register <code>.tex</code> / <code>.typ</code> file associations).</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="dot" style="background:#0073df"></span>Smart Lifecycle Modes (Install / Update / Repair / Uninstall)</div>
+          <ul>
+            <li><strong>Auto-detect existing installs:</strong> Inspects <code>HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Spectrum</code> and existing binaries (including 2.8.x Tauri installs!).</li>
+            <li><strong>Seamless Update (e.g. 2.8.x &rarr; 3.0.0):</strong> Gracefully signals running Spectrum to flush &amp; exit, cleans out stale 2.8.x files (Node/WebView/old DLLs), installs v3.0.0 atomically, and preserves all user projects, settings, and <code>keys.dpapi</code>.</li>
+            <li><strong>Clean Reinstall / Repair:</strong> Re-extracts &amp; verifies SHA-256 of all binaries/DLLs/assets without touching user data.</li>
+            <li><strong>Clean Uninstall:</strong> Registered in Windows <em>Apps &amp; Features</em> (<code>DisplayIcon</code>, <code>DisplayVersion = 3.0.0</code>, <code>UninstallString = "...\spectrum-setup.exe" --uninstall</code>); removes shortcuts, registry keys, file associations, and install dir — with an <em>opt-in</em> checkbox for app cache/settings (and <strong>never</strong> deletes <code>~/Documents/Spectrum</code>).</li>
+            <li><strong>Silent Automation Flags:</strong> Supports <code>--silent</code>, <code>--update</code>, <code>--repair</code>, <code>--uninstall</code> for in-app auto-updates and Winget.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>C. Simplified Windows Build Toolchain &amp; Step-by-Step Build Guide (v3.0.0)</h3>
+      <p>
+        Eliminating Tauri, Node.js, <code>node-gyp</code>, Python, C#, and NSIS cuts the Windows toolchain down to just <strong>3 tools</strong>
+        (compared to 6+ in 2.8.0's <code>docs/BUILDING_ON_WINDOWS.md</code>):
+      </p>
+
+<pre><code># 1. One-time Windows 10/11 x64 setup (PowerShell)
+winget install Git.Git Rustlang.Rustup
+winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+
+# In a new PowerShell session:
+rustup default stable-x86_64-pc-windows-msvc
+git config --global core.autocrlf false   # REQUIRED: dictionaries &amp; templates must keep LF endings!
+
+# 2. Fetch pinned Windows binaries (Tectonic, Typst, Pandoc, PDFium DLL, CJK fonts) &amp; build TexLab
+cargo run -p spectrum-xtask -- fetch-deps --target x86_64-pc-windows-msvc
+cargo run -p spectrum-xtask -- build-texlab --target x86_64-pc-windows-msvc  # cached in %LOCALAPPDATA%\spectrum-build
+
+# 3. Compile, test &amp; verify (Hunspell C++ &amp; Harper Rust compile automatically via Cargo!)
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+
+# 4. Build release binary + Windows sandbox worker + branded self-extracting installer
+cargo build --release --target x86_64-pc-windows-msvc -p spectrum-app -p spectrum-win-sandbox -p spectrum-win-setup
+cargo run -p spectrum-xtask -- package-windows --version 3.0.0
+# Output: target\x86_64-pc-windows-msvc\release\bundle\Spectrum_3.0.0_x64-setup.exe</code></pre>
+
+      <h3>D. Mandatory Windows Packaging &amp; CI Requirements</h3>
+      <ul>
+        <li><strong>Continuous Windows CI from Phase 0:</strong> Keep <code>.github/workflows/windows.yml</code> green on every phase (running <code>cargo fmt --check</code>, <code>cargo clippy</code>, <code>cargo test --workspace</code>, and the Windows sandbox integration tests — including junction/symlink escape tests matching <code>agent-preview.test.js</code>).</li>
+        <li><strong>Bundled Runtime Files Beside <code>spectrum.exe</code>:</strong> Ship <code>pdfium.dll</code> (SHA-256 verified), <code>spectrum-win-sandbox.exe</code>, <code>tectonic.exe</code>, <code>typst.exe</code> + <code>vcruntime140.dll</code>, <code>texlab.exe</code> (built with static CRT where possible), and <code>assets/</code> (<code>dictionaries/</code>, <code>templates/</code>, <code>skills/</code>, <code>vendor/xjyutping</code>, fonts).</li>
+        <li><strong>GPL 3.0 Compliance (TexLab):</strong> Just as in 2.8.0, attach the exact SHA-256-verified <code>texlab-&lt;ver&gt;-source.tar.gz</code> and updated <code>SHA256SUMS.txt</code> alongside <code>Spectrum_3.0.0_x64-setup.exe</code> on every GitHub Release.</li>
+        <li><strong>Zero Console Flashes &amp; Safe Paths:</strong> Every child process spawned on Windows must set <code>.creation_flags(0x0800_0000)</code> (<code>CREATE_NO_WINDOW</code>); handle Windows file locking gracefully (atomic rename with short retry for AV scanners) and reject NTFS junctions/reparse points in agent workspaces.</li>
+      </ul>
+    </section>
+
+    <!-- SECTION 6: UNIFIED CODE STANDARD -->
+    <section id="code-standard">
+      <div class="sec-header">
+        <span class="sec-badge" style="background:var(--purple-soft);color:var(--purple)">Section 06</span>
+        <h2>Unified Code Standard (The Spectrum Rust &amp; GPUI Bible)</h2>
+      </div>
+      <p>
+        To keep the entire codebase uniform across dozens of sessions—especially when built by an AI agent like Opus 5.5—every file
+        in the repository must strictly obey the following rules. Place a condensed copy of this section into the repo root as <code>CODING_STANDARD.md</code>
+        and reference it in every prompt.
+      </p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="dot" style="background:var(--purple)"></span>1. Module &amp; Visibility Discipline</div>
+          <ul>
+            <li>Use modern Rust 2018+ module layout: <code>foo.rs</code> + <code>foo/bar.rs</code>. <strong>Never</strong> create <code>mod.rs</code> files.</li>
+            <li>Default to private items; use <code>pub(crate)</code> for intra-crate sharing and <code>pub</code> only for a crate's documented public API re-exported in <code>lib.rs</code>.</li>
+            <li>Target <strong>&lt;500 lines per file</strong> (hard cap 800). Split large views into <code>view.rs</code> (render), <code>state.rs</code> (model), and <code>actions.rs</code> (commands).</li>
+            <li>No circular crate dependencies. Pure domain crates must <strong>never</strong> appear in <code>[dependencies]</code> with <code>gpui</code>.</li>
+            <li><strong>GPUI Kit Facade Rule:</strong> Only <code>spectrum-ui</code> (and <code>spectrum-theme</code>'s sync adapter) may import GPUI Kit directly. Feature crates import Spectrum-themed widgets from <code>spectrum-ui</code> so raw kit defaults never leak into the UI and kit upgrades only touch one crate.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="dot" style="background:var(--accent)"></span>2. Naming Conventions</div>
+          <ul>
+            <li><strong>GPUI Views:</strong> Suffix with <code>View</code> or <code>Panel</code> (e.g. <code>EditorView</code>, <code>PdfPanel</code>, <code>ResearchPanel</code>).</li>
+            <li><strong>GPUI Non-Visual Models:</strong> Plain noun (e.g. <code>ProjectStore</code>, <code>CompileManager</code>).</li>
+            <li><strong>GPUI Events:</strong> Suffix with <code>Event</code> (e.g. <code>EditorEvent::Saved</code>, <code>CompileEvent::Finished</code>).</li>
+            <li><strong>GPUI Actions:</strong> Verb-Noun PascalCase (<code>CompileProject</code>, <code>ToggleSidebar</code>, <code>JumpToPdf</code>).</li>
+            <li><strong>Constructors:</strong> <code>Foo::new(...)</code>; async factories: <code>Foo::load(...)</code>.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>3. Mandatory GPUI Entity, Async &amp; Focus Pattern</h3>
+      <p>Every interactive view in <code>spectrum-*</code> must follow this exact canonical skeleton:</p>
+
+<pre><code>use gpui::{
+    actions, div, prelude::*, Context, Entity, EventEmitter, FocusHandle,
+    Focusable, Subscription, Window,
+};
+use spectrum_theme::{AreaHue, SpectrumTheme};
+
+actions!(compile, [CompileDocument, StopCompile]);
+
+pub enum CompilePanelEvent {
+    JumpToDiagnostic { path: std::path::PathBuf, line: u32 },
+}
+
+pub struct CompilePanel {
+    focus_handle: FocusHandle,
+    /// ALWAYS store subscriptions so they drop cleanly with the view.
+    _subscriptions: Vec&lt;Subscription&gt;,
+    status: CompileStatus,
+}
+
+impl CompilePanel {
+    pub fn new(
+        project: Entity&lt;ProjectStore&gt;,
+        window: &amp;mut Window,
+        cx: &amp;mut Context&lt;Self&gt;,
+    ) -&gt; Self {
+        let focus_handle = cx.focus_handle();
+        let sub = cx.subscribe_in(&amp;project, window, Self::on_project_event);
+        Self {
+            focus_handle,
+            _subscriptions: vec![sub],
+            status: CompileStatus::Idle,
+        }
+    }
+
+    fn on_compile(&amp;mut self, _: &amp;CompileDocument, _window: &amp;mut Window, cx: &amp;mut Context&lt;Self&gt;) {
+        // NEVER block the foreground thread. Spawn async work and update via WeakEntity.
+        cx.spawn(async move |this, cx| {
+            let result = crate::runtime::spawn_tokio(run_compile_job()).await;
+            let _ = this.update(cx, |panel, cx| {
+                panel.status = CompileStatus::from_result(result);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+}
+
+impl EventEmitter&lt;CompilePanelEvent&gt; for CompilePanel {}
+
+impl Focusable for CompilePanel {
+    fn focus_handle(&amp;self, _cx: &amp;gpui::App) -&gt; FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Render for CompilePanel {
+    fn render(&amp;mut self, _window: &amp;mut Window, cx: &amp;mut Context&lt;Self&gt;) -&gt; impl IntoElement {
+        let theme = cx.global::&lt;SpectrumTheme&gt;();
+        let area = theme.area(AreaHue::Writing);
+
+        div()
+            .id("compile-panel")
+            .track_focus(&amp;self.focus_handle)
+            .key_context("CompilePanel")
+            .on_action(cx.listener(Self::on_compile))
+            .bg(theme.bg_panel)
+            .border_1()
+            .border_color(theme.border)
+            .text_color(area.text)
+            .child("...")
+    }
+}</code></pre>
+
+      <h3>4. Error Handling, Logging &amp; Theme Rules</h3>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title">Error Handling</div>
+          <ul>
+            <li>Library crates define typed enums with <code>thiserror::Error</code>.</li>
+            <li><code>anyhow</code> is allowed <strong>only</strong> in <code>spectrum-app</code> binary/CLI glue and tests.</li>
+            <li><strong>Zero</strong> <code>.unwrap()</code> or <code>.expect()</code> in production code (enforced via Clippy lints).</li>
+            <li>Every user-visible error maps to <code>UserNotice { title, detail, action }</code> for Toasts/Banners.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title">Theme &amp; Styling</div>
+          <ul>
+            <li><strong>Zero hardcoded hex colours</strong> outside <code>spectrum-theme</code>.</li>
+            <li>Always read colours via <code>cx.global::&lt;SpectrumTheme&gt;()</code> and <code>theme.area(AreaHue::...)</code>.</li>
+            <li>Use a 4px spacing scale (<code>px(4.)</code>, <code>px(8.)</code>, <code>px(12.)</code>, <code>px(16.)</code>, <code>px(24.)</code>).</li>
+            <li>Never rely on colour alone: pair icons, labels, or selection states for accessibility.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title">Observability &amp; Tests</div>
+          <ul>
+            <li>Use <code>tracing</code> (<code>info!</code>, <code>warn!</code>, <code>error!</code>, <code>#[instrument]</code>); zero <code>println!</code>.</li>
+            <li>Write logs to rotating file in OS log dir (matching <code>~/Library/Logs/com.beyond3345.spectrum/</code>).</li>
+            <li>Every pure-Rust crate must have unit tests; every bug fix adds a regression test first.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>5. Workspace Lints &amp; Formatting Config</h3>
+      <p>Enforce the standard mechanically in root <code>Cargo.toml</code> so CI rejects drift automatically:</p>
+<pre><code>[workspace.lints.rust]
+unsafe_code = "deny"                # Override with #[allow(unsafe_code)] ONLY in FFI modules (Hunspell/PDFium/macOS)
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "deny"
+todo = "warn"
+print_stdout = "deny"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"</code></pre>
+    </section>
+
+    <!-- SECTION 7: WATCH-OUTS FOR OPUS 5.5 -->
+    <section id="opus-watchouts">
+      <div class="sec-header">
+        <span class="sec-badge" style="background:var(--magenta-soft);color:var(--magenta)">Section 07</span>
+        <h2>Things to Watch For (Opus 5.5 Execution Playbook &amp; Landmines)</h2>
+      </div>
+
+      <p>
+        Having <strong>Opus 5.5</strong> build a large Rust + GPUI app is very achievable <em>if</em> you guard against the specific failure modes
+        that affect long-horizon AI coding in fast-moving Rust ecosystems. Treat these as mandatory guardrails.
+      </p>
+
+      <div class="callout danger">
+        <div class="callout-title">#1 Biggest Risk: GPUI API Drift &amp; Hallucinated Signatures</div>
+        GPUI evolved rapidly across Zed releases (e.g., <code>Model&lt;T&gt;</code> &amp; <code>View&lt;T&gt;</code> merged into <code>Entity&lt;T&gt;</code>;
+        <code>WindowContext</code> split into <code>&amp;mut Window</code> + <code>&amp;mut Context&lt;Self&gt;</code>; <code>cx.spawn</code> closure arguments changed).
+        <strong>Rule for Opus 5.5:</strong> Pin one exact <strong>GPUI Kit</strong> version and its exact matching <code>gpui</code> version/commit in Phase 0 (never mix mismatched <code>gpui</code> versions in <code>Cargo.lock</code>). Whenever a GPUI or GPUI Kit trait/method fails to compile,
+        <strong>read the actual local source in <code>~/.cargo/registry/src</code> or <code>~/.cargo/git/checkouts</code></strong> instead of guessing from training memory.
+      </div>
+
+      <h3>A. Opus 5.5 Workflow Guardrails (Preventing Drift Across Sessions)</h3>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">1. One Crate / One Vertical Slice Per Session</div>
+          <p>Never ask Opus 5.5 to "implement Phases 2 and 3 at once." Scope each session to a single crate or sub-module (e.g., <code>spectrum-editor/src/buffer.rs</code> + tests), verify with <code>just check</code>, and commit before moving on.</p>
+        </div>
+        <div class="card">
+          <div class="card-title">2. Maintain a Live <code>ARCHITECTURE_LEDGER.md</code></div>
+          <p>At the end of each phase, have Opus update a short (&lt;150 lines) ledger listing public traits, global state types, and crate entrypoints. Start every new session by reading <code>CODING_STANDARD.md</code> + <code>ARCHITECTURE_LEDGER.md</code> so it never invents duplicate helpers or parallel state stores.</p>
+        </div>
+        <div class="card">
+          <div class="card-title">3. Refuse Stubs &amp; Fake Fallbacks</div>
+          <p>Watch for AI shortcuts like <code>// TODO: wire real PDFium later</code> or returning empty vectors to make tests pass. Enforce <code>clippy::todo = "warn"</code> and inspect every Phase's Definition of Done manually by running the real app.</p>
+        </div>
+        <div class="card">
+          <div class="card-title">4. Keep Reference Code Read-Only Beside the Rewrite</div>
+          <p>Keep the original Tauri <code>spectrum/</code> repo in the workspace as a read-only reference for business logic (e.g., TeX log regexes, BibTeX formatting, <code>palette.json</code>, conversion rules, SyncTeX quirks) so Opus ports proven edge-case logic rather than reinventing it from scratch.</p>
+        </div>
+      </div>
+
+      <h3>B. Top 10 Technical Landmines in Rust + GPUI</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Landmine</th>
+              <th>Symptom</th>
+              <th>Exact Prevention Strategy</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>1</strong></td>
+              <td><strong>Re-entrant <code>Entity</code> Borrows</strong></td>
+              <td>Runtime panic: <code>cannot read/update entity while it is already being updated</code>.</td>
+              <td>Never call <code>other.update(cx, ...)</code> inside an entity update if <code>other</code> emits an event that synchronously calls back into <code>self</code>. Use <code>cx.defer(...)</code> or emit events after releasing mutable borrows.</td>
+            </tr>
+            <tr>
+              <td><strong>2</strong></td>
+              <td><strong>Blocking the UI Thread</strong></td>
+              <td>Stuttering / dropped frames below 120Hz, beachball on macOS.</td>
+              <td>Zero filesystem reads, git operations, PDF rendering, or regex over large files on the GPUI foreground thread. Always offload to <code>cx.background_executor()</code> or the Tokio bridge.</td>
+            </tr>
+            <tr>
+              <td><strong>3</strong></td>
+              <td><strong><code>smol</code> vs <code>tokio</code> Reactor Panic</strong></td>
+              <td>Panic: <code>there is no reactor running, must be called from the context of a Tokio 1.x runtime</code>.</td>
+              <td>Never call <code>reqwest</code>, <code>tokio::process</code>, or <code>tokio::time</code> directly inside <code>cx.spawn</code>. Always wrap them in <code>spectrum_app::runtime::spawn_tokio(...)</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>4</strong></td>
+              <td><strong>Broken CJK / Jyutping IME</strong></td>
+              <td>Chinese/Cantonese input commits garbled text or candidate window appears at screen corner <code>(0,0)</code>.</td>
+              <td>Implement every method of GPUI's <code>EntityInputHandler</code> accurately, especially UTF-16 offset conversion and <code>bounds_for_range</code> in window coordinates. Test with macOS Cantonese/Pinyin IME in Phase 2!</td>
+            </tr>
+            <tr>
+              <td><strong>5</strong></td>
+              <td><strong>Unbounded PDF / Shaped-Line Caches</strong></td>
+              <td>RAM quietly climbs to 2+ GB when scrolling a long PDF or editing many files.</td>
+              <td>Enforce strict byte-size LRU caps (128 MB for PDF tiles, 2,000 entries for <code>ShapedLine</code>) and drop GPU textures when tabs close or windows minimize.</td>
+            </tr>
+            <tr>
+              <td><strong>6</strong></td>
+              <td><strong>Dropped or Leaked <code>Subscription</code>s</strong></td>
+              <td>Events silently stop firing (if subscription isn't stored) or entities never drop (strong <code>Entity</code> cycle).</td>
+              <td>Store every <code>Subscription</code> in <code>self._subscriptions: Vec&lt;Subscription&gt;</code>; always capture <code>WeakEntity&lt;Self&gt;</code> in async tasks and child-to-parent references.</td>
+            </tr>
+            <tr>
+              <td><strong>7</strong></td>
+              <td><strong>PDFium Bundling &amp; Signing</strong></td>
+              <td>App crashes on launch with <code>dyld: Library not loaded: libpdfium.dylib</code> on another Mac or Windows PC.</td>
+              <td>Pin prebuilt PDFium binaries with SHA-256 checksums, set <code>@executable_path/../Frameworks/libpdfium.dylib</code> rpath via <code>install_name_tool</code>, and sign <code>libpdfium.dylib</code> before notarizing the <code>.app</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>8</strong></td>
+              <td><strong>macOS vs Windows Parity Drift</strong></td>
+              <td>Works on macOS, fails to build or looks broken on Windows (console flashes, broken paths, DX12 quirks).</td>
+              <td>Run GitHub Actions Windows build (<code>x86_64-pc-windows-msvc</code>) from <strong>Phase 0</strong> onward. Always use <code>PathBuf</code> (never <code>/</code> string concat) and <code>CREATE_NO_WINDOW</code> on every Windows child process.</td>
+            </tr>
+            <tr>
+              <td><strong>9</strong></td>
+              <td><strong>Unsafe FFI Boundaries</strong></td>
+              <td>Segfaults or undefined behavior in Hunspell C++ or PDFium bindings.</td>
+              <td>Keep <code>unsafe_code = "deny"</code> workspace-wide. Isolate all FFI into two tiny audited modules (<code>spectrum-checkers/src/hunspell_ffi.rs</code> and <code>spectrum-pdf/src/engine.rs</code>) behind safe Rust APIs.</td>
+            </tr>
+            <tr>
+              <td><strong>10</strong></td>
+              <td><strong>Scope Creep on Web-Native Widgets</strong></td>
+              <td>Stalling for months trying to clone React Flow, KaTeX DOM, or Mermaid JS in Rust.</td>
+              <td>Strictly enforce the Section 3 Simplification Matrix: Diagram Composer = code + live compiled preview; Math in chat = cached Typst/SVG; Settings = flat native form. Ship the core writing loop first!</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout good">
+        <div class="callout-title">Opus 5.5 Session Playbook &amp; Verification Commands</div>
+        <p style="margin-bottom:8px">Run this exact 4-step loop for every single Opus 5.5 coding session:</p>
+        <ol style="margin-bottom:8px">
+          <li><strong>Start of session:</strong> Have Opus 5.5 read <code>CODING_STANDARD.md</code>, <code>ARCHITECTURE_LEDGER.md</code>, the relevant Phase section of this plan, and the specific 2.8.0 reference file(s) listed in Section 2B.</li>
+          <li><strong>Implement one crate / vertical slice:</strong> If a GPUI or GPUI Kit API fails to compile, inspect the actual local crate source in Cargo's cache rather than guessing.</li>
+          <li><strong>Run the mandatory gate before committing:</strong>
+            <code>cargo fmt --check &amp;&amp; cargo clippy --workspace --all-targets -- -D warnings &amp;&amp; cargo test --workspace &amp;&amp; cargo tree -d -p gpui</code>
+            (<code>cargo tree -d -p gpui</code> must report <strong>zero duplicate <code>gpui</code> versions</strong>!).</li>
+          <li><strong>End of session:</strong> Update <code>ARCHITECTURE_LEDGER.md</code> with any new public traits, globals, or events, check off the milestone in this HTML plan, and commit cleanly before starting the next session.</li>
+        </ol>
+        <p style="margin-bottom:0"><strong>First prompt for Opus 5.5:</strong> Create the v3.0.0 workspace, <code>CODING_STANDARD.md</code>, <code>ARCHITECTURE_LEDGER.md</code>, perform the Phase 0 Dependency Upgrade Audit, and complete <strong>Phase 0 only</strong> — proving a pinned GPUI + GPUI Kit window launches in &lt;100ms with all 12 Spectrum area swatches in Light &amp; Dark mode.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  const STORAGE_THEME = 'spectrum_gpui_plan_theme';
+  const STORAGE_CHECKS = 'spectrum_gpui_plan_checks';
+
+  function setTheme(mode) {
+    document.documentElement.setAttribute('data-theme', mode);
+    document.getElementById('btn-light').classList.toggle('active', mode === 'light');
+    document.getElementById('btn-dark').classList.toggle('active', mode === 'dark');
+    try { localStorage.setItem(STORAGE_THEME, mode); } catch {}
+  }
+
+  function updateProgress() {
+    const boxes = Array.from(document.querySelectorAll('input[type="checkbox"][data-id]'));
+    const done = boxes.filter(b => b.checked).length;
+    const pct = boxes.length ? Math.round((done / boxes.length) * 100) : 0;
+    document.getElementById('progress-text').textContent = `${done} / ${boxes.length} (${pct}%)`;
+    document.getElementById('progress-fill').style.width = `${pct}%`;
+  }
+
+  function init() {
+    try {
+      const savedTheme = localStorage.getItem(STORAGE_THEME);
+      if (savedTheme === 'dark' || savedTheme === 'light') {
+        setTheme(savedTheme);
+      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        setTheme('dark');
+      }
+      const saved = JSON.parse(localStorage.getItem(STORAGE_CHECKS) || '{}');
+      document.querySelectorAll('input[type="checkbox"][data-id]').forEach(box => {
+        if (saved[box.dataset.id]) box.checked = true;
+        box.addEventListener('change', () => {
+          const state = {};
+          document.querySelectorAll('input[type="checkbox"][data-id]').forEach(b => {
+            if (b.checked) state[b.dataset.id] = true;
+          });
+          try { localStorage.setItem(STORAGE_CHECKS, JSON.stringify(state)); } catch {}
+          updateProgress();
+        });
+      });
+    } catch {}
+    updateProgress();
+  }
+
+  init();
+</script>
+</body>
+</html>
