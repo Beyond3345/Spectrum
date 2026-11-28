@@ -101,3 +101,13 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
       composition is one undo step.
 - [ ] An emoji from Win+. : the cursor and selection land after it, never inside it.
 - [ ] Typing in a 20,000-line file feels instant; holding Ctrl+Z doesn't stall.
+
+## Windows sandbox worker (spectrum-win-sandbox)
+
+- [ ] `cargo test -p spectrum-win-sandbox` passes, unelevated and elevated; `-- --ignored node` prints 42.
+- [ ] No console window flashes in either sandbox tier.
+- [ ] After a run, `icacls` on the draft folder shows no `S-1-15-2-…` entry or Low label, and
+      `%LOCALAPPDATA%\Packages` has no `Spectrum.Sandbox.*` folder.
+- [ ] The first confined compile with MiKTeX or TeX Live is slower (granting), the second instant.
+- [ ] The restricted tier cannot read `Documents` or `.ssh`; a sandboxed program cannot read the clipboard.
+- [ ] Killing Spectrum mid-run kills the sandboxed program.
