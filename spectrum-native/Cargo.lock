@@ -9240,6 +9240,14 @@ dependencies = [
 [[package]]
 name = "spectrum-win-sandbox"
 version = "3.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "spectrum-win-setup"
