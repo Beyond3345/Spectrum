@@ -8,6 +8,12 @@ Read this and `ARCHITECTURE_LEDGER.md` at the start of every session. Full ratio
 Where the plan is wrong, out of date or ambiguous, decide and add an entry to `DECISIONS.md`
 (what, why, where). Don't stop to ask.
 
+## Feature parity
+
+Before starting, read your session's rows in `FEATURE_PARITY.md`; when done, mark the rows your
+work makes true (built / partial). A 2.8.1 feature you can't finish stays unticked with its owner;
+never delete a row. Report any 2.8 feature you find that isn't listed.
+
 ## Windows checklist
 
 Anything Windows-only that CI can't prove (UI, IME, real installs, signed-in services, 2.8 data),

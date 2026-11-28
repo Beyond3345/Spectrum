@@ -113,6 +113,9 @@ environment names purple, maths magenta) and the plan's text and gutter tokens. 
 
 ## Order of work
 
+`spectrum-native/FEATURE_PARITY.md` lists every 2.8.1 feature (about 630) and the session that owns
+it. The rows from 1d down to 11e were added from that inventory; 10a–10d run last.
+
 The UI crates form the critical path. The pure crates have no GPUI dependency, so once Phase 0 lands
 they can run in parallel sessions, each in its own worktree, because they don't share files.
 
@@ -144,6 +147,27 @@ they can run in parallel sessions, each in its own worktree, because they don't 
 | 8 | Checkpoints, diffs, GitHub device flow | `spectrum-git` | 1b | |
 | 9a | LaTeX ↔ Typst, Jyutping | `spectrum-convert` | 1a | Round-trip fixture keeps labels/citations |
 | 9b | Diagram composer window (trailer format verbatim) | `spectrum-diagram` | 2c, 3a | Opens 2.8 diagram files, hand-edited bodies open in code mode |
+| 1d | Projects page & templates (folders, tags, archive, templates, Typst Universe, import UI, switcher) | `spectrum-app`, `spectrum-core` | 1c | FEATURE_PARITY rows ticked |
+| 1e | First run, 2.8 settings migration (localStorage → settings.json), network proxy finder and gate | `spectrum-core`, `spectrum-app` | 1a | 2.8 settings carried over |
+| 2f | Insert menu and floats panel (figure, table, images, packages) | `spectrum-editor`, `spectrum-app` | 2c | |
+| 3d | Compile extras (decision 65's list, compile menu, live output, Logs tab, export formats, Mermaid in Markdown) | `spectrum-compile`, `spectrum-app` | 3a, 4b | |
+| 3e | Engine downloads and system check (Typst versions, Tinymist, pandoc, Biber, Python) | `spectrum-compile`, `spectrum-xtask` | 3a | |
+| 4c | PDF extras (two-page, contents/pages sidebar, presentation, page memory, Typst live, Markdown preview) | `spectrum-pdf` | 4b | |
+| 5d | Languages and grammar panel (detection, dictionary downloads, LanguageTool server, ignored rules) | `spectrum-checkers`, `spectrum-app` | 5c | |
+| 6e | Agent workspace UI (transcript, plan, changes tray, hunk review, automations) | `spectrum-ai`, `spectrum-app` | 6b, 6c | |
+| 6f | Local agents and adapters (profiles, discovery, install, sign-in) | `spectrum-ai` | 6c, 6d | |
+| 6g | Personas, skills and project memory | `spectrum-ai`, `spectrum-app` | 6b | |
+| 7b | Research, references and Zotero UI | `spectrum-references`, `spectrum-app` | 7 | |
+| 7c | Review and preflight (six checks, AI review) | `spectrum-references`, `spectrum-app` | 7, 3a | |
+| 8b | GitHub sync merge engine, conflicted copies, GitHub view, settings repository | `spectrum-git`, `spectrum-app` | 8 | |
+| 9c | Composer: circuits and general drawing | `spectrum-diagram` | 9b | |
+| 9d | Composer: structures, vectors and forms | `spectrum-diagram` | 9b | |
+| 9e | Composer: plots, flow, tikz-cd, Mermaid | `spectrum-diagram` | 9b | |
+| 11a | Settings window (19 panes, search, Appearance, Models, About/Licences) | `spectrum-app`, `spectrum-ui` | 1e | |
+| 11b | Import, export and template transfer (four routes, PDF parsers, Export to Word) | `spectrum-convert`, `spectrum-app` | 9a | |
+| 11c | To-dos and PDF sticky notes | `spectrum-app`, `spectrum-pdf` | 2b, 4b | |
+| 11d | Document insights panel | `spectrum-app` | 2b, 3a | |
+| 11e | Accessibility and copy pass (screen reader, keyboard, reduce transparency, AU English) | all UI | all UI | |
 | 10a | Single instance, menus, quit flush, updater | `spectrum-app` | all UI | |
 | 10b | Mac bundle, sign, notarise, DMG + probe | `spectrum-xtask` | 10a | Hand test passes |
 | 10c | Windows installer/updater/uninstaller | `spectrum-win-setup` | 10a, 6d | 2.8.x → 3.0.0 update keeps projects and keys.dpapi |
