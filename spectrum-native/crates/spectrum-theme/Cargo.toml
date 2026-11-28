@@ -8,6 +8,10 @@ license.workspace = true
 publish = false
 
 [dependencies]
+gpui-kit.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true

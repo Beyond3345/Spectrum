@@ -3,6 +3,11 @@
 Read this and `ARCHITECTURE_LEDGER.md` at the start of every session. Full rationale: blueprint Section 6
 (`../docs/gpui-rewrite-plan.html`). Plan and session order: `../docs/REWRITE_V3_PLAN.md`.
 
+## Decisions
+
+Where the plan is wrong, out of date or ambiguous, decide and add an entry to `DECISIONS.md`
+(what, why, where). Don't stop to ask.
+
 ## Gate
 
 `cargo xtask check` (fmt, clippy with `-D warnings`, tests) must pass before every commit. Also
@@ -53,8 +58,11 @@ actions are verb-noun (`CompileProject`); `Foo::new` constructs, `Foo::load` is 
 
 ## Look and copy
 
+- UI layout, colours, radii and tokens come from the plan (`../docs/gpui-rewrite-plan.html`: its
+  `:root` and `[data-theme="dark"]` variables, Section 3 and the Section 3B mockups), not from 2.8's CSS.
+  Redesigns are part of the plan. Use 2.8 only where the plan says nothing about a look.
 - No hex colours outside `spectrum-theme`. Read colours from `cx.global::<SpectrumTheme>()`.
-- 4 px spacing scale; 16/12/10 px radii (panel/card/control). Never colour alone: pair it with an
+- 4 px spacing scale; 16/12/10 px radii (panel/card/control, plan Section 3). Never colour alone: pair it with an
   icon, label or state.
 - Australian English in the UI ("Bin", "colour").
 
