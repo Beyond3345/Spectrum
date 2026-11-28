@@ -47,6 +47,17 @@ and the order of sessions. The blueprint stays the reference for detail (formats
 
 ### Look
 
+Writing comes first. In the workspace (editor, PDF, toolbars, sidebar, Compile) colour must not
+draw the eye from the text: soft, pastel, near-mono tints of the area hues instead of vibrant fills,
+and no vivid prism on the Compile button or toolbar buttons (this overrides the blueprint's prism
+Compile button and its 14%-tint hue pills). The prism and full-strength hues are kept for brand
+moments (Home header, About, installer, progress) and small accents.
+
+2.8.1 stays the feature target: every 2.8.1 feature is rebuilt (tracked in
+`spectrum-native/FEATURE_PARITY.md`), and the sectional layout stays (files and outline in the
+sidebar, editor left, PDF right, tools/logs, Assistant/Agent). Buttons, toolbars and features may be
+moved and regrouped.
+
 The plan's design system is the target for every screen, not 2.8's CSS. Screens the plan doesn't
 draw (About, dialogs, sheets, empty states, onboarding, notices, the Composer's rails…) are designed
 in its system, and any 2.8 screen that is dated or inconsistent is modernised to match. Each such

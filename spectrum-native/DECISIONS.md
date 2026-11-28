@@ -13,6 +13,10 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 - The plan's design system is the target for every screen. Screens the plan doesn't draw are
   designed in its system, and any 2.8 screen that is dated or inconsistent is modernised, rather
   than copied from 2.8's CSS. (This replaces "fall back to 2.8 where the plan is silent" for looks.)
+- Writing comes first: in the workspace, soft pastel/near-mono tints, never vibrant fills; no vivid
+  prism on Compile or toolbar buttons (overrides the plan's prism Compile button and 14% hue pills).
+- 2.8.1 is the feature target: nothing left out; the sectional layout (files/outline sidebar,
+  editor left, PDF right, tools, Assistant) stays; controls may move.
 - Keep 2.8's Spectrum editor theme as **Spectrum Classic** (Light and Dark) beside 3.0.0's new
   Spectrum editor theme.
 - Fix 2.8.1's update notifier, which didn't work and didn't open the GitHub release page.
@@ -180,3 +184,17 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     order. (`document.rs`)
 60. **Tree-sitter's first parse of a big file (~120 ms) runs off the UI thread** on a rope snapshot;
     later edits reparse incrementally. (for 2b)
+
+## spectrum-compile runner and macOS confinement (sessions 3a, 3b)
+
+61. **Engines manifest keyed by target** (`assets/engines.json`), now including TexLab and Tinymist;
+    LanguageTool's download stays with spectrum-checkers.
+62. **Cancelling on Windows uses `taskkill /T /F`**, as 2.8 did, rather than a Job Object (the
+    sandbox worker uses Job Objects for confined compiles). (`process.rs`)
+63. **The caller owns the build folder**, emptied before each compile; the PDF is copied beside the
+    source as in 2.8. (`runner.rs`)
+64. **Windows "Trust this project" is matched by the folder's creation time.** (`trust.rs`)
+65. **Deferred, not dropped** (tracked in FEATURE_PARITY.md): keeping build files between runs, the
+    Biber skip, preamble formats, recipes, `\externaldocument`, `\includeonly`, page colour,
+    xjyutping, Typst watch mode, Biber download, Tectonic warm-up, mapping Markdown errors back to
+    `.md` lines, SVG export, CJK fonts, and 2.8's proxy gate for a confined Tectonic.

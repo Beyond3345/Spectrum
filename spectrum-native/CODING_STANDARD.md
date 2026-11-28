@@ -70,6 +70,15 @@ actions are verb-noun (`CompileProject`); `Foo::new` constructs, `Foo::load` is 
   radii, area colours, pill buttons, flat labelled rows, prism accents) so it matches the rest of
   3.0.0. Any 2.8 screen that looks dated or out of step gets modernised the same way. Log each such
   redesign in `DECISIONS.md`.
+- **Writing comes first.** In the workspace (editor, PDF, toolbars, sidebar, Compile) colour must
+  never pull the eye from the text: use soft, pastel, near-mono tints of the area hues, not vibrant
+  fills. No vivid prism on buttons (Compile included); the prism and full-strength hues are for
+  brand moments (Home header, About, installer, progress bars) and small accents. Usability beats
+  decoration in the editing area.
+- **2.8.1 is the feature target.** No 2.8.1 feature may be left out (see `FEATURE_PARITY.md`). The
+  sectional layout stays: files and outline in the left sidebar, editor on the left, PDF on the
+  right, tools/logs panel, Assistant/Agent panel. Buttons, toolbars and features may be moved and
+  regrouped.
 - No hex colours outside `spectrum-theme`. Read colours from `cx.global::<SpectrumTheme>()`.
 - 4 px spacing scale; 16/12/10 px radii (panel/card/control, plan Section 3). Never colour alone: pair it with an
   icon, label or state.

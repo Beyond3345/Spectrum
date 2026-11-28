@@ -43,6 +43,15 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
 - [ ] SyncTeX jumps work for a project whose path has non-English characters (ANSI code page
       fallback), and for one on a different drive letter.
 - [ ] SyncTeX works in a project compiled by MiKTeX and by TeX Live.
+- [ ] MiKTeX (per-user and all-users) and `C:\texlive\<year>` are found when Spectrum is started
+      from the Start menu or Explorer, not only from a terminal.
+- [ ] No console window flashes for any engine, Biber, makeindex or pandoc.
+- [ ] Recompiling mid-latexmk or mid-Tectonic leaves no TeX process in Task Manager.
+- [ ] A project path with spaces compiles; a project in a Chinese-named folder compiles with Biber.
+- [ ] With the PDF open in Acrobat, compiling warns that it's open in another program.
+- [ ] A `.bat` latexmk runs.
+- [ ] MiKTeX installs a missing package without a prompt.
+- [ ] Tectonic finds Windows fonts (e.g. a document using `\setmainfont{Segoe UI}`).
 
 ## Update notice (also check on the Mac)
 
