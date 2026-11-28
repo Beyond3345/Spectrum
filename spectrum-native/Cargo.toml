@@ -88,6 +88,9 @@ encoding_rs = "0.8.44"
 tempfile = "3.27.0"
 url = "2.5.9"
 tokio-util = "0.7.20"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+unicode-normalization = "0.1.26"
+sha1 = "0.11.0"  # 2.8's settings repository names a skill's files by their SHA-1
 
 [workspace.lints.rust]
 # allowed per module only for FFI (Hunspell, PDFium, macOS, Win32)
