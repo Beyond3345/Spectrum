@@ -2,6 +2,12 @@
 
 This file records the changes in Spectrum. Version 1.0.0 is the first release of the fork, so its entries are given relative to the last state of [OpenPrism](https://github.com/OpenDCAI/OpenPrism) in February 2026.
 
+## 2.8.1 (28 November 2026)
+
+### Fixed
+
+- Diagram composer: a label typed with siunitx's `\qty`, `\SI`, `\num`, `\unit` or `\ang` now loads siunitx in every kind of figure, so the figure compiles
+
 ## 2.8.0 (27 November 2026)
 
 ### Added
