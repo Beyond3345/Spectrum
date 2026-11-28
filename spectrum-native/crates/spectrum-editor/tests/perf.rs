@@ -1,11 +1,16 @@
 //! The plan's targets for the document core: a 20,000-line .tex opens in under 30 ms and an edit
 //! leaves nearly all of a 4 ms frame to drawing.
+//! The language layer: Tree-sitter's first parse off the UI thread, then per keystroke an
+//! incremental reparse, a highlight of the screen and a scope-bar update.
 //! Run: `cargo test --release -p spectrum-editor --test perf -- --ignored --nocapture`
 
 use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
-use spectrum_editor::{Document, PointUtf16, Selection, SelectionSet, Transaction};
+use spectrum_editor::{
+    Document, Language, ParsedTree, PointUtf16, ScopeMap, Selection, SelectionSet, Syntax,
+    Transaction, todos,
+};
 
 /// A paper-shaped file: sections, prose with maths, CJK and emoji, equations and lists.
 fn generate_tex(lines: usize) -> String {
@@ -171,4 +176,87 @@ fn a_20k_line_tex_opens_and_edits_within_the_plans_targets() {
             .collect(),
     );
     assert!(save.median < Duration::from_millis(30));
+}
+
+#[test]
+#[ignore = "timing; run in release"]
+fn a_20k_line_tex_parses_highlights_and_tracks_scopes_within_the_plans_targets() {
+    let text = generate_tex(20_000);
+    let mut doc = Document::from_text(&text);
+
+    let first = timing(
+        "first parse (background, ParsedTree::parse)",
+        (0..10)
+            .map(|_| {
+                let rope = doc.buffer().rope().clone();
+                time(|| drop(ParsedTree::parse(Language::Latex, &rope, 0)))
+            })
+            .collect(),
+    );
+    assert!(first.median < Duration::from_millis(400));
+    let mut syntax = Syntax::new(Language::Latex, doc.buffer());
+    let parsed = ParsedTree::parse(Language::Latex, doc.buffer().rope(), doc.version());
+    assert!(syntax.accept(parsed, doc.buffer()));
+
+    let build = timing(
+        "scope map, built from scratch",
+        (0..20)
+            .map(|_| time(|| drop(ScopeMap::new(Language::Latex, doc.buffer()))))
+            .collect(),
+    );
+    assert!(build.median < Duration::from_millis(20));
+    let mut scopes = ScopeMap::new(Language::Latex, doc.buffer());
+
+    // typing in the middle of the file: reparse, scope update, highlight of a 60-line screen
+    let line = 10_000;
+    let mut sel = SelectionSet::cursor(doc.buffer().line_range(line).end);
+    let mut now = Instant::now();
+    let (mut reparse, mut depth, mut paint) = (Vec::new(), Vec::new(), Vec::new());
+    for i in 0..2_000 {
+        // every 50th keystroke opens or closes an environment, so the depths after it change
+        let key = match i % 100 {
+            49 => "\\begin{x}",
+            99 => "\\end{x}",
+            _ if i % 6 == 5 => " ",
+            _ => "a",
+        };
+        now += Duration::from_millis(80);
+        let applied = doc.apply(Transaction::insert(&sel, key), &sel, now);
+        sel = applied.selections.clone();
+        reparse.push(time(|| syntax.edit(doc.buffer(), &applied.changes)));
+        depth.push(time(|| scopes.update(doc.buffer(), &applied.changes)));
+        paint.push(time(|| {
+            drop(syntax.highlight(doc.buffer(), line - 30..line + 30));
+        }));
+    }
+    let reparse = timing("incremental reparse after a keystroke", reparse);
+    let depth = timing("scope map update after a keystroke", depth);
+    let paint = timing("highlight 60 lines (+40 overscan each way)", paint);
+    assert!(reparse.median < Duration::from_millis(2));
+    assert!(depth.median < Duration::from_micros(200));
+    assert!(paint.median < Duration::from_millis(4));
+    assert!(scopes.depth(line) > 0);
+
+    // walked over the whole tree, so run when edits settle rather than per keystroke
+    let outline = timing(
+        "outline (whole file)",
+        (0..20)
+            .map(|_| time(|| drop(syntax.outline(doc.buffer()))))
+            .collect(),
+    );
+    let folds = timing(
+        "folds (whole file)",
+        (0..20)
+            .map(|_| time(|| drop(syntax.folds(doc.buffer()))))
+            .collect(),
+    );
+    let todo = timing(
+        "to-dos (whole file)",
+        (0..20)
+            .map(|_| time(|| drop(todos(Language::Latex, doc.buffer()))))
+            .collect(),
+    );
+    assert!(outline.median < Duration::from_millis(50));
+    assert!(folds.median < Duration::from_millis(50));
+    assert!(todo.median < Duration::from_millis(50));
 }
