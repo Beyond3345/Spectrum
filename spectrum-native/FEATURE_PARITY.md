@@ -458,30 +458,33 @@ into the docked bottom-left panel the plan now draws (row L4).
 
 | # | Feature | 2.8.1 source | 3.0.0 session | Status |
 |---|---|---|---|---|
-| R1 | References mode: paste DOI, ISBN, link, arXiv ID, title, formatted citation (APA/IEEE/Chicago/MLA), BibTeX or RIS | fe/editor/Composer.tsx, be/services/referenceService.js | 7 + 7b research & references UI | not started |
-| R2 | Each reference a card: entry type (Biber types), fields, key, the entry as written, edition menu, locator; Add to .bib only / Add & insert citation | fe/editor/ReferenceDraftCard.tsx | 7b | not started |
+| R1 | References mode: paste DOI, ISBN, link, arXiv ID, title, formatted citation (APA/IEEE/Chicago/MLA), BibTeX or RIS | fe/editor/Composer.tsx, be/services/referenceService.js | 7 + 7b research & references UI | partial (logic in spectrum-references: every input kind, LLM split; card in 7b) |
+| R2 | Each reference a card: entry type (Biber types), fields, key, the entry as written, edition menu, locator; Add to .bib only / Add & insert citation | fe/editor/ReferenceDraftCard.tsx | 7b | partial (drafts, Biber types, BibLaTeX/BibTeX format in logic in spectrum-references; card in 7b) |
 | R3 | New entry by hand | fe/editor/Composer.tsx | 7b | not started |
-| R4 | DOI via doi.org content negotiation (Crossref, DataCite), Crossref fallback | be/services/referenceService.js | 7 | not started |
-| R5 | arXiv API, published DOI preferred | be/services/referenceService.js | 7 | not started |
-| R6 | Links read for publisher metadata, JSON-LD, displayed BibTeX (alphaXiv); search connections for blocked pages (Exa Contents) | be/services/referenceService.js | 7 | not started |
-| R7 | Title search on Crossref with candidates to choose | be/services/referenceService.js | 7 | not started |
-| R8 | Books from Open Library, Google Books, Crossref; cite any edition | be/routes/references.js (editions) | 7 | not started |
-| R9 | Keys Surname+Year, accents stripped, particles joined, a/b suffixes; DOI/arXiv duplicates refused | be/services/bibEntry.js | 7 | not started |
-| R10 | Classic BibTeX: `howpublished` for URL in `plain`; Biber types written for BibTeX projects | be/services/bibEntry.js | 7 | not started |
-| R11 | Titles get LaTeX quotes keeping apostrophes; arXiv URL kept; unknown dates left empty | be/services/bibEntry.js | 7 | not started |
+| R4 | DOI via doi.org content negotiation (Crossref, DataCite), Crossref fallback | be/services/referenceService.js | 7 | partial (logic in spectrum-references; UI in 7b) |
+| R5 | arXiv API, published DOI preferred | be/services/referenceService.js | 7 | partial (logic in spectrum-references; UI in 7b) |
+| R6 | Links read for publisher metadata, JSON-LD, displayed BibTeX (alphaXiv); search connections for blocked pages (Exa Contents) | be/services/referenceService.js | 7 | partial (logic in spectrum-references: meta, JSON-LD, displayed BibTeX, Exa contents; UI in 7b) |
+| R7 | Title search on Crossref with candidates to choose | be/services/referenceService.js | 7 | partial (logic in spectrum-references; UI in 7b) |
+| R8 | Books from Open Library, Google Books, Crossref; cite any edition | be/routes/references.js (editions) | 7 | partial (logic in spectrum-references: ISBN, book search, editions; UI in 7b) |
+| R9 | Keys Surname+Year, accents stripped, particles joined, a/b suffixes; DOI/arXiv duplicates refused | be/services/bibEntry.js | 7 | partial (logic in spectrum-references; UI in 7b) |
+| R10 | Classic BibTeX: `howpublished` for URL in `plain`; Biber types written for BibTeX projects | be/services/bibEntry.js | 7 | partial (logic in spectrum-references; UI in 7b) |
+| R11 | Titles get LaTeX quotes keeping apostrophes; arXiv URL kept; unknown dates left empty | be/services/bibEntry.js | 7 | partial (logic in spectrum-references; UI in 7b) |
 | R12 | Insert `\cite` at the cursor after adding (setting) | fe/app/settings.ts (autoInsertCite) | 7b | not started |
-| RS1 | Research tab: question, sources (OpenAlex, Semantic Scholar, arXiv, Crossref, PubMed, .bib, Web, Zotero), years, preprints | fe/editor/research/ResearchPanel.tsx, be/services/researchService.js | 7 + 7b | not started |
-| RS2 | All sources at once; one failing doesn't stop others | be/services/researchService.js | 7 | not started |
-| RS3 | Results merged by DOI/arXiv/title, fullest record, published over preprint | fe/editor/research/results.ts | 7 | not started |
+| RS1 | Research tab: question, sources (OpenAlex, Semantic Scholar, arXiv, Crossref, PubMed, .bib, Web, Zotero), years, preprints | fe/editor/research/ResearchPanel.tsx, be/services/researchService.js | 7 + 7b | partial (logic in spectrum-references: sources, years, preprints; tab in 7b) |
+| RS2 | All sources at once; one failing doesn't stop others | be/services/researchService.js | 7 | partial (logic in spectrum-references; tab in 7b) |
+| RS3 | Results merged by DOI/arXiv/title, fullest record, published over preprint | fe/editor/research/results.ts | 7 | partial (logic in spectrum-references, ISBN too; tab in 7b) |
 | RS4 | Result shows authors, year, venue, sources, citations, Open access, Preprint, In .bib | fe/editor/research/ResearchPanel.tsx | 7b | not started |
-| RS5 | Sort the results with AI: why it matters, keep/drop suggestion, theme | be/services/researchService.js | 7 + 6a | not started |
-| RS6 | Sessions in `.spectrum/research` with a log of searches; Search again; All/Kept/Dropped/To decide; Delete session | be/routes/research.js | 7b | not started |
+| RS5 | Sort the results with AI: why it matters, keep/drop suggestion, theme | be/services/researchService.js | 7 + 6a | partial (logic in spectrum-references: one model call; UI in 7b) |
+| RS6 | Sessions in `.spectrum/research` with a log of searches; Search again; All/Kept/Dropped/To decide; Delete session | be/routes/research.js | 7b | partial (session files, log, change, delete in logic in spectrum-references; UI in 7b) |
 | RS7 | Keep/Drop with reason; Cite; Open note (`research/notes/<key>.md`); Get PDF (arXiv, Unpaywall, named copy) into `research/papers/` | be/routes/research.js | 7b | not started |
-| RS8 | Add kept papers to .bib through the reference look-up | be/routes/research.js | 7b | not started |
+| RS8 | Add kept papers to .bib through the reference look-up | be/routes/research.js | 7b | partial (add_results in logic in spectrum-references; UI in 7b) |
 | RS9 | Workflows: Find citations for selection, Draft related work, Verify claims, Deep research (open agent with task, skill, session) | fe/editor/research/CitationAssistant.tsx | 7b + 6e | not started |
 | RS10 | Claims checked ledger: Supported/Partly/Unsupported with the source's words found on their page; refresh, show in source, add to-do | fe/editor/research/ClaimsLedger.tsx, be/services/claimsLedger.js | 7b | not started |
-| WS1 | Web search connections: model's own search, OpenAlex, Semantic Scholar, SerpApi (Scholar/Google/Baidu), Exa, Tavily, Brave, DDGS | be/services/searchService.js | 7 | not started |
-| WS2 | Several connections enabled with own keys; default tried first, then the others in order | be/services/searchService.js | 7 | not started |
+| RS11 | 3.0.0 addition: eight zero-key sources (DBLP, Europe PMC, INSPIRE-HEP, DOAJ, ERIC, HAL, DataCite/Zenodo, Open Library) behind the source trait | docs/gpui-rewrite-plan.html (addendum) | 7 + 7b | partial (logic in spectrum-references; pills in 7b) |
+| RS12 | 3.0.0 addition: optional key sources (NASA ADS, CORE v3, IEEE Xplore, Springer Nature, Scopus), off until a key is set | docs/gpui-rewrite-plan.html (addendum) | 7 follow-up | not started |
+| RS13 | 3.0.0 addition: pinned source pills (`researchPinnedSources`, default the five) and discipline presets | docs/gpui-rewrite-plan.html (addendum) | 7 + 7b | partial (logic in spectrum-references; popover and settings in 7b) |
+| WS1 | Web search connections: model's own search, OpenAlex, Semantic Scholar, SerpApi (Scholar/Google/Baidu), Exa, Tavily, Brave, DDGS | be/services/searchService.js | 7 | partial (logic in spectrum-references: OpenAlex, Semantic Scholar, SerpApi, Exa, Tavily, Brave; model search and DDGS not yet) |
+| WS2 | Several connections enabled with own keys; default tried first, then the others in order | be/services/searchService.js | 7 | partial (logic in spectrum-references; settings UI in 7b + 11a) |
 | WS3 | Native model search on OpenAI Responses / Claude Messages with provider sources | be/services/searchService.js | 6a + 7 | not started (decision 53) |
 | WS4 | Chat can call general web search | be/routes/search.js | 6b | not started |
 
@@ -489,13 +492,13 @@ into the docked bottom-left panel the plan now draws (row L4).
 
 | # | Feature | 2.8.1 source | 3.0.0 session | Status |
 |---|---|---|---|---|
-| Z1 | Status: Zotero open, version, local API on, Better BibTeX | fe/editor/ZoteroCite.tsx, be/services/zoteroService.js | 7 + 7b | not started |
-| Z2 | Cite from Zotero (right-click in `.tex`, References card): BBT picker, Answer in Zotero / Cancel; otherwise a library search in Spectrum | fe/editor/ZoteroCite.tsx | 7b | not started |
-| Z3 | Entries added under Zotero's key, BBT key or author-year; `file` field dropped; duplicate check | be/services/zoteroService.js | 7 | not started |
+| Z1 | Status: Zotero open, version, local API on, Better BibTeX | fe/editor/ZoteroCite.tsx, be/services/zoteroService.js | 7 + 7b | partial (logic in spectrum-references; UI in 7b) |
+| Z2 | Cite from Zotero (right-click in `.tex`, References card): BBT picker, Answer in Zotero / Cancel; otherwise a library search in Spectrum | fe/editor/ZoteroCite.tsx | 7b | partial (picker and library search in logic in spectrum-references; UI in 7b) |
+| Z3 | Entries added under Zotero's key, BBT key or author-year; `file` field dropped; duplicate check | be/services/zoteroService.js | 7 | partial (logic in spectrum-references; UI in 7b) |
 | Z4 | `\cite` completion lists Zotero items after 3 letters (setting) | fe/editor/zotero.ts | 7b | not started |
-| Z5 | Project collections (Zotero 10): Allow Spectrum in Zotero… once, `zotero.json`; Spectrum › name collection synced after adds, `.bib` saves, open, focus | be/services/zoteroService.js | 7 | not started |
-| Z6 | Items matched by key/DOI/arXiv/title+year; never deletes Zotero items | be/services/zoteroService.js | 7 | not started |
-| Z7 | Collection recorded with the project id; "Waiting for Zotero to sync" on the other computer; Zotero 7–9 read-only | be/services/zoteroService.js | 7 | not started |
+| Z5 | Project collections (Zotero 10): Allow Spectrum in Zotero… once, `zotero.json`; Spectrum › name collection synced after adds, `.bib` saves, open, focus | be/services/zoteroService.js | 7 | partial (logic in spectrum-references: collection sync; the app calls it after adds, saves, open, focus in 7b) |
+| Z6 | Items matched by key/DOI/arXiv/title+year; never deletes Zotero items | be/services/zoteroService.js | 7 | partial (logic in spectrum-references; UI in 7b) |
+| Z7 | Collection recorded with the project id; "Waiting for Zotero to sync" on the other computer; Zotero 7–9 read-only | be/services/zoteroService.js | 7 | partial (logic in spectrum-references: the app passes "GitHub pull under way" in 7b) |
 | Z8 | Disconnect | fe/editor/ZoteroCite.tsx | 7b | not started |
 
 ## Import, convert & template transfer
@@ -662,14 +665,14 @@ into the docked bottom-left panel the plan now draws (row L4).
 |---|---|---|---|---|
 | RV1 | Tools › Review: a panel per check with icon, line, status and Run; Run all; Reset | fe/editor/tools/ReviewTab.tsx | 7c review & preflight | not started |
 | RV2 | Compiles first only for PDF checks and only when the PDF is stale | fe/editor/tools/reviewRun.ts | 7c | not started |
-| RV3 | Compile and layout checks (errors, overfull, ??, missing glyphs, rerun, duplicate destinations, page sizes, text past edge) | fe/editor/preflight/run.ts | 7c | partial (last_pass in 3c) |
-| RV4 | References and assets (missing entries/labels, duplicates, missing fields, bad DOIs, uncited, missing images, unreferenced floats, TexLab) | fe/editor/preflight/run.ts | 7c | not started |
-| RV5 | Privacy and blind review (secrets, `\todo`, TODO, highlights; Double-blind: `\author`, `\thanks`, acknowledgements, PDF Author) | fe/editor/preflight/run.ts | 7c | not started |
-| RV6 | Accessibility (title, language, tags, bookmarks, small text, textless pages, alt text, skipped headings, vague links); Tags and alt text switch; Screen reader view | fe/editor/preflight/pdfFacts.ts | 7c | not started |
-| RV7 | Submission readiness (PDF version, encryption, unembedded/Type 3 fonts, absolute paths, case-only names, image formats, file names, abstract, keywords) | fe/editor/preflight/run.ts | 7c | not started |
-| RV8 | Verify citations: Crossref/doi.org, arXiv, OpenAlex; retracted/unknown/differing with record and link; which .bib read | fe/editor/tools/ReferenceCheck.tsx, be/services/referenceCheck.js | 7 + 7c | not started |
+| RV3 | Compile and layout checks (errors, overfull, ??, missing glyphs, rerun, duplicate destinations, page sizes, text past edge) | fe/editor/preflight/run.ts | 7c | partial (checks in logic in spectrum-references, PDF facts from 7c) |
+| RV4 | References and assets (missing entries/labels, duplicates, missing fields, bad DOIs, uncited, missing images, unreferenced floats, TexLab) | fe/editor/preflight/run.ts | 7c | partial (checks in logic in spectrum-references, incl. TexLab diagnostics passed in; panel in 7c) |
+| RV5 | Privacy and blind review (secrets, `\todo`, TODO, highlights; Double-blind: `\author`, `\thanks`, acknowledgements, PDF Author) | fe/editor/preflight/run.ts | 7c | partial (checks in logic in spectrum-references; panel in 7c) |
+| RV6 | Accessibility (title, language, tags, bookmarks, small text, textless pages, alt text, skipped headings, vague links); Tags and alt text switch; Screen reader view | fe/editor/preflight/pdfFacts.ts | 7c | partial (checks in logic in spectrum-references, PDF facts from 7c; Screen reader view in 7c) |
+| RV7 | Submission readiness (PDF version, encryption, unembedded/Type 3 fonts, absolute paths, case-only names, image formats, file names, abstract, keywords) | fe/editor/preflight/run.ts | 7c | partial (checks in logic in spectrum-references, PDF facts from 7c) |
+| RV8 | Verify citations: Crossref/doi.org, arXiv, OpenAlex; retracted/unknown/differing with record and link; which .bib read | fe/editor/tools/ReferenceCheck.tsx, be/services/referenceCheck.js | 7 + 7c | partial (logic in spectrum-references; panel in 7c) |
 | RV9 | AI review: summary, strengths, score, confidence, limits, Major/Minor/Note points with line; parts of ~160k chars with progress; Stop keeps parts | be/services/reviewService.js | 7c + 6a | not started |
-| RV10 | Typst and Markdown documents run their subsets | fe/editor/tools/ReviewTab.tsx | 7c | not started |
+| RV10 | Typst and Markdown documents run their subsets | fe/editor/tools/ReviewTab.tsx | 7c | partial (Markdown and Typst subsets in logic in spectrum-references; panel in 7c) |
 | RV11 | "Compile first" instead of false all-clear; unreadable PDF says why | fe/editor/tools/ReviewTab.tsx | 7c | not started |
 | RV12 | Rows jump to line or PDF page; Show in PDF; Fix with AI per row or group; Dismiss; Send to agent | fe/editor/tools/ReviewTab.tsx | 7c | not started |
 | RV13 | Status line (last run, source changed since); Copy report as Markdown; latest run kept until quit | fe/editor/tools/ReviewTab.tsx | 7c | not started |
