@@ -8,6 +8,30 @@ license.workspace = true
 publish = false
 
 [dependencies]
+base64.workspace = true
+directories.workspace = true
+flate2.workspace = true
+hmac.workspace = true
+notify.workspace = true
+notify-debouncer-mini.workspace = true
+parking_lot.workspace = true
+regex.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+zip.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
