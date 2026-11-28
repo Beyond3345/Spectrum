@@ -12,7 +12,7 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 | spectrum-checkers | pure lib | — (harper-core, Hunspell C++ via cc, reqwest) |
 | spectrum-theme | GPUI lib | — |
 | spectrum-ui | GPUI lib | theme |
-| spectrum-editor | GPUI lib | core, theme, ui |
+| spectrum-editor | GPUI lib | core, theme, ui (ropey) |
 | spectrum-pdf | GPUI lib | core, compile, theme, ui |
 | spectrum-diagram | GPUI lib | core, compile, theme, ui, editor, pdf |
 | spectrum-app (bin `spectrum`) | GPUI bin | every lib |
@@ -134,6 +134,27 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
   `Price::cost(&Usage)`; `normalize_model_id`, `is_local_model`, `prices_of`.
 - Tests: `tests/streams.rs` + `tests/bodies.rs` on a local server (`tests/support/server.rs`), fixtures in
   `tests/fixtures/*.sse`. No network.
+
+### spectrum-editor (document core only so far; the decision and what 2b–2e do: `crates/spectrum-editor/DESIGN.md`)
+
+- Own editor on own core, not the kit's `Editor`. No GPUI in the core. Offsets are UTF-8 bytes.
+- `Buffer` (read-only from outside): `from_text` (CRLF/CR → LF in memory, `line_ending()` kept, `file_text()`
+  for saving), `version()`, `rope()` (clone = O(1) snapshot), `len`, `len_lines`, `len_utf16`, `text`,
+  `slice`, `line`, `line_range`, `clip`, `clip_range`; conversions, all O(log n) and clamping:
+  `offset_to_point` / `point_to_offset` (`Point`: line, byte column), `offset_to_point_utf16` /
+  `point_utf16_to_offset` (`PointUtf16`), `offset_to_utf16` / `utf16_to_offset`, `range_to_utf16` /
+  `range_from_utf16`, `offset_to_char` / `char_to_offset`.
+- `Document::from_text`, `.buffer()`, `.version()`, `.apply(Transaction, &SelectionSet, Instant) -> Applied
+  { changes, selections }`, `.undo()` / `.redo() -> Option<Applied>`, `can_undo`, `can_redo`,
+  `break_undo_group`, `begin_undo_group` / `end_undo_group`, `mark_saved`, `is_dirty`, `set_line_ending`.
+- `Transaction::new(Vec<Edit>)` (ranges from before the transaction), `Transaction::insert(&selections, text)`
+  (typing), `.with_selections`, `.with_kind(EditKind::{Insert, DeleteBackward, DeleteForward, Other})`;
+  `Edit::new(range, text)`. Typing groups into undo steps by `GROUP_INTERVAL` (400 ms) and word.
+- `Change { start, removed, inserted, start_point, old_end_point, new_end_point, start_utf16, old_end_utf16 }`,
+  `.old_end()`, `.new_end()`, `.map_offset(offset, Bias)`: what Tree-sitter and the LSP need per edit.
+- `Selection { anchor, head }`, `SelectionSet` (sorted, merged, `primary()`; `new`, `cursor`, `add`,
+  `collapse_to_primary`, `clip(&Buffer)`, `map(&[Change])`). Selections belong to a view, not the document.
+- Perf: `cargo test --release -p spectrum-editor --test perf -- --ignored --nocapture`.
 
 ## Globals
 

@@ -74,3 +74,12 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
 - [ ] Stopping an answer mid-stream stops it within a second.
 - [ ] `models-dev.json` (prices) is written to `%APPDATA%\com.beyond3345.spectrum` and replaced
       cleanly when it refreshes.
+
+## Editor (spectrum-editor)
+
+- [ ] Open a CRLF .tex, edit and save: it stays CRLF throughout, and git shows only the edited lines.
+- [ ] Paste CRLF text from Notepad into an LF file: the saved file stays LF.
+- [ ] Microsoft Pinyin and Cantonese input: the candidate window sits at the cursor, and one
+      composition is one undo step.
+- [ ] An emoji from Win+. : the cursor and selection land after it, never inside it.
+- [ ] Typing in a 20,000-line file feels instant; holding Ctrl+Z doesn't stall.

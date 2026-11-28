@@ -158,3 +158,25 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     shows only if OpenAI sends it. (`provider/responses.rs`)
 53. **A failed request is retried only before anything has streamed**; a stream that breaks midway
     reports the error. Not ported yet: `testConnection`, native web search, `Retry-After` dates.
+
+## spectrum-editor core (session 2a)
+
+54. **Spectrum has its own editor element and document core** rather than building on the kit's
+    code editor (evidence in `crates/spectrum-editor/DESIGN.md`). The kit's editor is fast (20k-line
+    .tex opens in 32–42 ms, ~2 ms per keystroke frame), but it has no view zones for inline diff
+    hunks, no modal input or block cursor for Vim, private transactions, only a primary selection,
+    literal-only find, no snippets and a single-colour gutter; getting those means forking ~41,700
+    lines. The kit still supplies the rope type and the chrome widgets. Our core: open 0.8–0.9 ms,
+    keystroke with undo ~1 µs.
+55. **All editor offsets are UTF-8 bytes**; UTF-16 only at the LSP and IME boundaries.
+56. **CRLF and CR are stored as LF and the file's ending is restored on save**, so no cursor can sit
+    inside a CRLF and a CRLF file stays CRLF. (`buffer.rs`)
+57. **Linear undo, not an undo tree** (the plan says "undo tree"): groups break after 400 ms, on a
+    cursor move, or at the first space after a word. Redo branches are rarely used and a tree
+    complicates every other feature. (`history.rs`)
+58. **Selections belong to views**, so two panes can show one document with their own cursors.
+    (`document.rs`)
+59. **Overlapping edits in one transaction are dropped and logged**, not applied in an undefined
+    order. (`document.rs`)
+60. **Tree-sitter's first parse of a big file (~120 ms) runs off the UI thread** on a rope snapshot;
+    later edits reparse incrementally. (for 2b)
