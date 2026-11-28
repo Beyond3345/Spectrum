@@ -271,6 +271,14 @@ impl ShellView {
         cx.notify();
     }
 
+    /// The open project's workspace, if one is showing.
+    pub fn workspace(&self) -> Option<Entity<WorkspaceView>> {
+        match &self.screen {
+            Screen::Workspace(w) => Some(w.clone()),
+            _ => None,
+        }
+    }
+
     /// The palette open now, for tests.
     pub fn palette(&self) -> Option<Entity<PaletteView>> {
         self.palette.as_ref().map(|(p, _)| p.clone())
