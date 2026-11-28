@@ -6781,7 +6781,14 @@ dependencies = [
 name = "spectrum-compile"
 version = "3.0.0"
 dependencies = [
- "spectrum-core",
+ "encoding_rs",
+ "flate2",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

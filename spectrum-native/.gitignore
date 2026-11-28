@@ -1,1 +1,3 @@
 target/
+# engine logs used as test fixtures (the repo root ignores *.log)
+!crates/*/tests/fixtures/**/*.log

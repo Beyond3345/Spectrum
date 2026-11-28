@@ -1,0 +1,51 @@
+note: Running TeX ...
+error: sections/part:1: Undefined control sequence
+note: Writing `out-tect/broken.log` (7.8076171875 KiB)
+error: something bad happened inside XeTeX; its output follows:
+
+===============================================================================
+(broken.tex
+LaTeX2e <2021-11-15> patch level 1
+L3 programming layer <2022-02-24> (article.cls
+Document Class: article 2021/10/04 v1.4n Standard LaTeX document class
+(size10.clo)) (hyperref.sty (ltxcmds.sty) (iftex.sty) (pdftexcmds.sty
+(infwarerr.sty)) (keyval.sty) (kvsetkeys.sty) (kvdefinekeys.sty) (pdfescape.sty
+) (hycolor.sty) (letltxmacro.sty) (auxhook.sty) (kvoptions.sty) (pd1enc.def)
+(intcalc.sty) (etexcmds.sty) (puenc.def) (url.sty) (bitset.sty (bigintcalc.sty)
+) (atbegshi-ltx.sty)) (hxetex.def (stringenc.sty) (rerunfilecheck.sty
+(atveryend-ltx.sty) (uniquecounter.sty))) (l3backend-xetex.def)
+No file broken.aux.
+(ts1cmr.fd) (nameref.sty (refcount.sty) (gettitlestring.sty))
+
+Package hyperref Warning: Rerun to get /PageLabels entry.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 4.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `\\' on input line 4.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 4.
+
+
+LaTeX Warning: Reference `sec:missing' on page 1 undefined on input line 5.
+
+
+LaTeX Warning: Citation `ghost' on page 1 undefined on input line 5.
+
+(sections/part
+
+LaTeX Warning: Citation `nobody' on page 1 undefined on input line 1.
+
+! Undefined control sequence.
+l.1 ...ation \cite{nobody} and a bad command \oops
+                                                  .
+No pages of output.
+Transcript written on broken.log.
+===============================================================================
+error: the XeTeX engine had an unrecoverable error
+caused by: halted on potentially-recoverable error as specified

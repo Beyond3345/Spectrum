@@ -84,7 +84,8 @@ smallvec = "1.16.6"
 parking_lot = "0.12.5"
 # the version GPUI renders into; only spectrum-app's snapshot tests use it directly
 image = { version = "0.25.10", default-features = false, features = ["png"] }
-tempfile = "3"
+encoding_rs = "0.8.44"
+tempfile = "3.27.0"
 
 [workspace.lints.rust]
 # allowed per module only for FFI (Hunspell, PDFium, macOS, Win32)
