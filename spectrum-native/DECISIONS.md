@@ -315,3 +315,19 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
      tooltips come when spectrum-ui wraps the kit's. (`toolbar.rs`)
 112. **Measured**: a real 100-page TikZ PDF opens in 3.7 ms and renders a page in 7.4 ms (12.2 ms in
      Dark); the slowest scroll step is 22 ms.
+
+## Shell follow-up: icons, folders, palette pill (session 1f)
+
+113. **Icons are served at `icons/ui/<name>.svg` and `icons/brands/<name>.svg`** (embedded with
+     rust-embed, read from disk in debug); `SpectrumIcon` has one variant per file, checked against
+     the folder. Lucide stays at `icons/<name>.svg` as the fallback.
+114. **Lucide fallbacks in use** (none of the 92 fit): disclosure chevrons, Compile's menu chevron and
+     progress ring, the palette prompt chevron, new file, new folder, refresh, Move to Bin, generic
+     file, Home's grid/list toggles. Worth adding to the icon set later.
+115. **Files before folders, sorted by name**, as the mockup shows (2.8 put folders first).
+     (`workspace/files.rs`)
+116. **Folders start closed; opening a file opens the folders above it**, and a closed folder shows its
+     item count. (`workspace.rs`)
+117. **Home's pill reads "Search commands…"** since Home's palette has no files. (`home.rs`)
+118. **Image files use the apricot Figure tint; only the top-level `diagrams/` folder is green.**
+119. **The selected palette row uses the Grammar pastel at 12%**, as in Blueprint 10. (`palette.rs`)

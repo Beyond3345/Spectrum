@@ -28,6 +28,9 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
 - [ ] The title bar's minimise/maximise/close buttons and window dragging work.
 - [ ] A file name containing `:` is refused with a clear message.
 - [ ] Renaming `main.tex` to `Main.tex` (case only) works.
+- [ ] The header pill reads Ctrl+Shift+P and opens the palette, in the workspace and on Home.
+- [ ] Arrow keys, Home/End and Enter move through and open items in the Files tree.
+- [ ] The line icons are crisp at 125% and 150% scaling.
 
 ## Data from 2.8 (spectrum-core)
 
