@@ -75,12 +75,18 @@ pub fn windows_search_path(
         .filter(|dir| !dir.is_empty())
         .map(str::to_owned)
         .collect();
+    // Windows takes `/` and `\` alike in PATH entries, and any case, so compare them that way
+    let same = |a: &str, b: &str| {
+        let norm = |s: &str| {
+            s.replace('/', "\\")
+                .trim_end_matches('\\')
+                .to_ascii_lowercase()
+        };
+        norm(a) == norm(b)
+    };
     for dir in tex.into_iter().flatten().filter(|dir| dir.is_dir()) {
         let dir = dir.to_string_lossy().into_owned();
-        if !dirs
-            .iter()
-            .any(|d| d.trim_end_matches('\\').eq_ignore_ascii_case(&dir))
-        {
+        if !dirs.iter().any(|d| same(d, &dir)) {
             dirs.push(dir);
         }
     }
