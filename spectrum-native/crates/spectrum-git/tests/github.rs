@@ -492,3 +492,113 @@ async fn the_https_transport_fetches_over_reqwest_with_the_token_as_a_header() {
         .await;
     assert!(matches!(refused, Err(GitError::SignInAgain)), "{refused:?}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_settings_repository_is_made_private_and_carries_personas_and_skills_without_keys() {
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let made = std::sync::atomic::AtomicBool::new(false);
+    let api = Server::start(move |req| match (req.method.as_str(), req.path.as_str()) {
+        ("GET", "/repos/octocat/spectrum-settings") if made.load(Ordering::SeqCst) => reply(
+            200,
+            json!({ "full_name": "octocat/spectrum-settings", "private": true }),
+        ),
+        ("GET", "/repos/octocat/spectrum-settings") => {
+            reply(404, json!({ "message": "Not Found" }))
+        }
+        ("POST", "/user/repos") => {
+            assert_eq!(req.json()["private"], true);
+            made.store(true, Ordering::SeqCst);
+            reply(
+                201,
+                json!({ "full_name": "octocat/spectrum-settings", "private": true }),
+            )
+        }
+        _ => reply(404, json!({})),
+    })
+    .await;
+    let web = tmp.join("gh");
+    git2::Repository::init_bare(web.join("octocat").join("spectrum-settings.git")).unwrap();
+    let web_url = format!(
+        "file:///{}",
+        web.to_str()
+            .unwrap()
+            .replace('\\', "/")
+            .trim_start_matches('/')
+    );
+    let gh = GitHub::with_bases(&api.base, &web_url, "ghp_token").unwrap();
+    let author = Author {
+        name: "The Octocat".into(),
+        email: "583231+octocat@users.noreply.github.com".into(),
+    };
+    let computer = |name: &str| {
+        let machine = spectrum_git::Machine {
+            id: format!("{name}-id"),
+            name: name.into(),
+        };
+        spectrum_git::SettingsRepo::new(
+            &tmp.join(name),
+            gh.clone(),
+            "octocat",
+            author.clone(),
+            machine,
+        )
+    };
+    let (mac, win) = (computer("mac"), computer("win"));
+    let (mac_skills, win_skills) = (tmp.join("mac/skills/own"), tmp.join("win/skills/own"));
+    let persona = |id: &str, name: &str| json!({ "id": id, "name": name, "colour": "teal", "prompt": "Be kind." });
+    let (a, b, starter) = (
+        persona("a", "Reviewer"),
+        persona("b", "Editor"),
+        persona("research-writer", "Research writer"),
+    );
+
+    let first = mac.sync(&mac_skills).await.unwrap();
+    assert!(first.ready && first.first);
+    assert_eq!(
+        mac.sync_personas(&[a.clone(), b.clone()]).unwrap(),
+        (vec![a.clone(), b.clone()], false)
+    );
+    write(
+        &mac_skills,
+        "my-skill/SKILL.md",
+        "---\nname: my-skill\n---\nDo it this way.\n",
+    );
+    write(&mac_skills, "my-skill/.env.example", "API_KEY=\n");
+    mac.sync(&mac_skills).await.unwrap();
+    let bare = git2::Repository::open_bare(web.join("octocat/spectrum-settings.git")).unwrap();
+    let tree = bare
+        .find_commit(bare.refname_to_id("refs/heads/main").unwrap())
+        .unwrap()
+        .tree()
+        .unwrap();
+    assert!(tree.get_path(Path::new("personas/a.json")).is_ok());
+    assert!(
+        tree.get_path(Path::new("skills/my-skill/files/SKILL.md"))
+            .is_ok()
+    );
+    assert!(
+        tree.get_path(Path::new("skills/my-skill/files/.env.example"))
+            .is_err(),
+        "never a key-looking file"
+    );
+
+    // the other computer: the repository's first, and its own go to it
+    win.sync(&win_skills).await.unwrap();
+    let (joined, changed) = win.sync_personas(std::slice::from_ref(&starter)).unwrap();
+    assert_eq!(joined, vec![starter.clone(), a.clone(), b.clone()]);
+    assert!(changed);
+    assert!(
+        fs::read_to_string(win_skills.join("my-skill/SKILL.md"))
+            .unwrap()
+            .contains("Do it this way")
+    );
+    assert!(!win_skills.join("my-skill/.env.example").exists());
+
+    // deleted on Windows, so on the Mac too
+    win.sync_personas(&[starter.clone(), a.clone()]).unwrap();
+    win.sync(&win_skills).await.unwrap();
+    mac.sync(&mac_skills).await.unwrap();
+    let (mine, _) = mac.sync_personas(&[a.clone(), b.clone()]).unwrap();
+    assert_eq!(mine, vec![a, starter]);
+}
