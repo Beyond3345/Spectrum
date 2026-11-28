@@ -8,6 +8,11 @@ Read this and `ARCHITECTURE_LEDGER.md` at the start of every session. Full ratio
 Where the plan is wrong, out of date or ambiguous, decide and add an entry to `DECISIONS.md`
 (what, why, where). Don't stop to ask.
 
+## Windows checklist
+
+Anything Windows-only that CI can't prove (UI, IME, real installs, signed-in services, 2.8 data),
+list in your report under "Windows hand tests"; it goes into `WINDOWS_TEST_CHECKLIST.md`.
+
 ## Gate
 
 `cargo xtask check` (fmt, clippy with `-D warnings`, tests) must pass before every commit. Also
