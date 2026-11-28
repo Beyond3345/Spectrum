@@ -7,7 +7,8 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 | Crate | Kind | Depends on |
 |-------|------|------------|
 | spectrum-core | pure lib | — |
-| spectrum-compile, -lsp, -ai, -references, -git, -convert | pure lib | core |
+| spectrum-compile, -ai, -references, -git, -convert | pure lib | core |
+| spectrum-lsp | pure lib | — (lsp-types, tokio, url) |
 | spectrum-checkers | pure lib | — (harper-core, Hunspell C++ via cc, reqwest) |
 | spectrum-theme | GPUI lib | — |
 | spectrum-ui | GPUI lib | theme |
@@ -94,6 +95,20 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
   Paragraph lint cache: a re-check after an edit re-lints one paragraph.
 - `LanguageTool::new(server).check(..).await -> GrammarReport` (async reqwest; no server management).
 - Perf: `cargo test --release -p spectrum-checkers --test perf -- --ignored --nocapture`.
+
+### spectrum-lsp (needs a Tokio runtime; the caller finds the binaries)
+
+- `LanguageServer::start(ServerConfig) -> (LanguageServer, UnboundedReceiver<LspEvent>)`; config from
+  `ServerConfig::texlab(program, root)` / `::tinymist(..)` (pub fields `args`, `env`, `settings`,
+  `request_timeout`, `restart_delay`; `with_env`). Settings: `texlab_settings(aux_dir)`, `tinymist_settings(fonts)`.
+- Sync (plain fns; the handle keeps each document's text): `did_open(uri, lang, version, text)`,
+  `did_change(uri, version, changes)` (UTF-16 ranges), `did_save`, `did_close`; `pin_main(path).await`.
+- Requests: `completion`, `hover`, `definition`, `rename`, `document_symbol`, generic `request::<R>` and
+  `notify::<N>`; a timeout or a dropped future sends `$/cancelRequest`. `capabilities()`, `kind()`, `shutdown().await`.
+- `LspEvent::{Diagnostics, ShowMessage, Restarting{attempt, delay}, Restarted, Failed}`; `LspError` (thiserror).
+- Crash: 3 restarts (delay doubles from 500 ms; count resets after 60 s up), documents re-opened, main re-pinned.
+- `file_uri(path)`; `pub use lsp_types`. Test bin `spectrum-lsp-fake` (never shipped); `tests/real_servers.rs`
+  runs TexLab/Tinymist when found (`SPECTRUM_TEXLAB`, `SPECTRUM_TINYMIST`, PATH, 2.8 binaries), else prints skipped.
 
 ## Globals
 
