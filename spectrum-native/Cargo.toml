@@ -28,6 +28,61 @@ spectrum-win-sandbox = { path = "crates/spectrum-win-sandbox" }
 spectrum-win-setup = { path = "crates/spectrum-win-setup" }
 spectrum-xtask = { path = "crates/spectrum-xtask" }
 
+# GPUI: gpui-kit pins gpui-pre and re-exports it; only spectrum-ui and spectrum-theme use gpui-kit,
+# the other GPUI crates use gpui-pre under the name gpui. Never add a second GPUI package.
+gpui-kit = "=0.11.0"
+# third-party pins: DEPENDENCY_AUDIT.md. notify, notify-debouncer-mini, similar, base64 and zstd
+# follow the versions gpui-kit, resvg and zip already use, so none is built twice.
+# tree-sitter-bibtex is vendored when spectrum-editor needs it (the crates.io one wants tree-sitter 0.22).
+gpui = { package = "gpui-pre", version = "=0.3.14" }
+ropey = "=2.0.0-beta.1"
+lsp-types = "0.97.0"
+tree-sitter = "=0.26.13"
+tree-sitter-language = "0.1.9"
+codebook-tree-sitter-latex = "0.6.1"
+codebook-tree-sitter-typst = "0.12.2"
+tree-sitter-md = { version = "0.5.4", default-features = false }
+pdfium-render = "0.9.6"
+harper-core = "3.2.0"
+typst-syntax = "0.15.1"
+tokio = "1.54.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2", "json", "stream"] }
+eventsource-stream = "0.2.3"
+rmcp = "3.12.0"
+notify = "8.2.2"
+notify-debouncer-mini = "0.7.0"
+security-framework = "3.7.0"
+windows-sys = "0.61.2"
+directories = "6.0.0"
+git2 = { version = "0.21.0", features = ["vendored-libgit2"] }
+similar = "2.7.0"
+pulldown-cmark = "0.13.6"
+resvg = "0.46.0"
+nucleo-matcher = "0.3.1"
+rust-embed = "8.14.0"
+serde = "1.0.229"
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+anyhow = "1.0.105"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+tracing-appender = "0.2.5"
+flate2 = "1.1.11"
+zip = "8.6.0"
+tar = "0.4.46"
+quick-xml = "0.42.0"
+regex = "1.13.2"
+trash = "5.4.0"
+futures = "0.3.34"
+crossbeam-channel = "0.5.17"
+sha2 = "0.11.2"
+hmac = "0.13.0"
+base64 = "0.22.1"
+cc = "1.12.0"
+zstd = "0.13.6"
+smallvec = "1.16.6"
+parking_lot = "0.12.5"
+
 [workspace.lints.rust]
 # allowed per module only for FFI (Hunspell, PDFium, macOS, Win32)
 unsafe_code = "deny"

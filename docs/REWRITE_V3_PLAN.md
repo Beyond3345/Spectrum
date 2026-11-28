@@ -21,10 +21,11 @@ and the order of sessions. The blueprint stays the reference for detail (formats
 
 ## Corrections to the blueprint (checked 28 Nov 2026)
 
-1. **GPUI pin.** `gpui-component` 0.11.0 (23 Nov 2026) depends on `gpui-pre =0.3.14`, not the crates.io
-   `gpui` 0.2.2. Pin that exact pair in `[workspace.dependencies]` and import it under the name `gpui`
-   (`gpui = { package = "gpui-pre", version = "=0.3.14" }`). The duplicate check becomes
-   `cargo tree -d -i gpui-pre` and must also show no plain `gpui`. Re-check both at Phase 0; they move weekly.
+1. **GPUI pin.** Depend on `gpui-kit =0.11.0` (23 Nov 2026), which pins `gpui-pre =0.3.14` and re-exports
+   it with `gpui-component`. The crates.io `gpui` 0.2.2 and `gpui-ce` are other forks: never add them. GPUI
+   crates other than `spectrum-ui`/`spectrum-theme` use `gpui = { package = "gpui-pre", version = "=0.3.14" }`.
+   The duplicate check is `cargo tree -d -i gpui-pre`. The kit also ships a Tree-sitter + LSP code editor;
+   session 2a evaluates it as the base for `spectrum-editor` before writing one from scratch.
 2. **Mac is Apple silicon only.** Drop every macOS x64 asset the blueprint mentions (Typst SHA-256s,
    PDFium, engines). Targets: `aarch64-apple-darwin` and `x86_64-pc-windows-msvc`. Never run an x86_64
    slice under Rosetta in checks.
