@@ -61,19 +61,6 @@ fn swatch(name: SharedString, fill: Hsla, text: Hsla, theme: &SpectrumTheme) -> 
         .into_any_element()
 }
 
-const SLOTS: [ToolbarSlot; 10] = [
-    ToolbarSlot::Insert,
-    ToolbarSlot::Figure,
-    ToolbarSlot::Table,
-    ToolbarSlot::Diagram,
-    ToolbarSlot::Jyutping,
-    ToolbarSlot::Insights,
-    ToolbarSlot::Grammar,
-    ToolbarSlot::Tools,
-    ToolbarSlot::Assistant,
-    ToolbarSlot::Agent,
-];
-
 /// The Light/Dark/System and Spectrum/Simple segmented switches.
 fn switches(theme: &SpectrumTheme) -> impl IntoElement {
     let group = || {
@@ -125,17 +112,21 @@ fn samples(theme: &SpectrumTheme) -> impl IntoElement {
             let a = theme.area(area);
             swatch(area.colours().name.into(), a.band, a.text, theme)
         }));
-    let toolbar = div().flex().gap(px(4.)).children(SLOTS.map(|slot| {
-        let (fg, bg) = theme.toolbar(slot);
-        div()
-            .size(px(24.))
-            .rounded(px(6.))
-            .bg(bg)
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(div().size(px(8.)).rounded_full().bg(fg))
-    }));
+    let toolbar = div()
+        .flex()
+        .gap(px(4.))
+        .children(ToolbarSlot::ALL.map(|slot| {
+            let calm = theme.toolbar(slot);
+            let (fg, bg) = (calm.fg, calm.active);
+            div()
+                .size(px(24.))
+                .rounded(px(6.))
+                .bg(bg)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(div().size(px(8.)).rounded_full().bg(fg))
+        }));
     let scope = div()
         .flex()
         .gap(px(2.5))

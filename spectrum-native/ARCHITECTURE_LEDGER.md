@@ -37,15 +37,20 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 - `SpectrumTheme` derefs to `Colours` (plan tokens: `bg_canvas`, `bg_app`, `bg_panel`, `bg_subtle`,
   `bg_hover`, `bg_selected`, `bg_code`, `bg_code_border`, `text`, `text_secondary`, `text_tertiary`,
   `border`, `border_strong`, `accent`, `accent_soft`, `red/orange/amber/green/teal/purple/magenta`
-  + `_soft`, `eff_off..eff_max`). Methods: `area(AreaHue) -> AreaColour { text, band, soft }`,
-  `toolbar(ToolbarSlot) -> (fg, bg)`, `scope_bar_color(level)`, `prism() -> [Hsla; 6]`,
-  `syntax_comment()`, `is_dark()`.
-- `AreaHue` (12, `ALL`, `colours()`), `ToolbarSlot` (10), `SidebarTab` (4; `theme.sidebar_tab(tab) -> (fg, 13% tint)`), `ThemeMode` {Light, Dark, System},
+  + `_soft`, `eff_off..eff_max`). Field `accent_muted` (Compile's Calm Slate fill). Methods:
+  `area(AreaHue) -> AreaColour { text, band, soft }` (full strength: brand moments only),
+  calm workspace chrome `toolbar(ToolbarSlot)` / `sidebar_tab(SidebarTab)` / `tools_tab(ToolsTab)
+  -> Calm { fg (icon), text (label, 4.5:1), hover, active (12% tint) }` (neutral in Simple style),
+  `scope_bar_color(level)`, `prism() -> [Hsla; 6]` (brand only), `syntax_comment()`, `is_dark()`.
+- `AreaHue` (12, `ALL`, `colours()`), `ToolbarSlot` (10), `SidebarTab` (3: Files, Research, To-dos),
+  `ToolsTab` (4: Logs, Review, Versions, GitHub) — each with `ALL`, `name()`, `colours()` (the
+  plan's pastels, tested against the plan HTML), `COMPILE`, `ThemeMode` {Light, Dark, System},
   `ColourStyle` {Spectrum, Simple}, `PRISM`, `SCOPE_BARS`, `RADIUS_PANEL/CARD/CONTROL`, `SIDEBAR_WIDTH`.
 
 ### spectrum-ui (the only crate besides theme that imports `gpui_kit::component`)
-- `IconButton::spectrum(id, IconName, ToolbarSlot, theme)` / `::plain(id, icon, theme)`; `.active .size .tooltip .on_click`.
-- `SplitButton::primary(id, label, theme)` (prism pill, white bold shadowed label; `.on_click`, `.on_menu`); `prism_bar(theme)`.
+- `IconButton::pastel(id, IconName, ToolbarSlot, theme)` / `::plain(id, icon, theme)`; `.active .size .tooltip .on_click`.
+- `SplitButton::primary(id, label, theme)` (solid Calm Slate pill, white semibold label; `.compiling(bool)`
+  turns a ring in place of play, `.on_click`, `.on_menu`); `prism_bar(theme)` for brand moments.
 - `Segmented::new(id).item(label).icon_item(icon).selected(ix).on_select(|&ix, w, cx|)`; `sidebar_tabs(id, SidebarTab, theme)`.
 - `FileRow::new(id, label, dot).active().selected().on_click()`; `panel(theme)` (16 px), `card(theme)` (12 px), `pane_bar(theme)`.
 - `show_notice(window, cx, &UserNotice, Tone)` toast; `confirm(window, cx, title, message, ok, on_ok)` (red OK).
@@ -60,10 +65,11 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
   future from GPUI code goes through this.
 - `init(mode, style, cx)`: kit, theme, key bindings. `shell::ShellView::new(AppPaths, window, cx)` is the window root:
   Home ↔ workspace ↔ theme preview, with the palette over them (`show_command_palette`, `quick_open`,
-  `open_project(root)`, `palette()`); `shell::commands_for(ScreenKind)` lists the palette's commands.
+  `open_project(root)`, `workspace()`, `palette()`); `shell::commands_for(ScreenKind)` lists the palette's commands.
 - `home::HomeView` (`HomeEvent::Open(root)`), `home::{load_projects, new_project, time_ago, ProjectCard}`.
-- `workspace::WorkspaceView` (`WorkspaceEvent::ShowProjects`; `open(rel)`, `refresh`, `quick_open_items`): title bar,
-  268 px sidebar, editor slot, PDF slot. Sessions 2c and 4b replace `editor_pane` / `pdf_pane` in `workspace/view.rs`.
+- `workspace::WorkspaceView` (`WorkspaceEvent::ShowProjects`; `open(rel)`, `refresh`, `quick_open_items`,
+  `set_compiling(bool)`): title bar, 268 px sidebar (Files / Research / To-dos tabs, Outline and
+  Settings docked at its foot; session 2b fills the Outline in `workspace/sidebar.rs`), editor slot, PDF slot. Sessions 2c and 4b replace `editor_pane` / `pdf_pane` in `workspace/view.rs`.
   Session 10a: update pill before Compile in `title_bar`, update card in Home (`// session 10a` comments).
 - `file_ops::{create_file, create_folder, rename, move_to_bin, editable, unfit_name, BIN}` (blocking; background only).
 - `theme_preview::ThemePreviewView` — reachable from the palette ("Show theme preview").

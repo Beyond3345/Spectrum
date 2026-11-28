@@ -141,6 +141,12 @@ mod mac {
             .unwrap();
             save(&mut cx, window, &format!("workspace-{suffix}"));
 
+            // Compile while a build runs: the progress ring and "Compiling"
+            let workspace = cx.read(|cx| shell.read(cx).workspace()).unwrap();
+            cx.update(|cx| workspace.update(cx, |w, cx| w.set_compiling(true, cx)));
+            save(&mut cx, window, &format!("workspace-compiling-{suffix}"));
+            cx.update(|cx| workspace.update(cx, |w, cx| w.set_compiling(false, cx)));
+
             // the real key binding opens the palette
             cx.simulate_keystrokes(window.into(), "cmd-shift-p");
             settle(&mut cx);

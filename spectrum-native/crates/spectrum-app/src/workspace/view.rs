@@ -14,7 +14,8 @@ use spectrum_ui::{
     show_notice,
 };
 
-/// The editor toolbar, left to right: warm authoring, then cool inspection and AI (plan Section 3).
+/// The editor toolbar, left to right along the calm pastel spectrum: warm authoring, then cool
+/// inspection and AI (plan Section 3).
 const TOOLBAR: [(ToolbarSlot, IconName, &str, &str); 10] = [
     (ToolbarSlot::Insert, IconName::Plus, "Insert", "the editor"),
     (ToolbarSlot::Figure, IconName::Image, "Figure", "the editor"),
@@ -64,7 +65,7 @@ const TOOLBAR: [(ToolbarSlot, IconName, &str, &str); 10] = [
 ];
 
 /// Says plainly that a control's feature isn't in this build yet.
-fn not_built(window: &mut Window, cx: &mut App, name: &str, comes_with: &str) {
+pub(super) fn not_built(window: &mut Window, cx: &mut App, name: &str, comes_with: &str) {
     let notice = UserNotice::new(
         format!("{name} isn't in this build yet"),
         format!("It arrives with {comes_with}."),
@@ -136,9 +137,18 @@ impl WorkspaceView {
             .child(format!("— {}{file}", self.name));
         // session 10a puts the update pill before Compile
         let right = div().flex().items_center().gap(px(8.)).pr(px(10.)).child(
-            SplitButton::primary("compile", "Compile", theme)
-                .on_click(|_, window, cx| window.dispatch_action(Box::new(CompileProject), cx))
-                .on_menu(|_, window, cx| not_built(window, cx, "Compile options", "the compiler")),
+            SplitButton::primary(
+                "compile",
+                if self.compiling {
+                    "Compiling"
+                } else {
+                    "Compile"
+                },
+                theme,
+            )
+            .compiling(self.compiling)
+            .on_click(|_, window, cx| window.dispatch_action(Box::new(CompileProject), cx))
+            .on_menu(|_, window, cx| not_built(window, cx, "Compile options", "the compiler")),
         );
         TitleBar::new()
             .h(px(TITLE_BAR_HEIGHT))
@@ -155,7 +165,7 @@ impl WorkspaceView {
             &'static str,
             &'static str,
         )| {
-            IconButton::spectrum(name, glyph, slot, theme)
+            IconButton::pastel(name, glyph, slot, theme)
                 .tooltip(name)
                 .on_click(move |_, window, cx| not_built(window, cx, name, comes_with))
         };

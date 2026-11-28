@@ -1,19 +1,22 @@
-//! The area-tinted icon button and the prism Compile split button (plan Section 3B, Snippet B).
+//! The pastel toolbar button, the Calm Slate Compile split button (plan Section 3B, Snippet B) and
+//! the prism bar for brand moments.
 
 use crate::{IconName, alpha, icon};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
-    App, ClickEvent, ElementId, FontWeight, Hsla, IntoElement, ParentElement, RenderOnce,
-    SharedString, Styled, Window, black, div, linear_color_stop, linear_gradient, prelude::*, px,
-    transparent_black, white,
+    Animation, AnimationExt as _, AnyElement, App, ClickEvent, ElementId, FontWeight, Hsla,
+    IntoElement, ParentElement, RenderOnce, SharedString, Styled, Transformation, Window, div,
+    linear_color_stop, linear_gradient, percentage, prelude::*, px, svg, transparent_black, white,
 };
 use spectrum_theme::{SpectrumTheme, ToolbarSlot};
 use std::rc::Rc;
+use std::time::Duration;
 
 pub(crate) type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
-/// A square icon button. `spectrum` tints it in a toolbar slot's hue (the mockup's `.mk-btn`:
-/// a 14% pill, 18% and a border in the hue when active); `plain` is neutral chrome.
+/// A square icon button. `pastel` draws a toolbar slot's calm pastel icon with nothing behind it,
+/// a faint tint on hover and the plan's 12% tint (with a soft ring) when on; `plain` is neutral
+/// chrome.
 #[derive(IntoElement)]
 pub struct IconButton {
     id: ElementId,
@@ -29,14 +32,21 @@ pub struct IconButton {
 }
 
 impl IconButton {
-    pub fn spectrum(
+    pub fn pastel(
         id: impl Into<ElementId>,
         icon: IconName,
         slot: ToolbarSlot,
         theme: &SpectrumTheme,
     ) -> Self {
-        let (fg, bg) = theme.toolbar(slot);
-        Self::build(id.into(), icon, fg, bg, alpha(fg, 0.22), alpha(fg, 0.18))
+        let calm = theme.toolbar(slot);
+        Self::build(
+            id.into(),
+            icon,
+            calm.fg,
+            transparent_black(),
+            calm.hover,
+            calm.active,
+        )
     }
 
     pub fn plain(id: impl Into<ElementId>, icon: IconName, theme: &SpectrumTheme) -> Self {
@@ -108,7 +118,7 @@ impl RenderOnce for IconButton {
             .rounded(px((self.size / 3.5).round()))
             .border_1()
             .border_color(if self.active {
-                self.fg
+                alpha(self.fg, 0.35)
             } else {
                 transparent_black()
             })
@@ -129,59 +139,42 @@ impl RenderOnce for IconButton {
     }
 }
 
-/// White bold text with the mockup's 1 px dark text shadow (GPUI text has no shadow, so the
-/// label is drawn twice).
-fn shadowed(label: SharedString) -> impl IntoElement {
-    div()
-        .relative()
-        .font_weight(FontWeight::BOLD)
-        .child(
-            div()
-                .absolute()
-                .top(px(1.))
-                .left_0()
-                .text_color(black().opacity(0.35))
-                .child(label.clone()),
-        )
-        .child(div().relative().text_color(white()).child(label))
-}
-
-/// The prism as five two-stop gradients filling the parent, with rounded ends.
-fn prism_fill(p: [Hsla; 6]) -> gpui_kit::Div {
-    let last = p.len() - 2;
-    div()
-        .absolute()
-        .inset_0()
-        .flex()
-        .children((0..=last).map(|i| {
-            div()
-                .flex_1()
-                .h_full()
-                .bg(linear_gradient(
-                    90.,
-                    linear_color_stop(p[i], 0.),
-                    linear_color_stop(p[i + 1], 1.),
-                ))
-                .when(i == 0, Styled::rounded_l_full)
-                .when(i == last, Styled::rounded_r_full)
-        }))
-}
-
-/// A pill of the prism gradient (the logo's `--logo-spectrum`); the caller sizes it.
+/// A pill of the six-hue prism (the logo's `--logo-spectrum`) for brand moments; the caller sizes
+/// it. GPUI gradients take two stops, so the fill is five segments with rounded ends.
 pub fn prism_bar(theme: &SpectrumTheme) -> gpui_kit::Div {
+    let p = theme.prism();
+    let last = p.len() - 2;
     div()
         .relative()
         .flex_none()
-        .child(prism_fill(theme.prism()))
+        .child(
+            div()
+                .absolute()
+                .inset_0()
+                .flex()
+                .children((0..=last).map(|i| {
+                    div()
+                        .flex_1()
+                        .h_full()
+                        .bg(linear_gradient(
+                            90.,
+                            linear_color_stop(p[i], 0.),
+                            linear_color_stop(p[i + 1], 1.),
+                        ))
+                        .when(i == 0, Styled::rounded_l_full)
+                        .when(i == last, Styled::rounded_r_full)
+                })),
+        )
 }
 
-/// The Compile split button: a pill filled with the six-hue prism (the plan's `--logo-spectrum`),
-/// a run part and a menu chevron. GPUI gradients take two stops, so the fill is five segments.
+/// The Compile split button: a solid Calm Slate pill (`theme.accent_muted`) with a white semibold
+/// label, a run part and a menu chevron. While compiling, a turning ring replaces the play icon.
 #[derive(IntoElement)]
 pub struct SplitButton {
     id: ElementId,
     label: SharedString,
-    prism: [Hsla; 6],
+    fill: Hsla,
+    compiling: bool,
     on_click: Option<ClickHandler>,
     on_menu: Option<ClickHandler>,
 }
@@ -195,10 +188,17 @@ impl SplitButton {
         Self {
             id: id.into(),
             label: label.into(),
-            prism: theme.prism(),
+            fill: theme.accent_muted,
+            compiling: false,
             on_click: None,
             on_menu: None,
         }
+    }
+
+    /// Shows the subtle in-progress ring.
+    pub fn compiling(mut self, compiling: bool) -> Self {
+        self.compiling = compiling;
+        self
     }
 
     pub fn on_click(mut self, f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
@@ -212,23 +212,40 @@ impl SplitButton {
     }
 }
 
+/// The run part's leading glyph: play, or a slowly turning ring while compiling.
+fn run_glyph(compiling: bool) -> AnyElement {
+    if !compiling {
+        return icon(IconName::Play, 11., white()).into_any_element();
+    }
+    svg()
+        .path(IconName::LoaderCircle.path())
+        .flex_none()
+        .size(px(11.))
+        .text_color(white().opacity(0.85))
+        .with_animation(
+            "compiling",
+            Animation::new(Duration::from_millis(1100)).repeat(),
+            |s, delta| s.with_transformation(Transformation::rotate(percentage(delta))),
+        )
+        .into_any_element()
+}
+
 impl RenderOnce for SplitButton {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let fill = prism_fill(self.prism);
-        let press = |d: gpui_kit::Stateful<gpui_kit::Div>| d.hover(|s| s.bg(white().opacity(0.12)));
+        let press = |d: gpui_kit::Stateful<gpui_kit::Div>| d.hover(|s| s.bg(white().opacity(0.1)));
         div()
             .id(self.id)
-            .relative()
             .flex_none()
             .h(px(26.))
             .flex()
             .items_center()
             .rounded_full()
+            .bg(self.fill)
             .text_size(px(12.))
-            .child(fill)
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(white())
             .child(
                 press(div().id("run"))
-                    .relative()
                     .h_full()
                     .flex()
                     .items_center()
@@ -237,22 +254,15 @@ impl RenderOnce for SplitButton {
                     .pr(px(9.))
                     .rounded_l_full()
                     .cursor_pointer()
-                    .child(icon(IconName::Play, 11., white()))
-                    .child(shadowed(self.label))
+                    .child(run_glyph(self.compiling))
+                    .child(self.label)
                     .when_some(self.on_click, |d, f| {
                         d.on_click(move |e, w, cx| f(e, w, cx))
                     }),
             )
-            .child(
-                div()
-                    .relative()
-                    .w(px(1.))
-                    .h(px(12.))
-                    .bg(white().opacity(0.7)),
-            )
+            .child(div().w(px(1.)).h(px(12.)).bg(white().opacity(0.4)))
             .child(
                 press(div().id("menu"))
-                    .relative()
                     .h_full()
                     .flex()
                     .items_center()
@@ -260,7 +270,7 @@ impl RenderOnce for SplitButton {
                     .pr(px(10.))
                     .rounded_r_full()
                     .cursor_pointer()
-                    .child(icon(IconName::ChevronDown, 12., white()))
+                    .child(icon(IconName::ChevronDown, 12., white().opacity(0.9)))
                     .when_some(self.on_menu, |d, f| d.on_click(move |e, w, cx| f(e, w, cx))),
             )
     }

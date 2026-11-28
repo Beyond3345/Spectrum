@@ -1,21 +1,25 @@
-//! The left sidebar: the four-tab strip and the Files list with its name field and right-click menu.
+//! The left sidebar: the Files / Research / To-dos strip, the Files list with its name field and
+//! right-click menu, and the Outline and Settings docked at its foot.
 
+use super::view::not_built;
 use super::{FileKind, NameFor, WorkspaceView};
 use crate::actions::{MoveFileToBin, NewFile, NewFolder, RefreshFiles, RenameFile};
 use crate::file_ops::BIN;
 use gpui_kit::{
-    AnyElement, Context, Hsla, IntoElement, MouseButton, ParentElement, Styled, div, prelude::*, px,
+    AnyElement, Context, FontWeight, Hsla, IntoElement, MouseButton, ParentElement, Styled, div,
+    prelude::*, px,
 };
-use spectrum_theme::{SidebarTab, SpectrumTheme};
+use spectrum_theme::{SidebarTab, SpectrumTheme, ToolbarSlot};
 use spectrum_ui::input::Input;
 use spectrum_ui::menu::{ContextMenuExt, PopupMenu};
-use spectrum_ui::{FileRow, IconButton, IconName, panel, sidebar_tabs};
+use spectrum_ui::{FileRow, IconButton, IconName, icon, panel, sidebar_tabs};
 
+/// A file's dot in the calm pastels the plan's mockup gives them (neutral in Simple style).
 fn dot(theme: &SpectrumTheme, kind: FileKind) -> Hsla {
     match kind {
-        FileKind::Source => theme.red,
-        FileKind::Bibliography => theme.teal,
-        FileKind::Diagram => theme.green,
+        FileKind::Source => theme.sidebar_tab(SidebarTab::Files).fg,
+        FileKind::Bibliography => theme.sidebar_tab(SidebarTab::Research).fg,
+        FileKind::Diagram => theme.toolbar(ToolbarSlot::Diagram).fg,
         FileKind::Other | FileKind::Folder => theme.text_tertiary,
     }
 }
@@ -158,6 +162,101 @@ impl WorkspaceView {
             )
     }
 
+    /// The Outline docked at the sidebar's foot (2.8.1's place for it): the open file's headings,
+    /// collapsible. The headings arrive with the editor; until then it says so.
+    fn outline(&self, theme: &SpectrumTheme, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let file = self
+            .open_file
+            .as_ref()
+            .and_then(|f| f.file_name())
+            .map(|n| format!(" · {}", n.to_string_lossy()))
+            .unwrap_or_default();
+        let open = self.outline_open;
+        let hover = theme.bg_hover;
+        div()
+            .flex_none()
+            .flex()
+            .flex_col()
+            .gap(px(2.))
+            .pt(px(6.))
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                div()
+                    .id("outline-toggle")
+                    .h(px(26.))
+                    .px(px(9.))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .rounded(px(8.))
+                    .text_size(px(12.))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(theme.text_secondary)
+                    .hover(move |s| s.bg(hover))
+                    .cursor_pointer()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .child(format!("Outline{file}")),
+                    )
+                    .child(icon(
+                        if open {
+                            IconName::ChevronDown
+                        } else {
+                            IconName::ChevronRight
+                        },
+                        12.,
+                        theme.text_tertiary,
+                    ))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.outline_open = !this.outline_open;
+                        cx.notify();
+                    })),
+            )
+            .when(open, |d| {
+                d.child(
+                    div()
+                        .px(px(9.))
+                        .pb(px(4.))
+                        .text_size(px(12.))
+                        .text_color(theme.text_tertiary)
+                        .child("Headings show here once the editor reads them."),
+                )
+            })
+    }
+
+    /// The Settings entry under the Outline.
+    fn settings_row(theme: &SpectrumTheme) -> impl IntoElement + use<> {
+        let hover = theme.bg_hover;
+        div()
+            .flex_none()
+            .pt(px(4.))
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                div()
+                    .id("settings")
+                    .h(px(26.))
+                    .px(px(9.))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .rounded(px(8.))
+                    .text_size(px(12.))
+                    .text_color(theme.text_secondary)
+                    .hover(move |s| s.bg(hover))
+                    .cursor_pointer()
+                    .child(icon(IconName::Settings, 13., theme.text_tertiary))
+                    .child("Settings")
+                    .on_click(|_, window, cx| {
+                        not_built(window, cx, "Settings", "the settings window");
+                    }),
+            )
+    }
+
     pub(super) fn sidebar(
         &self,
         theme: &SpectrumTheme,
@@ -180,19 +279,15 @@ impl WorkspaceView {
                 .child(self.files(theme, cx))
                 .into_any_element(),
             tab => {
-                let (title, comes) = match tab {
-                    SidebarTab::Outline => (
-                        "Outline",
-                        "The document's headings show here once the editor reads them.",
-                    ),
-                    SidebarTab::Research => (
-                        "Research",
-                        "Sources and reading notes show here (spectrum-references).",
-                    ),
-                    _ => ("To-dos", "The project's to-dos show here."),
+                let comes = match tab {
+                    SidebarTab::Research => {
+                        "Sources and reading notes show here (spectrum-references)."
+                    }
+                    _ => "The project's to-dos show here.",
                 };
                 div()
                     .flex_1()
+                    .min_h_0()
                     .flex()
                     .flex_col()
                     .gap(px(4.))
@@ -201,9 +296,9 @@ impl WorkspaceView {
                     .child(
                         div()
                             .text_size(px(13.))
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .text_color(theme.sidebar_tab(tab).0)
-                            .child(title),
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.sidebar_tab(tab).text)
+                            .child(tab.name()),
                     )
                     .child(
                         div()
@@ -222,5 +317,7 @@ impl WorkspaceView {
             .p(px(8.))
             .child(tabs)
             .child(body)
+            .child(self.outline(theme, cx))
+            .child(Self::settings_row(theme))
     }
 }

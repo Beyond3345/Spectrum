@@ -137,7 +137,8 @@ impl AreaHue {
     }
 }
 
-/// The 6-hue prism of the logo and the Compile button, left to right.
+/// The 6-hue prism of the logo, left to right. Brand moments only (Home header, About,
+/// installer hairline, theme preview), never workspace buttons.
 pub const PRISM: [u32; 6] = [
     0xf0_5747, 0xf1_a33c, 0xf8_d84a, 0x6c_db6c, 0x3b_82f7, 0xb2_60eb,
 ];
@@ -152,7 +153,11 @@ pub const SCOPE_BARS: [(u32, u32); 6] = [
     (0x89_4ec6, 0xc0_84fc),
 ];
 
-/// The editor toolbar's buttons, left to right: warm for authoring, cool for inspection and AI.
+/// The Compile button's solid fill, Calm Slate Mono, `(light, dark)`.
+pub const COMPILE: (u32, u32) = (0x3b_6ea5, 0x4c_7fb5);
+
+/// The editor toolbar's buttons, left to right along the calm pastel spectrum: warm for
+/// authoring, cool for inspection and AI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ToolbarSlot {
     Insert,
@@ -168,54 +173,165 @@ pub enum ToolbarSlot {
 }
 
 impl ToolbarSlot {
-    /// `(light, dark)` as `0xRRGGBB`.
+    pub const ALL: [ToolbarSlot; 10] = [
+        ToolbarSlot::Insert,
+        ToolbarSlot::Figure,
+        ToolbarSlot::Table,
+        ToolbarSlot::Diagram,
+        ToolbarSlot::Jyutping,
+        ToolbarSlot::Insights,
+        ToolbarSlot::Grammar,
+        ToolbarSlot::Tools,
+        ToolbarSlot::Assistant,
+        ToolbarSlot::Agent,
+    ];
+
+    /// The plan's label for the slot.
+    pub const fn name(self) -> &'static str {
+        match self {
+            ToolbarSlot::Insert => "Insert",
+            ToolbarSlot::Figure => "Figure",
+            ToolbarSlot::Table => "Table",
+            ToolbarSlot::Diagram => "Diagram",
+            ToolbarSlot::Jyutping => "Jyutping",
+            ToolbarSlot::Insights => "Insights",
+            ToolbarSlot::Grammar => "Grammar",
+            ToolbarSlot::Tools => "Tools",
+            ToolbarSlot::Assistant => "Assistant",
+            ToolbarSlot::Agent => "Agent",
+        }
+    }
+
+    /// `(light, dark)` as `0xRRGGBB`: Dusty Coral, Soft Apricot, Muted Ochre, Sage, Seafoam,
+    /// Mist Cyan, Slate Blue, Periwinkle, Lavender, Muted Orchid.
     pub const fn colours(self) -> (u32, u32) {
         match self {
-            ToolbarSlot::Insert => (0xe5_484d, 0xff_6369),
-            ToolbarSlot::Figure => (0xd9_5f02, 0xfe_8f5b),
-            ToolbarSlot::Table => (0xb8_7a00, 0xf5_b82e),
-            ToolbarSlot::Diagram => (0x2f_9e44, 0x52_d67a),
-            ToolbarSlot::Jyutping => (0x0a_8a7a, 0x2c_ce99),
-            ToolbarSlot::Insights => (0x06_7fa1, 0x22_c3f5),
-            ToolbarSlot::Grammar => (0x00_73df, 0x62_a8ff),
-            ToolbarSlot::Tools => (0x58_56d6, 0x8b_89ff),
-            ToolbarSlot::Assistant => (0x89_4ec6, 0xc0_84fc),
-            ToolbarSlot::Agent => (0xc0_398f, 0xf4_72b6),
+            ToolbarSlot::Insert => (0xb8_5d63, 0xe5_989b),
+            ToolbarSlot::Figure => (0xb3_7242, 0xe6_aa7c),
+            ToolbarSlot::Table => (0x9c_7d36, 0xde_c27a),
+            ToolbarSlot::Diagram => (0x46_855a, 0x8c_c99e),
+            ToolbarSlot::Jyutping => (0x3b_827a, 0x7e_cbc2),
+            ToolbarSlot::Insights => (0x3e_7e99, 0x82_c4de),
+            ToolbarSlot::Grammar => (0x47_73b5, 0x8e_b6e8),
+            ToolbarSlot::Tools => (0x65_65ad, 0xa8_a6e6),
+            ToolbarSlot::Assistant => (0x7e_5ca8, 0xc2_a3e6),
+            ToolbarSlot::Agent => (0x9c_5885, 0xdf_a0c8),
         }
     }
 }
 
-/// The left sidebar's tabs (plan Section 3): four 90° waypoints around the wheel.
+/// The left sidebar's tabs, as in 2.8.1. The Outline is docked below them, not a tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SidebarTab {
     Files,
-    Outline,
     Research,
     Todos,
 }
 
 impl SidebarTab {
-    pub const ALL: [SidebarTab; 4] = [
-        SidebarTab::Files,
-        SidebarTab::Outline,
-        SidebarTab::Research,
-        SidebarTab::Todos,
-    ];
+    pub const ALL: [SidebarTab; 3] = [SidebarTab::Files, SidebarTab::Research, SidebarTab::Todos];
 
-    /// `(light, dark)` as `0xRRGGBB`.
+    pub const fn name(self) -> &'static str {
+        match self {
+            SidebarTab::Files => "Files",
+            SidebarTab::Research => "Research",
+            SidebarTab::Todos => "To-dos",
+        }
+    }
+
+    /// `(light, dark)` as `0xRRGGBB`: Dusty Coral, Seafoam Teal, Soft Lavender.
     pub const fn colours(self) -> (u32, u32) {
         match self {
-            SidebarTab::Files => (0xd2_3855, 0xff_8893),
-            SidebarTab::Outline => (0xb8_7a00, 0xf5_b82e),
-            SidebarTab::Research => (0x0a_8282, 0x10_caca),
-            SidebarTab::Todos => (0x73_61e4, 0xa9_a5ff),
+            SidebarTab::Files => (0xb8_5d63, 0xe5_989b),
+            SidebarTab::Research => (0x3b_827a, 0x7e_cbc2),
+            SidebarTab::Todos => (0x7e_5ca8, 0xc2_a3e6),
+        }
+    }
+}
+
+/// The Tools panel's tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ToolsTab {
+    Logs,
+    Review,
+    Versions,
+    Github,
+}
+
+impl ToolsTab {
+    pub const ALL: [ToolsTab; 4] = [
+        ToolsTab::Logs,
+        ToolsTab::Review,
+        ToolsTab::Versions,
+        ToolsTab::Github,
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            ToolsTab::Logs => "Logs",
+            ToolsTab::Review => "Review",
+            ToolsTab::Versions => "Versions",
+            ToolsTab::Github => "GitHub",
+        }
+    }
+
+    /// `(light, dark)` as `0xRRGGBB`: Soft Apricot, Sage, Seafoam, Periwinkle.
+    pub const fn colours(self) -> (u32, u32) {
+        match self {
+            ToolsTab::Logs => (0xb3_7242, 0xe6_aa7c),
+            ToolsTab::Review => (0x46_855a, 0x8c_c99e),
+            ToolsTab::Versions => (0x3b_827a, 0x7e_cbc2),
+            ToolsTab::Github => (0x65_65ad, 0xa8_a6e6),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::AreaHue;
+    use super::{AreaHue, COMPILE, SidebarTab, ToolbarSlot, ToolsTab};
+
+    /// The `(light, dark)` pair of every plan tag named `name`, e.g.
+    /// `1. Insert (+) · Dusty Coral (#b85d63 / #e5989b)` or `Compile · … (L #3b6ea5 / D #4c7fb5)`.
+    fn plan_tags(html: &str, name: &str) -> Vec<(u32, u32)> {
+        html.split("<span class=\"tag\"")
+            .skip(1)
+            .filter_map(|tag| {
+                let text = &tag[tag.find('>')? + 1..tag.find("</span>")?];
+                let (head, rest) = text.split_once(" · ")?;
+                if !head.split_whitespace().any(|w| w == name) {
+                    return None;
+                }
+                let pair = &rest[rest.rfind('(')? + 1..rest.rfind(')')?];
+                let (l, d) = pair.split_once('/')?;
+                let parse = |s: &str| {
+                    let s = s.trim().trim_start_matches(['L', 'D', ' ', '#']);
+                    u32::from_str_radix(s, 16).ok()
+                };
+                Some((parse(l)?, parse(d)?))
+            })
+            .collect()
+    }
+
+    /// Toolbar, sidebar-tab, Tools-tab and Compile colours are the plan's calm pastel values.
+    #[test]
+    fn calm_colours_match_the_plan() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../docs/gpui-rewrite-plan.html"
+        );
+        let html = std::fs::read_to_string(path).unwrap();
+        let named = ToolbarSlot::ALL
+            .map(|s| (s.name(), s.colours()))
+            .into_iter()
+            .chain(SidebarTab::ALL.map(|t| (t.name(), t.colours())))
+            .chain(ToolsTab::ALL.map(|t| (t.name(), t.colours())))
+            .chain([("Compile", COMPILE)]);
+        for (name, colours) in named {
+            let found = plan_tags(&html, name);
+            assert!(!found.is_empty(), "no plan tag for {name}");
+            assert!(found.iter().all(|c| *c == colours), "{name}: {found:x?}");
+        }
+    }
 
     fn hex(v: &serde_json::Value) -> u32 {
         let s = v.as_str().unwrap().trim_start_matches('#');
