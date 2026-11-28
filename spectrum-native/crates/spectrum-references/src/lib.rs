@@ -22,6 +22,7 @@ mod http;
 mod project;
 pub mod research;
 mod resolve;
+pub mod review;
 mod search;
 mod text;
 mod xml;

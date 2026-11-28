@@ -1,6 +1,7 @@
 //! The lossless `.bib` reader on a varied real-world file: every byte comes back, every slice of it too, and
 //! edits touch only what they change.
 
+#![allow(clippy::pedantic)]
 #![allow(clippy::unwrap_used)]
 
 use spectrum_references::{Bibliography, Item, parse_bib_entries};
