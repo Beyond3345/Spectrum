@@ -12,7 +12,7 @@ pub use kit::init;
 use gpui_kit::{App, Global, Hsla, WindowAppearance, rgb, rgba};
 use std::ops::Deref;
 
-pub use palette::{AreaColours, AreaHue, PRISM, SCOPE_BARS, ToolbarSlot};
+pub use palette::{AreaColours, AreaHue, PRISM, SCOPE_BARS, SidebarTab, ToolbarSlot};
 pub use tokens::{
     Colours, RADIUS_CARD, RADIUS_CONTROL, RADIUS_PANEL, SIDEBAR_WIDTH, SYNTAX_COMMENT, Tokens,
 };
@@ -131,6 +131,17 @@ impl SpectrumTheme {
             ColourStyle::Simple => self.text_secondary,
         };
         (fg, tint(fg, 0.14))
+    }
+
+    /// A sidebar tab's `(label, soft)`: its hue, and the 13% tint behind the active file row
+    /// (the mockup's `.mk-file.on`).
+    pub fn sidebar_tab(&self, tab: SidebarTab) -> (Hsla, Hsla) {
+        let hue = self.pick(tab.colours());
+        let fg = match self.style {
+            ColourStyle::Spectrum => hue,
+            ColourStyle::Simple => self.text_secondary,
+        };
+        (fg, tint(hue, 0.13))
     }
 
     /// The scope gutter bar for nesting `level` (cycles every six); bars keep their hue in
