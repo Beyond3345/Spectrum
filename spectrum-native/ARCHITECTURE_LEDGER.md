@@ -181,7 +181,7 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 - Tests: `tests/streams.rs` + `tests/bodies.rs` on a local server (`tests/support/server.rs`), fixtures in
   `tests/fixtures/*.sse`. No network.
 
-### spectrum-editor (document core only so far; the decision and what 2b–2e do: `crates/spectrum-editor/DESIGN.md`)
+### spectrum-editor (document core and language layer; the decision and what 2b–2e do: `crates/spectrum-editor/DESIGN.md`)
 
 - Own editor on own core, not the kit's `Editor`. No GPUI in the core. Offsets are UTF-8 bytes.
 - `Buffer` (read-only from outside): `from_text` (CRLF/CR → LF in memory, `line_ending()` kept, `file_text()`
@@ -200,6 +200,16 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
   `.old_end()`, `.new_end()`, `.map_offset(offset, Bias)`: what Tree-sitter and the LSP need per edit.
 - `Selection { anchor, head }`, `SelectionSet` (sorted, merged, `primary()`; `new`, `cursor`, `add`,
   `collapse_to_primary`, `clip(&Buffer)`, `map(&[Change])`). Selections belong to a view, not the document.
+- Language layer (2b, no GPUI): `Language::from_path` (LaTeX, Typst, Markdown, BibTeX; vendored
+  tree-sitter-bibtex in `crates/spectrum-editor/vendor/`). `Syntax::new(lang, &buffer)`, `.parse(&buffer)`,
+  `.edit(&buffer, &applied.changes)`, `.accept(ParsedTree, &buffer) -> bool`, `.tree()`, `.version()`;
+  `ParsedTree::parse(lang, &rope, version)` on a background task for files over `BACKGROUND_PARSE_BYTES`
+  (edits meanwhile are replayed). `.highlight(&buffer, lines) -> Vec<HighlightSpan { range, role: HighlightRole }>`
+  (+`HIGHLIGHT_OVERSCAN` 40 lines, flat, roles not colours), `.outline(&buffer) -> Vec<OutlineItem { kind:
+  OutlineKind::{Heading, Float, Entry}, level, title, detail, range, line }>`, `.folds(&buffer) ->
+  Vec<FoldRange { start_line, end_line, hidden }>`. `ScopeMap::new(lang, &buffer)`, `.update(&buffer, &changes)`,
+  `.depth(line) -> 0..=MAX_SCOPE_DEPTH`, `.innermost(line)`, `.scope(line, level) -> Option<Scope { level,
+  open_line, close_line }>`. `todos(lang, &buffer) -> Vec<Todo { line, offset, kind, text }>`.
 - Perf: `cargo test --release -p spectrum-editor --test perf -- --ignored --nocapture`.
 
 ### spectrum-win-sandbox (lib: Spectrum's side, every platform; bin `spectrum-win-sandbox.exe`: the worker)

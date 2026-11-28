@@ -11,9 +11,17 @@ publish = false
 # the metrics gpui-kit turns on too, so the conversions are O(log n) and Rope is one type
 ropey = { workspace = true, features = ["metric_chars", "metric_lines_lf", "metric_utf16"] }
 tracing.workspace = true
+tree-sitter.workspace = true
+tree-sitter-language.workspace = true
+codebook-tree-sitter-latex.workspace = true
+codebook-tree-sitter-typst.workspace = true
+tree-sitter-md.workspace = true
 spectrum-core.workspace = true
 spectrum-theme.workspace = true
 spectrum-ui.workspace = true
+
+[build-dependencies]
+cc.workspace = true
 
 [lints]
 workspace = true

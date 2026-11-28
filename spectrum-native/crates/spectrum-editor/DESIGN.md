@@ -1,6 +1,7 @@
 # spectrum-editor: design
 
-Session 2a, 28 Nov 2026. The decision the rest of Phase 2 builds on.
+Session 2a, 28 Nov 2026. The decision the rest of Phase 2 builds on. Session 2b (29 Nov) added the
+language layer.
 
 ## Options
 
@@ -120,6 +121,66 @@ Measured (`cargo test --release -p spectrum-editor --test perf -- --ignored --no
 
 Undoing all of it (30,000 replacements in 1,668 steps) takes 29 ms.
 
+## The language layer (built in 2b)
+
+Pure logic on the buffer, no GPUI. `src/syntax.rs` (+ `syntax/`), `scope.rs`, `todos.rs`.
+
+- **`Language::from_path`**: `.tex .ltx .latex .sty .cls .clo .dtx .ins .def .bbx .cbx .lbx .dbx`
+  LaTeX, `.typ` Typst, `.md .markdown .mmd` Markdown, `.bib` BibTeX; anything else is plain text.
+  Grammars: codebook-tree-sitter-latex, codebook-tree-sitter-typst, tree-sitter-md (block +
+  inline), and tree-sitter-bibtex vendored in `vendor/` (built by `build.rs`; the crates.io crate
+  wants tree-sitter 0.22).
+- **`Syntax`** holds one tree. `Syntax::parse` parses now; for a file over
+  `BACKGROUND_PARSE_BYTES` the view runs `ParsedTree::parse(language, &rope, version)` on the
+  background executor and hands the result to `Syntax::accept`. Edits made meanwhile are kept and
+  replayed onto the new tree, so typing during the 120 ms parse is not thrown away; `accept`
+  refuses a result it cannot bring up to date. `Syntax::edit(&buffer, &applied.changes)` follows
+  every transaction, undo and redo (tree edit + incremental reparse on the UI thread).
+- **`Syntax::highlight(&buffer, lines)`** returns `HighlightSpan { range, role }` for the lines
+  asked for plus 40 each way: sorted, never overlapping, innermost syntax wins. Roles, not colours
+  (`HighlightRole`, 28 of them: command, keyword, environment, bracket, delimiter, operator, maths
+  and its delimiters, string, number, constant, heading and its marker, label, reference,
+  citation, emphasis, strong, strikethrough, code, link, field, variable, escape, list marker,
+  quote, placeholder, comment). Fine-grained on purpose: 2e's calm themes merge them into a few
+  soft colours. Queries are `syntax/queries/*.scm`; Markdown's inline grammar is parsed over the
+  visible `inline` nodes on each call.
+- **`Syntax::outline`**: LaTeX `\part`…`\subparagraph` (starred too; levels 0–6) with captioned
+  figures, tables, algorithms and listings one level below; Typst `=` headings and captioned
+  `#figure`s; Markdown ATX and setext headings; BibTeX entries (key, type in `detail`). Titles as
+  2.8 showed them (`\texorpdfstring`, text styles, `…` for refs and cites, `~`). Each item's
+  `range` is its whole section, so the heading at the cursor is a range test.
+- **`Syntax::folds`**: LaTeX environments, sections, `\[…\]`, `\iffalse` blocks, and
+  `\begingroup`/`\if…\fi` from the text; Typst sections, `{}`, `[]`, `()`, raw, maths, block
+  comments; Markdown sections, fences, front matter, quotes, HTML; BibTeX entries.
+  `FoldRange.hidden` keeps a closing `\end{…}`, `}` or fence in view.
+- **`ScopeMap`**: per-line depth 0–8 for the scope bars, from the text (comments, strings, raw and
+  maths skipped), so a half-typed `\begin{` does not make the bars jump. A bar runs from its
+  `\begin` line to its `\end` line inclusive (2.8 drew only the lines between). `update` rescans
+  the changed lines, shifts the ones below whose depth only moved, and stops at the first line
+  whose starting state is unchanged. `innermost(line)` and `scope(line, level)` give the open and
+  close lines for the active bar and for click-to-jump.
+- **`todos(language, &buffer)`**: 2.8's `scanTodos` for one file: `\todo`, `\missingfigure`,
+  `\fixme`, `\fx…` (not their definitions or commented-out uses) and `TODO`/`FIXME`/`XXX` in `%`
+  comments; `// TODO` in Typst; `<!-- TODO -->` in Markdown.
+
+Measured on the same 20,000-line file, release, M-series Mac with other builds running
+(`cargo test --release -p spectrum-editor --test perf -- --ignored --nocapture`):
+
+| | Median | p99 |
+|---|---|---|
+| First parse (background) | 118 ms | 190 ms |
+| Incremental reparse after a keystroke | 0.70 ms | 0.94 ms |
+| Highlight 60 lines (+40 overscan each way) | 0.47 ms | 0.55 ms |
+| Scope map update after a keystroke (1 in 50 opens or closes an environment) | 5.6 µs | 20 µs |
+| Scope map built from scratch | 5.0 ms | 5.2 ms |
+| Outline, whole file | 4.3 ms | 5.4 ms |
+| Folds, whole file | 13 ms | 14 ms |
+| To-dos, whole file | 3.3 ms | 3.5 ms |
+
+The plan's "typically < 0.3 ms" reparse is 0.7 ms with this grammar; still well inside a frame.
+Compiling a highlight query costs ~30 ms once per language per run; `ParsedTree::parse` does it on
+the background thread, a small file's first highlight pays it on the UI thread.
+
 ## What 2b–2e do differently from the plan
 
 - **Bytes, not chars.** ropey 2 is byte-indexed; every offset in the crate's API is a UTF-8 byte.
@@ -131,6 +192,13 @@ Undoing all of it (30,000 replacements in 1,668 steps) takes 29 ms.
   about 120 ms, so it must run off the UI thread on a rope snapshot (`rope().clone()` is O(1)) and
   be dropped if `version` moved. Incremental reparses stay on the UI thread. The kit's
   `highlighter.rs` shows the rope `TextProvider` and injections (Markdown needs them).
+  Done as above; a background result is caught up rather than dropped.
+- **For 2c**: per transaction call `syntax.edit` and `scopes.update` with `applied.changes`;
+  highlight when the version changes or the viewport leaves the overscan. Run outline, folds and
+  to-dos when edits settle (debounced), not per keystroke: folds take 13 ms at 20k lines, so if
+  that shows as a dropped frame, give `Syntax` a `Send` snapshot (tree clone + rope clone, both
+  O(1)) and compute them on the background executor. Bars take their hues from
+  `SpectrumTheme::scope_bar_color(level - 1)`.
 - **2c (element, gutter)** wraps `Document` in an entity shared by its views; each view owns a
   `SelectionSet`. The display map needs three layers from the start: wrap, fold, and **blocks**
   (rows that are not in the buffer) for diff hunks and their Accept / Reject row. The gutter is
@@ -146,7 +214,9 @@ Undoing all of it (30,000 replacements in 1,668 steps) takes 29 ms.
   `spectrum-classic-dark`), and a new default "Spectrum Light / Dark" (`spectrum-light`,
   `spectrum-dark`) from the plan's editor design, so the theme model is a table of named themes
   with the plan's pair as one entry, not derived from `SpectrumTheme` alone. See "Editor themes" in
-  `docs/REWRITE_V3_PLAN.md`.
+  `docs/REWRITE_V3_PLAN.md`. Each theme is a table from `HighlightRole` to colour (2.8's 12 per-role
+  overrides map onto groups of roles); the writing workspace stays soft and near-mono, so the new
+  Spectrum pair gives most roles the text colour or a pastel and keeps vivid hues out.
 - **Look.** 2.8's CSS is never the visual goal. Whatever the plan does not draw (completion list,
   hover and maths popovers, find bar, diff hunk chrome, fold placeholder) is designed in the plan's
   system: its tokens, 16/12/10 radii, area colours and tinted pills. 2.8 is for behaviour only.
