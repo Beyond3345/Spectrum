@@ -1,0 +1,17 @@
+{
+  "version": "chromium/8125",
+  "assets": {
+    "aarch64-apple-darwin": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8125/pdfium-mac-arm64.tgz",
+      "sha256": "4939bd935ac83ddc09a3a4f038bc43a19cea1660316a3667f26cb07a070e139d",
+      "size": 3540999,
+      "library": "lib/libpdfium.dylib"
+    },
+    "x86_64-pc-windows-msvc": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8125/pdfium-win-x64.tgz",
+      "sha256": "9a964261760cff52570aabf038ab346d3a5034dd8b30d0d5fe8861235d356b8b",
+      "size": 3904987,
+      "library": "bin/pdfium.dll"
+    }
+  }
+}
