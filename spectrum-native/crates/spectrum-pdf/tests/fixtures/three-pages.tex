@@ -1,0 +1,28 @@
+% The engine test's fixture: `pdflatex three-pages.tex` (TeX Live 2025) gives three-pages.pdf.
+% Two A5 portrait pages (text and colour, a TikZ figure) and one A5 landscape page.
+\documentclass[11pt]{article}
+\usepackage[a5paper,margin=18mm]{geometry}
+\usepackage{xcolor,tikz}
+\pdfinfoomitdate=1 \pdftrailerid{} \pdfsuppressptexinfo=-1
+\begin{document}
+\section*{1. Analysis problems}
+Find the domain of $f(x)=\sqrt{x^2-1}$ and sketch it. The domain is
+\[ \{x\in\mathbf{R} : |x|\ge 1\}, \qquad f(x)\ge 0. \]
+\textcolor{red}{Red ink}, \textcolor{blue}{blue ink} and \textcolor{green!50!black}{green ink}
+keep their hue on dark pages.
+\newpage
+\section*{2. A figure}
+\begin{center}
+\begin{tikzpicture}[scale=1.1]
+  \fill[blue!20] (0,0) rectangle (4,3);
+  \draw[thick,->] (-0.2,0) -- (4.3,0) node[right]{$x$};
+  \draw[thick,->] (0,-0.2) -- (0,3.3) node[above]{$y$};
+  \draw[very thick,red,domain=0:4,smooth] plot (\x,{0.15*\x*\x+0.3});
+  \foreach \i in {0,...,8} \fill[orange] (\i*0.5, {1.5+sin(\i*45)}) circle (2pt);
+\end{tikzpicture}
+\end{center}
+\newpage
+\pdfpagewidth=210mm \pdfpageheight=148mm
+\section*{3. A landscape page}
+This page is A5 landscape, so the PDF has two page sizes.
+\end{document}

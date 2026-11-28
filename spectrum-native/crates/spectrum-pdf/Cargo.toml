@@ -8,10 +8,27 @@ license.workspace = true
 publish = false
 
 [dependencies]
+pdfium-render.workspace = true
+crossbeam-channel.workspace = true
+futures.workspace = true
+gpui-kit.workspace = true
+# RenderImage frames are image::Frame (the version GPUI renders into)
+image.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
 spectrum-core.workspace = true
 spectrum-compile.workspace = true
 spectrum-theme.workspace = true
 spectrum-ui.workspace = true
+
+[dev-dependencies]
+# real offscreen rendering for the snapshot test (tests/snapshot.rs)
+gpui-kit = { workspace = true, features = ["test-support"] }
+
+# the Mac platform must start on the main thread, which libtest doesn't give tests
+[[test]]
+name = "snapshot"
+harness = false
 
 [lints]
 workspace = true
