@@ -1,0 +1,17 @@
+[package]
+name = "spectrum-pdf"
+description = "PDFium viewer, tile cache, SyncTeX overlays and notes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+spectrum-core.workspace = true
+spectrum-compile.workspace = true
+spectrum-theme.workspace = true
+spectrum-ui.workspace = true
+
+[lints]
+workspace = true

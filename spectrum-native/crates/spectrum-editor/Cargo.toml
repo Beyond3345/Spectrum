@@ -1,0 +1,16 @@
+[package]
+name = "spectrum-editor"
+description = "Code editor: rope buffer, Tree-sitter, viewport, IME, Vim."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+spectrum-core.workspace = true
+spectrum-theme.workspace = true
+spectrum-ui.workspace = true
+
+[lints]
+workspace = true

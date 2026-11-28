@@ -1,0 +1,19 @@
+[package]
+name = "spectrum-diagram"
+description = "Diagram composer: starters, code editor and live preview."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+spectrum-core.workspace = true
+spectrum-compile.workspace = true
+spectrum-theme.workspace = true
+spectrum-ui.workspace = true
+spectrum-editor.workspace = true
+spectrum-pdf.workspace = true
+
+[lints]
+workspace = true

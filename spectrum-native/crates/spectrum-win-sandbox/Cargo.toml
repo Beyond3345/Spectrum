@@ -1,0 +1,13 @@
+[package]
+name = "spectrum-win-sandbox"
+description = "Windows AppContainer, low-integrity and job object worker."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true

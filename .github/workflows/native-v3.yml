@@ -1,0 +1,41 @@
+# Runs the 3.0.0 gate (cargo xtask check) on Apple silicon and Windows x64 for the Rust rewrite.
+# Only this branch triggers it; windows.yml keeps building 2.8.
+name: Native 3.0.0
+
+on:
+  push:
+    branches: [rust-gpui-rewrite-v3]
+    paths: ['spectrum-native/**', '.github/workflows/native-v3.yml']
+  workflow_dispatch:
+
+# the gate runs crates' build scripts, so it can only read
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: spectrum-native
+    steps:
+      # the dictionaries and templates ship as they are in the repo, with LF line endings
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # rust-toolchain.toml picks the version; rustup comes with the runner
+      - run: rustup show
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: spectrum-native
+
+      - run: cargo xtask check

@@ -1,0 +1,8 @@
+cognitive-complexity-threshold = 25
+too-many-lines-threshold = 120
+too-many-arguments-threshold = 7
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-print-in-tests = true
+# project nouns clippy would otherwise ask to backtick ("..": keep the defaults)
+doc-valid-idents = ["..", "PDFium", "SyncTeX", "TexLab", "Tinymist", "LaTeX", "BibTeX", "TeX", "XeLaTeX", "LuaLaTeX", "pdfLaTeX", "LanguageTool", "AppContainer", "CircuiTikZ", "TikZ", "CeTZ", "OpenAlex", "PubMed", "DirectX", "MiKTeX"]

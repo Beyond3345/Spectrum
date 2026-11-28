@@ -1,0 +1,14 @@
+[package]
+name = "spectrum-lsp"
+description = "JSON-RPC client for TexLab and Tinymist."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+spectrum-core.workspace = true
+
+[lints]
+workspace = true

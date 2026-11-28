@@ -1,0 +1,15 @@
+[package]
+name = "spectrum-win-setup"
+description = "Spectrum installer, updater, repair and uninstaller for Windows."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+spectrum-theme.workspace = true
+spectrum-ui.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,30 @@
+[package]
+name = "spectrum-app"
+description = "Spectrum: windows, menus, Tokio bridge and workspace."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+spectrum-core.workspace = true
+spectrum-compile.workspace = true
+spectrum-lsp.workspace = true
+spectrum-checkers.workspace = true
+spectrum-ai.workspace = true
+spectrum-references.workspace = true
+spectrum-git.workspace = true
+spectrum-convert.workspace = true
+spectrum-theme.workspace = true
+spectrum-ui.workspace = true
+spectrum-editor.workspace = true
+spectrum-pdf.workspace = true
+spectrum-diagram.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "spectrum"
+path = "src/main.rs"

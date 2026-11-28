@@ -1,0 +1,14 @@
+[package]
+name = "spectrum-convert"
+description = "LaTeX and Typst conversion, and Jyutping."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+spectrum-core.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "spectrum-xtask"
+description = "Build tasks: the gate, dependency fetching, TexLab build, packaging."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true
