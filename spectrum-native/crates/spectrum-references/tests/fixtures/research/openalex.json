@@ -1,0 +1,4 @@
+{"results":[
+{"id":"https://openalex.org/W1","doi":"https://doi.org/10.5555/attn","display_name":"Attention Is All You Need","publication_year":2017,"type":"article","authorships":[{"author":{"display_name":"Ashish Vaswani"}}],"primary_location":{"landing_page_url":"https://doi.org/10.5555/attn","source":{"display_name":"NeurIPS","type":"conference"}},"cited_by_count":900,"open_access":{"is_oa":true,"oa_url":"https://arxiv.org/pdf/1706.03762v7"}},
+{"id":"https://openalex.org/W2","doi":"https://doi.org/10.5555/gnn","display_name":"Graph networks for molecules","publication_year":2020,"type":"article","authorships":[{"author":{"display_name":"Ada Lovelace"}}],"primary_location":{"source":{"display_name":"Chemistry Letters"}},"abstract_inverted_index":{"Graph":[0],"networks":[1]},"cited_by_count":12,"open_access":{"is_oa":true,"oa_url":"https://203.0.113.7/gnn.pdf"}}
+]}

@@ -1,0 +1,5 @@
+{"message":{"items":[
+{"DOI":"10.5555/ATTN","title":["Attention is All you Need"],"author":[{"given":"Ashish","family":"Vaswani"}],"issued":{"date-parts":[[2017]]},"container-title":["Advances in Neural Information Processing Systems"],"type":"proceedings-article","is-referenced-by-count":950},
+{"DOI":"10.5555/fig1","title":["Figure 1"],"type":"component"},
+{"DOI":"10.5555/sorting","title":["Sorting attention"],"author":[{"given":"Alan","family":"Turing"}],"issued":{"date-parts":[[2019]]},"type":"journal-article","abstract":"<jats:p>Sorting <jats:italic>fast</jats:italic>.</jats:p>"}
+]}}

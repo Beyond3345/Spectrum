@@ -9,6 +9,9 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 | spectrum-core | pure lib | — |
 | spectrum-compile, -ai, -references, -convert | pure lib | core |
 | spectrum-git | pure lib | core (git2 without https or ssh, similar, reqwest) |
+
+| spectrum-compile, -ai, -git, -convert | pure lib | core |
+| spectrum-references | pure lib | core, ai, compile (fancy-regex, quick-xml, reqwest, sha1, uuid) |
 | spectrum-lsp | pure lib | — (lsp-types, tokio, url) |
 | spectrum-checkers | pure lib | — (harper-core, Hunspell C++ via cc, reqwest) |
 | spectrum-theme | GPUI lib | — |
@@ -291,6 +294,31 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
   The caller holds the project's file lock and waits for compiles/agents. `refusal(root)`.
 - `SettingsRepo::new(data_dir, github, login, author, Machine)`: `sync(own_skills)`, `sync_personas(&[Value])`, `sync_skills`.
 - `GitError` (Display = user copy, `.notice()`, `.is_waiting()`); https for libgit2 is our reqwest transport (`transport.rs`).
+
+### spectrum-references (session 7: logic only; 7b/7c build the UI. Async network on Tokio; file IO blocking)
+
+- `.bib`: `Bibliography::parse(text)` lossless (`to_string()` is byte-for-byte; `Item::{Text, Entry, Strings, Special}`;
+  `Entry::{field, set, remove, set_key}` touch one field), `strings()`, `push(entry)`. 2.8's lenient reader `parse_bib_entries`
+  → `BibEntry { kind, key, fields, at }`; `parsed_whole`, `line_of`.
+- Entries: `Draft { kind, key, fields }`, `format_entry(&Draft, Style { biblatex, legacy_urls })`, `suggest_key`, `draft_problems`,
+  `ENTRY_TYPES`, `Edition`/`edition_label`/`apply_edition`. Records: `Record` (CSL), `record_to_draft`, `to_bibtex`, `base_key`,
+  `unique_key`, `parse_name`. Dedupe: `bib_identity`, `find_duplicate`, `build_bib_index`, `bib_records` (Review's, `duplicate_of`),
+  `pick_bib_target`, `tex_includes_bib`. Input: `detect_input`, `split_lines`, `classify_line`, `parse_ris`, `parse_formatted`.
+- Lookups: `Http::new(Endpoints)` (`Endpoints::local(base)` for tests; Crossref queue, retries, private-address guard),
+  `Resolver { http, search }`: `record_from_doi/arxiv/url/isbn`, `find(&Lookup)`, `book_editions`. Adds (blocking IO inside, one
+  lock): `resolve_references(.., model, preview)`, `resolve_items(.., style)`, `add_reference`, `new_entry`, `commit_reference(.., style)`,
+  `append_entries`, `bib_context` → `Resolved { results: Vec<ItemResult>, bib_file, bib_included, style, keys }` (`added()` keys for Zotero).
+- `SearchConfig::from_settings(&AppSettings, &KeyStore)`, `reference_records`, `web_search`. `Model { client, config }` for the
+  model calls (split, triage).
+- `research`: `sources::{Source, all_sources, source, Preset, pinned_sources, DEFAULT_PINNED}` (16 adapters), `search_research(root,
+  &ResearchQuery, &ResearchKeys, Services)` → `ResearchSession` (`.spectrum/research/<id>.json`, 2.8's shape), `merge_results`,
+  `mark_in_bib`, `get/list/update/delete_session`, `add_results`.
+- `Zotero::new(http, data_dir)` (`zotero.json`, 2.8's file): `status`, `authorise`, `cancel_prompt`, `forget_key`, `search_library`,
+  `import_refs`, `pick_citation`, `sync_collection(root, &SyncOptions) -> SyncOutcome`; `item_from_entry`, `clean_entry`.
+- `review`: `ReviewInput::read(root, doc, log, failed, Option<PdfFacts>)` (+ `diagnostics`, `anonymous`, `accessibility_tags`),
+  `run_review` → `Vec<Finding { group, severity, message, file, line, page, fixable }>`, `review_gaps`, `check_references`.
+- Errors: `RefError` (Display = user copy, `.notice()`). Tests: `tests/{bib_roundtrip,resolve,research,zotero,review}.rs` on a local
+  server (`tests/support`), fixtures in `tests/fixtures`.
 
 ## Globals
 

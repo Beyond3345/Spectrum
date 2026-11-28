@@ -1,0 +1,6 @@
+<?xml version="1.0" ?><PubmedArticleSet><PubmedArticle><MedlineCitation><PMID Version="1">42</PMID><Article>
+<Journal><JournalIssue><PubDate><Year>2021</Year></PubDate></JournalIssue><Title>Journal of Attention</Title></Journal>
+<ArticleTitle>Attention in <i>Drosophila</i> &amp; mice.</ArticleTitle><Abstract><AbstractText Label="BACKGROUND">Flies <sup>2</sup> attend.</AbstractText><AbstractText Label="RESULTS">They do.</AbstractText></Abstract>
+<AuthorList><Author><LastName>Curie</LastName><ForeName>Marie</ForeName></Author><Author><CollectiveName>Fly Consortium</CollectiveName></Author></AuthorList>
+<PublicationTypeList><PublicationType UI="D016428">Journal Article</PublicationType></PublicationTypeList></Article></MedlineCitation>
+<PubmedData><ArticleIdList><ArticleId IdType="pubmed">42</ArticleId><ArticleId IdType="doi">10.5555/fly</ArticleId><ArticleId IdType="pmc">PMC123</ArticleId></ArticleIdList></PubmedData></PubmedArticle></PubmedArticleSet>

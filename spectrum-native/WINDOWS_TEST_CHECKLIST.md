@@ -135,3 +135,9 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
 - [ ] Recompiling while the PDF is shown: no "file in use" error and no white flash.
 - [ ] Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+9 and touchpad pinch (Ctrl+wheel) zoom.
 - [ ] Wheel and touchpad scrolling are smooth, and pages are sharp at 125% and 150% scaling.
+
+## References and Zotero (spectrum-references)
+
+- [ ] "Cite from Zotero" brings Zotero to the front with no console window.
+- [ ] After allowing Spectrum in Zotero, collection sync works with the real Zotero app.
+- [ ] A `zotero.json` from a 2.8 data folder is still accepted.

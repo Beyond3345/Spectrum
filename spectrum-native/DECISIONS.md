@@ -331,3 +331,23 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 117. **Home's pill reads "Search commands…"** since Home's palette has no files. (`home.rs`)
 118. **Image files use the apricot Figure tint; only the top-level `diagrams/` folder is green.**
 119. **The selected palette row uses the Grammar pastel at 12%**, as in Blueprint 10. (`palette.rs`)
+
+## spectrum-references (session 7)
+
+120. **Lossless `.bib` handling**: an unchanged file is written back byte for byte, and an edit changes
+     only its field; 2.8's lenient reader is kept for messy files. (`bib.rs`)
+121. **Research has a `Source` trait with 16 adapters** run together: 2.8's eight plus DBLP, Europe PMC,
+     INSPIRE-HEP, DOAJ, ERIC, HAL, DataCite/Zenodo and Open Library. The five key sources (NASA ADS,
+     CORE, IEEE Xplore, Springer Nature, Scopus) are deferred to 7b. Result ids use SHA-1 so 2.8's
+     saved research sessions still match. (`research/`)
+122. **The Zotero key is to move into the keystore** (Keychain / DPAPI) like the GitHub token
+     (decision 102). This session kept 2.8's `DATA_DIR/zotero.json` (mode 0600) and reads it;
+     session 7b moves the key into the keystore on first use and leaves only the account in the file.
+123. **No Zotero Web API**, since 2.8 has none; local Zotero only. (`zotero.rs`)
+124. **`latex_to_text` is a hand port** rather than 2.8's transpiled pylatexenc; HTML entities cover
+     Latin-1 and the common named ones. (`text.rs`)
+125. **fancy-regex is added** for 2.8's lookaround patterns. (`Cargo.toml`)
+126. **The `.bib` style (BibLaTeX or BibTeX) is detected from the file as 2.8 does**, and the Reference
+     Helper card can override it. (`add.rs`)
+127. **Deferred to 7b/7c**: notes and PDF download (RS7), citation assistant (RS9), claims ledger
+     (RS10), model search and DDGS (WS1), AI review (RV9), and every UI.
