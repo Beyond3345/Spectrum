@@ -5,6 +5,7 @@
 // when it uses one.
 import { FLUID_KEYS, KEYED_PICS, SYMBOL_SETS, picDefinition, shapeDefinitions } from '../../../../../backend/src/data/symbolSets.js';
 import { unitWriter } from '../../units';
+import { mathsPackages } from '../shared';
 import { annotationCode, isBehind, patternDefinition, patternsUsed, textKeys, usesArrows } from './annotate';
 import { anchorFor, markLayout, pinLabelSpots } from './labels';
 import { CATALOGUE, GRID_CM, PARTS, isPart, isPoint, locator, placeholderShape } from './model';
@@ -296,6 +297,7 @@ export function circuitCode(model: CircuitModel, rawStyle: Record<string, unknow
     ...annotations.filter((el) => !isBehind(el)).map(annotationCode)
   ];
   const body = [`\\begin{circuitikz}[${picture}]`, ctikz, ...definitions, ...lines, '\\end{circuitikz}'].join('\n');
-  const packages = [...new Set(['circuitikz', ...sets.flatMap((set) => set.packages), ...(siunitxUsed || units.used ? ['siunitx'] : [])])];
+  // a label's own siunitx or \mathbb, typed into it (mathsPackages), as well as what the units switch writes
+  const packages = [...new Set(['circuitikz', ...sets.flatMap((set) => set.packages), ...(siunitxUsed || units.used ? ['siunitx'] : []), ...mathsPackages([body])])];
   return { body, packages, libraries: [...new Set([...sets.flatMap((set) => set.libraries), ...(usesArrows(model.elements) ? ['arrows.meta'] : []), ...(patterns.length ? ['patterns'] : [])])] };
 }

@@ -100,7 +100,7 @@ export function structureCode(raw: unknown, rawStyle: Record<string, unknown>): 
   const view = VIEWS.find(([v]) => v === style.view)![1];
   const status = solution.status.kind === 'empty' ? '' : `: ${solution.status.text}`;
   const { body, texts } = sceneTikz(scene, `Structure, ${view.toLowerCase()}${status}`, style.diagrams);
-  return { body, packages: ['tikz', ...mathsPackages(texts), ...(scene.siunitx ? ['siunitx'] : [])], libraries: ['arrows.meta', 'babel'] };
+  return { body, packages: [...new Set(['tikz', ...mathsPackages(texts), ...(scene.siunitx ? ['siunitx'] : [])])], libraries: ['arrows.meta', 'babel'] };
 }
 
 /**

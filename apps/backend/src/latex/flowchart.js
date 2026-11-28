@@ -20,7 +20,13 @@ export function num(value) {
 }
 
 /** amssymb when the maths uses its letters (\mathbb, \mathfrak), which LaTeX alone doesn't have. */
-export const mathsPackages = (texts) => (texts.some((t) => /\\math(?:bb|frak)\b/.test(t)) ? ['amssymb'] : []);
+// siunitx's commands as typed in a label, \qty{1}{\kilo\ohm}, \SI, \num, \unit (not \sin, \angle or \unitlength)
+const SIUNITX = /\\(?:qty|SI|si|num|unit|ang|qtyrange|numrange|qtylist|numlist|qtyproduct|numproduct|SIrange|SIlist|complexqty|complexnum)\b/;
+/** The packages the labels' own maths needs: amssymb for \mathbb and \mathfrak, siunitx for its commands typed in a label */
+export const mathsPackages = (texts) => [
+  ...(texts.some((t) => /\\math(?:bb|frak)\b/.test(t)) ? ['amssymb'] : []),
+  ...(texts.some((t) => SIUNITX.test(t)) ? ['siunitx'] : [])
+];
 
 /** '#rrggbb' as an xcolor colour written in place, so the picture needs no \definecolor. */
 export function latexColour(hex) {

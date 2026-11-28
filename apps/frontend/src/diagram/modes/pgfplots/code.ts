@@ -1,7 +1,7 @@
 import { cellNumber, plainCell } from '../../../editor/tableRows';
 import { unitWriter } from '../../units';
 import { nextId } from '../tikz/code';
-import { escapeTex, latexColour, num } from '../shared';
+import { escapeTex, latexColour, mathsPackages, num } from '../shared';
 
 // Plots (pgfplots): a form rather than a drawing. Each series is a function of x over a domain, two columns of a data
 // file in the project, or one of the kinds below; annotations mark points, tangents, secants, lines, areas and labels
@@ -947,5 +947,7 @@ export function plotCode(model: PlotModel, style: Record<string, unknown> = {}) 
     '\\end{tikzpicture}'
   ];
   const between = lines.some((l) => l.includes('fill between['));
-  return { body: `${lines.join('\n')}\n`, packages: ['pgfplots', ...(si.used ? ['siunitx'] : [])], libraries: between ? ['pgfplots.fillbetween'] : [] };
+  const out = `${lines.join('\n')}\n`;
+  // a label's own siunitx or \mathbb, typed into it (mathsPackages), as well as what the units switch writes
+  return { body: out, packages: [...new Set(['pgfplots', ...(si.used ? ['siunitx'] : []), ...mathsPackages([out])])], libraries: between ? ['pgfplots.fillbetween'] : [] };
 }
