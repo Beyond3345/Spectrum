@@ -114,3 +114,23 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     rather than discarding the whole result. (`harper.rs`, `languagetool.rs`)
 40. **Not yet ported**: language detection, downloaded dictionaries, starting a local LanguageTool
     server, ignored-rules files. They come with the editor wiring session (5c) and Settings.
+
+## spectrum-lsp (session 5a)
+
+41. **The server handle keeps each open document's text** so a restarted server gets everything
+    re-opened. (`server.rs`)
+42. **Restart backoff**: first retry after 500 ms, doubling, at most 3 retries; the count resets after
+    60 s of healthy uptime. Requests made mid-restart fail with `NotRunning` instead of waiting;
+    document changes are kept and sent on re-open. (`server.rs`)
+43. **TexLab completion is turned on**; 2.8 didn't use it, and the plan asks for completion.
+    (`settings.rs`)
+44. **TexLab refuses a project root containing `[ ] ^ |`**, as 2.8 did (TexLab mis-handles them).
+
+## Update notifier
+
+45. **Root cause of 2.8.1's broken update notice** (see the plan's "Fixes over 2.8.1"): a 24-hour
+    on-disk cache of the *answer* hid a release published after the day's check (2.8.1 came out
+    11 minutes after the user's check on 28 Nov), failures were cached for a day too, and the link
+    relied on the WebView passing `target="_blank"` to the browser. 3.0.0 re-asks every 6 hours,
+    retries failures after 30 minutes, shows the notice in the title bar and on Home, adds "Check for
+    updates", and opens the release page with the OS's own URL opener.
