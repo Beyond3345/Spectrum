@@ -230,3 +230,15 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     bottom-left above Settings, replacing session 1c's four-tab strip (decision 68's "Outline" tab).
 79. **Toolbar, sidebar-tab and Tools-tab colours are the blueprint's pastel values exactly**, checked
     by a test against the plan HTML; session 1c's vivid `ToolbarSlot` values are replaced.
+
+## Calm workspace pass
+
+80. **Toolbar buttons have no fill at rest**, a 7% tint on hover and 12% when on, with the blueprint's
+    pastel icon colours. Contrast: icons ≥3.08:1 light, ≥5.29:1 dark.
+81. **Light-theme tab labels are darkened 25% toward the text colour**: the blueprint's light pastels
+    give only 3.1–4.5:1 as text, below the 4.5:1 it asks for. The icon colours stay exact.
+82. **Dark-theme Compile keeps the blueprint's `#4c7fb5` with white text at 4.19:1**, the one label
+    under 4.5:1, because the blueprint names that colour. If it reads too faint, a slightly darker
+    `#4373a8` reaches 4.6:1.
+83. **Compiling state**: the button reads "Compiling" with a turning ring; no colour change.
+84. **The Outline and Settings docks are honest placeholders** until 2b (outline) and 11a (Settings).
