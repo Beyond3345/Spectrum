@@ -116,7 +116,7 @@ This is the canonical preamble, based on the report and thesis template. Start f
 \usepackage{graphicx}                   % \includegraphics, for photos and saved plots
 \usepackage{booktabs}                   % \toprule, \midrule and \bottomrule for clean tables
 \usepackage{siunitx}                    % numbers and units: \qty{6.6}{\kilo\watt}, aligned table columns
-\sisetup{group-separator={,},group-minimum-digits=4} % 7,790 with a comma, as Australian style has it
+\sisetup{group-separator={,},group-minimum-digits=4,group-digits=integer} % 7,790 with a comma, 0.3574 left whole
 \usepackage{pgfplots}                   % charts drawn from data, right in the document
 \pgfplotsset{compat=1.18}               % use current pgfplots behaviour (label placement and so on)
 
@@ -156,8 +156,39 @@ Every document uses 25 mm margins and single line spacing. Do not load `setspace
 - Australian English spelling (colour, behaviour, organise, analyse), with `babel`'s `australian` option and `pdflang = {en-AU}`.
 - Dates are written day month year: `17 October 2026`. `\today` prints this under `babel`.
 - Quotation marks are single, typed as `` `this' `` or written with `\enquote{this}`. Double quotes are for a quotation inside a quotation.
+- Dashes: `-` for a hyphen (`well-known`), `--` for an en-dash in ranges (`2022--2023`, `pages 12--18`) and spaced en-dash (` -- `) for a parenthetical dash, as Australian style has it. A minus sign in maths is `$-$`, never a hyphen in text.
+- Ellipses use `\dots` (not three typed dots `...`, which space unevenly).
+- Non-breaking spaces (`~`) keep short items together: initials (`G.~M.~Masters`), titles (`Dr~Smith`), page numbers (`p.~45`) and named references when not using `\cref` (`Chapter~2`).
+- After an abbreviation full stop that does not end a sentence, write `\ ` (or `~`), as in `e.g.\ ` or `et~al.\ `, so TeX does not add extra sentence space. After a capital letter that does end a sentence, write `\@.` (`NASA\@.`).
 - Use `\,` for a thin space between a number and a unit written without siunitx, such as `25\,mm` in prose about the page.
-- Plain, direct sentences. A template's sample text explains what it shows, for example "Use \textcite{...} for a citation in a sentence".
+- Use `\emph{...}` for emphasis (it switches to upright inside italic text, such as a theorem), `\textbf{...}` for bold and `\texttt{...}` for inline code. Never use `\underline{...}` for emphasis, and never use the obsolete TeX switches `{\bf ...}`, `{\it ...}`, `{\rm ...}`, `{\tt ...}` or `{\sc ...}`.
+- Separate paragraphs with a blank line, never with `\\` or `\newline`.
+- Plain, direct sentences. A template's sample text explains what it shows, for example "Use `\textcite{...}` for a citation in a sentence".
+
+### Lists
+
+- Use `itemize` for unordered lists, `enumerate` for numbered lists and `description` for labelled terms.
+- When you need custom labels or tighter spacing, load `enumitem` (never the older `enumerate` package):
+
+```latex
+\begin{enumerate}[label=(\alph*)]
+  \item First step.
+  \item Second step.
+\end{enumerate}
+```
+
+- Keep items parallel in grammar: full sentences start with a capital and end with a full stop; short phrases take neither.
+
+### Footnotes and block quotations
+
+- Place `\footnote{...}` directly after punctuation with no space before it (`...the grid.\footnote{Measured at the inverter.}`). Avoid footnotes in headings and captions.
+- For quotations of 40 words or more (APA 7's threshold), use `csquotes`'s `blockquote` environment without quotation marks:
+
+```latex
+\begin{blockquote}
+  A long quotation stands in its own indented block, with no quotation marks around it.
+\end{blockquote}
+```
 
 ## Units and numbers: siunitx
 
@@ -175,7 +206,7 @@ siunitx is the only way numbers with units are written, in the text, in tables a
 | `\qty{65}{\degreeCelsius}` | `65$^\circ$C` | 65 °C |
 
 - Use the macro names (`\kilo\watt\hour`), not the shorthand strings (`kWh`), so spacing and fonts are right.
-- Set `\sisetup{group-separator={,},group-minimum-digits=4}` so large numbers group with a comma, as Australian style has it.
+- Set `\sisetup{group-separator={,},group-minimum-digits=4,group-digits=integer}` so large whole numbers group with a comma (`7,790`), as Australian style has it, while decimal digits stay whole (`0.3574`, not `0.357,4`).
 - Add `per-mode = symbol` in documents full of rates (electronics, physics) so units read V/µs, not V µs⁻¹.
 - In running prose a percentage is written in words, `6 per cent`. In a table or next to other measured values, use `\qty{19.0}{\percent}`.
 - Number columns in tables use the `S` column type with a `table-format`, and their headings go in braces: `S[table-format=4.0]` under `{Measured (kWh)}`.
@@ -184,11 +215,14 @@ siunitx is the only way numbers with units are written, in the text, in tables a
 ## Maths
 
 - `amsmath` and `amssymb` always. Add `mathtools` for `\coloneqq` and paired delimiters, and `amsthm` for theorems and proofs.
-- Numbered equations use `equation` or `align`, each with `\label{eq:...}`. Unnumbered displays use `\[ ... \]`, never `$$ ... $$`.
+- Numbered equations use `equation` or `align`, each with `\label{eq:...}`. Unnumbered displays use `\[ ... \]`, never `$$ ... $$`. Never use `eqnarray`: its spacing around `=` is broken; use `align` instead.
+- Punctuate displayed equations as part of the sentence (a comma or full stop inside the maths), and do not leave a blank line before a display equation that continues the same paragraph.
 - Refer to equations with `\cref{eq:gain}`, which prints "Equation (1.1)". Do not use `\eqref` or a bare `\ref`.
 - Vectors are bold upright, `\mathbf{x}`. Sets of numbers use `\mathbb{R}`.
 - Subscripts that are words or labels are upright: `R_\mathrm{in}`, `\eta_{\text{ref}}`. Subscripts that are variables stay italic: `x_i`.
-- Use `\bigl( ... \bigr)` for brackets that need to be a little larger, and `\,` between multiplied symbols where it helps reading (`\eta \, A \, G`).
+- Use upright operators (`\sin`, `\cos`, `\log`, `\exp`, `\min`, `\max`), never bare `sin` or `log`. Declare custom operators in the preamble with `\DeclareMathOperator{\argmin}{arg\,min}` (from `amsmath`), not `\text{argmin}`.
+- Set the differential `d` upright after a thin space: `\,\mathrm{d}x` (or define `\newcommand{\dd}{\,\mathrm{d}}`).
+- Use `\bigl( ... \bigr)` for brackets that need to be a little larger, and `\,` between multiplied symbols where it helps reading (`\eta \, A \, G`). Prefer explicit sizing over `\left`/`\right` when brackets are slightly too tall or need to break across lines.
 - In notes and assignments, number equations, figures and tables by section:
 
 ```latex
@@ -588,7 +622,24 @@ import heapq
 
 - Long chapters go in their own files with `\include{chapters/name}`.
 - Appendices come after the bibliography, after `\appendix`.
+- Keep heading levels in order: do not jump from `\section` straight to `\subsubsection`.
 - Indent the body of environments by two spaces. Keep source lines to about 100 characters, breaking at the end of a sentence or clause.
+
+### Headers, footers and landscape pages
+
+- Default articles and reports keep LaTeX's standard page styles (`plain` and `headings`). When a long report needs custom running headers or footers, load `fancyhdr` in `% Page` and keep the header minimal (chapter or section title, thin rule or none).
+- For a wide table or figure that needs a rotated page, load `pdflscape` and wrap it in `\begin{landscape} ... \end{landscape}`, which rotates the page in the PDF viewer as well as on paper.
+
+### Custom macros
+
+- Define document macros after the package groups using `\newcommand` (or `\NewDocumentCommand`, built into current LaTeX, when you need optional arguments). Never use TeX's `\def`, which silently overwrites existing commands.
+- Give each macro a short, semantic name (`\dd`, `\vect`, `\norm`) and a comment explaining what it prints.
+
+### Accessibility and PDF metadata
+
+- Set `pdftitle`, `pdfauthor` and `pdflang = {en-AU}` in `\hypersetup`, and give every heading that holds maths a plain-text form with `\texorpdfstring`.
+- Keep heading levels in order, mark tables with proper header rows and write self-contained captions that explain what a figure or table shows.
+- Where a document targets tagged PDF (PDF/UA) under LuaLaTeX with `\DocumentMetadata`, pass `alt={...}` to `\includegraphics` for every image. (Tectonic does not yet ship the LaTeX Tagging Project's full PDF/UA pipeline; for PDF/UA-1 export in Spectrum, use Typst.)
 
 ## CV and letter extras
 
@@ -620,6 +671,25 @@ The ACL, CVPR, arXiv, NeurIPS and ICML templates keep the venue's own class or s
 
 When writing for a venue, follow the venue's instructions first and this document second. Before submitting, switch to the venue's own bibliography style if it requires one.
 
+## Avoid
+
+Legacy and incompatible LaTeX idioms that clash with current engines or with this style:
+
+| Avoid | Use instead | Why |
+| --- | --- | --- |
+| `\usepackage[utf8]{inputenc}` | Nothing | UTF-8 has been the default in every current engine since 2018. |
+| `{\bf ...}`, `{\it ...}`, `{\tt ...}` | `\textbf{...}`, `\emph{...}`, `\texttt{...}` | Obsolete LaTeX 2.09 switches; they reset other font attributes. |
+| `$$ ... $$` | `\[ ... \]` | Plain TeX display maths; breaks `amsmath` spacing and `fleqn`. |
+| `\begin{eqnarray}` | `\begin{align}` | Inconsistent spacing around relation signs. |
+| `\\` to separate paragraphs | A blank line | `\\` breaks a line without starting a paragraph and causes underfull boxes. |
+| `\begin{center}` inside a float | `\centering` | `center` adds unwanted extra vertical space inside `figure` and `table`. |
+| `\usepackage{physics}` | `amsmath`, `mathtools`, `siunitx` | Redefines `\qty` and breaks `siunitx`. |
+| `\usepackage{subfigure}`, `subfig` | `subcaption` | Out of date and clashes with `hyperref` and `cleveref`. |
+| `\usepackage{epsfig}`, `a4wide`, `times`, `enumerate` | `graphicx`, `geometry`, `lmodern`, `enumitem` | Superseded packages with known layout bugs. |
+| `\usepackage{tabulary}`, `tabularray` | `tabular`, `tabularx`, `xltabular` | Unpredictable widths (`tabulary`) or slow, non-standard syntax (`tabularray`). |
+| `\usepackage{minted}`, `svg`, `gnuplottex` | `listings`, converted PDF figures | Require shell escape, which Spectrum disables. |
+| `\def\foo{...}` | `\newcommand{\foo}{...}` | `\def` silently overwrites existing LaTeX commands. |
+
 ## Checklist for an agent
 
 Before handing back a new `.tex` file, check that:
@@ -629,14 +699,15 @@ Before handing back a new `.tex` file, check that:
 3. Every `\usepackage` has a plain English comment, lined up with the others.
 4. The `iftex` block loads `fontenc` and `lmodern` for pdfLaTeX only, and there is no `inputenc` or shell escape package.
 5. `babel` is `australian`, `pdflang` is `en-AU` and the spelling is Australian.
-6. Every number with a unit is `\qty`, `\unit`, `\num` or `\ang`, and `physics` is not loaded.
+6. Every number with a unit is `\qty`, `\unit`, `\num` or `\ang` (with `group-digits=integer` in `\sisetup`), and `physics` is not loaded.
 7. biblatex is `backend=biber,style=apa,natbib=true` with the `british-apa` mapping, `xurl` and `\printbibliography`, and the keys are in Spectrum's `AuthorYear` form.
 8. Every figure, table, equation, listing and algorithm that is referred to has a prefixed label, and every reference uses `\cref`.
 9. Tables use booktabs with captions above, `S` columns for numbers, and `xltabular` only for tables longer than a page. Figures have captions below.
 10. Images are sized one way from [Image sizes](#image-sizes), and images that belong together are sub-figures with `subcaption`, not `subfig` or `subfigure`.
 11. Code uses the `report` listings style with a language, caption and label on each listing.
 12. `hyperref` ends the packages with `hidelinks` and `\hypersetup`, followed only by `cleveref`.
-13. The document compiles in Spectrum with Tectonic without errors or undefined references.
+13. No deprecated constructs appear (`$$`, `eqnarray`, `{\bf ...}`, `\\` for paragraphs, `\def`).
+14. The document compiles in Spectrum with Tectonic without errors or undefined references.
 
 ## Exceptions in the templates
 

@@ -88,11 +88,12 @@ Parallel once 0a lands: 1a/1b, 2a/2b, 3a/3c, 5a, 5b, 6a, 6d, 7, 8, 9a. Hold back
 Run 0a only: create `spectrum-native/` with the workspace manifest, lints from blueprint Section 6.5,
 `rust-toolchain.toml` (1.99.0), `CODING_STANDARD.md`, `ARCHITECTURE_LEDGER.md`, the `native-v3.yml`
 workflow, and an audit table (current vs latest for every engine, checker, dictionary and crate) in
-`spectrum-native/DEPENDENCY_AUDIT.md`. Empty crates are created only when their session starts.
+`spectrum-native/DEPENDENCY_AUDIT.md`. All 17 crates are created as empty members so the graph is fixed from day one.
 
-## Open questions for you
+## Decisions (28 Nov 2026)
 
-- Keep the blueprint's 17 crates, or fold `spectrum-xtask` stubs and the two Windows crates in later
-  only when their sessions start? (This plan creates each crate when its session starts either way.)
-- Does 3.0.0 need to reach feature parity with 2.8 before release, or can a smaller first cut
-  (writing loop + compile + PDF + spelling) ship as a 3.0 beta?
+- **All 17 crates**, created as members in session 0a so the dependency graph is fixed from the start.
+- **3.0.0 is a full release** with feature parity with 2.8. No cut-down first version.
+- **Beta DMGs** (`3.0.0-beta.N`) may be built along the way into `OpenPrism/builds/` as checkpoints,
+  but nobody hand-tests them. The one hand test happens when the whole rebuild is finished, before
+  anything merges to `main` or ships.

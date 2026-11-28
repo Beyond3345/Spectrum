@@ -26,6 +26,7 @@ Every example in this guide was compiled with Spectrum's built-in Typst, 0.15.1,
 | `diagrams/` | Diagrams. Spectrum's diagram composer saves each drawing here as a `.typ` file that imports its own package. |
 | `chapters/` | Optional, for long reports: one file per chapter, brought in with `#include "chapters/introduction.typ"`. |
 | `style.typ` | Optional, for documents with chapters: the `#let` definitions (the theorem set, `subfigure`, `proof`) that chapter files import. |
+| `alt-text.typ` | Optional, for documents with maths exported as accessible PDF/UA-1: the spoken alt text for every equation. |
 | `fonts/` | Optional: font files for a typeface Typst does not bundle. Spectrum passes this folder to Typst. |
 
 - The LaTeX guide names the bibliography `references.bib`; the Typst templates and their test use `refs.bib`, and this guide follows them. Spectrum's References tab adds new entries to the `.bib` file the document's `#bibliography` loads, so keep the path a plain string in that call.
@@ -82,6 +83,7 @@ The groups always come in this order. Leave out a group the document does not ne
 | `// References` | `#set bibliography(title: [References])` |
 | `// Page` | `#set page`, `#set text`, `#set par`, `#set heading` |
 | `// Maths` | Equation numbering, the theorem rules and numbering by section when the document uses it |
+| `// Alt text` | Optional, for PDF/UA-1 documents with maths: `#import "alt-text.typ": alt-text` and `#show: alt-text` |
 | `// Figures and tables` | Caption positions, table digits, the sub-figure rules |
 | `// Code` | `#set raw` and the code box |
 | `// Links` | Only in the CV, which colours its links |
@@ -219,9 +221,38 @@ Every document uses 25 mm margins and single line spacing, except the CV.
 - Australian English spelling (colour, behaviour, organise, analyse), with `#set text(lang: "en", region: "AU")`.
 - Dates are written day month year: `3 November 2026`. Type them, or print today's with `datetime.today().display("[day padding:none] [month repr:long] [year]")`.
 - Quotation marks are single. Type straight quotes, `'like this'`, and Typst curls them. Double quotes, `"like this"`, are for a quotation inside a quotation.
-- `~` is a space that never breaks a line. Use it between a number and its unit (`25~mm`) and before a reference number that is typed by hand.
-- Write `\` at the end of a line for a line break, and a blank line for a new paragraph.
+- Dashes: `-` for a hyphen (`well-known`), `--` for an en-dash in ranges (`2022--2023`, `pages 12--18`) and spaced en-dash (` -- `) for a parenthetical dash, as Australian style has it.
+- Ellipses: type `...` and Typst turns it into a proper horizontal ellipsis (`…`).
+- `~` is a space that never breaks a line. Use it between a number and its unit (`25~mm`), between initials (`G.~M.~Masters`), after titles (`Dr~Smith`) and before a page or reference number typed by hand (`p.~45`).
+- Use `_emphasis_` (`#emph[...]`) for emphasis, `*strong*` (`#strong[...]`) for bold and `` `code` `` for inline code. Never use `#underline[...]` for emphasis.
+- Escape special markup characters with a backslash (`\*`, `\_`, `\#`, `\$`, `\@`, `\<`) when you want them literally.
+- Write `\` at the end of a line for a line break, and a blank line for a new paragraph. Never use `\` to separate paragraphs.
 - Plain, direct sentences. A template's sample text explains what it shows, for example "Use `@Masters2013` for a citation in parentheses".
+
+### Lists
+
+- Use `-` for unordered lists, `+` for numbered lists and `/ Term: definition` for term lists. Indent nested items by two spaces.
+- Change list numbering with `#set enum(numbering: "(a)")` (scoped in `#[ ... ]` when it applies to one list).
+- Keep items parallel in grammar: full sentences start with a capital and end with a full stop; short phrases take neither.
+
+```typst
+#[
+  #set enum(numbering: "(a)")
+  + First step.
+  + Second step.
+]
+```
+
+### Footnotes and block quotations
+
+- Place `#footnote[...]` directly after punctuation with no space before it (`...the grid.#footnote[Measured at the inverter.]`). Avoid footnotes in headings and captions.
+- For quotations of 40 words or more (APA 7's threshold), use `#quote(block: true)[...]` without quotation marks:
+
+```typst
+#quote(block: true)[
+  A long quotation stands in its own indented block, with no quotation marks around it.
+]
+```
 
 ## Units and numbers
 
@@ -254,11 +285,14 @@ Typst has no siunitx. Spectrum writes quantities as text, by the same rules siun
 
 - Inline maths is `$x$`. Display maths has a space inside each dollar: `$ P = eta A G $`.
 - Every display equation is numbered by the preamble. Give one a label right after its closing `$`: `$ P = eta A G $ <eq:power>`.
+- Punctuate displayed equations as part of the sentence (a comma or full stop inside `$ ... $`), and do not leave a blank line before a display equation that continues the same paragraph.
 - An equation that should not be numbered is `#math.equation(block: true, numbering: none, $ ... $)`.
 - Several aligned lines are one equation with `&` and `\`, and take one number. Write separate equations when each line needs its own number.
 - Refer to equations with `@eq:power`, which prints "Equation 1". Do not type "Equation" or brackets around it.
 - Vectors are bold upright, `upright(bold(x))`: Typst's `bold(x)` alone is bold italic. Sets of numbers use `RR`, `NN`, `ZZ`.
 - Subscripts that are words or labels are upright: `R_"in"`, `eta_"ref"`. Subscripts that are variables stay italic: `x_i`.
+- Built-in operators (`sin`, `cos`, `log`, `exp`, `min`, `max`, `det`) are upright automatically. Declare custom operators in the preamble with `#let argmin = math.op("arg min", limits: true)`.
+- Use `dif x` for differentials (upright `d` with proper spacing), and `mat(...)`, `vec(...)`, `cases(...)` for matrices, column vectors and piecewise definitions.
 - Typst sizes brackets to their contents. Use `lr((...), size: #120%)` for brackets that need to be a little larger, and `thin` between multiplied symbols where it helps reading (`eta thin A thin G`).
 - In notes and assignments, number equations, figures and tables by section. Put this block at the end of the `// Maths` group:
 
@@ -684,7 +718,45 @@ What the report found, in one paragraph.
 #show heading.where(level: 1): set heading(supplement: [Appendix]) // references read Appendix A
 ```
 
+- Keep heading levels in order: do not jump from `=` straight to `===`.
 - Indent the arguments of a function call by two spaces, one argument per line when they do not fit on one line, with a comma after the last. Keep source lines to about 100 characters, breaking at the end of a sentence or clause.
+
+### Headers, footers and landscape pages
+
+- Default articles and reports put only the page number in the footer via `numbering: "1"`. When a long report needs a running header or footer, set `header:` or `footer:` in `#set page(...)` using `context` and keep it minimal.
+- For a wide table or figure that needs a rotated page, use Typst's built-in `#page(flipped: true)[...]` (no package needed).
+- For a multi-column section, wrap it in `#columns(2)[...]`.
+
+### Definitions, naming and scoping
+
+- Name `#let` functions and variables in `kebab-case` (`theorem-number`, `by-section`, `alt-text`), following Typst's standard library convention.
+- Scope local `set` and `show` rules inside `#[ ... ]` so they affect only that block and do not leak into the rest of the document.
+- Prefer `set` and `show` rules in the preamble over repeating inline styling (`#text(...)`) throughout the body.
+- Use `context` for layout-dependent queries and counters; do not use the deprecated `locate` or `style` callbacks from early Typst versions.
+
+### Accessibility and PDF/UA-1
+
+Spectrum can export Typst documents as accessible PDF/UA-1. To pass PDF/UA-1:
+
+- Give every image or drawn figure a concise `alt` description, either on `image("/figures/measured.png", width: 75%, alt: "...")` or on `#figure(..., alt: "...")`:
+
+```typst
+#figure(
+  image("/figures/measured.png", width: 75%, alt: "Bar chart of monthly solar output peaking in January and lowest in June."),
+  caption: [Measured output across the year.],
+) <fig:measured>
+```
+
+- Every equation (inline and display) needs spoken `alt` text for PDF/UA-1. Keep the list in `alt-text.typ` and apply it right after `// Maths`, as Spectrum's report and notes templates do:
+
+```typst
+// Alt text: each equation's words for a screen reader, which PDF/UA-1 needs, are listed in alt-text.typ
+#import "alt-text.typ": alt-text
+#show: alt-text
+```
+
+  An unnumbered display equation written with `#math.equation(...)` may also take `alt: "..."` directly.
+- Keep heading levels in order (`=`, `==`, `===`) and mark table headers with `table.header(...)`. Wrap purely decorative marks in `#pdf.artifact[...]` so screen readers skip them.
 
 ## CV and letter extras
 
@@ -731,6 +803,11 @@ Each rule in [LATEX_STYLE.md](LATEX_STYLE.md) and its Typst equivalent in this g
 | `\newcommand` | `#let` |
 | `\usepackage{...}` | Nothing, or a pinned import in a `diagrams/` file (see [Packages](#packages)) |
 | `\enquote{text}`, `` `text' `` | `'text'` |
+| `\emph{text}`, `\textbf{text}` | `_text_`, `*text*` |
+| `\dots` | `...` |
+| `itemize`, `enumerate`, `description` | `-`, `+`, `/ Term:` |
+| `\footnote{...}` | `#footnote[...]` |
+| `\begin{blockquote} ... \end{blockquote}` | `#quote(block: true)[...]` |
 | `25\,mm` | `25~mm` |
 | `\qty{4.7}{\kilo\ohm}` | `4.7~kΩ` |
 | `\qty{13}{\volt\per\micro\second}` | `13~V/µs` |
@@ -747,6 +824,8 @@ Each rule in [LATEX_STYLE.md](LATEX_STYLE.md) and its Typst equivalent in this g
 | `\numberwithin{equation}{section}` and the like | The by-section block in [Maths](#maths) |
 | `\mathbf{x}`, `\mathbb{R}` | `upright(bold(x))`, `RR` |
 | `R_\mathrm{in}`, `\text{if}` | `R_"in"`, `"if"` |
+| `\DeclareMathOperator{\argmin}{arg\,min}` | `#let argmin = math.op("arg min", limits: true)` |
+| `\,\mathrm{d}x` | `dif x` |
 | `\bigl( ... \bigr)`, `\,` | `lr((...), size: #120%)`, `thin` |
 | `\newtheorem` set, `\theoremstyle` | The house theorem set in the standard preamble |
 | `\begin{theorem}[Euclid] ... \label{thm:e}` | `#theorem(title: [Euclid])[...] <thm:e>` |
@@ -791,6 +870,7 @@ Each rule in [LATEX_STYLE.md](LATEX_STYLE.md) and its Typst equivalent in this g
 | `\tableofcontents`, `\listoffigures`, `\listoftables` | `#outline(...)` |
 | `\pagenumbering{alph}`, `{roman}`, `{arabic}` | `#set page(numbering: none)`, `"i"`, `"1"`, with `#counter(page).update(1)` |
 | `\appendix` | The appendix block in [Document structure](#document-structure) |
+| `\begin{landscape} ... \end{landscape}` (`pdflscape`) | `#page(flipped: true)[...]` |
 | `\pagestyle{empty}` | `numbering: none` |
 
 ## Checklist for an agent
@@ -798,15 +878,15 @@ Each rule in [LATEX_STYLE.md](LATEX_STYLE.md) and its Typst equivalent in this g
 Before handing back a new `.typ` file, check that:
 
 1. `#set page` is `paper: "a4", margin: 25mm` (or the table above for a CV), and `#set text` is `size: 11pt, lang: "en", region: "AU"`.
-2. The preamble groups are in the order Document, References, Page, Maths, Figures and tables, Code, each with a `//` heading, and the `#let` definitions follow them.
-3. Every set and show rule has a plain English comment, lined up with the others.
+2. The preamble groups are in the order Document, References, Page, Maths, Figures and tables, Code, each with a `//` heading, and the `#let` definitions follow them (in `kebab-case`).
+3. Every set and show rule has a plain English comment, lined up with the others, and any local rule is scoped inside `#[ ... ]`.
 4. There is no `@preview` import outside `diagrams/`, and every import in `diagrams/` has an exact version.
-5. The spelling is Australian, and the date prints without a leading zero.
+5. The spelling is Australian, paragraphs are separated by blank lines (never `\`), and the date prints without a leading zero.
 6. Every number with a unit is the number, `~` and the unit's symbol in text, with commas in numbers of four or more digits.
 7. The document ends with `#bibliography("refs.bib", style: "apa")` and the preamble sets the title to References. The keys are in Spectrum's `AuthorYear` form. A letter or CV, which cites nothing, has no bibliography.
 8. Every figure, table, equation, listing, algorithm and theorem that is referred to has a prefixed label, and every reference is `@label`.
 9. Tables have `stroke: none`, booktabs rules as `table.hline`, a `table.header`, captions above, right-aligned number columns with equal decimals. Only a table longer than a page has a breakable figure. Figures have captions below.
-10. Images are sized one way from [Image sizes](#image-sizes), with paths from the project root, and images that belong together are `subfigure` panels in a grid.
+10. Images are sized one way from [Image sizes](#image-sizes), with paths from the project root, `alt` text for accessibility, and images that belong together are `subfigure` panels in a grid.
 11. Every code block has a language, and every listing that is referred to is a figure with a caption and a `lst:` label.
 12. The document compiles in Spectrum with the built-in Typst without errors or warnings.
 
@@ -815,8 +895,8 @@ Before handing back a new `.typ` file, check that:
 Spectrum's seven Typst templates follow this standard: `typst-document`, `typst-report`, `typst-maths-notes`, `typst-electronics-notes`, `typst-coding-report`, `typst-letter` and `typst-cv`. The maths notes, electronics notes and coding report carry the same content as their LaTeX versions. There is no Typst slides template.
 
 - Their drawings are plain Typst in `diagrams/`, with no package, so every template compiles offline on the first try.
-- Each `main.typ` keeps its definitions rather than importing `style.typ`, so a template is one file to read.
-- `apps/backend/test/templates.test.js` checks each one for `#set page(paper: "a4"`, `lang: "en", region: "AU"`, `#set document`, no `@preview` and no `#import`, and, apart from the letter and CV, a closing `#bibliography("refs.bib", style: "apa")` with its `refs.bib`.
+- Each `main.typ` keeps its definitions rather than importing `style.typ`, so a template is one file to read. Templates with maths import their shipped `alt-text.typ` so they export as PDF/UA-1.
+- `apps/backend/test/templates.test.js` checks each one for `#set page(paper: "a4"`, `lang: "en", region: "AU"`, `#set document`, no `@preview` and no external `#import` (local shipped files such as `alt-text.typ` are allowed), and, apart from the letter and CV, a closing `#bibliography("refs.bib", style: "apa")` with its `refs.bib`.
 
 Spectrum's Insert tools write plain Typst that fits this standard, with two differences:
 
