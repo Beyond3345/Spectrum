@@ -297,3 +297,21 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 104. **A research session changed on both sides keeps this computer's copy.** Templates in the
      settings repo, the 1.10.4 mirror merge base, `computer.json` and pull scheduling are left to
      session 8b.
+
+## spectrum-pdf viewer core (session 4a)
+
+105. **PDFium hashes live in `assets/pdfium.json`**, apart from spectrum-compile's `engines.json`;
+     `cargo xtask fetch-pdfium` downloads the pinned build and checks its SHA-256. CI fetches it.
+106. **Bitmaps are BGRA**, PDFium's and GPUI's own order, so no per-pixel swizzle. (`engine.rs`)
+107. **A PDF is read into memory before opening**, so Windows never sees it locked while the next
+     compile writes it. (`engine.rs`)
+108. **Reload opens the new file as a new document and swaps once its visible tiles are ready**: no
+     white flash, scroll and zoom kept. (`view.rs`)
+109. **1024 px tiles, prefetching half a view above and below** (the plan said ±1 page), which bounds
+     memory at any zoom; peak measured 127.6 MB of the 128 MB cap. (`layout.rs`)
+110. **Keyboard zoom anchors at the middle of the view** (2.8 kept a scroll ratio); wide pages start
+     centred. (`view.rs`)
+111. **The toolbar has −/+ and a Fit width / Fit page switch** in place of 2.8's fixed list of sizes;
+     tooltips come when spectrum-ui wraps the kit's. (`toolbar.rs`)
+112. **Measured**: a real 100-page TikZ PDF opens in 3.7 ms and renders a page in 7.4 ms (12.2 ms in
+     Dark); the slowest scroll step is 22 ms.

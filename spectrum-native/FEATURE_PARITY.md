@@ -360,9 +360,9 @@ into the docked bottom-left panel the plan now draws (row L4).
 
 | # | Feature | 2.8.1 source | 3.0.0 session | Status |
 |---|---|---|---|---|
-| PDF1 | PDF preview fits the page width by default | fe/editor/PdfPreview.tsx | 4a | not started |
-| PDF2 | Zoom: pinch, `⌘`+wheel, `⌘=`/`⌘−`; fit width `⌘0`, fit page `⌘9` | fe/editor/PdfPreview.tsx | 4a | not started |
-| PDF3 | Page colours: White/Cream/Sepia/Grey in light, Dark/Black/Dimmed/White in dark | fe/editor/PdfPreview.tsx | 4a | not started |
+| PDF1 | PDF preview fits the page width by default | fe/editor/PdfPreview.tsx | 4a | built (PdfPanel; wired into the workspace in 4b) |
+| PDF2 | Zoom: pinch, `⌘`+wheel, `⌘=`/`⌘−`; fit width `⌘0`, fit page `⌘9` | fe/editor/PdfPreview.tsx | 4a | built (`spectrum_pdf::bind_keys`; 2.8's menu of fixed sizes became −/+ and a Fit width/Fit page switch) |
+| PDF3 | Page colours: White/Cream/Sepia/Grey in light, Dark/Black/Dimmed/White in dark | fe/editor/PdfPreview.tsx | 4a | built (`PageColour`, 2.8's CSS filters exactly; the ··· menu to pick one is 4b's) |
 | PDF4 | Two-page view | fe/app/EditorPage.tsx | 4c PDF extras | not started |
 | PDF5 | Sticky notes on the PDF ("Add a note here"), saved in `.spectrum/notes` | fe/app/EditorPage.tsx, be/routes/notes.js | 11c to-dos & PDF notes | not started |
 | PDF6 | Links work: contents, `\ref`, `\eqref`, `\cite` jump; web links open the browser; links into a linked document open its PDF | fe/editor/PdfPreview.tsx | 4b | not started |
@@ -383,7 +383,7 @@ into the docked bottom-left panel the plan now draws (row L4).
 | PDF21 | Live (Typst): Tinymist's preview as you type; says why when it can't show, Back to the PDF | fe/editor/liveFrame.ts, be/routes/tinymist.js | 4c | not started |
 | PDF22 | Markdown live preview (eye): maths, Mermaid, numbered refs, pictures; follows scroll; double-click goes to the line | fe/editor/MarkdownPreview.tsx, fe/editor/previewText.ts | 4c | not started |
 | PDF23 | Chapter-only compile named in the PDF pane | fe/app/EditorPage.tsx | 3d | not started |
-| PDF24 | 100-page TikZ PDF within memory budget; tile cache | — | 4a | not started |
+| PDF24 | 100-page TikZ PDF within memory budget; tile cache | — | 4a | built (peak 127.6 MB of 128; `tests/perf.rs`) |
 
 ## Diagnostics & logs
 
@@ -726,7 +726,7 @@ into the docked bottom-left panel the plan now draws (row L4).
 | S-AP3 | Colour style Spectrum/Simple | fe/app/appearance.ts | 0b + 11a | partial (palette commands) |
 | S-AP4 | Logos: line marks or full logos | fe/app/settings.ts | 11a | not started |
 | S-AP5 | See-through window (Liquid Glass/frosted) with Clarity; solid under Reduce transparency | tauri/src/main.rs (follow_glass) | 0b + 11a | partial (blurred window, decision 20) |
-| S-AP6 | PDF page colour for light and dark | fe/app/settings.ts | 4a + 11a | not started |
+| S-AP6 | PDF page colour for light and dark | fe/app/settings.ts | 4a + 11a | partial (colours built; the Settings rows are 11a's) |
 | **Shortcuts** | | | | |
 | S-SH1 | Every shortcut listed by group; click and press keys; Delete removes; Escape cancels | fe/app/shortcuts.ts | 2e + 11a | not started |
 | S-SH2 | Clashes marked; system shortcuts refused; canvas key clashes explained | fe/app/shortcuts.ts | 2e | not started |

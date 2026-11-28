@@ -17,7 +17,7 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 
 | spectrum-ui | GPUI lib | theme, core (UserNotice) |
 | spectrum-editor | GPUI lib | core, theme, ui |
-| spectrum-pdf | GPUI lib | core, compile, theme, ui |
+| spectrum-pdf | GPUI lib | core, compile, theme, ui (pdfium-render, crossbeam-channel, futures, image) |
 | spectrum-diagram | GPUI lib | core, compile, theme, ui, editor, pdf |
 | spectrum-app (bin `spectrum`) | GPUI bin | every lib |
 | spectrum-win-setup | GPUI bin | theme, ui |
@@ -26,7 +26,7 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 
 ## Tooling
 
-- `cargo xtask check`: the gate (fmt, clippy `-D warnings`, test).
+- `cargo xtask check`: the gate (fmt, clippy `-D warnings`, test). `cargo xtask fetch-pdfium`: PDFium for tests and dev builds.
 - `SPECTRUM_SNAPSHOT=1 cargo test -p spectrum-app --test snapshot`: renders views offscreen to
   `target/snapshots/*.png` (Mac only; cases live in its `mod mac`). Add a case there for every new view.
 
@@ -212,6 +212,33 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
   `.depth(line) -> 0..=MAX_SCOPE_DEPTH`, `.innermost(line)`, `.scope(line, level) -> Option<Scope { level,
   open_line, close_line }>`. `todos(lang, &buffer) -> Vec<Todo { line, offset, kind, text }>`.
 - Perf: `cargo test --release -p spectrum-editor --test perf -- --ignored --nocapture`.
+
+### spectrum-pdf (session 4a: engine, cache, colours, panel; 4b adds selection, links, search, SyncTeX pulse, notes)
+
+- PDFium: `cargo xtask fetch-pdfium [--target <triple>]` → `target/pdfium/<triple>/` (pins and SHA-256 in
+  `assets/pdfium.json`, chromium/8125). `find_library()` / `candidates()`: `$SPECTRUM_PDFIUM`, `../Frameworks`
+  (macOS bundle), beside the exe, then that cache. Tests needing it print "skipped" without it; CI fetches it.
+- `PdfEngine::shared()` (or `start(lib)`): one `pdfium` thread per process owns every document (crossbeam queue);
+  clone the handle freely. `.open(path) -> Future<Result<PdfDoc { id: DocId, path, pages: Vec<PageSize> }>>` (reads
+  the file into memory first: no lock on it), `.render(RenderRequest { doc, page, scale, colour, rects:
+  Vec<PixelRect> }) -> Future<Result<Vec<Bitmap { rect, bgra }>>>` (one page load for all rects; dropping the
+  future skips it), `.close(doc)`. Futures are runtime-free (oneshot): await in `cx.spawn` or `block_on`.
+  A reload is a new `DocId`. `page_pixels(size, scale)`. `PdfError` (Display is user copy). No `unsafe` anywhere.
+- `PageColour::{White, Cream, Sepia, Grey, Dark, Black, Dimmed}` (`From<PdfPageLight/PdfPageDark>`), `.paper()`;
+  applied on the PDFium thread as 2.8's CSS (multiply / invert + hue-rotate / brightness) via a 9×256 LUT.
+- `cache::TileCache<T>` (`DEFAULT_BUDGET` 128 MB): `insert(TileKey { doc, page, scale (‰), colour, tile }, v,
+  bytes, Focus) -> evicted` (other doc/scale/colour first, then furthest page, then LRU), `get`, `page_tiles`,
+  `retain`, `clear`, `bytes`, `peak`.
+- `layout::{Layout, Zoom::{FitWidth, FitPage, Scale}, PAD, GAP, MIN_ZOOM, MAX_ZOOM, TILE (1024 px)}`: `Layout::new(
+  sizes, zoom, viewport)`, `.visible`, `.page_at`, `.bucket(scale_factor)`, `.wanted(scroll, viewport, bucket)`
+  (tiles in view ± half a view, nearest first); `Zoom::stepped(scale, n)` (×1.1, 2.8's).
+- `PdfPanel::new(window, cx)`: `.open(path)` (also reloads, no flash), `.set_page_colour`, `.set_zoom`/`.zoom()`,
+  `.page() -> Option<(page, count)>`, `.cache_bytes()`, `.release_textures(cx)` (call when hidden/minimised).
+  `PdfPanelEvent::{Loaded { pages }, Failed(PdfError), ZoomChanged(Zoom)}`. Actions (`pdf`): ZoomIn, ZoomOut,
+  FitWidth, FitPage; `bind_keys(cx)`: Mod-= / Mod-+ / Mod-- / Mod-0 / Mod-9 in context `PdfPanel`. Draws line
+  icons `icons/ui/pdf-*.svg`: the app's asset source must serve `assets/icons` at `icons/` (session 1f).
+- Snapshots: `SPECTRUM_SNAPSHOT=1 cargo test -p spectrum-pdf --test snapshot` → `target/snapshots/pdf-*.png`.
+  Perf: `cargo test --release -p spectrum-pdf --test perf -- --ignored --nocapture` (`SPECTRUM_PDF_PERF=<pdf>`).
 
 ### spectrum-win-sandbox (lib: Spectrum's side, every platform; bin `spectrum-win-sandbox.exe`: the worker)
 

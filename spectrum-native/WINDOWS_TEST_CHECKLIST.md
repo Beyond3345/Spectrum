@@ -125,3 +125,10 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
 ## Editor syntax (spectrum-editor)
 
 - [ ] The vendored BibTeX grammar (`parser.c`) builds with MSVC (`cargo xtask check` on Windows).
+
+## PDF viewer (spectrum-pdf)
+
+- [ ] `cargo xtask fetch-pdfium` works on Windows, and the PDF engine tests run instead of skipping.
+- [ ] Recompiling while the PDF is shown: no "file in use" error and no white flash.
+- [ ] Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+9 and touchpad pinch (Ctrl+wheel) zoom.
+- [ ] Wheel and touchpad scrolling are smooth, and pages are sharp at 125% and 150% scaling.

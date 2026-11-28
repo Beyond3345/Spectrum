@@ -40,4 +40,8 @@ jobs:
         with:
           workspaces: spectrum-native
 
+      # PDFium for spectrum-pdf's tests: the pinned pdfium-binaries release, SHA-256 checked
+      # against assets/pdfium.json (without it those tests skip)
+      - run: cargo xtask fetch-pdfium
+
       - run: cargo xtask check
