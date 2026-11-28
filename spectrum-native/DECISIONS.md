@@ -198,3 +198,23 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     Biber skip, preamble formats, recipes, `\externaldocument`, `\includeonly`, page colour,
     xjyutping, Typst watch mode, Biber download, Tectonic warm-up, mapping Markdown errors back to
     `.md` lines, SVG export, CJK fonts, and 2.8's proxy gate for a confined Tectonic.
+
+## spectrum-ui and the workspace shell (session 1c)
+
+66. **`SidebarTab` colours live in spectrum-theme**, keeping hex values out of the UI crates.
+67. **The mockup is scaled ×1.2 to real sizes** (28 px toolbar buttons, 13 px file rows); the
+    mockup's 11–12 px text would be too small to work in.
+68. **Full tab labels** ("Research", "To-dos") instead of the mockup's "Res." and "To-do".
+69. **File dots**: TeX/Typst/Markdown rose, .bib teal, files under `diagrams/` green, others tertiary.
+70. **No resting divider between panes**; a handle pill appears on hover.
+71. **Home and Projects buttons in the title bar**; room left before Compile for the update pill.
+72. **Home design** (the plan has none): one panel with a prism header bar, Flow-blue New button,
+    rose folder tiles, `~`-shortened paths; archived projects hidden.
+73. **New project uses 2.8's Simple document template**; new file/folder/rename use an inline name
+    field instead of a dialog.
+74. **One palette for commands and files** (Cmd+Shift+P commands, Cmd+P files), with a dimmed
+    backdrop; commands are filtered by the current screen.
+75. **Toolbar buttons and Compile report "isn't in this build yet"** until their sessions wire them,
+    rather than looking like they work.
+76. **Superseded by the user's calm-workspace rule**: the shell's prism Compile button and bright
+    toolbar pills are toned down in the follow-up UI session.

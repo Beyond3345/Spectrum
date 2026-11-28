@@ -27,8 +27,10 @@ spectrum-ui.workspace = true
 spectrum-editor.workspace = true
 spectrum-pdf.workspace = true
 spectrum-diagram.workspace = true
+trash.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 # real offscreen rendering for snapshot tests (tests/snapshot.rs)
 gpui-kit = { workspace = true, features = ["test-support"] }
 image.workspace = true

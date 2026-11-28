@@ -1,11 +1,11 @@
 //! Spectrum: windows, menus, Tokio bridge and workspace.
 
 use gpui_kit::{
-    AppContext, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds, WindowOptions,
-    point, px, size,
+    AppContext, Bounds, WindowBackgroundAppearance, WindowBounds, WindowOptions, px, size,
 };
-use spectrum_app::theme_preview::ThemePreviewView;
-use spectrum_theme::{ColourStyle, SpectrumTheme, ThemeMode};
+use spectrum_app::shell::ShellView;
+use spectrum_core::AppPaths;
+use spectrum_theme::{ColourStyle, ThemeMode};
 use std::process::ExitCode;
 use std::time::Instant;
 
@@ -22,37 +22,37 @@ fn main() -> ExitCode {
         tracing::error!(%err, "can't start");
         return ExitCode::FAILURE;
     }
+    let paths = match AppPaths::system() {
+        Ok(paths) => paths,
+        Err(err) => {
+            tracing::error!(%err, "can't find the app's folders");
+            return ExitCode::FAILURE;
+        }
+    };
 
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets)
+        .with_assets(spectrum_ui::Assets)
         .run(move |cx| {
             tracing::debug!(elapsed_ms = started.elapsed().as_millis(), "platform up");
-            spectrum_theme::init(cx);
-            tracing::debug!(
-                elapsed_ms = started.elapsed().as_millis(),
-                "kit initialised"
-            );
-            SpectrumTheme::apply(ThemeMode::System, ColourStyle::Spectrum, cx);
+            spectrum_app::init(ThemeMode::System, ColourStyle::Spectrum, cx);
             tracing::debug!(elapsed_ms = started.elapsed().as_millis(), "theme applied");
 
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,
-                    size(px(1180.), px(760.)),
+                    size(px(1280.), px(800.)),
                     cx,
                 ))),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("Spectrum".into()),
-                    appears_transparent: true,
-                    traffic_light_position: Some(point(px(14.), px(14.))),
-                }),
+                titlebar: Some(spectrum_ui::titlebar_options("Spectrum")),
+                // the title bar moves the window itself (spectrum_ui::TitleBar)
+                app_owns_titlebar_drag: true,
                 window_background: WindowBackgroundAppearance::Blurred,
-                window_min_size: Some(size(px(720.), px(480.))),
+                window_min_size: Some(size(px(860.), px(520.))),
                 app_id: Some("com.beyond3345.spectrum".into()),
                 ..WindowOptions::default()
             };
             let opened = gpui_kit::open_window(options, cx, |window, cx| {
-                cx.new(|cx| ThemePreviewView::new(window, cx))
+                cx.new(|cx| ShellView::new(paths, window, cx))
             });
             match opened {
                 Ok(_) => tracing::info!(elapsed_ms = started.elapsed().as_millis(), "window open"),

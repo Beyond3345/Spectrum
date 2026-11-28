@@ -8,6 +8,9 @@ license.workspace = true
 publish = false
 
 [dependencies]
+gpui-kit.workspace = true
+nucleo-matcher.workspace = true
+spectrum-core.workspace = true
 spectrum-theme.workspace = true
 
 [lints]

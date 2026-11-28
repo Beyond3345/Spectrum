@@ -185,6 +185,34 @@ impl ToolbarSlot {
     }
 }
 
+/// The left sidebar's tabs (plan Section 3): four 90° waypoints around the wheel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SidebarTab {
+    Files,
+    Outline,
+    Research,
+    Todos,
+}
+
+impl SidebarTab {
+    pub const ALL: [SidebarTab; 4] = [
+        SidebarTab::Files,
+        SidebarTab::Outline,
+        SidebarTab::Research,
+        SidebarTab::Todos,
+    ];
+
+    /// `(light, dark)` as `0xRRGGBB`.
+    pub const fn colours(self) -> (u32, u32) {
+        match self {
+            SidebarTab::Files => (0xd2_3855, 0xff_8893),
+            SidebarTab::Outline => (0xb8_7a00, 0xf5_b82e),
+            SidebarTab::Research => (0x0a_8282, 0x10_caca),
+            SidebarTab::Todos => (0x73_61e4, 0xa9_a5ff),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::AreaHue;

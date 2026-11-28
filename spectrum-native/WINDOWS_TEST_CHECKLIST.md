@@ -20,6 +20,15 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
 - [ ] UI text is Segoe UI and code text Consolas, crisp at 100%, 125%, 150% and 200% display scaling.
 - [ ] Moving the window between monitors with different scaling keeps text sharp.
 
+## Shell and file actions
+
+- [ ] Ctrl+Shift+P, Ctrl+P, Ctrl+N, Ctrl+Shift+N, Ctrl+\, F2 and Delete do what they say.
+- [ ] Moving a file to the Recycle Bin works, it can be restored from there, and the wording says
+      "Recycle Bin".
+- [ ] The title bar's minimise/maximise/close buttons and window dragging work.
+- [ ] A file name containing `:` is refused with a clear message.
+- [ ] Renaming `main.tex` to `Main.tex` (case only) works.
+
 ## Data from 2.8 (spectrum-core)
 
 - [ ] API keys saved by 2.8 (`%APPDATA%\com.beyond3345.spectrum\keys.dpapi`) are read without
