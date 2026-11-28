@@ -20,7 +20,7 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 | spectrum-diagram | GPUI lib | core, compile, theme, ui, editor, pdf |
 | spectrum-app (bin `spectrum`) | GPUI bin | every lib |
 | spectrum-win-setup | GPUI bin | theme, ui |
-| spectrum-win-sandbox | Win32 bin | — |
+| spectrum-win-sandbox | Win32 bin + pure lib (the client) | — (windows-sys, serde, base64) |
 | spectrum-xtask | build bin | — |
 
 ## Tooling
@@ -201,6 +201,29 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
 - `Selection { anchor, head }`, `SelectionSet` (sorted, merged, `primary()`; `new`, `cursor`, `add`,
   `collapse_to_primary`, `clip(&Buffer)`, `map(&[Change])`). Selections belong to a view, not the document.
 - Perf: `cargo test --release -p spectrum-editor --test perf -- --ignored --nocapture`.
+
+### spectrum-win-sandbox (lib: Spectrum's side, every platform; bin `spectrum-win-sandbox.exe`: the worker)
+
+- `spawn(worker_exe, &Request) -> Result<Session, ClientError>`: blocking; off Windows `ClientError::Unsupported`.
+  `Session { control, events }`: `control.write_stdin / close_stdin / kill` (dropping it kills), `events` iterates
+  `Event`s to `Exit` or `Error`, `wait() -> Output { code, reason, stdout, stderr, warnings, network_enforced }`.
+- `Request::new(tier, command, cwd)` + pub `args`, `env` (the whole environment), `grants: Vec<Grant { path,
+  access: Access::{Write, Read, Runtime}, include_secrets }>`, `forbidden`, `network: Network::{None, Gate { port },
+  Open}`, `limits: Limits { max_processes, timeout_ms, memory_bytes }`. `validate(&Request, &protected)`: the rules.
+- `Tier::AppContainer` (native programs: reads and writes only its grants; network `None` or `Open`, never this
+  computer's ports, so no gate) and `Tier::RestrictedLowIntegrity` (Node agents: writes only its grants, reads them
+  and what every user of the PC may read; `Gate` or `Open`; the gate is proxy variables only: `network_enforced`
+  is false). Both: a job object (kill on close, process limit, no breakaway) and no window.
+- The caller's part: a native `.exe` (an npm shim becomes `node.exe` + script, with `--preserve-symlinks
+  --preserve-symlinks-main`); real paths (`std::fs::canonicalize`); no grant on a drive, the profile or Windows'
+  folder, none overlapping; `cwd` in a grant; `TEMP`, `USERPROFILE` and the like in `env`, set to a `Write` grant.
+  `Write`/`Read` grants are revoked after the run and refuse links and hardlinks; `Runtime` grants (engines, TeX
+  trees) stay. Scan a workspace for links again before Spectrum reads it back: the program may have made some.
+- Wire format v1 (`protocol`): JSON lines on the worker's stdin/stdout. A `Request`, then `Control::{Stdin { data:
+  base64 }, CloseStdin, Kill}`; back come `Event::{Started, Stdout, Stderr, Warning, Exit { code, reason },
+  Error { kind, message }}`. The worker's stdin closing is a kill.
+- `paths::{normalise, within, overlaps, is_secret_name}` (Windows path rules as text; 2.8's secret names). Test
+  bin `spectrum-win-sandbox-probe` (never shipped); `tests/escape.rs` runs on Windows only.
 
 ## Globals
 
