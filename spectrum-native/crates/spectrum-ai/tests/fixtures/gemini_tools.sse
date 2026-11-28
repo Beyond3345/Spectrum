@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"path\":\"refs.bib\"}","name":"read_file"},"id":"function-call-1","type":"function"},{"function":{"arguments":"{\"pattern\":\"\\\\cite\"}","name":"grep"},"id":"function-call-2","type":"function"}]},"finish_reason":"stop","index":0}],"created":1764300000,"id":"g1","model":"gemini-3.8-flash","object":"chat.completion.chunk","usage":{"completion_tokens":30,"prompt_tokens":400,"total_tokens":430}}
+
+data: [DONE]
+

@@ -1,0 +1,36 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_01","object":"response","status":"in_progress","output":[],"usage":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"rs_01","type":"reasoning","summary":[]}}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":2,"item_id":"rs_01","output_index":0,"summary_index":0,"delta":"Checking the "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":3,"item_id":"rs_01","output_index":0,"summary_index":0,"delta":"preamble first."}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":4,"output_index":1,"item":{"id":"msg_01","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":5,"item_id":"msg_01","output_index":1,"content_index":0,"delta":"I'll open "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":6,"item_id":"msg_01","output_index":1,"content_index":0,"delta":"main.tex."}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":7,"output_index":2,"item":{"id":"fc_01","type":"function_call","status":"in_progress","call_id":"call_abc","name":"read_file","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":8,"item_id":"fc_01","output_index":2,"delta":"{\"path\":"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":9,"item_id":"fc_01","output_index":2,"delta":"\"main.tex\"}"}
+
+event: response.function_call_arguments.done
+data: {"type":"response.function_call_arguments.done","sequence_number":10,"item_id":"fc_01","output_index":2,"arguments":"{\"path\":\"main.tex\"}"}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":11,"response":{"id":"resp_01","object":"response","status":"completed","error":null,"incomplete_details":null,"output":[{"id":"rs_01","type":"reasoning","encrypted_content":"gAAAAB-opaque","summary":[{"type":"summary_text","text":"Checking the preamble first."}]},{"id":"msg_01","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"I'll open main.tex.","annotations":[]}]},{"id":"fc_01","type":"function_call","status":"completed","call_id":"call_abc","name":"read_file","arguments":"{\"path\":\"main.tex\"}"}],"usage":{"input_tokens":1200,"input_tokens_details":{"cached_tokens":1024},"output_tokens":85,"output_tokens_details":{"reasoning_tokens":40},"total_tokens":1285}}}
+

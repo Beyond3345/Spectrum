@@ -1,0 +1,22 @@
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":""},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"content":null,"reasoning_content":"Need the bib "},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"content":null,"reasoning_content":"file."},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"content":"Looking it up."},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_0_x","type":"function","function":{"name":"search_bib","arguments":""}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\":"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" \"Knuth 1984\"}"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_1_y","type":"function","function":{"name":"list_files","arguments":"{}"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"content":""},"logprobs":null,"finish_reason":"tool_calls"}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1764300000,"model":"deepseek-flash","choices":[],"usage":{"prompt_tokens":900,"completion_tokens":60,"total_tokens":960,"prompt_cache_hit_tokens":768,"prompt_cache_miss_tokens":132}}
+
+data: [DONE]
+

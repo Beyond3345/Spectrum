@@ -1,0 +1,10 @@
+data: {"choices":[{"delta":{"content":null,"role":"assistant","reasoning_content":"Write the table."},"index":0,"finish_reason":null}],"object":"chat.completion.chunk","model":"qwen3.8-max","id":"chatcmpl-q"}
+
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_q","type":"function","function":{"name":"write_file","arguments":"{\"path\":\"table.tex\",\"text\":\"\\\\begin{tab"}}]},"index":0,"finish_reason":null}],"object":"chat.completion.chunk","model":"qwen3.8-max","id":"chatcmpl-q"}
+
+data: {"choices":[{"delta":{},"index":0,"finish_reason":"length"}],"object":"chat.completion.chunk","model":"qwen3.8-max","id":"chatcmpl-q"}
+
+data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":100,"completion_tokens":4096,"total_tokens":4196,"prompt_tokens_details":{"cached_tokens":64}},"model":"qwen3.8-max","id":"chatcmpl-q"}
+
+data: [DONE]
+
