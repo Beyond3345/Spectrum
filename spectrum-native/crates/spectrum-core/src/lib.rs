@@ -3,6 +3,8 @@
 mod error;
 mod json;
 pub mod paths;
+pub mod project;
+mod random;
 pub mod settings;
 #[cfg(windows)]
 mod win32;
