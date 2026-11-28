@@ -182,7 +182,7 @@ fn protected(_name: &OsStr) -> bool {
     false
 }
 
-/// OneDrive's folders as its own settings list them, for when the environment doesn't say.
+/// `OneDrive`'s folders as its own settings list them, for when the environment doesn't say.
 // ponytail: reg.exe prints in the console's code page, so a folder with non-ASCII letters may not match;
 // RegGetValueW through windows-sys if that ever shows
 #[cfg(windows)]

@@ -2,6 +2,7 @@
 
 mod error;
 mod json;
+pub mod keystore;
 pub mod paths;
 pub mod project;
 mod random;
