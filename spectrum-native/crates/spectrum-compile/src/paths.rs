@@ -57,6 +57,15 @@ pub(crate) fn strip_verbatim(path: &str) -> String {
     }
 }
 
+/// The disk's spelling of a path (macOS finds a file whatever the case or Unicode form TeX was
+/// given), or the path itself when it is gone.
+pub(crate) fn canonical(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).map_or_else(
+        |_| path.to_path_buf(),
+        |real| PathBuf::from(strip_verbatim(&real.to_string_lossy())),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

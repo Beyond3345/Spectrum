@@ -2,10 +2,15 @@
 
 mod log_parser;
 mod paths;
+mod synctex;
 
 pub use log_parser::{
     Diagnostic, DiagnosticKind, Severity, last_pass, parse_tex_log, parse_typst_diagnostics,
     project_file,
+};
+pub use synctex::{
+    EditHit, SyncBox, SyncHit, Synctex, SynctexError, SynctexStore, decode_synctex,
+    windows_code_page_label,
 };
 
 /// A pattern written in this crate. Every one is compiled by the tests, so a typo fails them.
