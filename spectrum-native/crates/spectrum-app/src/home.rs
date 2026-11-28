@@ -4,7 +4,7 @@
 
 mod projects;
 
-use crate::actions::{NewProject, OpenProject};
+use crate::actions::{NewProject, OpenProject, ShowCommandPalette};
 use gpui_kit::{
     AnyElement, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight,
     IntoElement, ParentElement, Render, SharedString, Styled, Subscription, Window, div,
@@ -15,8 +15,8 @@ use spectrum_core::{AppPaths, UserNotice};
 use spectrum_theme::{AreaHue, RADIUS_CONTROL, SpectrumTheme};
 use spectrum_ui::input::{Input, InputEvent, InputState};
 use spectrum_ui::{
-    IconName, Segmented, TITLE_BAR_HEIGHT, TitleBar, Tone, card, fuzzy, icon, panel, prism_bar,
-    show_notice,
+    IconName, PalettePill, Segmented, SpectrumIcon, TITLE_BAR_HEIGHT, TitleBar, Tone, card, fuzzy,
+    icon, panel, prism_bar, shortcut_label, show_notice,
 };
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -206,12 +206,13 @@ impl HomeView {
             .border_1()
             .border_color(theme.border)
             .text_size(px(13.))
-            .child(icon(IconName::Search, 14., theme.text_tertiary))
+            .child(icon(SpectrumIcon::Search, 14., theme.text_tertiary))
             .child(
                 div()
                     .flex_1()
                     .child(Input::new(&self.search).appearance(false)),
             );
+        // Lucide fallbacks: the 92 have no grid or list view icons
         let layout = Segmented::new("home-layout")
             .icon_item(IconName::LayoutGrid)
             .icon_item(IconName::List)
@@ -234,7 +235,7 @@ impl HomeView {
             .text_size(px(13.))
             .font_weight(FontWeight::SEMIBOLD)
             .cursor_pointer()
-            .child(icon(IconName::Plus, 14., white()))
+            .child(icon(SpectrumIcon::Insert, 15., white()))
             .child("New project")
             .on_click(cx.listener(|this, _, window, cx| this.begin_new(window, cx)));
         div()
@@ -278,7 +279,7 @@ impl HomeView {
                 .gap(px(12.))
                 .border_color(theme.accent)
                 .child(icon(
-                    IconName::FolderPlus,
+                    SpectrumIcon::Folder,
                     18.,
                     theme.area(AreaHue::Projects).text,
                 ))
@@ -334,7 +335,7 @@ impl HomeView {
             .items_center()
             .justify_center()
             .child(icon(
-                IconName::Folder,
+                SpectrumIcon::Folder,
                 if self.grid { 20. } else { 16. },
                 area.text,
             ));
@@ -403,7 +404,7 @@ impl HomeView {
             .justify_center()
             .gap(px(8.))
             .child(icon(
-                IconName::FolderOpen,
+                SpectrumIcon::FolderOpen,
                 32.,
                 theme.area(AreaHue::Projects).text,
             ))
@@ -423,7 +424,7 @@ impl HomeView {
 }
 
 impl Render for HomeView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<SpectrumTheme>().clone();
         let shown: Vec<ProjectCard> = self.shown(cx).into_iter().cloned().collect();
         let searching = !self.search.read(cx).value().trim().is_empty();
@@ -470,6 +471,20 @@ impl Render for HomeView {
                             .child(concat!("Spectrum ", env!("CARGO_PKG_VERSION"))),
                     )
                     .child("— Projects"),
+            )
+            // Home's palette holds commands only; Quick Open's files belong to a project
+            .child(
+                div().pr(px(10.)).child(
+                    PalettePill::new("palette-pill", "Search commands…")
+                        .keys(shortcut_label(
+                            &ShowCommandPalette,
+                            &["Spectrum Home"],
+                            window,
+                        ))
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(ShowCommandPalette), cx);
+                        }),
+                ),
             );
         div()
             .id("home")

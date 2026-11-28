@@ -3,14 +3,14 @@
 //! builds the items and acts on [`PaletteEvent`].
 
 use crate::fuzzy::{FuzzyMatch, rank};
-use crate::{IconName, icon};
+use crate::{Icon, icon, key_tag};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
-    App, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, HighlightStyle,
+    App, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, HighlightStyle, Hsla,
     IntoElement, KeyDownEvent, MouseButton, ParentElement, Render, ScrollStrategy, SharedString,
     StyledText, Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
-use spectrum_theme::{RADIUS_CARD, SpectrumTheme};
+use spectrum_theme::{RADIUS_CARD, SpectrumTheme, ToolbarSlot};
 
 /// How many rows show before the list scrolls.
 const VISIBLE_ROWS: usize = 10;
@@ -25,6 +25,8 @@ pub struct PaletteItem {
     pub detail: SharedString,
     /// The key binding, already formatted for the platform.
     pub shortcut: Option<SharedString>,
+    /// The line icon on the left and its calm tint (Blueprint 10).
+    pub icon: Option<(Icon, Hsla)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,7 +40,7 @@ pub enum PaletteEvent {
 pub struct PaletteText {
     pub placeholder: &'static str,
     pub empty: &'static str,
-    pub icon: IconName,
+    pub icon: Icon,
     /// Rank labels as `/`-separated paths.
     pub paths: bool,
 }
@@ -147,7 +149,6 @@ impl PaletteView {
         let m = &self.matches[ix];
         let item = &self.items[m.index];
         let strong = HighlightStyle {
-            color: Some(theme.accent),
             font_weight: Some(FontWeight::BOLD),
             ..HighlightStyle::default()
         };
@@ -165,7 +166,8 @@ impl PaletteView {
             .rounded(px(8.))
             .text_size(px(13.))
             .text_color(theme.text)
-            .when(on, |d| d.bg(theme.accent_soft))
+            // Blueprint 10's calm blue (the Grammar pastel at 12%), not the accent
+            .when(on, |d| d.bg(theme.toolbar(ToolbarSlot::Grammar).active))
             .cursor_pointer()
             .on_mouse_move(cx.listener(move |this, _, _, cx| {
                 if this.active != ix {
@@ -174,6 +176,9 @@ impl PaletteView {
                 }
             }))
             .on_click(cx.listener(move |this, _, _, cx| this.choose(ix, cx)))
+            .when_some(item.icon, |d, (glyph, tint)| {
+                d.child(icon(glyph, 15., tint))
+            })
             .child(div().flex_1().min_w_0().truncate().child(label))
             .child(
                 div()
@@ -183,19 +188,7 @@ impl PaletteView {
                     .child(item.detail.clone()),
             )
             .when_some(item.shortcut.clone(), |d, keys| {
-                d.child(
-                    div()
-                        .flex_none()
-                        .px(px(6.))
-                        .py(px(1.))
-                        .rounded(px(5.))
-                        .bg(theme.bg_subtle)
-                        .border_1()
-                        .border_color(theme.border)
-                        .text_size(px(11.))
-                        .text_color(theme.text_secondary)
-                        .child(keys),
-                )
+                d.child(key_tag(theme, keys))
             })
     }
 }

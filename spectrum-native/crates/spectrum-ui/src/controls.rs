@@ -2,12 +2,12 @@
 //! Blueprint 1 mockup (scaled from its 185 px sidebar to the real 268 px).
 
 use crate::buttons::ClickHandler;
-use crate::{IconName, icon};
+use crate::{Icon, IconName, SpectrumIcon, icon};
 use gpui_kit::{
     App, ClickEvent, Div, ElementId, FontWeight, Hsla, IntoElement, ParentElement, RenderOnce,
     SharedString, Styled, Window, div, prelude::*, px,
 };
-use spectrum_theme::{RADIUS_CARD, RADIUS_PANEL, SidebarTab, SpectrumTheme};
+use spectrum_theme::{RADIUS_CARD, RADIUS_CONTROL, RADIUS_PANEL, SidebarTab, SpectrumTheme};
 use std::rc::Rc;
 
 /// A main pane: panel surface, hairline border, 16 px corners (`.mk-pane`).
@@ -47,7 +47,7 @@ type SelectHandler = Rc<dyn Fn(&usize, &mut Window, &mut App)>;
 
 struct Segment {
     label: Option<SharedString>,
-    icon: Option<IconName>,
+    icon: Option<Icon>,
     colour: Option<Hsla>,
 }
 
@@ -82,10 +82,10 @@ impl Segmented {
         self
     }
 
-    pub fn icon_item(mut self, icon: IconName) -> Self {
+    pub fn icon_item(mut self, icon: impl Into<Icon>) -> Self {
         self.segments.push(Segment {
             label: None,
-            icon: Some(icon),
+            icon: Some(icon.into()),
             colour: None,
         });
         self
@@ -179,28 +179,64 @@ impl RenderOnce for Segmented {
     }
 }
 
-/// A file in the sidebar (`.mk-file`): a coloured dot for its kind and its path. The open file
-/// sits on its tab's 12% pastel tint in full-strength bold text.
+/// Indent per tree level: a child's icon lines up with its folder's icon (chevron 12 + gap 8).
+const TREE_INDENT: f32 = 20.;
+
+/// A row of the Files tree (`.mk-file`): a folder's disclosure chevron, the file-type or folder
+/// line icon in its calm tint, the name, and a collapsed folder's count. The open file sits on its
+/// tab's 12% pastel tint in full-strength bold text.
 #[derive(IntoElement)]
 pub struct FileRow {
     id: ElementId,
     label: SharedString,
-    dot: Hsla,
+    glyph: Icon,
+    tint: Hsla,
+    depth: usize,
+    /// `Some(open)` for a folder.
+    folder: Option<bool>,
+    count: Option<usize>,
     active: bool,
     selected: bool,
     on_click: Option<ClickHandler>,
 }
 
 impl FileRow {
-    pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>, dot: Hsla) -> Self {
+    pub fn new(
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        glyph: impl Into<Icon>,
+        tint: Hsla,
+    ) -> Self {
         Self {
             id: id.into(),
             label: label.into(),
-            dot,
+            glyph: glyph.into(),
+            tint,
+            depth: 0,
+            folder: None,
+            count: None,
             active: false,
             selected: false,
             on_click: None,
         }
+    }
+
+    /// Nesting level (0 at the project's top).
+    pub fn depth(mut self, depth: usize) -> Self {
+        self.depth = depth;
+        self
+    }
+
+    /// A folder row, open or closed: draws the disclosure chevron.
+    pub fn folder(mut self, open: bool) -> Self {
+        self.folder = Some(open);
+        self
+    }
+
+    /// Shown dimmed on the right (a closed folder's item count).
+    pub fn count(mut self, count: usize) -> Self {
+        self.count = Some(count);
+        self
     }
 
     /// The file open in the editor.
@@ -209,7 +245,7 @@ impl FileRow {
         self
     }
 
-    /// Picked for a file action (rename, Bin) without being open.
+    /// The tree's cursor: picked for a file action or the arrow keys without being open.
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
         self
@@ -226,10 +262,14 @@ impl RenderOnce for FileRow {
         let theme = cx.global::<SpectrumTheme>();
         let tint = theme.sidebar_tab(SidebarTab::Files).active;
         let hover = theme.bg_hover;
+        #[allow(clippy::cast_precision_loss)]
+        let indent = self.depth as f32 * TREE_INDENT;
         div()
             .id(self.id)
+            .flex_none()
             .h(px(28.))
-            .px(px(9.))
+            .pl(px(9. + indent))
+            .pr(px(9.))
             .flex()
             .items_center()
             .gap(px(8.))
@@ -248,10 +288,110 @@ impl RenderOnce for FileRow {
                         .hover(move |s| s.bg(hover))
                 }
             })
-            .child(div().flex_none().size(px(7.)).rounded_full().bg(self.dot))
+            .when_some(self.folder, |d, open| {
+                // Lucide fallback: the 92 line icons have no disclosure chevron
+                d.child(icon(
+                    if open {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    },
+                    12.,
+                    theme.text_tertiary,
+                ))
+            })
+            .child(icon(self.glyph, 15., self.tint))
             .child(div().flex_1().min_w_0().truncate().child(self.label))
+            .when_some(self.count, |d, n| {
+                d.child(
+                    div()
+                        .flex_none()
+                        .text_size(px(12.))
+                        .text_color(theme.text_tertiary)
+                        .child(n.to_string()),
+                )
+            })
+            .cursor_pointer()
             .when_some(self.on_click, |d, f| {
                 d.on_click(move |e, w, cx| f(e, w, cx))
             })
     }
+}
+
+/// The header's palette pill (Blueprints 1, 4 and 10): a quiet search field look-alike that opens
+/// the Command Palette, with its shortcut.
+#[derive(IntoElement)]
+pub struct PalettePill {
+    id: ElementId,
+    label: SharedString,
+    keys: Option<SharedString>,
+    on_click: Option<ClickHandler>,
+}
+
+impl PalettePill {
+    pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            keys: None,
+            on_click: None,
+        }
+    }
+
+    /// The shortcut as the platform writes it (`⇧⌘P`, `Ctrl+Shift+P`).
+    pub fn keys(mut self, keys: Option<impl Into<SharedString>>) -> Self {
+        self.keys = keys.map(Into::into);
+        self
+    }
+
+    pub fn on_click(mut self, f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
+        self.on_click = Some(Rc::new(f));
+        self
+    }
+}
+
+impl RenderOnce for PalettePill {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = cx.global::<SpectrumTheme>();
+        let strong = theme.border_strong;
+        div()
+            .id(self.id)
+            .flex_none()
+            .w(px(300.))
+            .h(px(26.))
+            .pl(px(10.))
+            .pr(px(4.))
+            .flex()
+            .items_center()
+            .gap(px(7.))
+            .rounded(px(RADIUS_CONTROL))
+            .bg(theme.bg_panel)
+            .border_1()
+            .border_color(theme.border)
+            .hover(move |s| s.border_color(strong))
+            .cursor_pointer()
+            .text_size(px(12.))
+            .text_color(theme.text_tertiary)
+            .child(icon(SpectrumIcon::Search, 13., theme.text_tertiary))
+            .child(div().flex_1().min_w_0().truncate().child(self.label))
+            .when_some(self.keys, |d, keys| d.child(key_tag(theme, keys)))
+            .when_some(self.on_click, |d, f| {
+                d.on_click(move |e, w, cx| f(e, w, cx))
+            })
+    }
+}
+
+/// A key binding drawn as a small tag (`⌘↵`), as the palette and the header pill show them.
+pub fn key_tag(theme: &SpectrumTheme, keys: impl Into<SharedString>) -> Div {
+    div()
+        .flex_none()
+        .px(px(5.))
+        .py(px(1.))
+        .rounded(px(5.))
+        .bg(theme.bg_subtle)
+        .border_1()
+        .border_color(theme.border)
+        .text_size(px(11.))
+        .text_color(theme.text_secondary)
+        .child(keys.into())
 }

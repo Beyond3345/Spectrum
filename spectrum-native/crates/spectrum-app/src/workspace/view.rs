@@ -1,7 +1,7 @@
 //! Drawing the workspace: title bar, the three panes and the editor toolbar (Snippet B).
 
 use super::{WorkspaceEvent, WorkspaceView};
-use crate::actions::{CompileProject, ToggleSidebar};
+use crate::actions::{CompileProject, ShowCommandPalette, ToggleSidebar};
 use gpui_kit::{
     AnyElement, App, Context, FontWeight, IntoElement, ParentElement, Render, Styled, Window, div,
     prelude::*, px,
@@ -10,55 +10,70 @@ use spectrum_core::UserNotice;
 use spectrum_theme::{SIDEBAR_WIDTH, SpectrumTheme, ToolbarSlot};
 use spectrum_ui::resizable::{h_resizable, resizable_panel};
 use spectrum_ui::{
-    IconButton, IconName, SplitButton, TITLE_BAR_HEIGHT, TitleBar, Tone, icon, pane_bar, panel,
-    show_notice,
+    IconButton, PalettePill, SpectrumIcon, SplitButton, TITLE_BAR_HEIGHT, TitleBar, Tone, icon,
+    pane_bar, panel, shortcut_label, show_notice,
 };
 
 /// The editor toolbar, left to right along the calm pastel spectrum: warm authoring, then cool
 /// inspection and AI (plan Section 3).
-const TOOLBAR: [(ToolbarSlot, IconName, &str, &str); 10] = [
-    (ToolbarSlot::Insert, IconName::Plus, "Insert", "the editor"),
-    (ToolbarSlot::Figure, IconName::Image, "Figure", "the editor"),
-    (ToolbarSlot::Table, IconName::Table, "Table", "the editor"),
+const TOOLBAR: [(ToolbarSlot, SpectrumIcon, &str, &str); 10] = [
+    (
+        ToolbarSlot::Insert,
+        SpectrumIcon::Insert,
+        "Insert",
+        "the editor",
+    ),
+    (
+        ToolbarSlot::Figure,
+        SpectrumIcon::Figure,
+        "Figure",
+        "the editor",
+    ),
+    (
+        ToolbarSlot::Table,
+        SpectrumIcon::Table,
+        "Table",
+        "the editor",
+    ),
     (
         ToolbarSlot::Diagram,
-        IconName::PenTool,
+        SpectrumIcon::Diagram,
         "Diagram",
         "the diagram composer",
     ),
     (
         ToolbarSlot::Jyutping,
-        IconName::Languages,
+        SpectrumIcon::Jyutping,
         "Jyutping",
         "the converters",
     ),
     (
         ToolbarSlot::Insights,
-        IconName::ChartLine,
+        SpectrumIcon::Insights,
         "Insights",
         "the editor",
     ),
     (
         ToolbarSlot::Grammar,
-        IconName::SpellCheck,
+        SpectrumIcon::Grammar,
         "Grammar",
         "the checkers' editor wiring",
     ),
     (
         ToolbarSlot::Tools,
-        IconName::Wrench,
+        SpectrumIcon::Tools,
         "Tools",
         "the compile and version panels",
     ),
     (
         ToolbarSlot::Assistant,
-        IconName::Sparkles,
+        SpectrumIcon::Assistant,
         "Assistant",
         "the assistant",
     ),
     (
         ToolbarSlot::Agent,
-        IconName::WandSparkles,
+        SpectrumIcon::Agent,
         "Agent",
         "the agent",
     ),
@@ -76,7 +91,7 @@ pub(super) fn not_built(window: &mut Window, cx: &mut App, name: &str, comes_wit
 /// A clearly labelled empty slot that another part of the rewrite fills.
 fn slot(
     theme: &SpectrumTheme,
-    glyph: IconName,
+    glyph: SpectrumIcon,
     title: String,
     line: &'static str,
 ) -> impl IntoElement + use<> {
@@ -104,7 +119,12 @@ fn slot(
 }
 
 impl WorkspaceView {
-    fn title_bar(&self, theme: &SpectrumTheme, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn title_bar(
+        &self,
+        theme: &SpectrumTheme,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let file = self
             .open_file
             .as_ref()
@@ -117,12 +137,12 @@ impl WorkspaceView {
             .text_size(px(12.))
             .text_color(theme.text_secondary)
             .child(
-                IconButton::plain("projects", IconName::House, theme)
+                IconButton::plain("projects", SpectrumIcon::Home, theme)
                     .tooltip("Projects")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(WorkspaceEvent::ShowProjects))),
             )
             .child(
-                IconButton::plain("sidebar", IconName::PanelLeft, theme)
+                IconButton::plain("sidebar", SpectrumIcon::Sidebar, theme)
                     .active(self.sidebar_open)
                     .tooltip("Show or hide the sidebar")
                     .on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleSidebar), cx)),
@@ -135,6 +155,13 @@ impl WorkspaceView {
                     .child(concat!("Spectrum ", env!("CARGO_PKG_VERSION"))),
             )
             .child(format!("— {}{file}", self.name));
+        let pill = PalettePill::new("palette-pill", "Search commands & files…")
+            .keys(shortcut_label(
+                &ShowCommandPalette,
+                &["Spectrum Workspace"],
+                window,
+            ))
+            .on_click(|_, window, cx| window.dispatch_action(Box::new(ShowCommandPalette), cx));
         // session 10a puts the update pill before Compile
         let right = div().flex().items_center().gap(px(8.)).pr(px(10.)).child(
             SplitButton::primary(
@@ -155,13 +182,14 @@ impl WorkspaceView {
             .bg(theme.bg_app)
             .border_color(theme.border)
             .child(left)
+            .child(pill)
             .child(right)
     }
 
     fn editor_pane(&self, theme: &SpectrumTheme) -> impl IntoElement + use<> {
         let button = |(slot, glyph, name, comes_with): (
             ToolbarSlot,
-            IconName,
+            SpectrumIcon,
             &'static str,
             &'static str,
         )| {
@@ -186,7 +214,7 @@ impl WorkspaceView {
             )
             .child(div().flex_1().min_h_0().bg(theme.bg_code).child(slot(
                 theme,
-                IconName::FileCode,
+                SpectrumIcon::FileText,
                 title,
                 "The code editor fills this pane (spectrum-editor).",
             )))
@@ -206,7 +234,7 @@ impl WorkspaceView {
             )
             .child(div().flex_1().min_h_0().bg(theme.bg_subtle).child(slot(
                 theme,
-                IconName::FileText,
+                SpectrumIcon::LayoutPdf,
                 "PDF preview".to_owned(),
                 "Compiled pages show here (spectrum-pdf).",
             )))
@@ -220,7 +248,7 @@ fn gap(child: impl IntoElement) -> AnyElement {
 }
 
 impl Render for WorkspaceView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<SpectrumTheme>().clone();
         let sidebar = self.sidebar(&theme, cx);
         div()
@@ -241,7 +269,7 @@ impl Render for WorkspaceView {
             .flex_col()
             .bg(theme.bg_app)
             .text_color(theme.text)
-            .child(self.title_bar(&theme, cx))
+            .child(self.title_bar(&theme, window, cx))
             .child(
                 div().flex_1().min_h_0().p(px(4.)).child(
                     h_resizable("workspace-panes")

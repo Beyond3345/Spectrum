@@ -1,6 +1,7 @@
-//! The left sidebar: the Files / Research / To-dos strip, the Files list with its name field and
+//! The left sidebar: the Files / Research / To-dos strip, the Files tree with its name field and
 //! right-click menu, and the Outline and Settings docked at its foot.
 
+use super::files::{FileItem, visible};
 use super::view::not_built;
 use super::{FileKind, NameFor, WorkspaceView};
 use crate::actions::{MoveFileToBin, NewFile, NewFolder, RefreshFiles, RenameFile};
@@ -12,15 +13,45 @@ use gpui_kit::{
 use spectrum_theme::{SidebarTab, SpectrumTheme, ToolbarSlot};
 use spectrum_ui::input::Input;
 use spectrum_ui::menu::{ContextMenuExt, PopupMenu};
-use spectrum_ui::{FileRow, IconButton, IconName, icon, panel, sidebar_tabs};
+use spectrum_ui::{FileRow, Icon, IconButton, IconName, SpectrumIcon, icon, panel, sidebar_tabs};
 
-/// A file's dot in the calm pastels the plan's mockup gives them (neutral in Simple style).
-fn dot(theme: &SpectrumTheme, kind: FileKind) -> Hsla {
-    match kind {
-        FileKind::Source => theme.sidebar_tab(SidebarTab::Files).fg,
-        FileKind::Bibliography => theme.sidebar_tab(SidebarTab::Research).fg,
-        FileKind::Diagram => theme.toolbar(ToolbarSlot::Diagram).fg,
-        FileKind::Other | FileKind::Folder => theme.text_tertiary,
+/// A row's line icon in the calm pastels Blueprint 1 gives it: sources coral, `.bib` teal,
+/// diagrams and the `diagrams/` folder green, images apricot, other folders and files grey
+/// (neutral in Simple style).
+pub(super) fn glyph(theme: &SpectrumTheme, item: &FileItem, open: bool) -> (Icon, Hsla) {
+    let diagram = theme.toolbar(ToolbarSlot::Diagram).fg;
+    match item.kind {
+        FileKind::Source => (
+            SpectrumIcon::FileText.into(),
+            theme.sidebar_tab(SidebarTab::Files).fg,
+        ),
+        FileKind::Bibliography => (
+            SpectrumIcon::FileBib.into(),
+            theme.sidebar_tab(SidebarTab::Research).fg,
+        ),
+        FileKind::Diagram => (SpectrumIcon::FileDiagram.into(), diagram),
+        FileKind::Image => (
+            SpectrumIcon::FileImage.into(),
+            theme.toolbar(ToolbarSlot::Figure).fg,
+        ),
+        // Lucide fallback: the 92 have no generic file
+        FileKind::Other => (IconName::File.into(), theme.text_tertiary),
+        FileKind::Folder => {
+            let folder = if open {
+                SpectrumIcon::FolderOpen
+            } else {
+                SpectrumIcon::Folder
+            };
+            let top_diagrams = item.depth == 0 && item.label.eq_ignore_ascii_case("diagrams");
+            (
+                folder.into(),
+                if top_diagrams {
+                    diagram
+                } else {
+                    theme.text_tertiary
+                },
+            )
+        }
     }
 }
 
@@ -64,7 +95,8 @@ impl WorkspaceView {
         if creating && let Some(field) = self.name_field(theme) {
             rows.push(field);
         }
-        for (ix, item) in self.items.iter().enumerate() {
+        for ix in visible(&self.items, &self.expanded) {
+            let item = &self.items[ix];
             if renaming.as_ref() == Some(&item.rel) {
                 if let Some(field) = self.name_field(theme) {
                     rows.push(field);
@@ -73,12 +105,26 @@ impl WorkspaceView {
             }
             let rel = item.rel.clone();
             let pick = rel.clone();
-            let row = FileRow::new(("file", ix), item.label.clone(), dot(theme, item.kind))
+            let open = item.is_dir() && self.expanded.contains(&item.rel);
+            let (glyph, tint) = glyph(theme, item, open);
+            let is_dir = item.is_dir();
+            let row = FileRow::new(("file", ix), item.label.clone(), glyph, tint)
+                .depth(item.depth)
+                .when(is_dir, |r| r.folder(open))
+                .when(is_dir && !open && item.children > 0, |r| {
+                    r.count(item.children)
+                })
                 .active(self.open_file.as_ref() == Some(&item.rel))
                 .selected(self.selected.as_ref() == Some(&item.rel))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.tree_focus.focus(window, cx);
-                    this.open(&rel, cx);
+                    if is_dir {
+                        this.selected = Some(rel.clone());
+                        this.set_expanded(&rel, !open, cx);
+                        cx.notify();
+                    } else {
+                        this.open(&rel, cx);
+                    }
                 }));
             rows.push(
                 div()
@@ -112,6 +158,8 @@ impl WorkspaceView {
             .id("file-list")
             .track_focus(&self.tree_focus)
             .key_context("FileTree")
+            .on_key_down(cx.listener(Self::on_tree_key))
+            .track_scroll(&self.tree_scroll)
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
@@ -141,6 +189,7 @@ impl WorkspaceView {
                     .text_color(theme.text_tertiary)
                     .child(self.name.clone()),
             )
+            // Lucide fallbacks: the 92 have no new-file, new-folder or refresh icon
             .child(
                 IconButton::plain("new-file", IconName::FilePlus, theme)
                     .tooltip("New file")
@@ -202,6 +251,7 @@ impl WorkspaceView {
                             .truncate()
                             .child(format!("Outline{file}")),
                     )
+                    // Lucide fallback: no chevron among the 92
                     .child(icon(
                         if open {
                             IconName::ChevronDown
@@ -249,7 +299,7 @@ impl WorkspaceView {
                     .text_color(theme.text_secondary)
                     .hover(move |s| s.bg(hover))
                     .cursor_pointer()
-                    .child(icon(IconName::Settings, 13., theme.text_tertiary))
+                    .child(icon(SpectrumIcon::Settings, 14., theme.text_tertiary))
                     .child("Settings")
                     .on_click(|_, window, cx| {
                         not_built(window, cx, "Settings", "the settings window");

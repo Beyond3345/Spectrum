@@ -10,13 +10,17 @@ use crate::actions::{
 use crate::home::{HomeEvent, HomeView};
 use crate::theme_preview::ThemePreviewView;
 use crate::workspace::{WorkspaceEvent, WorkspaceView};
+use gpui_kit::Hsla;
 use gpui_kit::{
     Action, AnyView, App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement,
     ParentElement, Render, Styled, Subscription, Window, div, prelude::*,
 };
 use spectrum_core::AppPaths;
-use spectrum_theme::{ColourStyle, SpectrumTheme, ThemeMode};
-use spectrum_ui::{IconName, PaletteEvent, PaletteItem, PaletteText, PaletteView, shortcut_label};
+use spectrum_theme::{ColourStyle, SidebarTab, SpectrumTheme, ThemeMode, ToolbarSlot};
+use spectrum_ui::{
+    Icon, IconName, PaletteEvent, PaletteItem, PaletteText, PaletteView, SpectrumIcon,
+    shortcut_label,
+};
 use std::path::PathBuf;
 
 /// Which screen a command makes sense on.
@@ -27,10 +31,33 @@ pub enum ScreenKind {
     ThemePreview,
 }
 
-/// A command the palette lists: its name, group, action and where it applies.
+/// A palette row's icon colour: one of the workspace's calm pastels, or plain grey.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tint {
+    Toolbar(ToolbarSlot),
+    Tab(SidebarTab),
+    /// Compile's Calm Slate.
+    Compile,
+    Plain,
+}
+
+impl Tint {
+    pub fn colour(self, theme: &SpectrumTheme) -> Hsla {
+        match self {
+            Self::Toolbar(slot) => theme.toolbar(slot).fg,
+            Self::Tab(tab) => theme.sidebar_tab(tab).fg,
+            Self::Compile => theme.accent_muted,
+            Self::Plain => theme.text_tertiary,
+        }
+    }
+}
+
+/// A command the palette lists: its name, group, icon, action and where it applies.
 pub struct Command {
     pub label: &'static str,
     pub section: &'static str,
+    pub icon: Icon,
+    pub tint: Tint,
     pub action: Box<dyn Action>,
     pub on: &'static [ScreenKind],
 }
@@ -47,76 +74,115 @@ const BIN_LABEL: &str = if cfg!(windows) {
     "Move file to Bin…"
 };
 
-/// Every command, in the palette's order before anything is typed.
+/// Every command, in the palette's order before anything is typed. Icons are the line set's
+/// (Blueprint 10); Bin and Refresh use the kit's Lucide, which the 92 don't cover.
 pub fn commands() -> Vec<Command> {
-    let c = |label, section, action: Box<dyn Action>, on| Command {
+    let c = |label, section, icon: Icon, tint, action: Box<dyn Action>, on| Command {
         label,
         section,
+        icon,
+        tint,
         action,
         on,
     };
+    let appearance = |label, action: Box<dyn Action>| {
+        c(
+            label,
+            "Appearance",
+            SpectrumIcon::Appearance.into(),
+            Tint::Plain,
+            action,
+            ALL,
+        )
+    };
+    let files = Tint::Tab(SidebarTab::Files);
     vec![
-        c("Go to a file", "Files", Box::new(QuickOpen), WORKSPACE),
-        c("New file…", "Files", Box::new(NewFile), WORKSPACE),
-        c("New folder…", "Files", Box::new(NewFolder), WORKSPACE),
-        c("Rename file…", "Files", Box::new(RenameFile), WORKSPACE),
-        c(BIN_LABEL, "Files", Box::new(MoveFileToBin), WORKSPACE),
-        c("Refresh files", "Files", Box::new(RefreshFiles), WORKSPACE),
-        c("Compile", "Project", Box::new(CompileProject), WORKSPACE),
+        c(
+            "Go to a file",
+            "Files",
+            SpectrumIcon::Search.into(),
+            files,
+            Box::new(QuickOpen),
+            WORKSPACE,
+        ),
+        c(
+            "New file…",
+            "Files",
+            SpectrumIcon::FileText.into(),
+            files,
+            Box::new(NewFile),
+            WORKSPACE,
+        ),
+        c(
+            "New folder…",
+            "Files",
+            SpectrumIcon::Folder.into(),
+            Tint::Plain,
+            Box::new(NewFolder),
+            WORKSPACE,
+        ),
+        c(
+            "Rename file…",
+            "Files",
+            SpectrumIcon::Editor.into(),
+            Tint::Plain,
+            Box::new(RenameFile),
+            WORKSPACE,
+        ),
+        c(
+            BIN_LABEL,
+            "Files",
+            IconName::Trash.into(),
+            Tint::Plain,
+            Box::new(MoveFileToBin),
+            WORKSPACE,
+        ),
+        c(
+            "Refresh files",
+            "Files",
+            IconName::RefreshCw.into(),
+            Tint::Plain,
+            Box::new(RefreshFiles),
+            WORKSPACE,
+        ),
+        c(
+            "Compile",
+            "Project",
+            SpectrumIcon::Compile.into(),
+            Tint::Compile,
+            Box::new(CompileProject),
+            WORKSPACE,
+        ),
         c(
             "Show or hide the sidebar",
             "View",
+            SpectrumIcon::Sidebar.into(),
+            Tint::Plain,
             Box::new(ToggleSidebar),
             WORKSPACE,
         ),
         c(
             "Show projects",
             "App",
+            SpectrumIcon::Home.into(),
+            Tint::Plain,
             Box::new(ShowProjects),
             &[ScreenKind::Workspace, ScreenKind::ThemePreview],
         ),
         c(
             "New project…",
             "Projects",
+            SpectrumIcon::AllProjects.into(),
+            Tint::Plain,
             Box::new(NewProject),
             &[ScreenKind::Home],
         ),
-        c(
-            "Use light appearance",
-            "Appearance",
-            Box::new(UseLightAppearance),
-            ALL,
-        ),
-        c(
-            "Use dark appearance",
-            "Appearance",
-            Box::new(UseDarkAppearance),
-            ALL,
-        ),
-        c(
-            "Use system appearance",
-            "Appearance",
-            Box::new(UseSystemAppearance),
-            ALL,
-        ),
-        c(
-            "Use Spectrum colours",
-            "Appearance",
-            Box::new(UseSpectrumColours),
-            ALL,
-        ),
-        c(
-            "Use Simple colours",
-            "Appearance",
-            Box::new(UseSimpleColours),
-            ALL,
-        ),
-        c(
-            "Show theme preview",
-            "Appearance",
-            Box::new(ShowThemePreview),
-            ALL,
-        ),
+        appearance("Use light appearance", Box::new(UseLightAppearance)),
+        appearance("Use dark appearance", Box::new(UseDarkAppearance)),
+        appearance("Use system appearance", Box::new(UseSystemAppearance)),
+        appearance("Use Spectrum colours", Box::new(UseSpectrumColours)),
+        appearance("Use Simple colours", Box::new(UseSimpleColours)),
+        appearance("Show theme preview", Box::new(ShowThemePreview)),
     ]
 }
 
@@ -224,19 +290,22 @@ impl ShellView {
             ScreenKind::ThemePreview => &["Spectrum"],
         };
         let commands = commands_for(kind);
+        let theme = cx.global::<SpectrumTheme>();
         let items = commands
             .iter()
             .map(|c| PaletteItem {
                 label: c.label.into(),
                 detail: c.section.into(),
                 shortcut: shortcut_label(c.action.as_ref(), contexts, window).map(Into::into),
+                icon: Some((c.icon, c.tint.colour(theme))),
             })
             .collect();
         let actions = commands.into_iter().map(|c| c.action).collect();
         let text = PaletteText {
             placeholder: "Type a command",
             empty: "No command has that name",
-            icon: IconName::ChevronRight,
+            // Lucide fallback: the prompt chevron isn't among the 92
+            icon: IconName::ChevronRight.into(),
             paths: false,
         };
         self.open_palette(items, Picked::Command(actions), text, window, cx);
@@ -247,11 +316,13 @@ impl ShellView {
         let Screen::Workspace(workspace) = &self.screen else {
             return;
         };
-        let (paths, items) = workspace.read(cx).quick_open_items();
+        let (paths, items) = workspace
+            .read(cx)
+            .quick_open_items(cx.global::<SpectrumTheme>());
         let text = PaletteText {
             placeholder: "Type a file name",
             empty: "No file has that name",
-            icon: IconName::Search,
+            icon: SpectrumIcon::Search.into(),
             paths: true,
         };
         self.open_palette(items, Picked::File(paths), text, window, cx);

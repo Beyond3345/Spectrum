@@ -9430,6 +9430,7 @@ version = "3.0.0"
 dependencies = [
  "gpui-kit",
  "nucleo-matcher",
+ "rust-embed",
  "spectrum-core",
  "spectrum-theme",
 ]

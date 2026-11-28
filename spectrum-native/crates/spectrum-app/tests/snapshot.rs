@@ -174,6 +174,39 @@ mod mac {
             assert_eq!(listed, 1, "Quick Open narrows to diagrams/circuit.tex");
             save(&mut cx, window, &format!("quick-open-{suffix}"));
         }
+
+        files_tree(&mut cx, &paths, temp.path());
+    }
+
+    /// Blueprint 1's Files tree: `diagrams/` open, `figures/` (three files) closed, line icons.
+    fn files_tree(cx: &mut VisualTestAppContext, paths: &AppPaths, dir: &Path) {
+        let project = mockup_project(&dir.join("tree"));
+        for name in ["a.png", "b.png"] {
+            std::fs::write(project.join("figures").join(name), "").unwrap();
+        }
+        for (suffix, mode) in [("light", ThemeMode::Light), ("dark", ThemeMode::Dark)] {
+            set_theme(cx, mode, ColourStyle::Spectrum);
+            let (window, shell) = open_shell(cx, paths.clone());
+            cx.update_window(window.into(), |_, window, cx| {
+                shell.update(cx, |s, cx| s.open_project(project.clone(), window, cx));
+            })
+            .unwrap();
+            settle(cx);
+            let workspace = cx.read(|cx| shell.read(cx).workspace()).unwrap();
+            cx.update(|cx| {
+                workspace.update(cx, |w, cx| {
+                    w.set_expanded(Path::new("diagrams"), true, cx);
+                    w.set_expanded(Path::new("figures"), false, cx);
+                });
+            });
+            let rows = cx.read(|cx| workspace.read(cx).visible_rows());
+            assert_eq!(
+                rows.len(),
+                5,
+                "main, refs, diagrams, circuit, figures: {rows:?}"
+            );
+            save(cx, window, &format!("files-tree-{suffix}"));
+        }
     }
 }
 

@@ -7,16 +7,18 @@
 mod buttons;
 mod controls;
 pub mod fuzzy;
+mod icons;
 mod notice;
 mod palette;
 
 pub use buttons::{IconButton, SplitButton, prism_bar};
-pub use controls::{FileRow, Segmented, card, pane_bar, panel, sidebar_tabs};
+pub use controls::{FileRow, PalettePill, Segmented, card, key_tag, pane_bar, panel, sidebar_tabs};
 pub use notice::{Tone, confirm, notice_message, show_notice};
 pub use palette::{PaletteEvent, PaletteItem, PaletteText, PaletteView};
 
-/// Every bundled Lucide icon (the full catalog, so any [`IconName`] draws).
-pub use gpui_kit::assets::{AllAssets as Assets, IconName};
+/// The kit's Lucide icons: the fallback where none of the 92 line icons fits.
+pub use gpui_kit::assets::IconName;
+pub use icons::{Assets, Icon, SpectrumIcon, icon};
 
 /// Text fields: a kit input with Spectrum's theme applied through spectrum-theme.
 pub mod input {
@@ -72,16 +74,7 @@ pub mod resizable {
 /// the caption buttons on Windows.
 pub use gpui_kit::component::TitleBar;
 
-use gpui_kit::{Action, Hsla, IntoElement, KeyContext, Keystroke, Styled, Window, px, svg};
-
-/// An icon at `size` px in `colour`.
-pub fn icon(name: IconName, size: f32, colour: Hsla) -> impl IntoElement {
-    svg()
-        .path(name.path())
-        .flex_none()
-        .size(px(size))
-        .text_color(colour)
-}
+use gpui_kit::{Action, Hsla, KeyContext, Keystroke, Window, px};
 
 pub(crate) fn alpha(colour: Hsla, a: f32) -> Hsla {
     Hsla { a, ..colour }
