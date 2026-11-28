@@ -47,21 +47,32 @@ and the order of sessions. The blueprint stays the reference for detail (formats
 
 ### Look
 
-Writing comes first. In the workspace (editor, PDF, toolbars, sidebar, Compile) colour must not
-draw the eye from the text: soft, pastel, near-mono tints of the area hues instead of vibrant fills,
-and no vivid prism on the Compile button or toolbar buttons (this overrides the blueprint's prism
-Compile button and its 14%-tint hue pills). The prism and full-strength hues are kept for brand
-moments (Home header, About, installer, progress) and small accents.
+The blueprint (updated by the user on 29 Nov) now holds these rules itself; this is the summary.
 
-2.8.1 stays the feature target: every 2.8.1 feature is rebuilt (tracked in
-`spectrum-native/FEATURE_PARITY.md`), and the sectional layout stays (files and outline in the
-sidebar, editor left, PDF right, tools/logs, Assistant/Agent). Buttons, toolbars and features may be
-moved and regrouped.
-
-The plan's design system is the target for every screen, not 2.8's CSS. Screens the plan doesn't
-draw (About, dialogs, sheets, empty states, onboarding, notices, the Composer's rails…) are designed
-in its system, and any 2.8 screen that is dated or inconsistent is modernised to match. Each such
-redesign goes in `spectrum-native/DECISIONS.md`.
+- **Writing comes first.** The workspace chrome uses the blueprint's calm pastel palette, never
+  vibrant fills. The prism and full-strength hues are for brand moments only (Home header, About,
+  installer hairline, theme preview).
+- **Compile** is a solid "Calm Slate Mono" button, `#3b6ea5` light / `#4c7fb5` dark, white text,
+  no gradient, with a subtle progress indicator while compiling. (The mockup's CSS uses the accent
+  blue; the labelled Slate hex wins.)
+- **Toolbar** (left to right, light / dark): Insert `#b85d63`/`#e5989b`, Figure `#b37242`/`#e6aa7c`,
+  Table `#9c7d36`/`#dec27a`, Diagram `#46855a`/`#8cc99e`, Jyutping `#3b827a`/`#7ecbc2`, Insights
+  `#3e7e99`/`#82c4de`, Grammar `#4773b5`/`#8eb6e8`, Tools `#6565ad`/`#a8a6e6`, Assistant
+  `#7e5ca8`/`#c2a3e6`, Agent `#9c5885`/`#dfa0c8`; a ~12% tint behind the active one.
+- **Sidebar**: three tabs, Files (Dusty Coral), Research (Seafoam Teal), To-dos (Soft Lavender), as
+  in 2.8.1. The **Outline** is a collapsible panel docked at the bottom-left, above Settings, showing
+  the active file's headings.
+- **Tools sub-tabs**: Logs (Apricot), Review (Sage), Versions (Seafoam), GitHub (Periwinkle); errors
+  and warnings keep clear semantic red/amber badges.
+- **Layout stays 2.8.1's**: sidebar left, editor left/centre, PDF right with Editor / Split / PDF view
+  modes, toggleable Tools / Assistant / Agent panels. Buttons, toolbars and menus may be regrouped.
+- **Feature parity is binding**: every 2.8.1 feature is rebuilt, tracked in
+  `spectrum-native/FEATURE_PARITY.md`.
+- **Screens the blueprint doesn't draw** are designed in its system (tokens, radii, calm hues), and
+  any dated 2.8 screen is modernised to match. Each such redesign goes in `DECISIONS.md`.
+- **Windows installer** shows the real Spectrum logo (`apps/frontend/public/app-icon.png` in the
+  header, `src-tauri/icons/icon.ico` as the .exe resource via `winresource`), a subtle 6-hue top
+  hairline and a mono progress bar.
 
 ### Editor themes (session 2e)
 

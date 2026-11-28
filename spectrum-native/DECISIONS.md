@@ -13,8 +13,8 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 - The plan's design system is the target for every screen. Screens the plan doesn't draw are
   designed in its system, and any 2.8 screen that is dated or inconsistent is modernised, rather
   than copied from 2.8's CSS. (This replaces "fall back to 2.8 where the plan is silent" for looks.)
-- Writing comes first: in the workspace, soft pastel/near-mono tints, never vibrant fills; no vivid
-  prism on Compile or toolbar buttons (overrides the plan's prism Compile button and 14% hue pills).
+- Writing comes first: the blueprint (updated 29 Nov) now gives a calm pastel palette and a Calm
+  Slate Mono Compile button; the earlier prism Compile button and vivid pills are gone.
 - 2.8.1 is the feature target: nothing left out; the sectional layout (files/outline sidebar,
   editor left, PDF right, tools, Assistant) stays; controls may move.
 - Keep 2.8's Spectrum editor theme as **Spectrum Classic** (Light and Dark) beside 3.0.0's new
@@ -218,3 +218,12 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
     rather than looking like they work.
 76. **Superseded by the user's calm-workspace rule**: the shell's prism Compile button and bright
     toolbar pills are toned down in the follow-up UI session.
+
+## Blueprint update of 29 Nov
+
+77. **Compile uses the labelled Calm Slate `#3b6ea5` / `#4c7fb5`**, not the accent blue the updated
+    mockup's CSS paints it with (written spec over the page's own styling, as in decision 12).
+78. **Sidebar goes back to 2.8.1's three tabs** (Files, Research, To-dos) with the Outline docked
+    bottom-left above Settings, replacing session 1c's four-tab strip (decision 68's "Outline" tab).
+79. **Toolbar, sidebar-tab and Tools-tab colours are the blueprint's pastel values exactly**, checked
+    by a test against the plan HTML; session 1c's vivid `ToolbarSlot` values are replaced.
