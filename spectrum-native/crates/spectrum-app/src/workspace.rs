@@ -8,17 +8,18 @@ mod view;
 
 use crate::actions::{MoveFileToBin, NewFile, NewFolder, RefreshFiles, RenameFile, ToggleSidebar};
 use crate::file_ops::{self, BIN};
-use files::{FileItem, file_items};
+use files::{FileItem, TreeKey, TreeMove, ancestors, file_items, tree_key, visible};
 use gpui_kit::{
-    App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, Subscription, Task,
-    Window,
+    App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, Global, KeyDownEvent,
+    ScrollHandle, Subscription, Task, Window,
 };
 use spectrum_core::UserNotice;
 use spectrum_core::project::{self, TreeEntry};
 use spectrum_core::watcher::ProjectWatcher;
-use spectrum_theme::SidebarTab;
+use spectrum_theme::{SidebarTab, SpectrumTheme};
 use spectrum_ui::input::{InputEvent, InputState};
 use spectrum_ui::{PaletteItem, Tone, show_notice};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -28,6 +29,14 @@ pub enum WorkspaceEvent {
     /// Back to Home.
     ShowProjects,
 }
+
+/// Which folders are open in each project's Files tree, kept while the app runs so a project
+/// opened again shows its tree as it was left.
+// ponytail: in memory only; save it with the per-project layout (row L13) when that lands
+#[derive(Default)]
+struct ExpandedFolders(HashMap<PathBuf, HashSet<PathBuf>>);
+
+impl Global for ExpandedFolders {}
 
 /// What the sidebar's name field is for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,7 +62,11 @@ pub struct WorkspaceView {
     items: Vec<FileItem>,
     loaded: bool,
     open_file: Option<PathBuf>,
+    /// The tree's cursor: the row picked by a click or the arrow keys.
     selected: Option<PathBuf>,
+    /// Open folders in the Files tree (all start closed).
+    expanded: HashSet<PathBuf>,
+    tree_scroll: ScrollHandle,
     tab: SidebarTab,
     sidebar_open: bool,
     /// The Outline docked at the sidebar's foot is expanded.
@@ -116,6 +129,10 @@ impl WorkspaceView {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
+        let expanded = cx
+            .try_global::<ExpandedFolders>()
+            .and_then(|m| m.0.get(&root).cloned())
+            .unwrap_or_default();
         let mut this = Self {
             focus_handle,
             tree_focus: cx.focus_handle(),
@@ -125,6 +142,8 @@ impl WorkspaceView {
             loaded: false,
             open_file: None,
             selected: None,
+            expanded,
+            tree_scroll: ScrollHandle::new(),
             tab: SidebarTab::Files,
             sidebar_open: true,
             outline_open: true,
@@ -187,6 +206,9 @@ impl WorkspaceView {
             self.name = name;
         }
         self.open_file = opened.main_file.map(PathBuf::from);
+        if let Some(main) = self.open_file.clone() {
+            self.reveal(&main, cx);
+        }
         self.set_tree(opened.tree, window, cx);
         let (watcher, rx) = opened.watcher?;
         self.watcher = Some(watcher);
@@ -248,17 +270,105 @@ impl WorkspaceView {
         task.detach();
     }
 
-    /// Opens a file in the editor slot.
+    /// Opens a file in the editor slot, opening the folders above it in the tree.
     pub fn open(&mut self, rel: &Path, cx: &mut Context<Self>) {
         self.selected = Some(rel.to_path_buf());
         if self.items.iter().any(|i| i.rel == rel && !i.is_dir()) {
             self.open_file = Some(rel.to_path_buf());
         }
+        self.reveal(rel, cx);
         cx.notify();
     }
 
-    /// Quick Open's list: every file, by path.
-    pub fn quick_open_items(&self) -> (Vec<PathBuf>, Vec<PaletteItem>) {
+    /// Whether `rel` is an open folder in the Files tree.
+    pub fn is_expanded(&self, rel: &Path) -> bool {
+        self.expanded.contains(rel)
+    }
+
+    /// Opens or closes a folder in the Files tree.
+    pub fn set_expanded(&mut self, rel: &Path, open: bool, cx: &mut Context<Self>) {
+        let changed = if open {
+            self.expanded.insert(rel.to_path_buf())
+        } else {
+            // the cursor doesn't stay on a row that is now hidden
+            if self
+                .selected
+                .as_ref()
+                .is_some_and(|s| s != rel && s.starts_with(rel))
+            {
+                self.selected = Some(rel.to_path_buf());
+            }
+            self.expanded.remove(rel)
+        };
+        if changed {
+            self.remember_expanded(cx);
+            cx.notify();
+        }
+    }
+
+    /// Opens the folders holding `rel`.
+    fn reveal(&mut self, rel: &Path, cx: &mut Context<Self>) {
+        let before = self.expanded.len();
+        self.expanded.extend(ancestors(rel));
+        if self.expanded.len() != before {
+            self.remember_expanded(cx);
+        }
+    }
+
+    fn remember_expanded(&self, cx: &mut Context<Self>) {
+        cx.default_global::<ExpandedFolders>()
+            .0
+            .insert(self.root.clone(), self.expanded.clone());
+    }
+
+    /// The paths of the rows the Files tree shows, top to bottom.
+    pub fn visible_rows(&self) -> Vec<PathBuf> {
+        visible(&self.items, &self.expanded)
+            .into_iter()
+            .map(|ix| self.items[ix].rel.clone())
+            .collect()
+    }
+
+    /// The tree's cursor.
+    pub fn selected(&self) -> Option<&Path> {
+        self.selected.as_deref()
+    }
+
+    /// The file open in the editor slot.
+    pub fn open_file(&self) -> Option<&Path> {
+        self.open_file.as_deref()
+    }
+
+    /// Arrows, Home, End and Enter on the Files tree (2.8's keys).
+    fn on_tree_key(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let k = &event.keystroke;
+        if self.naming.is_some() || k.modifiers.modified() {
+            return;
+        }
+        let Some(key) = TreeKey::from_key(&k.key) else {
+            return;
+        };
+        cx.stop_propagation();
+        let Some(step) = tree_key(&self.items, &self.expanded, self.selected.as_deref(), key)
+        else {
+            return;
+        };
+        match step {
+            TreeMove::Select(rel) => {
+                if let Some(row) = self.visible_rows().iter().position(|r| *r == rel) {
+                    self.tree_scroll.scroll_to_item(row);
+                }
+                self.selected = Some(rel);
+                cx.notify();
+            }
+            TreeMove::Expand(rel) => self.set_expanded(&rel, true, cx),
+            TreeMove::Collapse(rel) => self.set_expanded(&rel, false, cx),
+            TreeMove::Open(rel) => self.open(&rel, cx),
+        }
+    }
+
+    /// Quick Open's list: every file, by its `/`-separated path, with its line icon.
+    pub fn quick_open_items(&self, theme: &SpectrumTheme) -> (Vec<PathBuf>, Vec<PaletteItem>) {
         self.items
             .iter()
             .filter(|i| !i.is_dir())
@@ -267,14 +377,22 @@ impl WorkspaceView {
                     FileKind::Source => "Source",
                     FileKind::Bibliography => "Bibliography",
                     FileKind::Diagram => "Diagram",
+                    FileKind::Image => "Image",
                     FileKind::Other | FileKind::Folder => "File",
                 };
+                let path = i
+                    .rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/");
                 (
                     i.rel.clone(),
                     PaletteItem {
-                        label: i.label.clone().into(),
+                        label: path.into(),
                         detail: detail.into(),
                         shortcut: None,
+                        icon: Some(sidebar::glyph(theme, i, false)),
                     },
                 )
             })
@@ -377,6 +495,7 @@ impl WorkspaceView {
                         }
                         _ => {}
                     }
+                    this.reveal(&target, cx);
                     this.selected = Some(target);
                     this.refresh(window, cx);
                 }
@@ -391,7 +510,7 @@ impl WorkspaceView {
             return;
         };
         let entity = cx.entity().downgrade();
-        let name = item.label.trim_end_matches('/').to_owned();
+        let name = item.label.clone();
         let message = if item.is_dir() {
             format!("The folder and everything in it will be moved to the {BIN}.")
         } else {

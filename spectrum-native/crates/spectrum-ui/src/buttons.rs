@@ -1,7 +1,7 @@
 //! The pastel toolbar button, the Calm Slate Compile split button (plan Section 3B, Snippet B) and
 //! the prism bar for brand moments.
 
-use crate::{IconName, alpha, icon};
+use crate::{Icon, IconName, SpectrumIcon, alpha, icon};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     Animation, AnimationExt as _, AnyElement, App, ClickEvent, ElementId, FontWeight, Hsla,
@@ -20,7 +20,7 @@ pub(crate) type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 #[derive(IntoElement)]
 pub struct IconButton {
     id: ElementId,
-    icon: IconName,
+    icon: Icon,
     fg: Hsla,
     rest: Hsla,
     hover: Hsla,
@@ -34,14 +34,14 @@ pub struct IconButton {
 impl IconButton {
     pub fn pastel(
         id: impl Into<ElementId>,
-        icon: IconName,
+        icon: impl Into<Icon>,
         slot: ToolbarSlot,
         theme: &SpectrumTheme,
     ) -> Self {
         let calm = theme.toolbar(slot);
         Self::build(
             id.into(),
-            icon,
+            icon.into(),
             calm.fg,
             transparent_black(),
             calm.hover,
@@ -49,10 +49,10 @@ impl IconButton {
         )
     }
 
-    pub fn plain(id: impl Into<ElementId>, icon: IconName, theme: &SpectrumTheme) -> Self {
+    pub fn plain(id: impl Into<ElementId>, icon: impl Into<Icon>, theme: &SpectrumTheme) -> Self {
         Self::build(
             id.into(),
-            icon,
+            icon.into(),
             theme.text_secondary,
             transparent_black(),
             theme.bg_hover,
@@ -63,7 +63,7 @@ impl IconButton {
 
     fn build(
         id: ElementId,
-        icon: IconName,
+        icon: Icon,
         fg: Hsla,
         rest: Hsla,
         hover: Hsla,
@@ -215,9 +215,10 @@ impl SplitButton {
 /// The run part's leading glyph: play, or a slowly turning ring while compiling.
 fn run_glyph(compiling: bool) -> AnyElement {
     if !compiling {
-        return icon(IconName::Play, 11., white()).into_any_element();
+        return icon(SpectrumIcon::Compile, 11., white()).into_any_element();
     }
     svg()
+        // Lucide fallback: the 92 line icons have no progress ring
         .path(IconName::LoaderCircle.path())
         .flex_none()
         .size(px(11.))
@@ -270,6 +271,7 @@ impl RenderOnce for SplitButton {
                     .pr(px(10.))
                     .rounded_r_full()
                     .cursor_pointer()
+                    // Lucide fallback: no chevron among the 92
                     .child(icon(IconName::ChevronDown, 12., white().opacity(0.9)))
                     .when_some(self.on_menu, |d, f| d.on_click(move |e, w, cx| f(e, w, cx))),
             )

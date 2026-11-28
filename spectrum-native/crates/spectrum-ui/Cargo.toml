@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 gpui-kit.workspace = true
 nucleo-matcher.workspace = true
+rust-embed = { workspace = true, features = ["include-exclude"] }
 spectrum-core.workspace = true
 spectrum-theme.workspace = true
 
