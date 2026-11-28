@@ -505,7 +505,12 @@ mod tests {
         vet_images(&mut doc, &root, &root);
         assert_eq!(
             doc[0]["c"][2][0],
-            Value::String(root.join("img/a b.png").to_string_lossy().into_owned())
+            Value::String(
+                root.join("img")
+                    .join("a b.png")
+                    .to_string_lossy()
+                    .into_owned()
+            )
         );
         assert_eq!(doc[1]["t"], "Span");
         assert_eq!(doc[2]["t"], "Span");

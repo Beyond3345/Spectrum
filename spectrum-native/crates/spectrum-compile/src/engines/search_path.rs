@@ -172,8 +172,11 @@ mod tests {
             std::fs::create_dir_all(texlive.join(year).join("bin/windows")).unwrap();
         }
         let user = user_miktex.to_string_lossy().into_owned();
+        // joined part by part, so the separators match what the code builds on Windows
         let newest = texlive
-            .join("2026/bin/windows")
+            .join("2026")
+            .join("bin")
+            .join("windows")
             .to_string_lossy()
             .into_owned();
         // all-users MiKTeX isn't installed; the per-user one is already on the PATH, in other case
