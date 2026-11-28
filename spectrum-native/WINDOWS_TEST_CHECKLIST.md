@@ -42,3 +42,22 @@ GitHub signed in), so the upgrade path is real. Tick each box; note anything odd
 - [ ] SyncTeX jumps work for a project whose path has non-English characters (ANSI code page
       fallback), and for one on a different drive letter.
 - [ ] SyncTeX works in a project compiled by MiKTeX and by TeX Live.
+
+## Update notice (also check on the Mac)
+
+- [ ] With an older 3.0.0 build installed, the update pill and Home card appear within a minute of
+      starting, without waiting a day.
+- [ ] "Open the release page" opens the exact GitHub release in the default browser (Edge, Chrome or
+      Firefox as set in Windows).
+- [ ] "Check for updates" in the Command Palette answers straight away.
+- [ ] Offline at startup, then back online: the notice still appears within about 30 minutes.
+
+## Language servers (spectrum-lsp)
+
+- [ ] texlab.exe and tinymist.exe start with no console window.
+- [ ] Killing texlab.exe in Task Manager restarts it and diagnostics come back.
+- [ ] Killing it four times quickly stops the retries (and says so).
+- [ ] A project under `C:\Users\…`, and one whose path has spaces or non-English characters, gets
+      diagnostics and an outline.
+- [ ] The project folder can be moved or put in the Recycle Bin while a server runs.
+- [ ] Quitting Spectrum leaves no texlab.exe or tinymist.exe running.

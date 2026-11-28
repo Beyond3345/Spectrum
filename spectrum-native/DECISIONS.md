@@ -10,6 +10,10 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
 - UI layout and colours come from the plan, not 2.8's code; redesigns are part of the plan. 2.8 is
   the reference for behaviour, formats and edge cases.
 - Where the plan is wrong or ambiguous, decide, log it here, report at the end.
+- The plan's design system is the target for every screen. Screens the plan doesn't draw are
+  designed in its system, and any 2.8 screen that is dated or inconsistent is modernised, rather
+  than copied from 2.8's CSS. (This replaces "fall back to 2.8 where the plan is silent" for looks.)
+- Fix 2.8.1's update notifier, which didn't work and didn't open the GitHub release page.
 
 ## Platform and toolchain
 

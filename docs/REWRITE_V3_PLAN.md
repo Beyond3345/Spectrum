@@ -43,6 +43,42 @@ and the order of sessions. The blueprint stays the reference for detail (formats
    (see `docs/WINDOWS_TEST_RELEASE.md`). Bundle ID, copyright and identifiers use `beyond3345`.
 9. **UI copy** stays Australian English ("Bin", "colour"), same as 2.8.
 
+## Fixes over 2.8.1 (user, 28 Nov 2026)
+
+### Look
+
+The plan's design system is the target for every screen, not 2.8's CSS. Screens the plan doesn't
+draw (About, dialogs, sheets, empty states, onboarding, notices, the Composer's rails…) are designed
+in its system, and any 2.8 screen that is dated or inconsistent is modernised to match. Each such
+redesign goes in `spectrum-native/DECISIONS.md`.
+
+### Update notifier (session 10a; the core can land earlier in `spectrum-core`)
+
+2.8.1's notice didn't work. Causes found:
+- `updateService.js` saved each check's *answer* to `update-check.json` for 24 hours. A check made
+  shortly before a release kept reporting "no update" until the next day (on 28 Nov the check at
+  ~14:10 UTC recorded 2.8.0; 2.8.1 was published at 14:21). A failed (offline) check was also cached
+  for a day.
+- The button was an `<a target="_blank">` that relied on the WebView handing new windows to the
+  system browser; the release page didn't open.
+- The notice lived only on the projects page.
+
+3.0.0 behaviour:
+- Ask `https://github.com/Beyond3345/Spectrum/releases/latest` with a HEAD request and no redirect
+  following (no API rate limit, nothing about the user sent); the `Location` tag names the newest
+  release. Same privacy promise as 2.8: no identifiers, setting "Tell me when a newer Spectrum is out"
+  (on by default) turns it off entirely.
+- Ask at startup and every 6 hours while running. Keep a successful answer for 6 hours; a failed
+  ask is retried after 30 minutes and never cached as "no update".
+- Compare versions as semver (3.0.0 > 2.8.1; pre-release betas `3.0.0-beta.N` only notify betas).
+- Show the notice everywhere: a pill in the title bar plus a card on Home; "Check for updates" in
+  the Command Palette and About gives an immediate answer ("You're up to date" / the new version).
+- "Open the release page" opens `…/releases/tag/vX.Y.Z` in the default browser through GPUI's
+  `cx.open_url` (NSWorkspace on macOS, ShellExecute on Windows). "Not now" hides that version only.
+- Tests: version parsing and comparison, the cache rules (stale, failed, clock moved backwards),
+  a local HTTP server standing in for GitHub, and a check that the open action calls the platform
+  opener with the exact tag URL.
+
 ## Order of work
 
 The UI crates form the critical path. The pure crates have no GPUI dependency, so once Phase 0 lands

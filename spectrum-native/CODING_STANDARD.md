@@ -65,7 +65,11 @@ actions are verb-noun (`CompileProject`); `Foo::new` constructs, `Foo::load` is 
 
 - UI layout, colours, radii and tokens come from the plan (`../docs/gpui-rewrite-plan.html`: its
   `:root` and `[data-theme="dark"]` variables, Section 3 and the Section 3B mockups), not from 2.8's CSS.
-  Redesigns are part of the plan. Use 2.8 only where the plan says nothing about a look.
+  Redesigns are part of the plan. 2.8 is the reference for behaviour and content only, never the
+  visual goal: where the plan doesn't draw a screen, design it in the plan's system (its tokens,
+  radii, area colours, pill buttons, flat labelled rows, prism accents) so it matches the rest of
+  3.0.0. Any 2.8 screen that looks dated or out of step gets modernised the same way. Log each such
+  redesign in `DECISIONS.md`.
 - No hex colours outside `spectrum-theme`. Read colours from `cx.global::<SpectrumTheme>()`.
 - 4 px spacing scale; 16/12/10 px radii (panel/card/control, plan Section 3). Never colour alone: pair it with an
   icon, label or state.
