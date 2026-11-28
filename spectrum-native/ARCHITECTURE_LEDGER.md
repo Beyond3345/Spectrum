@@ -49,15 +49,20 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
   `ColourStyle` {Spectrum, Simple}, `PRISM`, `SCOPE_BARS`, `RADIUS_PANEL/CARD/CONTROL`, `SIDEBAR_WIDTH`.
 
 ### spectrum-ui (the only crate besides theme that imports `gpui_kit::component`)
-- `IconButton::pastel(id, IconName, ToolbarSlot, theme)` / `::plain(id, icon, theme)`; `.active .size .tooltip .on_click`.
+- Icons: `SpectrumIcon` (one variant per file of the 92 in `assets/icons/{ui,brands}`, `ALL`, `file()`, `path()`;
+  a test checks it against the folder), `Icon::{Line, Lucide}` (`From` both; Lucide only where none of the 92 fits),
+  `icon(impl Into<Icon>, size, colour)`. `Assets` serves the line icons at `icons/ui/<name>.svg` and
+  `icons/brands/<name>.svg` (rust-embed; read from disk in debug) and every Lucide icon at `icons/<name>.svg`.
+- `IconButton::pastel(id, impl Into<Icon>, ToolbarSlot, theme)` / `::plain(id, icon, theme)`; `.active .size .tooltip .on_click`.
 - `SplitButton::primary(id, label, theme)` (solid Calm Slate pill, white semibold label; `.compiling(bool)`
   turns a ring in place of play, `.on_click`, `.on_menu`); `prism_bar(theme)` for brand moments.
 - `Segmented::new(id).item(label).icon_item(icon).selected(ix).on_select(|&ix, w, cx|)`; `sidebar_tabs(id, SidebarTab, theme)`.
-- `FileRow::new(id, label, dot).active().selected().on_click()`; `panel(theme)` (16 px), `card(theme)` (12 px), `pane_bar(theme)`.
+- `FileRow::new(id, name, glyph, tint).depth(n).folder(open).count(n).active().selected().on_click()` (tree row with
+  chevron); `PalettePill::new(id, label).keys(Option<label>).on_click()` (header pill); `key_tag(theme, keys)`; `panel(theme)` (16 px), `card(theme)` (12 px), `pane_bar(theme)`.
 - `show_notice(window, cx, &UserNotice, Tone)` toast; `confirm(window, cx, title, message, ok, on_ok)` (red OK).
-- `PaletteView::new(Vec<PaletteItem>, PaletteText, window, cx)` → `PaletteEvent::{Confirmed(ix), Dismissed}`; `.listed()`.
+- `PaletteView::new(Vec<PaletteItem { label, detail, shortcut, icon: Option<(Icon, Hsla)> }>, PaletteText, window, cx)` → `PaletteEvent::{Confirmed(ix), Dismissed}`; `.listed()`.
   `fuzzy::rank(query, items, paths) -> Vec<FuzzyMatch { index, score, ranges }>` (nucleo, byte ranges).
-- `shortcut_label(action, contexts, window)`, `icon(IconName, size, colour)`, `Assets` (every Lucide icon), `IconName`,
+- `shortcut_label(action, contexts, window)`, `IconName` (Lucide),
   `TitleBar`, `titlebar_options(title)`, `TITLE_BAR_HEIGHT`; re-exports `input::{Input, InputState, InputEvent}`,
   `menu::{ContextMenuExt, PopupMenu}`, `resizable::{h_resizable (no resting hairline), resizable_panel, ResizableState}`.
 
@@ -66,10 +71,13 @@ What exists, so no session duplicates it. Update at the end of every session. Ke
   future from GPUI code goes through this.
 - `init(mode, style, cx)`: kit, theme, key bindings. `shell::ShellView::new(AppPaths, window, cx)` is the window root:
   Home ↔ workspace ↔ theme preview, with the palette over them (`show_command_palette`, `quick_open`,
-  `open_project(root)`, `workspace()`, `palette()`); `shell::commands_for(ScreenKind)` lists the palette's commands.
+  `open_project(root)`, `workspace()`, `palette()`); `shell::commands_for(ScreenKind)` lists the palette's commands
+  (`Command { label, section, icon, tint: Tint, action, on }`). Workspace and Home title bars carry the palette pill.
 - `home::HomeView` (`HomeEvent::Open(root)`), `home::{load_projects, new_project, time_ago, ProjectCard}`.
-- `workspace::WorkspaceView` (`WorkspaceEvent::ShowProjects`; `open(rel)`, `refresh`, `quick_open_items`,
-  `set_compiling(bool)`): title bar, 268 px sidebar (Files / Research / To-dos tabs, Outline and
+- `workspace::WorkspaceView` (`WorkspaceEvent::ShowProjects`; `open(rel)` (opens the folders above it), `refresh`,
+  `quick_open_items(theme)`, `set_compiling(bool)`, `set_expanded(rel, open)`, `is_expanded`, `visible_rows`, `selected`,
+  `open_file`). Files is a tree (`workspace/files.rs`: `file_items`, `visible`, `tree_key`; files before folders, all
+  folders start closed, open folders kept per project in memory for the app's run; arrows/Home/End/Enter on rows): title bar, 268 px sidebar (Files / Research / To-dos tabs, Outline and
   Settings docked at its foot; session 2b fills the Outline in `workspace/sidebar.rs`), editor slot, PDF slot. Sessions 2c and 4b replace `editor_pane` / `pdf_pane` in `workspace/view.rs`.
   Session 10a: update pill before Compile in `title_bar`, update card in Home (`// session 10a` comments).
 - `file_ops::{create_file, create_folder, rename, move_to_bin, editable, unfit_name, BIN}` (blocking; background only).

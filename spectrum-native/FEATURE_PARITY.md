@@ -138,7 +138,7 @@ into the docked bottom-left panel the plan now draws (row L4).
 
 | # | Feature | 2.8.1 source | 3.0.0 session | Status |
 |---|---|---|---|---|
-| F1 | File tree of the project, folders expandable | fe/editor/FileTree.tsx | 1c | partial (flat path list, decision: mockup) |
+| F1 | File tree of the project, folders expandable | fe/editor/FileTree.tsx | 1c, 1f | built (1f: collapsible folders, arrow keys; open folders remembered in memory only, saved with L13) |
 | F2 | Expand all / Collapse all | fe/editor/FileTree.tsx | 1c follow-up | not started |
 | F3 | New file… / New folder… / New .bib | fe/editor/FileTree.tsx | 1c | partial (no New .bib) |
 | F4 | Rename… (inline in 3.0.0) | fe/editor/FileTree.tsx | 1c | built |
@@ -160,7 +160,7 @@ into the docked bottom-left panel the plan now draws (row L4).
 | F20 | Quick Open to an Outline heading by name; `>` there switches to commands | fe/app/CommandPalette.tsx | 2b | not started |
 | F21 | Conflicted copies marked in the list with Compare, Use this copy, Delete copy | fe/editor/SyncBanners.tsx, be/routes/projects.js (conflict-copy) | 8b | partial (core conflict_copies) |
 | F22 | Hidden: `.spectrum`, `.git`, build files; non-UTF-8 names shown | be/services/projectService.js | 1a | built (also hides node_modules etc., decision 24) |
-| F23 | File dots by kind (3.0.0 addition, decision 69) | — | 1c | built |
+| F23 | File dots by kind (3.0.0 addition, decision 69) | — | 1c | superseded by N1's file-type line icons (1f) |
 | F24 | Open a binary or image file shows a preview instead of text | fe/app/EditorPage.tsx | 2c | not started |
 
 ## Editor
@@ -923,9 +923,9 @@ New 3.0.0 requirements beyond 2.8.1. Same rules: tick when built, never delete.
 
 | ID | Feature | Source | 3.0.0 session | Status |
 |---|---|---|---|---|
-| N1 | Line icons (92 SVGs) everywhere; coloured dots only for tags and status | blueprint addendum | 1f, every UI session | not started |
-| N2 | Files tree keeps collapsible folders (`diagrams/`, `figures/`, subfolders) | blueprint addendum | 1f | not started |
-| N3 | Command palette pill in the workspace and Home headers | blueprint addendum | 1f | not started |
+| N1 | Line icons (92 SVGs) everywhere; coloured dots only for tags and status | blueprint addendum | 1f, every UI session | partial (1f: asset source, `SpectrumIcon`, the whole shell; later screens use them as they land) |
+| N2 | Files tree keeps collapsible folders (`diagrams/`, `figures/`, subfolders) | blueprint addendum | 1f | built |
+| N3 | Command palette pill in the workspace and Home headers | blueprint addendum | 1f | built |
 | N4 | Projects Home sidebar: nested folder tree with counts, Archived row, Tags, Sources | Blueprint 4 | 1d | not started |
 | N5 | Template style-guide audit (LATEX_STYLE 14 points, TYPST_STYLE 12 points) + templates tests in Rust CI | blueprint addendum | 1d | not started |
 | N6 | First run: 3 engine cards, 2 AI cards, first project | Blueprint 11 | 1e | not started |
