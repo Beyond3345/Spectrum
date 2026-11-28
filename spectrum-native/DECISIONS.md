@@ -19,6 +19,7 @@ The user reviews this when 3.0.0 is finished. Newest last. Each entry: what, why
   editor left, PDF right, tools, Assistant) stays; controls may move.
 - Removed from 3.0.0: the 1.10 migration notice, Change template (template transfer), the PDF
   parsers and their Settings pane, and Export to Word.
+- 3.0.0 uses the user's new icon set (`assets/icons/app/`) for every icon, replacing 2.8's.
 - Keep 2.8's Spectrum editor theme as **Spectrum Classic** (Light and Dark) beside 3.0.0's new
   Spectrum editor theme.
 - Fix 2.8.1's update notifier, which didn't work and didn't open the GitHub release page.

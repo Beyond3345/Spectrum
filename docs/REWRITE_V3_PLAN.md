@@ -70,9 +70,12 @@ The blueprint (updated by the user on 29 Nov) now holds these rules itself; this
   `spectrum-native/FEATURE_PARITY.md`.
 - **Screens the blueprint doesn't draw** are designed in its system (tokens, radii, calm hues), and
   any dated 2.8 screen is modernised to match. Each such redesign goes in `DECISIONS.md`.
-- **Windows installer** shows the real Spectrum logo (`apps/frontend/public/app-icon.png` in the
-  header, `src-tauri/icons/icon.ico` as the .exe resource via `winresource`), a subtle 6-hue top
-  hairline and a mono progress bar.
+- **App icon**: the user's new 3.0.0 icon set in `spectrum-native/assets/icons/app/` replaces 2.8's
+  `src-tauri/icons` everywhere (bundle `.icns`, .exe and installer `.ico`, in-app brand mark, window
+  icon); see its README for which file goes where.
+- **Windows installer** shows that logo (`app-icon.png` in the header, `icon.ico` as the .exe
+  resource via `winresource`), a subtle 6-hue top hairline and a mono progress bar. (The blueprint
+  names 2.8's icon paths; the new set replaces them.)
 
 ### Editor themes (session 2e)
 
