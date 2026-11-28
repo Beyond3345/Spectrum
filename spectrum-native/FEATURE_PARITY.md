@@ -21,6 +21,8 @@ Sources are abbreviated: `fe/` is `apps/frontend/src/`, `be/` is `apps/backend/s
 `guide` is `docs/USER_GUIDE.md`. Status was judged from the merged 3.0.0 code at commit 397eb4c3 and
 `ARCHITECTURE_LEDGER.md` (sessions 0a, 0b, 1a, 1b, 1c, 2a, 3a, 3b, 3c, 5a, 5b and 6a merged).
 
+> **Removed by the user (29 Nov):** the 1.10 migration notice, Change template (template transfer, all four routes), the PDF parsers (MinerU, Mathpix and the rest, with their Settings pane) and Export to Word. Their rows stay marked "removed" so the decision is visible.
+
 ## The sectional layout (must stay)
 
 From the plan: a **collapsible Left Sidebar with Files / Research / To-dos tabs at top, the Outline docked as a
@@ -104,14 +106,14 @@ into the docked bottom-left panel the plan now draws (row L4).
 | P25 | Upload a .zip… (Overleaf export) as a new project; a Git repo inside is left out | be/routes/projects.js (import-zip) | 1a + 1d | partial (core extract_zip) |
 | P26 | From arXiv…: an arXiv ID or URL becomes a project, with live progress | be/routes/arxiv.js, be/services/arxivService.js | 1a + 1d | partial (core extract_arxiv) |
 | P27 | Sync with GitHub in a project's menu | fe/app/ProjectPage.tsx | 8b GitHub sync & settings repo | not started |
-| P28 | Change template… in a project's menu | fe/app/ProjectPage.tsx | 11b import, export & transfer | not started |
+| P28 | Change template… in a project's menu | fe/app/ProjectPage.tsx | 11b import, export & transfer | removed (user, 29 Nov) |
 | P29 | Convert to Typst project… / Convert to LaTeX project… in a project's menu | fe/app/ProjectPage.tsx | 9a | not started |
 | P30 | Save as template… from a project (Home and editor) | fe/app/ProjectPage.tsx | 1d | not started |
 | P31 | Back to <folder> in the editor's project menu opens Home at the project's folder | fe/app/EditorPage.tsx | 1d | not started |
 | P32 | Open Spectrum on Home or All projects (setting) | fe/app/settings.ts (openOn) | 1d | not started |
 | P33 | Project switcher opens at Home or the project's folder (setting) | fe/app/settings.ts (switcherOpensAt) | 1d | not started |
 | P34 | Projects in a sync app's folder warned about, with Move to this computer… (copies and checks every file) | be/routes/projects.js (move-here), be/services/syncService.js | 8b | partial (sync roots detected, decision 27) |
-| P35 | 1.10 migration notice: mirrored projects named, files the cloud copy has listed, Show in Finder, Dismiss | be/services/mirrorService.js, be/routes/sync.js | 1d | not started |
+| P35 | 1.10 migration notice: mirrored projects named, files the cloud copy has listed, Show in Finder, Dismiss | be/services/mirrorService.js, be/routes/sync.js | 1d | removed (user, 29 Nov) |
 | P36 | Project list follows outside changes (folder moved, file added in Finder) | be/services/projectService.js | 1a | built |
 | P37 | "Spectrum needs to be opened again" guard for a stale window | tauri/src/main.rs | 10a | not started |
 | P38 | Pre-2.1 project: diagrams and images moved into `diagrams/` and `figures/` with a checkpoint first | be/services/projectService.js | 1d | not started |
@@ -375,7 +377,7 @@ into the docked bottom-left panel the plan now draws (row L4).
 | PDF15 | PDF follows the open file (setting, on): another document's source or a `% !TEX root` chapter shows its PDF; Compile builds what shows | fe/app/EditorPage.tsx | 4b | not started |
 | PDF16 | Page bar names the showing PDF and switches between documents' PDFs | fe/app/EditorPage.tsx | 4b | not started |
 | PDF17 | Download the PDF (Finder-style "Thesis v1.2 2.pdf" naming) | fe/app/EditorPage.tsx, tauri/src/main.rs (download_path) | 4c | not started |
-| PDF18 | Export to Word (.docx) | be/routes/projects.js (export/docx) | 11b import, export & transfer | not started |
+| PDF18 | Export to Word (.docx) | be/routes/projects.js (export/docx) | 11b import, export & transfer | removed (user, 29 Nov) |
 | PDF19 | Send page to agent (right-click), with the source line of the spot | fe/editor/agent/handoff.ts | 6e agent workspace UI | not started |
 | PDF20 | Add to-do here on a PDF page | fe/app/EditorPage.tsx | 11c | not started |
 | PDF21 | Live (Typst): Tinymist's preview as you type; says why when it can't show, Back to the PDF | fe/editor/liveFrame.ts, be/routes/tinymist.js | 4c | not started |
@@ -505,13 +507,13 @@ into the docked bottom-left panel the plan now draws (row L4).
 | IM1 | Overleaf/any `.zip` import (unsafe entries refused outright, decision 23) | be/services/projectService.js | 1a + 1d | partial |
 | IM2 | arXiv source import | be/services/arxivService.js | 1a + 1d | partial |
 | IM3 | Open a file from Finder: its project, or a new project from its document's folder | tauri/src/main.rs, be/routes/projects.js (open-file) | 10a | not started |
-| IM4 | Change template… Quick switch (preamble swap, checkpoint, no model) | fe/app/TransferPanel.tsx | 11b import, export & transfer | not started |
-| IM5 | Change template… Classic (LaTeX source with the main model) | be/services/transferAgent | 11b | not started |
-| IM6 | Change template… From the PDF: parser → Markdown with maths and figures → main model writes into the template; vision layout check | fe/app/TransferPanel.tsx | 11b | not started |
-| IM7 | Change template… With an agent: new project with `source/` and the template-transfer skill | be/routes/transfer.js (agent) | 11b + 6e | not started |
-| IM8 | PDF parsers: MinerU (default), Mathpix, Mistral OCR, Datalab, LlamaParse (US/EU), PaddleOCR-VL, Docling, Other; each with own address and key | be/services/parsers, fe/app/parsers.ts | 11b | not started |
-| IM9 | Parser output and PDF kept in the new project's `.spectrum` | be/routes/transfer.js | 11b | not started |
-| IM10 | Export to Word (.docx) | be/routes/projects.js | 11b | not started |
+| IM4 | Change template… Quick switch (preamble swap, checkpoint, no model) | fe/app/TransferPanel.tsx | 11b import, export & transfer | removed (user, 29 Nov) |
+| IM5 | Change template… Classic (LaTeX source with the main model) | be/services/transferAgent | 11b | removed (user, 29 Nov) |
+| IM6 | Change template… From the PDF: parser → Markdown with maths and figures → main model writes into the template; vision layout check | fe/app/TransferPanel.tsx | 11b | removed (user, 29 Nov) |
+| IM7 | Change template… With an agent: new project with `source/` and the template-transfer skill | be/routes/transfer.js (agent) | 11b + 6e | removed (user, 29 Nov) |
+| IM8 | PDF parsers: MinerU (default), Mathpix, Mistral OCR, Datalab, LlamaParse (US/EU), PaddleOCR-VL, Docling, Other; each with own address and key | be/services/parsers, fe/app/parsers.ts | 11b | removed (user, 29 Nov) |
+| IM9 | Parser output and PDF kept in the new project's `.spectrum` | be/routes/transfer.js | 11b | removed (user, 29 Nov) |
+| IM10 | Export to Word (.docx) | be/routes/projects.js | 11b | removed (user, 29 Nov) |
 | IM11 | import-refine skill offered after an import | skills/spectrum-convert-tidy | 6g | not started |
 
 ## LaTeX ↔ Typst
@@ -798,7 +800,7 @@ into the docked bottom-left panel the plan now draws (row L4).
 | **Zotero** | | | | |
 | S-ZO1 | Status, Allow in Zotero…, collections, citing, completion switch | fe/editor/ZoteroCite.tsx | 7b | not started |
 | **Document parsers** | | | | |
-| S-DP1 | Parser choice and per-parser endpoint/key/app ID, Other protocol | fe/app/parsers.ts | 11b | not started |
+| S-DP1 | Parser choice and per-parser endpoint/key/app ID, Other protocol | fe/app/parsers.ts | 11b | removed (user, 29 Nov) |
 
 ## OS integration
 
@@ -849,7 +851,7 @@ into the docked bottom-left panel the plan now draws (row L4).
 | FR1 | Setup page on a computer's first start: TeX used, model (optional), first project from template or folder; Set up ticks; Skip/Continue | fe/app/FirstRunPage.tsx, fe/app/firstRun.ts | 1e first-run & migration | not started |
 | FR2 | Never shown to someone updating; reopens if quit while open | fe/app/firstRun.ts | 1e | not started |
 | FR3 | Proxy used for everything Spectrum reaches on the internet | be/services/networkProxy.js | 1e | not started |
-| FR4 | 1.10 → 2.0 mirror stop (still read for migration notice and merge base) | be/services/mirrorService.js | 1d / 8b | not started |
+| FR4 | 1.10 → 2.0 mirror stop (still read as the merge base; the notice is removed) | be/services/mirrorService.js | 1d / 8b | not started |
 
 ## Accessibility & language
 
@@ -892,7 +894,7 @@ the setup page). Their removal is 2.8.1 behaviour; nothing to rebuild.
 
 | Session | Scope |
 |---|---|
-| 1d projects page & templates | Home folders, tags, archive, customise folder, thumbnails, project menus, template gallery and editing, Typst Universe, zip/arXiv import UI, project switcher, 1.10 migration notice |
+| 1d projects page & templates | Home folders, tags, archive, customise folder, thumbnails, project menus, template gallery and editing, Typst Universe, zip/arXiv import UI, project switcher |
 | 1e first-run, settings migration & proxy | Setup page, moving 2.8's localStorage settings into `settings.json`, the network proxy finder and gate used by every crate |
 | 2f Insert menu & floats panel | Insert (+) per language, Insert figure and Insert table cards, pasted/dropped images, package additions |
 | 3d compile extras | Decision 65's list plus the compile menu, Recompile all/from scratch, figure preview, live output, Logs tab, Typst export formats, Mermaid in Markdown |
@@ -909,7 +911,7 @@ the setup page). Their removal is 2.8.1 behaviour; nothing to rebuild.
 | 9d composer: structures, vectors & forms | Structures solver and drawing, vector diagrams, form presets (Mohr, fluids, conics, transformations) |
 | 9e composer: plots, flow, tikz-cd, Mermaid | pgfplots with table import, Venn, TikZ/fletcher flowcharts, tikz-cd, Mermaid |
 | 11a Settings window | The Settings sheet with its 19 panes, search and the panes no feature session owns (Appearance, Models list, About/Licences) |
-| 11b import, export & template transfer | Change template (four routes), PDF parsers, Export to Word |
+| ~~11b import, export & template transfer~~ | Removed by the user (29 Nov): Change template, PDF parsers and Export to Word are not rebuilt |
 | 11c to-dos & PDF notes | To-do list with groups, colours, highlights, drag; PDF sticky notes |
 | 11d document insights | The insights panel with counts, numbers and pages, metadata, texcount |
 | 11e accessibility & copy pass | Screen reader labels, keyboard paths, reduce transparency, Australian English copy check across every screen |

@@ -84,6 +84,14 @@ editor design: `bg-code` background, plan syntax colours (commands green, bracke
 environment names purple, maths magenta) and the plan's text and gutter tokens. A 2.8 setting of
 `spectrum-light`/`spectrum-dark` lands on the new Spectrum; Classic is one pick away in Settings.
 
+### Removed from 3.0.0 (user, 29 Nov)
+
+Not rebuilt: the 1.10 migration notice; Change template (template transfer, all four routes);
+the PDF parsers (MinerU, Mathpix, Mistral OCR, Datalab, LlamaParse, PaddleOCR-VL, Docling, Other)
+and their Settings pane; Export to Word. The blueprint's Phase 7 "Document Parsers & Template
+Transfer" item is dropped with them. The 1.10.4 mirror records are still read as GitHub sync's
+merge base (that's data compatibility, not the notice).
+
 ### Update notifier (session 10a; the core can land earlier in `spectrum-core`)
 
 2.8.1's notice didn't work. Causes found:
@@ -147,7 +155,7 @@ they can run in parallel sessions, each in its own worktree, because they don't 
 | 8 | Checkpoints, diffs, GitHub device flow | `spectrum-git` | 1b | |
 | 9a | LaTeX ↔ Typst, Jyutping | `spectrum-convert` | 1a | Round-trip fixture keeps labels/citations |
 | 9b | Diagram composer window (trailer format verbatim) | `spectrum-diagram` | 2c, 3a | Opens 2.8 diagram files, hand-edited bodies open in code mode |
-| 1d | Projects page & templates (folders, tags, archive, templates, Typst Universe, import UI, switcher) | `spectrum-app`, `spectrum-core` | 1c | FEATURE_PARITY rows ticked |
+| 1d | Projects page & templates (folders, tags, archive, templates, Typst Universe, import UI, switcher; no 1.10 notice) | `spectrum-app`, `spectrum-core` | 1c | FEATURE_PARITY rows ticked |
 | 1e | First run, 2.8 settings migration (localStorage → settings.json), network proxy finder and gate | `spectrum-core`, `spectrum-app` | 1a | 2.8 settings carried over |
 | 2f | Insert menu and floats panel (figure, table, images, packages) | `spectrum-editor`, `spectrum-app` | 2c | |
 | 3d | Compile extras (decision 65's list, compile menu, live output, Logs tab, export formats, Mermaid in Markdown) | `spectrum-compile`, `spectrum-app` | 3a, 4b | |
@@ -163,8 +171,7 @@ they can run in parallel sessions, each in its own worktree, because they don't 
 | 9c | Composer: circuits and general drawing | `spectrum-diagram` | 9b | |
 | 9d | Composer: structures, vectors and forms | `spectrum-diagram` | 9b | |
 | 9e | Composer: plots, flow, tikz-cd, Mermaid | `spectrum-diagram` | 9b | |
-| 11a | Settings window (19 panes, search, Appearance, Models, About/Licences) | `spectrum-app`, `spectrum-ui` | 1e | |
-| 11b | Import, export and template transfer (four routes, PDF parsers, Export to Word) | `spectrum-convert`, `spectrum-app` | 9a | |
+| 11a | Settings window (18 panes: 2.8's 19 minus Document parsers, search, Appearance, Models, About/Licences) | `spectrum-app`, `spectrum-ui` | 1e | |
 | 11c | To-dos and PDF sticky notes | `spectrum-app`, `spectrum-pdf` | 2b, 4b | |
 | 11d | Document insights panel | `spectrum-app` | 2b, 3a | |
 | 11e | Accessibility and copy pass (screen reader, keyboard, reduce transparency, AU English) | all UI | all UI | |
