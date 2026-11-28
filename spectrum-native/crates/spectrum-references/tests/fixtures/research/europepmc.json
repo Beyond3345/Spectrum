@@ -1,0 +1,4 @@
+{"version":"6.9","hitCount":2,"nextCursorMark":"AoIIQE","request":{"queryString":"attention drosophila","resultType":"core","cursorMark":"*","pageSize":10,"sort":"","synonym":false},"resultList":{"result":[
+{"id":"34567890","source":"MED","pmid":"34567890","pmcid":"PMC8000001","doi":"10.5555/fly","title":"Attention in <i>Drosophila</i>.","authorString":"Curie M, Fly Consortium.","authorList":{"author":[{"fullName":"Curie M","firstName":"Marie","lastName":"Curie"},{"collectiveName":"Fly Consortium"}]},"journalInfo":{"journal":{"title":"Journal of Attention"}},"pubYear":"2021","abstractText":"<h4>Background</h4>Flies attend.","isOpenAccess":"Y","citedByCount":7},
+{"id":"PPR123456","source":"PPR","doi":"10.1101/2023.01.02.522001","title":"A preprint on fly attention","authorString":"Hopper G.","pubYear":"2023","bookOrReportDetails":{"publisher":"bioRxiv"},"isOpenAccess":"N","citedByCount":0}
+]}}

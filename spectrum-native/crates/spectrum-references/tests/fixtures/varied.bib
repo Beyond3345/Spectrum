@@ -1,0 +1,90 @@
+% A bibliography as people really keep them: JabRef and Zotero exports, hand-typed entries,
+% Google Scholar copies, strings, a preamble and the odd mistake.
+
+@preamble{ "\newcommand{\noopsort}[1]{}" # "\newcommand{\printfirst}[2]{#1}" }
+
+@String{ieeetpami = "IEEE Transactions on Pattern Analysis and Machine Intelligence"}
+@string { acm = {ACM} # " Press" ,
+          nips = "Advances in Neural Information Processing Systems" }
+
+@Comment{jabref-meta: databaseType:biblatex;}
+@comment{ a comment { with nested } braces }
+
+@Article{LeCun2015,
+  author    = {LeCun, Yann and Bengio, Yoshua and Hinton, Geoffrey},
+  title     = {Deep learning},
+  journal   = {Nature},
+  year      = {2015},
+  volume    = {521},
+  number    = {7553},
+  pages     = {436--444},
+  doi       = {10.1038/nature14539},
+  publisher = {Springer Science and Business Media {LLC}},
+}
+
+@inproceedings{vaswani2017attention,
+  title={Attention is all you need},
+  author={Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and Kaiser, {\L}ukasz and Polosukhin, Illia},
+  booktitle=nips,
+  pages={5998--6008},
+  year={2017}
+}
+
+@misc ( he2015deep ,
+    title = "Deep Residual Learning for Image Recognition",
+    author = "Kaiming He and Xiangyu Zhang and Shaoqing Ren and Jian Sun",
+    year = 2015,
+    eprint = {1512.03385},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.CV}
+)
+
+@book{Knuth:TAOCP:1,
+	author = {Donald E. Knuth},
+	title = {The Art of Computer Programming, Volume 1: Fundamental Algorithms},
+	edition = {3rd},
+	publisher = acm # { and } # "Addison-Wesley",
+	address = {Reading, Mass.},
+	year = 1997,
+	month = jan,
+	isbn = {0-201-89683-4}
+}
+
+@ARTICLE{Schroedinger1926,
+AUTHOR = "Schr{\"o}dinger, Erwin",
+TITLE = "Quantisierung als {E}igenwertproblem",
+JOURNAL = "Annalen der Physik",
+VOLUME = "384",
+NUMBER = "4",
+PAGES = "361--376",
+YEAR = "1926"}
+
+@phdthesis{chen_2019,
+  author       = {陈 伟 and Nguyễn, Văn Ánh},
+  title        = {{Ü}ber {GPT-4} und 50\% der {R\&D}-Kosten: eine Studie},
+  school       = {Universität Zürich},
+  year         = {2019},
+  note         = {Percent inside braces: 100% kept, "quotes" too},
+  url          = {https://example.org/thesis?id=1&lang=de#top}
+}
+
+@online{who2020covid,
+  author  = {{World Health Organization}},
+  title   = {Coronavirus disease (COVID-19) pandemic},
+  url     = {https://www.who.int/emergencies/diseases/novel-coronavirus-2019},
+  urldate = {2020-04-01},
+  date    = {2020}
+}
+
+This line is outside any entry, which BibTeX reads as a comment. So is an email: someone@example.com
+
+@techreport{broken2021,
+  author = {Doe, Jane},
+  title  = {An entry whose brace never closes,
+  year   = {2021}
+
+@article{after_broken,
+  author = {Roe, Richard}, title = {Still read after the broken one}, journal = {J. Tests}, year = {2022}}
+@incollection{  spaced_key  , title={Spaces around the key}, booktitle = {A Book}, year = {2020} , }
+@misc{empty_fields,}
+@unpublished{note-only, note = {Talk given at the workshop} }
